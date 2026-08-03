@@ -1,8 +1,9 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useCart } from '@/context/CartContext';
 import { formatPrice, calcSavings, getEffectivePrice, isOfferActive } from '@/lib/utils';
+import { buildProductMetaPayload, trackMetaCustomEvent, trackMetaEvent } from '@/lib/metaPixel';
 import { FiMinus, FiPlus, FiX, FiTruck, FiShield, FiClock, FiShoppingCart, FiZap, FiStar, FiUpload, FiImage } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
@@ -46,6 +47,8 @@ export default function ProductDetail({ product }) {
   const [submittingReview, setSubmittingReview] = useState(false);
   const { addToCart, setIsCartOpen } = useCart();
   const router = useRouter();
+  const viewedProductRef = useRef('');
+  const customTextTrackedRef = useRef({});
 
   const offerActive = isOfferActive(product);
   const savings = offerActive ? calcSavings(product.regularPrice, product.salePrice) : 0;
@@ -66,6 +69,25 @@ export default function ProductDetail({ product }) {
   const getOptionExtraPrice = (opt) => Number(opt?.priceAdjustment ?? opt?.price ?? 0);
   const selectedVariantExtra = Object.values(selectedVariants).reduce((sum, selected) => sum + (selected?.extra || 0), 0);
   const finalUnitPrice = price + selectedVariantExtra + (giftWrap && product.giftWrap?.enabled ? Number(product.giftWrap.price || 0) : 0);
+  const getProductPixelPayload = (extra = {}) => buildProductMetaPayload(product, {
+    price: finalUnitPrice,
+    quantity,
+    value: finalUnitPrice * quantity,
+    ...extra,
+  });
+
+  useEffect(() => {
+    if (viewedProductRef.current === product._id) return;
+    viewedProductRef.current = product._id;
+    trackMetaEvent('ViewContent', buildProductMetaPayload(product, { price, value: price }));
+  }, [price, product]);
+
+  const trackCustomTextInput = (fieldLabel, value) => {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldLabel]: value }));
+    if (!String(value || '').trim() || customTextTrackedRef.current[fieldLabel]) return;
+    customTextTrackedRef.current[fieldLabel] = true;
+    trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'text', field_label: fieldLabel }));
+  };
 
   const validateSelections = () => {
     for (const variant of product.variants || []) {
@@ -122,6 +144,7 @@ export default function ProductDetail({ product }) {
       setCustomFieldValues((prev) => ({ ...prev, [fieldLabel]: data }));
       if (data.type?.startsWith('image/')) setPreviewSourceField(fieldLabel);
       toast.success('Customization file uploaded');
+      trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'file_upload', field_label: fieldLabel, file_type: data.type || file.type || '' }));
     } catch (error) {
       setCustomFieldValues((prev) => ({ ...prev, [fieldLabel]: '' }));
       toast.error(error.message || 'Failed to upload file');
@@ -151,6 +174,7 @@ const handleCustomerPhotoUpload = async (files) => {
       }
       setCustomerPhotos((prev) => [...prev, ...uploaded]);
       toast.success(`${uploaded.length} photo${uploaded.length === 1 ? '' : 's'} uploaded`);
+      trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'customer_photos', photo_count: uploaded.length }));
     } catch (error) {
       toast.error(error.message || 'Failed to upload photos');
     } finally {
@@ -188,6 +212,7 @@ const handleCustomerPhotoUpload = async (files) => {
     if (!validateSelections()) return false;
 
     if (product.isQuoteOnly) {
+      trackMetaEvent('Contact', getProductPixelPayload({ contact_method: 'quote_whatsapp' }));
       window.open(`https://wa.me/${settings.whatsapp}?text=Hi, I'm interested in: ${product.title}`, '_blank');
       return false;
     }
@@ -214,6 +239,10 @@ const handleCustomerPhotoUpload = async (files) => {
         aspectRatio: previewConfig.aspectRatio || '1:1',
       } : null,
     }, { openDrawer: openCart });
+    trackMetaEvent('AddToCart', getProductPixelPayload());
+    if (Object.keys(allCustomFields || {}).length > 0 || giftWrap || giftMessage.trim()) {
+      trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'configured_product' }));
+    }
     return true;
   };
 
@@ -353,7 +382,7 @@ const handleCustomerPhotoUpload = async (files) => {
               <textarea
                 className="w-full border rounded-lg px-4 py-2 focus:outline-none focus:border-primary-500"
                 rows={3}
-                onChange={e => setCustomFieldValues(prev => ({ ...prev, [field.label]: e.target.value }))}
+                onChange={e => trackCustomTextInput(field.label, e.target.value)}
               />
             ) : field.type === 'file' ? (
               <div className="rounded-2xl border-2 border-dashed border-primary-200 bg-primary-50/40 p-4">
@@ -377,7 +406,7 @@ const handleCustomerPhotoUpload = async (files) => {
               </div>
             ) : (
               <input type="text" className="w-full border rounded-lg px-4 py-2 focus:outline-none focus:border-primary-500"
-                onChange={e => setCustomFieldValues(prev => ({ ...prev, [field.label]: e.target.value }))} />
+                onChange={e => trackCustomTextInput(field.label, e.target.value)} />
             )}
           </div>
         ))}

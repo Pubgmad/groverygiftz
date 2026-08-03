@@ -16,6 +16,7 @@ export default function AdminSettingsPage() {
     spotlightProductSlug: '',
     promoBannerImage: '', promoBannerTitle: '', promoBannerSubtitle: '', promoBannerButtonText: '', promoBannerButtonLink: '',
     cashfreeEnabled: false, cashfreeAppId: '', cashfreeSecretKey: '', cashfreeEnvironment: 'sandbox',
+    metaPixelEnabled: false, metaPixelId: '', metaPixelTestEventCode: '',
     heroEyebrow: '',
     heroTrustBadgesText: '',
     homeCollectionsEyebrow: '',
@@ -77,6 +78,9 @@ export default function AdminSettingsPage() {
         cashfreeAppId: d.cashfreeAppId || '',
         cashfreeSecretKey: d.cashfreeSecretKey || '',
         cashfreeEnvironment: d.cashfreeEnvironment || 'sandbox',
+        metaPixelEnabled: d.metaPixelEnabled ?? false,
+        metaPixelId: d.metaPixelId || '',
+        metaPixelTestEventCode: d.metaPixelTestEventCode || '',
         heroEyebrow: d.heroEyebrow || '',
         heroTrustBadgesText: (d.heroTrustBadges && d.heroTrustBadges.length) ? d.heroTrustBadges.join('\n') : '',
         homeCollectionsEyebrow: d.homeCollectionsEyebrow || '',
@@ -226,6 +230,21 @@ export default function AdminSettingsPage() {
           </div>
           {form.cashfreeEnabled && (!form.cashfreeAppId || !form.cashfreeSecretKey) && (
             <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">Cashfree is enabled but keys are not set. Customers will see secure online payment, but payment cannot start until you add the keys.</p>
+          )}
+        </div>
+        <div className="bg-white p-6 rounded-xl border space-y-4">
+          <h2 className="font-bold text-lg">Marketing Tracking</h2>
+          <p className="text-sm text-gray-500">Add your Meta Pixel ID here. Tracking runs only on customer-facing pages and is skipped on admin pages.</p>
+          <label className="flex items-center gap-2 cursor-pointer text-sm font-medium">
+            <input type="checkbox" checked={form.metaPixelEnabled} onChange={e => setForm(p => ({ ...p, metaPixelEnabled: e.target.checked }))} />
+            Enable Meta Pixel
+          </label>
+          <div className="grid md:grid-cols-2 gap-4">
+            <div><label className="block text-sm font-medium mb-1">Meta Pixel ID</label><input value={form.metaPixelId} onChange={e => setForm(p => ({ ...p, metaPixelId: e.target.value.replace(/\D/g, '') }))} className="w-full border rounded-lg px-4 py-2 font-mono text-sm" placeholder="Paste only the number from fbq('init', '...')" /></div>
+            <div><label className="block text-sm font-medium mb-1">Test Event Code <span className="text-gray-400">(optional)</span></label><input value={form.metaPixelTestEventCode} onChange={e => setForm(p => ({ ...p, metaPixelTestEventCode: e.target.value }))} className="w-full border rounded-lg px-4 py-2 font-mono text-sm" placeholder="TEST12345" /></div>
+          </div>
+          {form.metaPixelEnabled && !form.metaPixelId && (
+            <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">Meta Pixel is enabled but Pixel ID is empty. Paste your Pixel ID before testing.</p>
           )}
         </div>
 

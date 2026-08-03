@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { FiArrowRight, FiClock } from 'react-icons/fi';
+import { trackMetaCustomEvent } from '@/lib/metaPixel';
 
 function toTimeParts(ms) {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -58,7 +59,7 @@ export default function PromoCountdown({ title, subtitle, buttonText, buttonLink
           {hasEnded ? (
             <p className="font-medium text-white/90">This offer has ended. Check back soon for new deals!</p>
           ) : (
-            <Link href={buttonLink || '/shop'} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-white px-6 py-3.5 text-base font-extrabold text-primary-700 shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:bg-accent-50 hover:shadow-orange sm:w-auto sm:px-10 sm:py-4 sm:text-lg">
+            <Link href={buttonLink || '/shop'} onClick={() => trackMetaCustomEvent('BannerClick', { banner_title: title, banner_link: buttonLink || '/shop', banner_location: 'promo_countdown' })} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-white px-6 py-3.5 text-base font-extrabold text-primary-700 shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:bg-accent-50 hover:shadow-orange sm:w-auto sm:px-10 sm:py-4 sm:text-lg">
               {buttonText || 'Shop Now'} <FiArrowRight size={18} />
             </Link>
           )}

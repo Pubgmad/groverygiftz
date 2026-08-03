@@ -1,5 +1,6 @@
 'use client';
 import { createContext, useContext, useState, useEffect } from 'react';
+import { buildProductMetaPayload, trackMetaEvent } from '@/lib/metaPixel';
 
 const WishlistContext = createContext();
 

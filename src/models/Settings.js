@@ -58,6 +58,9 @@ const SettingsSchema = new mongoose.Schema({
   cashfreeAppId: { type: String, default: '' },
   cashfreeSecretKey: { type: String, default: '' },
   cashfreeEnvironment: { type: String, enum: ['sandbox', 'production'], default: 'sandbox' },
+  metaPixelEnabled: { type: Boolean, default: false },
+  metaPixelId: { type: String, default: '' },
+  metaPixelTestEventCode: { type: String, default: '' },
 
   heroEyebrow: { type: String, default: '' },
   heroTrustBadges: [{ type: String }],

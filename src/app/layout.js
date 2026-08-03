@@ -5,6 +5,7 @@ import AnnouncementBar from '@/components/layout/AnnouncementBar';
 import WhatsAppFloat from '@/components/layout/WhatsAppFloat';
 import CartDrawer from '@/components/cart/CartDrawer';
 import Providers from '@/components/Providers';
+import MetaPixel from '@/components/meta/MetaPixel';
 import { Toaster } from 'react-hot-toast';
 
 export const metadata = {
@@ -22,6 +23,7 @@ export default function RootLayout({ children }) {
       </head>
       <body>
         <Providers>
+          <MetaPixel />
           <Toaster
             position="top-center"
             toastOptions={{

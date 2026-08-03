@@ -1,4 +1,6 @@
+'use client';
 import Link from 'next/link';
+import { trackMetaCustomEvent } from '@/lib/metaPixel';
 
 export default function PromoBannerImage({ settings }) {
   const title = settings?.promoBannerTitle || 'Discover Our Latest Collections';
@@ -46,6 +48,7 @@ export default function PromoBannerImage({ settings }) {
           </h2>
           <Link
             href={btnLink}
+            onClick={() => trackMetaCustomEvent('BannerClick', { banner_title: title, banner_link: btnLink, banner_location: 'promo_image' })}
             className="inline-flex w-full items-center justify-center gap-2 bg-white text-primary-700 font-bold px-5 py-3.5 rounded-full hover:bg-accent-50 hover:text-accent-600 transition-colors shadow-lg text-sm sm:w-auto sm:px-8 sm:text-base"
           >
             {btnText}

@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { FiPhone, FiMail, FiMapPin, FiClock, FiInstagram, FiShield, FiSend } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import { trackMetaEvent } from '@/lib/metaPixel';
 
 const DEFAULT_CONTACT = {
   phone: '+91 99945 49781',
@@ -38,6 +39,7 @@ export default function ContactPage() {
       });
       if (res.ok) {
         toast.success('Message sent. We will get back to you shortly.');
+        trackMetaEvent('Contact', { contact_method: 'contact_form' });
         setFormData({ name: '', email: '', phone: '', message: '' });
       } else {
         toast.error('Failed to send message');

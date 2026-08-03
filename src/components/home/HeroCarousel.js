@@ -1,13 +1,16 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { FiChevronLeft, FiChevronRight, FiTruck, FiGift, FiStar, FiShoppingBag, FiShield } from 'react-icons/fi';
+import { trackMetaCustomEvent } from '@/lib/metaPixel';
 
 const TRUST_ICONS = [FiTruck, FiGift, FiShield, FiStar];
 
 export default function HeroCarousel({ banners = [], settings }) {
   const [current, setCurrent] = useState(0);
   const [key, setKey] = useState(0);
+  const router = useRouter();
   const slides = banners.filter((banner) => banner?.title || banner?.image);
   const trustBadges = (settings?.heroTrustBadges || []).map((badge) => badge?.trim()).filter(Boolean);
   const fallbackTitle = settings?.heroFallbackTitle || 'Personalized Gifts Made With Love';
@@ -29,13 +32,30 @@ export default function HeroCarousel({ banners = [], settings }) {
     setCurrent(idx);
     setKey((k) => k + 1);
   };
+  const trackBannerClick = (slide) => {
+    trackMetaCustomEvent('BannerClick', {
+      banner_title: slide.title || fallbackTitle,
+      banner_link: slide.link || '/shop',
+      banner_location: 'hero',
+    });
+  };
+
+  const openBanner = (slide, event) => {
+    if (event?.target?.closest?.('a,button,input,select,textarea,video')) return;
+    trackBannerClick(slide);
+    router.push(slide.link || '/shop');
+  };
 
   return (
     <section className="relative min-h-[520px] overflow-hidden sm:min-h-[560px] md:min-h-[640px] lg:min-h-[690px]">
       {slides.map((slide, idx) => (
         <div
           key={slide._id || idx}
-          className={`absolute inset-0 transition-opacity duration-700 ${idx === current ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+          className={`absolute inset-0 cursor-pointer transition-opacity duration-700 ${idx === current ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+          role="link"
+          tabIndex={idx === current ? 0 : -1}
+          onClick={(event) => openBanner(slide, event)}
+          onKeyDown={(event) => { if (event.key === 'Enter') openBanner(slide, event); }}
         >
           {slide.image ? (
             <img src={slide.image} alt={slide.title || ''} className="h-full w-full object-cover" />
@@ -44,13 +64,6 @@ export default function HeroCarousel({ banners = [], settings }) {
           )}
           <div className="absolute inset-0 bg-gradient-to-b from-black/75 via-black/45 to-black/25 sm:bg-gradient-to-r sm:from-black/80 sm:via-black/48 sm:to-black/15" />
           <div className="absolute inset-0 bg-gradient-to-t from-black/72 via-transparent to-black/20" />
-
-          <Link
-            href={slide.link || '/shop'}
-            className="absolute inset-0 z-[5]"
-            aria-label={'Open ' + (slide.title || fallbackTitle)}
-          />
-
           <div className="relative z-10 mx-auto flex min-h-[520px] max-w-7xl items-center px-4 pb-28 pt-12 sm:min-h-[560px] sm:pt-20 md:min-h-[640px] md:px-6 lg:min-h-[690px]">
             <div key={key} className={`max-w-3xl ${idx === current ? 'hero-text-in' : ''}`}>
               {settings?.heroEyebrow && (
@@ -72,6 +85,7 @@ export default function HeroCarousel({ banners = [], settings }) {
                 {(slide.buttonText || fallbackButtonText) && (
                   <Link
                     href={slide.link || '/shop'}
+                    onClick={() => trackBannerClick(slide)}
                     className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-accent-500 px-5 py-3.5 text-sm font-extrabold text-white shadow-orange transition-all duration-200 hover:-translate-y-1 hover:bg-accent-600 sm:w-auto sm:px-8 sm:py-4 sm:text-base md:px-10"
                   >
                     <FiShoppingBag size={18} />

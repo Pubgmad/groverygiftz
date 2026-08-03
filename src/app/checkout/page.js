@@ -1,8 +1,9 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useCart } from '@/context/CartContext';
 import { formatPrice } from '@/lib/utils';
+import { buildCartMetaPayload, trackMetaEvent } from '@/lib/metaPixel';
 import { FiChevronRight, FiCheckCircle, FiShield, FiTruck, FiCreditCard, FiMapPin, FiEdit2, FiGift } from 'react-icons/fi';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -35,6 +36,7 @@ export default function CheckoutPage() {
     otherStateDeliveryEstimate: '10-15 days',
   });
   const [orderResult, setOrderResult] = useState(null);
+  const checkoutTrackedRef = useRef(false);
 
   const hasSelectedState = Boolean(address.state);
   const outOfTamilNadu = hasSelectedState && !isTamilNadu(address.state);
@@ -45,6 +47,7 @@ export default function CheckoutPage() {
     ? (isTamilNadu(address.state) ? settings.tamilNaduDeliveryEstimate : settings.otherStateDeliveryEstimate)
     : 'Select state to see delivery estimate';
   const grandTotal = cartTotal + shippingCost;
+  const getCartPixelPayload = (items = cart, total = grandTotal, extra = {}) => buildCartMetaPayload(items, total, extra);
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -74,6 +77,11 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (cart.length === 0 && step !== 3 && status === 'authenticated') router.replace('/cart');
   }, [cart, step, router, status]);
+  useEffect(() => {
+    if (checkoutTrackedRef.current || status !== 'authenticated' || cart.length === 0 || step === 3) return;
+    checkoutTrackedRef.current = true;
+    trackMetaEvent('InitiateCheckout', getCartPixelPayload(cart, grandTotal));
+  }, [cart, grandTotal, status, step]);
 
   const validateAddress = () => {
     const { fullName, email, phone, line1, city, state } = address;
@@ -120,6 +128,8 @@ export default function CheckoutPage() {
         return;
       }
 
+      trackMetaEvent('AddPaymentInfo', getCartPixelPayload(cart, createData.total ?? grandTotal, { payment_method: 'Cashfree' }));
+
       const cashfree = window.Cashfree({ mode: createData.mode || 'sandbox' });
       const result = await cashfree.checkout({ paymentSessionId: createData.paymentSessionId, redirectTarget: '_modal' });
       if (result?.error) {
@@ -135,6 +145,8 @@ export default function CheckoutPage() {
       });
       const verifyData = await verifyRes.json();
       if (verifyRes.ok && verifyData.success) {
+        const paidTotal = verifyData.total ?? createData.total ?? grandTotal;
+        trackMetaEvent('Purchase', getCartPixelPayload(placedItems, paidTotal, { order_id: verifyData.orderNumber }));
         clearCart();
         setOrderResult({
           orderNumber: verifyData.orderNumber,
@@ -142,7 +154,7 @@ export default function CheckoutPage() {
           items: placedItems,
           subtotal: cartTotal,
           shippingCost: verifyData.shippingCost ?? createData.shippingCost ?? shippingCost,
-          total: verifyData.total ?? createData.total ?? grandTotal,
+          total: paidTotal,
           deliveryEstimate: verifyData.deliveryEstimate || createData.deliveryEstimate || deliveryEstimate,
         });
         setStep(3);

@@ -33,6 +33,9 @@ export async function GET() {
       promoEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       gstNumber: '33KVUPS5560J1ZL',
       tradeName: 'GROVERY GIFTZ',
+      metaPixelEnabled: false,
+      metaPixelId: '',
+      metaPixelTestEventCode: '',
     });
   }
   return NextResponse.json(settings);

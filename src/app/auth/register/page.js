@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
+import { trackMetaEvent } from '@/lib/metaPixel';
 
 export default function RegisterPage() {
   const [formData, setFormData] = useState({ name: '', email: '', password: '', phone: '' });
@@ -21,6 +22,7 @@ export default function RegisterPage() {
       const data = await res.json();
       if (res.ok) {
         toast.success('Account created! Please log in.');
+        trackMetaEvent('CompleteRegistration', { status: true, registration_method: 'email' });
         router.push('/auth/login');
       } else {
         toast.error(data.error || 'Registration failed');
