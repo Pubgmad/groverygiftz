@@ -1,0 +1,260 @@
+'use client';
+import { useEffect, useMemo, useState } from 'react';
+import { formatPrice } from '@/lib/utils';
+import toast from 'react-hot-toast';
+
+const statusOptions = [
+  { value: 'ordered', label: 'Ordered' },
+  { value: 'on_process', label: 'On Process' },
+  { value: 'dispatched', label: 'Dispatched' },
+];
+
+const statusLabels = {
+  ordered: 'Ordered',
+  on_process: 'On Process',
+  dispatched: 'Dispatched',
+  pending: 'Ordered',
+  processing: 'On Process',
+  shipped: 'Dispatched',
+  delivered: 'Dispatched',
+  cancelled: 'Cancelled',
+};
+
+const statusColors = {
+  ordered: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+  on_process: 'bg-sky-50 text-sky-700 border border-sky-200',
+  dispatched: 'bg-amber-50 text-amber-700 border border-amber-200',
+  pending: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+  processing: 'bg-sky-50 text-sky-700 border border-sky-200',
+  shipped: 'bg-amber-50 text-amber-700 border border-amber-200',
+  delivered: 'bg-amber-50 text-amber-700 border border-amber-200',
+  cancelled: 'bg-red-50 text-red-700 border border-red-200',
+};
+
+const paymentStatusColors = {
+  pending: 'bg-amber-50 text-amber-700 border border-amber-200',
+  paid: 'bg-green-50 text-green-700 border border-green-200',
+  failed: 'bg-red-50 text-red-700 border border-red-200',
+  refunded: 'bg-gray-50 text-gray-700 border border-gray-200',
+};
+
+const normalizeStatus = (status) => {
+  if (status === 'processing') return 'on_process';
+  if (status === 'shipped' || status === 'delivered') return 'dispatched';
+  if (status === 'pending') return 'ordered';
+  return status || 'ordered';
+};
+
+const formatDate = (date) => date ? new Date(date).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
+const isUploadedFile = (value) => value && typeof value === 'object' && value.url;
+const isOutOfTamilNadu = (order) => String(order.shippingAddress?.state || '').trim().toLowerCase() !== 'tamil nadu';
+const addressLine = (address = {}) => [address.line1, address.line2, address.city, address.state].filter(Boolean).join(', ');
+
+function CustomValue({ value }) {
+  if (Array.isArray(value)) {
+    return (
+      <span className="inline-flex flex-wrap gap-1">
+        {value.map((file, idx) => isUploadedFile(file) ? (
+          <a key={file.url || idx} href={file.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary-600 hover:text-primary-700">File {idx + 1}{file.name ? ` (${file.name})` : ''}</a>
+        ) : <span key={idx}>{String(file || '-')}</span>)}
+      </span>
+    );
+  }
+  if (isUploadedFile(value)) {
+    return <a href={value.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary-600 hover:text-primary-700">View uploaded file{value.name ? ` (${value.name})` : ''}</a>;
+  }
+  return <span>{String(value || '-')}</span>;
+}
+
+export default function AdminOrdersPage() {
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState(null);
+  const [trackingDraft, setTrackingDraft] = useState('');
+  const [orderFilter, setOrderFilter] = useState('');
+  const [mobileFilter, setMobileFilter] = useState('');
+
+  const fetchOrders = async () => {
+    const res = await fetch('/api/orders');
+    const data = await res.json();
+    const nextOrders = data.orders || [];
+    setOrders(nextOrders);
+    setLoading(false);
+    if (selected?._id) setSelected(nextOrders.find((order) => order._id === selected._id) || null);
+  };
+
+  useEffect(() => { fetchOrders(); }, []);
+
+  useEffect(() => {
+    setTrackingDraft(selected?.trackingNumber || '');
+  }, [selected?._id, selected?.trackingNumber]);
+
+  const filteredOrders = useMemo(() => {
+    const orderTerm = orderFilter.trim().toLowerCase();
+    const mobileTerm = mobileFilter.trim().replace(/\D/g, '');
+    return orders.filter((order) => {
+      const matchesOrder = !orderTerm || String(order.orderNumber || '').toLowerCase().includes(orderTerm);
+      const phone = String(order.shippingAddress?.phone || '').replace(/\D/g, '');
+      const matchesMobile = !mobileTerm || phone.includes(mobileTerm);
+      return matchesOrder && matchesMobile;
+    });
+  }, [orders, orderFilter, mobileFilter]);
+
+  const updateStatus = async (id, status) => {
+    const res = await fetch(`/api/orders/${id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }),
+    });
+    if (res.ok) {
+      toast.success('Status updated');
+      const data = await res.json();
+      setSelected(data);
+      await fetchOrders();
+    } else toast.error('Failed to update');
+  };
+
+  const updateTracking = async (id, trackingNumber) => {
+    const res = await fetch(`/api/orders/${id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackingNumber: trackingNumber.trim() }),
+    });
+    if (!res.ok) {
+      toast.error('Failed to save tracking ID');
+      return;
+    }
+    toast.success('ST Couriers tracking ID saved. Customer can see it in My Account.');
+    const data = await res.json();
+    setSelected(data);
+    await fetchOrders();
+  };
+
+  return (
+    <div>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold">Orders</h1>
+          <p className="text-sm text-gray-500">Filter by order ID or mobile number. Update production status and ST Couriers tracking from the selected order.</p>
+        </div>
+      </div>
+
+      <div className="grid xl:grid-cols-3 gap-6">
+        <div className="xl:col-span-2 bg-white rounded-xl border overflow-hidden">
+          <div className="grid sm:grid-cols-2 gap-3 border-b bg-gray-50 p-4">
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">Order ID</label>
+              <input value={orderFilter} onChange={(e) => setOrderFilter(e.target.value)} placeholder="Search GG0001" className="w-full rounded-lg border px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">Mobile Number</label>
+              <input value={mobileFilter} onChange={(e) => setMobileFilter(e.target.value)} placeholder="Search mobile" className="w-full rounded-lg border px-3 py-2 text-sm" />
+            </div>
+          </div>
+
+          {loading ? <p className="p-6 text-center">Loading...</p> : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[1050px]">
+                <thead>
+                  <tr className="bg-gray-50 text-left text-gray-600">
+                    <th className="p-4">SNO</th>
+                    <th className="p-4">Order ID</th>
+                    <th className="p-4">Order Date</th>
+                    <th className="p-4">Name</th>
+                    <th className="p-4">Mobile</th>
+                    <th className="p-4">Address</th>
+                    <th className="p-4">Status</th>
+                    <th className="p-4">Payment</th>
+                    <th className="p-4 text-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredOrders.map((order, idx) => {
+                    const outOfTn = isOutOfTamilNadu(order);
+                    const normalized = normalizeStatus(order.status);
+                    return (
+                      <tr key={order._id} className={`border-t cursor-pointer hover:bg-gray-50 ${selected?._id === order._id ? 'bg-primary-50' : ''}`} onClick={() => setSelected(order)}>
+                        <td className="p-4 font-semibold text-gray-500">{idx + 1}</td>
+                        <td className="p-4 font-bold text-primary-700">{order.orderNumber}</td>
+                        <td className="p-4 text-gray-600 whitespace-nowrap">{formatDate(order.paidAt || order.createdAt)}</td>
+                        <td className="p-4"><p className="font-medium text-gray-900">{order.shippingAddress?.fullName || '-'}</p><p className="text-xs text-gray-500">{order.shippingAddress?.email || order.guestEmail || '-'}</p></td>
+                        <td className="p-4 font-medium whitespace-nowrap">{order.shippingAddress?.phone || '-'}</td>
+                        <td className="p-4 max-w-[250px]"><p className="line-clamp-2 text-gray-600">{addressLine(order.shippingAddress) || '-'}</p>{outOfTn && <span className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">Outside TN: charge applies</span>}</td>
+                        <td className="p-4"><span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusColors[normalized] || statusColors.ordered}`}>{statusLabels[normalized] || normalized}</span></td>
+                        <td className="p-4"><span className={`px-2 py-1 rounded-full text-xs font-semibold ${paymentStatusColors[order.paymentStatus] || paymentStatusColors.pending}`}>{order.paymentMethod || 'Cashfree'} {order.paymentStatus}</span></td>
+                        <td className="p-4 text-right font-medium">{formatPrice(order.total)}</td>
+                      </tr>
+                    );
+                  })}
+                  {filteredOrders.length === 0 && <tr><td colSpan={9} className="p-6 text-center text-gray-500">No orders match your filters</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white rounded-xl border p-5 md:p-6">
+          {selected ? (
+            <div>
+              <h2 className="font-bold text-lg mb-4">Order {selected.orderNumber}</h2>
+              <div className="space-y-3 text-sm">
+                {isOutOfTamilNadu(selected) && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-800">
+                    Outside Tamil Nadu order. Delivery charge applies and timeline is usually 10 to 15 days.
+                  </div>
+                )}
+                <div><span className="text-gray-500">Order date:</span> {formatDate(selected.paidAt || selected.createdAt)}</div>
+                <div><span className="text-gray-500">Estimated delivery:</span> <span className="font-medium">{selected.deliveryEstimate || '-'}</span></div>
+                <div>
+                  <span className="text-gray-500">Status:</span>
+                  <select value={normalizeStatus(selected.status)} onChange={e => updateStatus(selected._id, e.target.value)} className="ml-2 border rounded px-2 py-1 text-sm">
+                    {statusOptions.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
+                  </select>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-gray-500">Payment:</span>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${paymentStatusColors[selected.paymentStatus] || paymentStatusColors.pending}`}>{selected.paymentStatus}</span>
+                  <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{selected.paymentMethod || 'Cashfree'}</span>
+                </div>
+                <div className="border rounded-lg p-3 bg-gray-50 space-y-2">
+                  <p className="text-xs text-gray-600 leading-relaxed"><strong>ST Couriers tracking ID:</strong> after booking the parcel with ST Couriers, paste the tracking ID here. Customers can copy it and open the ST website.</p>
+                  <label className="text-xs font-medium text-gray-700">Tracking ID</label>
+                  <input value={trackingDraft} onChange={(e) => setTrackingDraft(e.target.value)} placeholder="Enter ST Couriers tracking ID" className="border rounded-lg px-3 py-2 text-sm font-mono w-full" />
+                  <button type="button" onClick={() => updateTracking(selected._id, trackingDraft)} className="text-sm px-4 py-2 rounded-lg bg-primary-600 text-white font-semibold hover:bg-primary-700">Save tracking ID</button>
+                </div>
+
+                <h3 className="font-semibold mt-4">Items</h3>
+                <div className="space-y-3">
+                  {selected.items?.map((item, idx) => (
+                    <div key={idx} className="rounded-lg border bg-gray-50 p-3 space-y-2">
+                      <div className="flex justify-between gap-3"><div><p className="font-semibold text-gray-900">{item.title} x{item.quantity}</p>{item.variant && <p className="text-xs text-gray-500">Selected: {item.variant}</p>}</div><span className="font-semibold whitespace-nowrap">{formatPrice(item.price * item.quantity)}</span></div>
+                      {item.customFields && Object.keys(item.customFields).length > 0 && (
+                        <div className="rounded-md bg-white border p-2 space-y-1"><p className="text-xs font-semibold text-gray-600">Customization</p>{Object.entries(item.customFields).map(([label, value]) => (<div key={label} className="text-xs text-gray-700"><span className="font-medium">{label}: </span><CustomValue value={value} /></div>))}</div>
+                      )}
+                      {item.customizationPreview?.uploadedFile?.url && (
+                        <div className="rounded-md bg-primary-50 border border-primary-100 p-2 space-y-1 text-xs text-gray-700"><p className="font-semibold text-primary-800">Saved preview / crop instructions</p><a href={item.customizationPreview.uploadedFile.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary-600 hover:text-primary-700">Open uploaded preview image</a><p><span className="font-medium">Source field:</span> {item.customizationPreview.sourceField || '-'}</p><p><span className="font-medium">Frame:</span> {item.customizationPreview.previewTitle || '-'}</p><p><span className="font-medium">Shape:</span> {item.customizationPreview.shape || '-'} | <span className="font-medium">Ratio:</span> {item.customizationPreview.aspectRatio || '-'}</p>{item.customizationPreview.adjustments && (<p><span className="font-medium">Crop:</span> zoom {item.customizationPreview.adjustments.zoom}, x {item.customizationPreview.adjustments.x}, y {item.customizationPreview.adjustments.y}, filter {item.customizationPreview.adjustments.filter}</p>)}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div className="border-t pt-2 space-y-1"><div className="flex justify-between"><span>Subtotal</span><span>{formatPrice(selected.subtotal || 0)}</span></div><div className="flex justify-between"><span>Delivery</span><span>{selected.shippingCost === 0 ? 'FREE' : formatPrice(selected.shippingCost || 0)}</span></div><div className="flex justify-between font-bold"><span>Total</span><span>{formatPrice(selected.total)}</span></div></div>
+
+                {selected.shippingAddress && (
+                  <div className="pt-2">
+                    <h3 className="font-semibold mt-4 mb-2">Shipping</h3>
+                    <div className="rounded-lg border bg-gray-50 p-3 space-y-1">
+                      <p className="font-semibold">{selected.shippingAddress.fullName}</p>
+                      <p>Mobile: {selected.shippingAddress.phone}</p>
+                      <p>{selected.shippingAddress.line1}</p>
+                      {selected.shippingAddress.line2 && <p>{selected.shippingAddress.line2}</p>}
+                      <p>{selected.shippingAddress.city}, {selected.shippingAddress.state}</p>
+                      <p>{selected.shippingAddress.email || selected.guestEmail}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <p className="text-gray-500 text-center py-8">Select an order to view details</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

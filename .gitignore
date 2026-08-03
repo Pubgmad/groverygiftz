@@ -1,0 +1,7 @@
+.next
+node_modules
+.env.local
+*.log
+1
+public/uploads/
+src/app/cart/Untitled-1.txt
