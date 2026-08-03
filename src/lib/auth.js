@@ -1,4 +1,4 @@
-﻿import CredentialsProvider from 'next-auth/providers/credentials';
+import CredentialsProvider from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
 import dbConnect from './db';
 import Admin from '@/models/Admin';
@@ -23,7 +23,7 @@ export const authOptions = {
         const loginType = credentials?.loginType || 'customer';
 
         if (loginType === 'admin') {
-          const admin = await Admin.findOne({ email });
+          const admin = await Admin.findOne({ email }).collation({ locale: 'en', strength: 2 });
           if (!admin) return null;
           const adminValid = await bcrypt.compare(password, admin.password);
           if (!adminValid) return null;

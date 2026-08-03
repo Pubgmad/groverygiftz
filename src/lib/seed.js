@@ -8,12 +8,13 @@ async function seed() {
   console.log('Connected to MongoDB');
 
   const db = mongoose.connection.db;
+  const adminEmail = (process.env.ADMIN_EMAIL || 'admin@groverygiftz.com').trim().toLowerCase();
 
   // 1. Seed Admin
   const adminPassword = await bcrypt.hash(process.env.ADMIN_PASSWORD || 'admin123', 12);
   await db.collection('admins').updateOne(
-    { email: process.env.ADMIN_EMAIL || 'admin@groverygiftz.com' },
-    { $setOnInsert: { name: 'Admin', email: process.env.ADMIN_EMAIL || 'admin@groverygiftz.com', password: adminPassword, role: 'superadmin', createdAt: new Date(), updatedAt: new Date() } },
+    { email: adminEmail },
+    { $setOnInsert: { name: 'Admin', email: adminEmail, password: adminPassword, role: 'superadmin', createdAt: new Date(), updatedAt: new Date() } },
     { upsert: true }
   );
   console.log('Admin seeded');
