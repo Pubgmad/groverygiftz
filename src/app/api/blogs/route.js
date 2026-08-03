@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/db';
 import Blog from '@/models/Blog';
 import { getServerSession } from 'next-auth';
@@ -21,5 +22,8 @@ export async function POST(req) {
   const body = await req.json();
   body.slug = slugify(body.title, { lower: true, strict: true });
   const blog = await Blog.create(body);
+  revalidatePath('/', 'layout');
+  revalidatePath('/blogs');
+  revalidatePath(`/blogs/${blog.slug}`);
   return NextResponse.json(blog, { status: 201 });
 }

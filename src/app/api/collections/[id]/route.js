@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/db';
 import Collection from '@/models/Collection';
 import { getServerSession } from 'next-auth';
@@ -23,6 +24,10 @@ export async function PUT(req, { params }) {
   if (body.name) body.slug = slugify(body.name, { lower: true, strict: true });
   const collection = await Collection.findByIdAndUpdate(params.id, body, { new: true });
   if (!collection) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  revalidatePath('/', 'layout');
+  revalidatePath('/');
+  revalidatePath('/shop');
+  revalidatePath(`/collections/${collection.slug}`);
   return NextResponse.json(collection);
 }
 
@@ -33,6 +38,10 @@ export async function DELETE(req, { params }) {
   }
 
   await dbConnect();
-  await Collection.findByIdAndDelete(params.id);
+  const deleted = await Collection.findByIdAndDelete(params.id);
+  revalidatePath('/', 'layout');
+  revalidatePath('/');
+  revalidatePath('/shop');
+  if (deleted?.slug) revalidatePath(`/collections/${deleted.slug}`);
   return NextResponse.json({ success: true });
 }

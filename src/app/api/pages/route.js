@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/db';
 import Page from '@/models/Page';
 import { getServerSession } from 'next-auth';
@@ -19,5 +20,7 @@ export async function POST(req) {
   await dbConnect();
   const body = await req.json();
   const page = await Page.create(body);
+  revalidatePath('/', 'layout');
+  if (page.slug) revalidatePath(`/policies/${page.slug}`);
   return NextResponse.json(page, { status: 201 });
 }

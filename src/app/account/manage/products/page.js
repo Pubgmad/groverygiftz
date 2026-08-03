@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { formatPrice } from '@/lib/utils';
-import { FiPlus, FiEdit, FiTrash2, FiSearch } from 'react-icons/fi';
+import { FiPlus, FiEdit, FiTrash2, FiSearch, FiCopy } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
 export default function AdminProductsPage() {
@@ -22,6 +22,12 @@ export default function AdminProductsPage() {
   };
 
   useEffect(() => { fetchProducts(); }, [page, search]);
+
+  const copyPublicLink = async (slug) => {
+    const link = `/products/${slug}`;
+    try { await navigator.clipboard.writeText(link); toast.success('Product link copied'); }
+    catch { toast.error('Unable to copy link'); }
+  };
 
   const handleDelete = async (id) => {
     if (!confirm('Are you sure you want to delete this product?')) return;
@@ -59,7 +65,7 @@ export default function AdminProductsPage() {
                       {p.images?.[0] && <img src={p.images[0]} alt="" className="w-full h-full object-cover" />}
                     </div>
                   </td>
-                  <td className="p-4 font-medium max-w-[220px] truncate">{p.title}</td>
+                  <td className="p-4 max-w-[260px]"><p className="truncate font-medium">{p.title}</p><button type="button" onClick={() => copyPublicLink(p.slug)} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-primary-600 hover:text-primary-700"><FiCopy size={12} /> /products/{p.slug}</button></td>
                   <td className="p-4">{formatPrice(p.salePrice || p.regularPrice)}</td>
                   <td className="p-4">{p.stock}</td>
                   <td className="p-4">

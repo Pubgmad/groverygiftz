@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/db';
 import Product from '@/models/Product';
 import { getServerSession } from 'next-auth';
@@ -45,5 +46,9 @@ export async function POST(req) {
   if (existing) body.slug += '-' + Date.now().toString(36);
 
   const product = await Product.create(body);
+  revalidatePath('/', 'layout');
+  revalidatePath('/');
+  revalidatePath('/shop');
+  revalidatePath(`/products/${product.slug}`);
   return NextResponse.json(product, { status: 201 });
 }

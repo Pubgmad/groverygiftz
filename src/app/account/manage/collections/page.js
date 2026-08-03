@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { FiPlus, FiEdit, FiTrash2, FiX } from 'react-icons/fi';
+import { FiPlus, FiEdit, FiTrash2, FiX, FiCopy } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import ImageUploader from '@/components/admin/ImageUploader';
 
@@ -19,6 +19,12 @@ export default function AdminCollectionsPage() {
   };
 
   useEffect(() => { fetchData(); }, []);
+
+  const copyPublicLink = async (slug) => {
+    const link = `/collections/${slug}`;
+    try { await navigator.clipboard.writeText(link); toast.success('Collection link copied'); }
+    catch { toast.error('Unable to copy link'); }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -91,7 +97,7 @@ export default function AdminCollectionsPage() {
               {collections.map(col => (
                 <tr key={col._id} className="border-t hover:bg-gray-50">
                   <td className="p-4"><div className="w-12 h-12 rounded-lg bg-gray-100 overflow-hidden">{col.image && <img src={col.image} alt="" className="w-full h-full object-cover" />}</div></td>
-                  <td className="p-4 font-medium">{col.name}</td>
+                  <td className="p-4"><p className="font-medium">{col.name}</p><button type="button" onClick={() => copyPublicLink(col.slug)} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-primary-600 hover:text-primary-700"><FiCopy size={12} /> /collections/{col.slug}</button></td>
                   <td className="p-4">{col.order}</td>
                   <td className="p-4"><span className={`px-2 py-1 rounded-full text-xs ${col.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{col.isActive ? 'Active' : 'Inactive'}</span></td>
                   <td className="p-4"><div className="flex gap-2"><button onClick={() => startEdit(col)} className="text-blue-600"><FiEdit /></button><button onClick={() => handleDelete(col._id)} className="text-red-600"><FiTrash2 /></button></div></td>

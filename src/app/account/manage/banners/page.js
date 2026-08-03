@@ -12,7 +12,7 @@ export default function AdminBannersPage() {
   const [form, setForm] = useState({ title: '', subtitle: '', image: '', link: '/', buttonText: 'Shop Now', order: 0, isActive: true });
 
   const fetchData = async () => {
-    const res = await fetch('/api/banners');
+    const res = await fetch('/api/banners?all=true');
     const data = await res.json();
     setBanners(data.banners || []);
     setLoading(false);
@@ -47,7 +47,7 @@ export default function AdminBannersPage() {
   return (
     <div>
       <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mb-6">
-        <h1 className="text-2xl font-bold">Banners</h1>
+        <div><h1 className="text-2xl font-bold">Banners</h1><p className="text-sm text-gray-500">Set the banner link to a product URL like /products/product-slug, a collection URL like /collections/collection-slug, or /shop.</p></div>
         <button onClick={() => { resetForm(); setShowForm(true); }} className="w-full justify-center sm:w-auto bg-primary-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-primary-700"><FiPlus /> Add Banner</button>
       </div>
 
@@ -59,7 +59,7 @@ export default function AdminBannersPage() {
             <input placeholder="Subtitle" value={form.subtitle} onChange={e => setForm(p => ({ ...p, subtitle: e.target.value }))} className="w-full border rounded-lg px-4 py-2" />
             <ImageUploader images={form.image ? [form.image] : []} onChange={imgs => setForm(p => ({ ...p, image: imgs[0] || '' }))} />
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <input placeholder="Link URL" value={form.link} onChange={e => setForm(p => ({ ...p, link: e.target.value }))} className="border rounded-lg px-4 py-2" />
+              <div className="sm:col-span-1"><input placeholder="/products/product-slug or /collections/collection-slug" value={form.link} onChange={e => setForm(p => ({ ...p, link: e.target.value }))} className="w-full border rounded-lg px-4 py-2" /><p className="mt-1 text-xs text-gray-500">Copy the exact public link from Products or Collections and paste it here.</p></div>
               <input placeholder="Button Text" value={form.buttonText} onChange={e => setForm(p => ({ ...p, buttonText: e.target.value }))} className="border rounded-lg px-4 py-2" />
               <input type="number" placeholder="Order" value={form.order} onChange={e => setForm(p => ({ ...p, order: parseInt(e.target.value) || 0 }))} className="border rounded-lg px-4 py-2" />
             </div>
@@ -75,7 +75,7 @@ export default function AdminBannersPage() {
             <div className="aspect-[2/1] bg-gray-100">{b.image && <img src={b.image} alt={b.title} className="w-full h-full object-cover" />}</div>
             <div className="p-4">
               <h3 className="font-bold">{b.title}</h3>
-              <p className="text-sm text-gray-500">{b.subtitle}</p>
+              <p className="text-sm text-gray-500">{b.subtitle}</p><p className="mt-2 break-all rounded-lg bg-gray-50 px-2 py-1 text-xs font-mono text-gray-500">{b.link || '/shop'}</p>
               <div className="flex gap-2 mt-3">
                 <button onClick={() => startEdit(b)} className="text-blue-600 text-sm"><FiEdit /></button>
                 <button onClick={() => handleDelete(b._id)} className="text-red-600 text-sm"><FiTrash2 /></button>

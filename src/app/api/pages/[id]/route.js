@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/db';
 import Page from '@/models/Page';
 import { getServerSession } from 'next-auth';
@@ -21,6 +22,8 @@ export async function PUT(req, { params }) {
   const body = await req.json();
   const page = await Page.findByIdAndUpdate(params.id, body, { new: true });
   if (!page) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  revalidatePath('/', 'layout');
+  if (page.slug) revalidatePath(`/policies/${page.slug}`);
   return NextResponse.json(page);
 }
 
@@ -31,6 +34,8 @@ export async function DELETE(req, { params }) {
   }
 
   await dbConnect();
-  await Page.findByIdAndDelete(params.id);
+  const deleted = await Page.findByIdAndDelete(params.id);
+  revalidatePath('/', 'layout');
+  if (deleted?.slug) revalidatePath(`/policies/${deleted.slug}`);
   return NextResponse.json({ success: true });
 }

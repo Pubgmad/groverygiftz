@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/db';
 import Product from '@/models/Product';
 import { getServerSession } from 'next-auth';
@@ -33,6 +34,10 @@ export async function PUT(req, { params }) {
 
   const product = await Product.findOneAndUpdate(productLookup(segment), body, { new: true });
   if (!product) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  revalidatePath('/', 'layout');
+  revalidatePath('/');
+  revalidatePath('/shop');
+  revalidatePath(`/products/${product.slug}`);
   return NextResponse.json(product);
 }
 
@@ -46,5 +51,9 @@ export async function DELETE(req, { params }) {
   await dbConnect();
   const deleted = await Product.findOneAndDelete(productLookup(segment));
   if (!deleted) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  revalidatePath('/', 'layout');
+  revalidatePath('/');
+  revalidatePath('/shop');
+  revalidatePath(`/products/${deleted.slug}`);
   return NextResponse.json({ success: true });
 }

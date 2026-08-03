@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/db';
 import Collection from '@/models/Collection';
 import { getServerSession } from 'next-auth';
@@ -21,5 +22,9 @@ export async function POST(req) {
   const body = await req.json();
   body.slug = slugify(body.name, { lower: true, strict: true });
   const collection = await Collection.create(body);
+  revalidatePath('/', 'layout');
+  revalidatePath('/');
+  revalidatePath('/shop');
+  revalidatePath(`/collections/${collection.slug}`);
   return NextResponse.json(collection, { status: 201 });
 }
