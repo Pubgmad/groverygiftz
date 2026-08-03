@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/db';
@@ -8,7 +9,7 @@ import slugify from 'slugify';
 
 export async function GET(req) {
   await dbConnect();
-  const { searchParams } = new URL(req.url);
+  const { searchParams } = new URL(req?.url || 'http://localhost', 'http://localhost');
   const session = await getServerSession(authOptions);
   const page = Number(searchParams.get('page')) || 1;
   const limit = Number(searchParams.get('limit')) || 20;

@@ -1,4 +1,5 @@
-﻿import { NextResponse } from 'next/server';
+export const dynamic = 'force-dynamic';
+import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import Order from '@/models/Order';
 import { getServerSession } from 'next-auth';
@@ -11,7 +12,7 @@ export async function GET(req) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { searchParams } = new URL(req.url);
+  const { searchParams } = new URL(req?.url || 'http://localhost', 'http://localhost');
   const customerId = searchParams.get('customerId');
   const status = searchParams.get('status');
   const page = Number(searchParams.get('page')) || 1;

@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/db';
@@ -7,7 +8,7 @@ import { authOptions } from '@/lib/auth';
 
 export async function GET(req) {
   await dbConnect();
-  const { searchParams } = new URL(req.url);
+  const { searchParams } = new URL(req?.url || 'http://localhost', 'http://localhost');
   const includeAll = searchParams.get('all') === 'true';
   const session = await getServerSession(authOptions);
   const filter = includeAll && session?.user?.type === 'admin' ? {} : { isActive: true };

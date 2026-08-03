@@ -1,9 +1,10 @@
+export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import Order from '@/models/Order';
 
 export async function GET(req) {
-  const { searchParams } = new URL(req.url);
+  const { searchParams } = new URL(req?.url || 'http://localhost', 'http://localhost');
   const orderNumber = searchParams.get('orderNumber')?.trim();
   const email = searchParams.get('email')?.trim()?.toLowerCase();
 
