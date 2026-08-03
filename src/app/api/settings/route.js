@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/db';
 import Settings from '@/models/Settings';
 import { getServerSession } from 'next-auth';
@@ -50,6 +51,8 @@ export async function PUT(req) {
   await dbConnect();
   const body = await req.json();
   const settings = await Settings.findOneAndUpdate({}, body, { new: true, upsert: true });
+  revalidatePath('/', 'layout');
+  revalidatePath('/');
   return NextResponse.json(settings);
 }
 
