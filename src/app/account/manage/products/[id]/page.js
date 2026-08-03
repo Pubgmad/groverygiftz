@@ -5,13 +5,30 @@ import toast from 'react-hot-toast';
 import ImageUploader from '@/components/admin/ImageUploader';
 import { FiPlus, FiX, FiVideo, FiUpload, FiImage } from 'react-icons/fi';
 
+const INDIAN_STATES = [
+  'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
+  'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh',
+  'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab',
+  'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand',
+  'West Bengal', 'Delhi', 'Jammu & Kashmir', 'Ladakh', 'Puducherry',
+];
+
+const defaultPreviewArea = () => ({ label: '', width: '', height: '', unit: 'inch', frameImage: '', shape: 'rectangle', required: true, instructions: '' });
+const defaultDelivery = () => ({ useCustomDelivery: false, tamilNaduShippingCost: 0, otherStateShippingCost: 120, tamilNaduDeliveryEstimate: 'Within 8 days', otherStateDeliveryEstimate: '10-15 days', stateOverrides: [] });
+
+function normalizePreviewAreas(preview = {}) {
+  if (Array.isArray(preview.areas) && preview.areas.length > 0) return preview.areas.map((area) => ({ ...defaultPreviewArea(), ...area }));
+  if (!preview.enabled) return [];
+  const ratio = String(preview.aspectRatio || '1:1').split(':').map(Number);
+  return [{ ...defaultPreviewArea(), label: preview.title || 'Photo 1', width: ratio[0] || 1, height: ratio[1] || 1, frameImage: preview.frameImage || '', shape: preview.shape || 'rectangle', instructions: preview.instructions || '' }];
+}
 export default function AdminProductForm({ params }) {
   const isEdit = params?.id && params.id !== 'new';
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [collections, setCollections] = useState([]);
   const [form, setForm] = useState({
-    title: '', description: '', images: [], productVideo: { url: '', name: '', poster: '' }, customizationPreview: { enabled: false, title: 'Preview your personalized gift', frameImage: '', aspectRatio: '1:1', shape: 'rectangle', instructions: '', requiredImageCount: 0, maxImageCount: 0 }, regularPrice: '', salePrice: '', offerStartsAt: '', offerEndsAt: '',
+    title: '', description: '', images: [], productVideo: { url: '', name: '', poster: '' }, customizationPreview: { enabled: false, title: 'Preview your personalized gift', frameImage: '', aspectRatio: '1:1', shape: 'rectangle', instructions: '', requiredImageCount: 0, maxImageCount: 0, areas: [] }, delivery: defaultDelivery(), regularPrice: '', salePrice: '', offerStartsAt: '', offerEndsAt: '',
     stock: 100, collections: [], variants: [], customFields: [],
     giftWrap: { enabled: false, price: 0 }, giftMessage: false,
     isQuoteOnly: false, isFeatured: false, isActive: true,
@@ -25,7 +42,8 @@ export default function AdminProductForm({ params }) {
         setForm({
           title: d.title || '', description: d.description || '', images: d.images || [],
           productVideo: d.productVideo || { url: '', name: '', poster: '' },
-          customizationPreview: d.customizationPreview || { enabled: false, title: 'Preview your personalized gift', frameImage: '', aspectRatio: '1:1', shape: 'rectangle', instructions: '' },
+          customizationPreview: { ...(d.customizationPreview || { enabled: false, title: 'Preview your personalized gift', frameImage: '', aspectRatio: '1:1', shape: 'rectangle', instructions: '' }), areas: normalizePreviewAreas(d.customizationPreview || {}) },
+          delivery: { ...defaultDelivery(), ...(d.delivery || {}), stateOverrides: d.delivery?.stateOverrides || [] },
           regularPrice: d.regularPrice || '', salePrice: d.salePrice || '',
           offerStartsAt: d.offerStartsAt ? new Date(d.offerStartsAt).toISOString().slice(0, 16) : '',
           offerEndsAt: d.offerEndsAt ? new Date(d.offerEndsAt).toISOString().slice(0, 16) : '',
@@ -82,6 +100,27 @@ export default function AdminProductForm({ params }) {
   const addCustomField = () => setForm(p => ({ ...p, customFields: [...p.customFields, { label: '', type: 'text', required: false }] }));
   const removeCustomField = (idx) => setForm(p => ({ ...p, customFields: p.customFields.filter((_, i) => i !== idx) }));
 
+  const updatePreviewArea = (idx, key, value) => {
+    const areas = [...(form.customizationPreview?.areas || [])];
+    areas[idx] = { ...areas[idx], [key]: value };
+    setForm(p => ({ ...p, customizationPreview: { ...p.customizationPreview, areas, requiredImageCount: areas.filter(a => a.required !== false).length, maxImageCount: areas.length } }));
+  };
+  const addPreviewArea = () => setForm(p => {
+    const areas = [...(p.customizationPreview?.areas || []), { ...defaultPreviewArea(), label: `Photo ${((p.customizationPreview?.areas || []).length) + 1}` }];
+    return { ...p, customizationPreview: { ...p.customizationPreview, enabled: true, areas, requiredImageCount: areas.filter(a => a.required !== false).length, maxImageCount: areas.length } };
+  });
+  const removePreviewArea = (idx) => setForm(p => {
+    const areas = (p.customizationPreview?.areas || []).filter((_, i) => i !== idx);
+    return { ...p, customizationPreview: { ...p.customizationPreview, areas, requiredImageCount: areas.filter(a => a.required !== false).length, maxImageCount: areas.length } };
+  });
+  const updateStateOverride = (idx, key, value) => {
+    const stateOverrides = [...(form.delivery?.stateOverrides || [])];
+    stateOverrides[idx] = { ...stateOverrides[idx], [key]: value };
+    setForm(p => ({ ...p, delivery: { ...p.delivery, stateOverrides } }));
+  };
+  const addStateOverride = () => setForm(p => ({ ...p, delivery: { ...p.delivery, stateOverrides: [...(p.delivery?.stateOverrides || []), { state: '', shippingCost: 0, deliveryEstimate: '' }] } }));
+  const removeStateOverride = (idx) => setForm(p => ({ ...p, delivery: { ...p.delivery, stateOverrides: (p.delivery?.stateOverrides || []).filter((_, i) => i !== idx) } }));
+
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6">{isEdit ? 'Edit Product' : 'New Product'}</h1>
@@ -135,21 +174,51 @@ export default function AdminProductForm({ params }) {
         <div className="bg-white p-4 sm:p-6 rounded-xl border space-y-4">
           <div>
             <h2 className="font-bold text-lg flex items-center gap-2"><FiImage className="text-primary-600" /> Customization Preview</h2>
-            <p className="text-sm text-gray-500 mt-1">Use this for photo frames, lamps, name boards and other customized gifts. The customer can crop, zoom and filter their uploaded image before ordering.</p>
+            <p className="text-sm text-gray-500 mt-1">Use this for personalized products. Add one photo area for each frame/place where the customer photo must fit.</p>
           </div>
           <label className="flex items-center gap-2 cursor-pointer text-sm font-medium">
-            <input type="checkbox" checked={form.customizationPreview?.enabled || false} onChange={e => setForm(p => ({ ...p, customizationPreview: { ...p.customizationPreview, enabled: e.target.checked } }))} />
+            <input type="checkbox" checked={form.customizationPreview?.enabled || false} onChange={e => setForm(p => {
+              const enabled = e.target.checked;
+              const currentAreas = p.customizationPreview?.areas || [];
+              const areas = enabled && currentAreas.length === 0 ? [{ ...defaultPreviewArea(), label: 'Photo 1' }] : currentAreas;
+              return { ...p, customizationPreview: { ...p.customizationPreview, enabled, areas, requiredImageCount: areas.filter(a => a.required !== false).length, maxImageCount: areas.length } };
+            })} />
             Enable preview editor for this product
           </label>
           <div className="grid md:grid-cols-2 gap-4">
-            <div><label className="block text-sm font-medium mb-1">Preview Title</label><input value={form.customizationPreview?.title || ''} onChange={e => setForm(p => ({ ...p, customizationPreview: { ...p.customizationPreview, title: e.target.value } }))} className="w-full border rounded-lg px-4 py-2" placeholder="Preview your personalized gift" /></div>
-            <div><label className="block text-sm font-medium mb-1">Preview Shape</label><select value={form.customizationPreview?.shape || 'rectangle'} onChange={e => setForm(p => ({ ...p, customizationPreview: { ...p.customizationPreview, shape: e.target.value } }))} className="w-full border rounded-lg px-4 py-2"><option value="rectangle">Rectangle</option><option value="rounded">Rounded Frame</option><option value="circle">Circle</option></select></div>
-            <div><label className="block text-sm font-medium mb-1">Photo Area Ratio</label><select value={form.customizationPreview?.aspectRatio || '1:1'} onChange={e => setForm(p => ({ ...p, customizationPreview: { ...p.customizationPreview, aspectRatio: e.target.value } }))} className="w-full border rounded-lg px-4 py-2"><option value="1:1">Square 1:1</option><option value="4:5">Portrait 4:5</option><option value="3:4">Portrait 3:4</option><option value="16:9">Landscape 16:9</option></select></div>
-            <div><label className="block text-sm font-medium mb-1">Required Customer Photos</label><input type="number" min="0" value={form.customizationPreview?.requiredImageCount ?? 0} onChange={e => setForm(p => ({ ...p, customizationPreview: { ...p.customizationPreview, requiredImageCount: Math.max(0, Number(e.target.value || 0)) } }))} className="w-full border rounded-lg px-4 py-2" placeholder="Required count" /><p className="text-xs text-gray-500 mt-1">Set the exact number of photos needed for this product.</p></div>
-            <div><label className="block text-sm font-medium mb-1">Maximum Customer Photos</label><input type="number" min="0" value={form.customizationPreview?.maxImageCount ?? 0} onChange={e => setForm(p => ({ ...p, customizationPreview: { ...p.customizationPreview, maxImageCount: Math.max(0, Number(e.target.value || 0)) } }))} className="w-full border rounded-lg px-4 py-2" placeholder="Leave 0 to match required" /><p className="text-xs text-gray-500 mt-1">Customer cannot upload more than this count.</p></div>
-            <div><label className="block text-sm font-medium mb-1">Frame / Mockup Image</label><ImageUploader images={form.customizationPreview?.frameImage ? [form.customizationPreview.frameImage] : []} onChange={imgs => setForm(p => ({ ...p, customizationPreview: { ...p.customizationPreview, frameImage: imgs[0] || '' } }))} /></div>
+            <div><label className="block text-sm font-medium mb-1">Preview Section Title</label><input value={form.customizationPreview?.title || ''} onChange={e => setForm(p => ({ ...p, customizationPreview: { ...p.customizationPreview, title: e.target.value } }))} className="w-full border rounded-lg px-4 py-2" placeholder="Preview your personalized gift" /></div>
+            <div><label className="block text-sm font-medium mb-1">General Instructions</label><input value={form.customizationPreview?.instructions || ''} onChange={e => setForm(p => ({ ...p, customizationPreview: { ...p.customizationPreview, instructions: e.target.value } }))} className="w-full border rounded-lg px-4 py-2" placeholder="Upload clear photos. Keep faces inside the safe area." /></div>
           </div>
-          <div><label className="block text-sm font-medium mb-1">Customer Instructions</label><textarea value={form.customizationPreview?.instructions || ''} onChange={e => setForm(p => ({ ...p, customizationPreview: { ...p.customizationPreview, instructions: e.target.value } }))} className="w-full border rounded-lg px-4 py-2" rows={2} placeholder="Upload a clear front-facing photo. Keep faces inside the safe area." /></div>
+          <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-4 space-y-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-semibold text-gray-900">Photo Areas</p>
+                <p className="text-xs text-gray-500">For a combo product, add each frame/photo slot separately with its exact width and height.</p>
+              </div>
+              <button type="button" onClick={addPreviewArea} className="inline-flex w-full items-center justify-center gap-1 rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white sm:w-auto"><FiPlus /> Add Photo Area</button>
+            </div>
+            {(form.customizationPreview?.areas || []).map((area, idx) => (
+              <div key={idx} className="rounded-xl border bg-white p-3 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-semibold text-sm text-gray-800">Area {idx + 1}</p>
+                  <button type="button" onClick={() => removePreviewArea(idx)} className="text-red-500"><FiX /></button>
+                </div>
+                <div className="grid md:grid-cols-4 gap-3">
+                  <div><label className="block text-xs font-medium mb-1">Label</label><input value={area.label || ''} onChange={e => updatePreviewArea(idx, 'label', e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder={`Photo ${idx + 1}`} /></div>
+                  <div><label className="block text-xs font-medium mb-1">Width</label><input type="number" min="0" step="0.01" value={area.width ?? ''} onChange={e => updatePreviewArea(idx, 'width', e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="8" /></div>
+                  <div><label className="block text-xs font-medium mb-1">Height</label><input type="number" min="0" step="0.01" value={area.height ?? ''} onChange={e => updatePreviewArea(idx, 'height', e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="10" /></div>
+                  <div><label className="block text-xs font-medium mb-1">Unit</label><select value={area.unit || 'inch'} onChange={e => updatePreviewArea(idx, 'unit', e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm"><option value="inch">Inch</option><option value="cm">CM</option><option value="mm">MM</option></select></div>
+                </div>
+                <div className="grid md:grid-cols-2 gap-3">
+                  <div><label className="block text-xs font-medium mb-1">Shape</label><select value={area.shape || 'rectangle'} onChange={e => updatePreviewArea(idx, 'shape', e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm"><option value="rectangle">Rectangle</option><option value="rounded">Rounded Frame</option><option value="circle">Circle</option></select></div>
+                  <label className="flex items-center gap-2 text-sm text-gray-700 md:mt-6"><input type="checkbox" checked={area.required !== false} onChange={e => updatePreviewArea(idx, 'required', e.target.checked)} /> Photo required for this area</label>
+                </div>
+                <div><label className="block text-xs font-medium mb-1">Area Instructions</label><input value={area.instructions || ''} onChange={e => updatePreviewArea(idx, 'instructions', e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Example: close-up portrait, landscape photo, family photo" /></div>
+                <div><label className="block text-xs font-medium mb-1">Frame / Mockup Image For This Area</label><ImageUploader images={area.frameImage ? [area.frameImage] : []} onChange={imgs => updatePreviewArea(idx, 'frameImage', imgs[0] || '')} /></div>
+              </div>
+            ))}
+            {(form.customizationPreview?.areas || []).length === 0 && <p className="rounded-lg bg-white px-4 py-3 text-sm text-gray-500">No photo areas added yet.</p>}
+          </div>
         </div>
 
         {/* Pricing */}
@@ -186,6 +255,39 @@ export default function AdminProductForm({ params }) {
           </div>
         </div>
 
+        {/* Product Delivery Pricing */}
+        <div className="bg-white p-4 sm:p-6 rounded-xl border space-y-4">
+          <h2 className="font-bold text-lg">Product Delivery Pricing</h2>
+          <p className="text-sm text-gray-500">Use store default shipping, or set delivery charges for this specific product. If a state override exists, checkout uses that state price first.</p>
+          <label className="flex items-center gap-2 cursor-pointer text-sm font-medium">
+            <input type="checkbox" checked={form.delivery?.useCustomDelivery || false} onChange={e => setForm(p => ({ ...p, delivery: { ...defaultDelivery(), ...p.delivery, useCustomDelivery: e.target.checked } }))} />
+            Use custom delivery pricing for this product
+          </label>
+          {form.delivery?.useCustomDelivery && (
+            <div className="space-y-4">
+              <div className="grid md:grid-cols-2 gap-4">
+                <div><label className="block text-sm font-medium mb-1">Tamil Nadu Delivery Charge (INR)</label><input type="number" min="0" value={form.delivery?.tamilNaduShippingCost ?? 0} onChange={e => setForm(p => ({ ...p, delivery: { ...p.delivery, tamilNaduShippingCost: Number(e.target.value || 0) } }))} className="w-full border rounded-lg px-4 py-2" /></div>
+                <div><label className="block text-sm font-medium mb-1">Other States Default Charge (INR)</label><input type="number" min="0" value={form.delivery?.otherStateShippingCost ?? 0} onChange={e => setForm(p => ({ ...p, delivery: { ...p.delivery, otherStateShippingCost: Number(e.target.value || 0) } }))} className="w-full border rounded-lg px-4 py-2" /></div>
+                <div><label className="block text-sm font-medium mb-1">Tamil Nadu Delivery Estimate</label><input value={form.delivery?.tamilNaduDeliveryEstimate || ''} onChange={e => setForm(p => ({ ...p, delivery: { ...p.delivery, tamilNaduDeliveryEstimate: e.target.value } }))} className="w-full border rounded-lg px-4 py-2" placeholder="Within 8 days" /></div>
+                <div><label className="block text-sm font-medium mb-1">Other States Default Estimate</label><input value={form.delivery?.otherStateDeliveryEstimate || ''} onChange={e => setForm(p => ({ ...p, delivery: { ...p.delivery, otherStateDeliveryEstimate: e.target.value } }))} className="w-full border rounded-lg px-4 py-2" placeholder="10-15 days" /></div>
+              </div>
+              <div className="rounded-xl border bg-gray-50 p-4 space-y-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div><p className="font-semibold text-sm text-gray-900">State-wise Overrides</p><p className="text-xs text-gray-500">Optional. Add only states that need a different charge or delivery estimate.</p></div>
+                  <button type="button" onClick={addStateOverride} className="inline-flex w-full items-center justify-center gap-1 rounded-lg border bg-white px-3 py-2 text-sm font-semibold text-primary-600 sm:w-auto"><FiPlus /> Add State</button>
+                </div>
+                {(form.delivery?.stateOverrides || []).map((row, idx) => (
+                  <div key={idx} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_120px_1fr_auto] sm:items-center">
+                    <select value={row.state || ''} onChange={e => updateStateOverride(idx, 'state', e.target.value)} className="border rounded-lg px-3 py-2 text-sm"><option value="">Select state</option>{INDIAN_STATES.map(state => <option key={state} value={state}>{state}</option>)}</select>
+                    <input type="number" min="0" value={row.shippingCost ?? 0} onChange={e => updateStateOverride(idx, 'shippingCost', Number(e.target.value || 0))} className="border rounded-lg px-3 py-2 text-sm" placeholder="Cost" />
+                    <input value={row.deliveryEstimate || ''} onChange={e => updateStateOverride(idx, 'deliveryEstimate', e.target.value)} className="border rounded-lg px-3 py-2 text-sm" placeholder="Estimate" />
+                    <button type="button" onClick={() => removeStateOverride(idx)} className="text-red-500"><FiX /></button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
         {/* Collections */}
         <div className="bg-white p-4 sm:p-6 rounded-xl border">
           <h2 className="font-bold text-lg mb-4">Collections</h2>
@@ -209,7 +311,7 @@ export default function AdminProductForm({ params }) {
         {/* Variants */}
         <div className="bg-white p-4 sm:p-6 rounded-xl border">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="font-bold text-lg">Variants</h2>
+            <div><h2 className="font-bold text-lg">Variants</h2><p className="text-xs text-gray-500 mt-1">Variants let customers choose options like size, color, or quantity. Extra price is added to the product price.</p></div>
             <button type="button" onClick={addVariant} className="text-sm text-primary-600 flex items-center gap-1"><FiPlus /> Add Variant</button>
           </div>
           {form.variants.map((variant, vIdx) => (
@@ -310,7 +412,7 @@ export default function AdminProductForm({ params }) {
 
         {/* SEO */}
         <div className="bg-white p-4 sm:p-6 rounded-xl border space-y-4">
-          <h2 className="font-bold text-lg">SEO</h2>
+          <h2 className="font-bold text-lg">SEO</h2><p className="text-xs text-gray-500">SEO helps Google and shared links show a better title and description for this product.</p>
           <input placeholder="Meta Title" value={form.seoTitle} onChange={e => setForm(p => ({ ...p, seoTitle: e.target.value }))}
             className="w-full border rounded-lg px-4 py-2 focus:outline-none focus:border-primary-500" />
           <textarea placeholder="Meta Description" value={form.seoDescription} onChange={e => setForm(p => ({ ...p, seoDescription: e.target.value }))}

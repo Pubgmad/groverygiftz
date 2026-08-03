@@ -1,5 +1,22 @@
 import mongoose from 'mongoose';
 
+const PreviewAreaSchema = new mongoose.Schema({
+  label: { type: String, default: '' },
+  width: { type: Number, default: 0 },
+  height: { type: Number, default: 0 },
+  unit: { type: String, default: 'inch' },
+  frameImage: { type: String, default: '' },
+  shape: { type: String, enum: ['rectangle', 'circle', 'rounded'], default: 'rectangle' },
+  required: { type: Boolean, default: true },
+  instructions: { type: String, default: '' },
+}, { _id: false });
+
+const StateDeliveryOverrideSchema = new mongoose.Schema({
+  state: { type: String, default: '' },
+  shippingCost: { type: Number, default: 0 },
+  deliveryEstimate: { type: String, default: '' },
+}, { _id: false });
+
 const ProductSchema = new mongoose.Schema({
   title: { type: String, required: true },
   slug: { type: String, required: true, unique: true },
@@ -19,6 +36,7 @@ const ProductSchema = new mongoose.Schema({
     instructions: { type: String, default: '' },
     requiredImageCount: { type: Number, default: 0 },
     maxImageCount: { type: Number, default: 0 },
+    areas: [PreviewAreaSchema],
   },
   regularPrice: { type: Number, required: true },
   salePrice: { type: Number },
@@ -42,6 +60,14 @@ const ProductSchema = new mongoose.Schema({
     type: { type: String, enum: ['text', 'file', 'textarea'] },
     required: { type: Boolean, default: false },
   }],
+  delivery: {
+    useCustomDelivery: { type: Boolean, default: false },
+    tamilNaduShippingCost: { type: Number, default: 0 },
+    otherStateShippingCost: { type: Number, default: 0 },
+    tamilNaduDeliveryEstimate: { type: String, default: '' },
+    otherStateDeliveryEstimate: { type: String, default: '' },
+    stateOverrides: [StateDeliveryOverrideSchema],
+  },
   giftWrap: { enabled: { type: Boolean, default: false }, price: { type: Number, default: 20 } },
   giftMessage: { type: Boolean, default: false },
   isQuoteOnly: { type: Boolean, default: false },

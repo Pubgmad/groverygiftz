@@ -66,6 +66,40 @@ function CustomValue({ value }) {
   return <span>{String(value || '-')}</span>;
 }
 
+function PreviewDetails({ preview }) {
+  const previews = Array.isArray(preview?.previews) ? preview.previews : [];
+  if (previews.length > 0) {
+    return (
+      <div className="rounded-md bg-primary-50 border border-primary-100 p-2 space-y-2 text-xs text-gray-700">
+        <p className="font-semibold text-primary-800">Saved preview / crop instructions</p>
+        <p><span className="font-medium">Preview:</span> {preview.previewTitle || '-'}</p>
+        {previews.map((entry, index) => (
+          <div key={`${entry.areaLabel || 'area'}-${index}`} className="rounded-md border border-primary-100 bg-white p-2 space-y-1">
+            <p className="font-semibold text-gray-900">{entry.areaLabel || `Photo ${index + 1}`}</p>
+            <p><span className="font-medium">Size:</span> {entry.width || '-'} x {entry.height || '-'} {entry.unit || 'inch'} | <span className="font-medium">Shape:</span> {entry.shape || '-'}</p>
+            {entry.instructions && <p><span className="font-medium">Instructions:</span> {entry.instructions}</p>}
+            {entry.uploadedFile?.url && <a href={entry.uploadedFile.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary-600 hover:text-primary-700">Open uploaded photo</a>}
+            {entry.adjustments && (<p><span className="font-medium">Crop:</span> zoom {entry.adjustments.zoom}, x {entry.adjustments.x}, y {entry.adjustments.y}, filter {entry.adjustments.filter}</p>)}
+          </div>
+        ))}
+      </div>
+    );
+  }
+  if (preview?.uploadedFile?.url) {
+    return (
+      <div className="rounded-md bg-primary-50 border border-primary-100 p-2 space-y-1 text-xs text-gray-700">
+        <p className="font-semibold text-primary-800">Saved preview / crop instructions</p>
+        <a href={preview.uploadedFile.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary-600 hover:text-primary-700">Open uploaded preview image</a>
+        <p><span className="font-medium">Source field:</span> {preview.sourceField || '-'}</p>
+        <p><span className="font-medium">Frame:</span> {preview.previewTitle || '-'}</p>
+        <p><span className="font-medium">Shape:</span> {preview.shape || '-'} | <span className="font-medium">Ratio:</span> {preview.aspectRatio || '-'}</p>
+        {preview.adjustments && (<p><span className="font-medium">Crop:</span> zoom {preview.adjustments.zoom}, x {preview.adjustments.x}, y {preview.adjustments.y}, filter {preview.adjustments.filter}</p>)}
+      </div>
+    );
+  }
+  return null;
+}
+
 export default function AdminOrdersPage() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -227,9 +261,7 @@ export default function AdminOrdersPage() {
                       {item.customFields && Object.keys(item.customFields).length > 0 && (
                         <div className="rounded-md bg-white border p-2 space-y-1"><p className="text-xs font-semibold text-gray-600">Customization</p>{Object.entries(item.customFields).map(([label, value]) => (<div key={label} className="text-xs text-gray-700"><span className="font-medium">{label}: </span><CustomValue value={value} /></div>))}</div>
                       )}
-                      {item.customizationPreview?.uploadedFile?.url && (
-                        <div className="rounded-md bg-primary-50 border border-primary-100 p-2 space-y-1 text-xs text-gray-700"><p className="font-semibold text-primary-800">Saved preview / crop instructions</p><a href={item.customizationPreview.uploadedFile.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary-600 hover:text-primary-700">Open uploaded preview image</a><p><span className="font-medium">Source field:</span> {item.customizationPreview.sourceField || '-'}</p><p><span className="font-medium">Frame:</span> {item.customizationPreview.previewTitle || '-'}</p><p><span className="font-medium">Shape:</span> {item.customizationPreview.shape || '-'} | <span className="font-medium">Ratio:</span> {item.customizationPreview.aspectRatio || '-'}</p>{item.customizationPreview.adjustments && (<p><span className="font-medium">Crop:</span> zoom {item.customizationPreview.adjustments.zoom}, x {item.customizationPreview.adjustments.x}, y {item.customizationPreview.adjustments.y}, filter {item.customizationPreview.adjustments.filter}</p>)}</div>
-                      )}
+                      {item.customizationPreview && <PreviewDetails preview={item.customizationPreview} />}
                     </div>
                   ))}
                 </div>

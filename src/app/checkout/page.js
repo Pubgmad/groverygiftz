@@ -20,6 +20,43 @@ const INDIAN_STATES = [
 
 const isTamilNadu = (state) => String(state || '').trim().toLowerCase() === 'tamil nadu';
 
+const getStateOverride = (delivery, state) => (delivery?.stateOverrides || []).find((row) => String(row.state || '').trim().toLowerCase() === String(state || '').trim().toLowerCase());
+
+const resolveItemDelivery = (item, state, settings) => {
+  const delivery = item.delivery || {};
+  if (!delivery.useCustomDelivery) return null;
+  const override = getStateOverride(delivery, state);
+  if (override?.state) return { cost: Number(override.shippingCost || 0), estimate: override.deliveryEstimate || '' };
+  if (isTamilNadu(state)) return { cost: Number(delivery.tamilNaduShippingCost || 0), estimate: delivery.tamilNaduDeliveryEstimate || settings.tamilNaduDeliveryEstimate || 'Within 8 days' };
+  return { cost: Number(delivery.otherStateShippingCost || 0), estimate: delivery.otherStateDeliveryEstimate || settings.otherStateDeliveryEstimate || '10-15 days' };
+};
+
+const calculateShipping = (items, state, settings) => {
+  if (!state) return { cost: 0, estimate: 'Select state to see delivery estimate', hasCustomDelivery: false };
+  let cost = 0;
+  let hasStoreDefaultItem = false;
+  let hasCustomDelivery = false;
+  const estimates = [];
+  items.forEach((item) => {
+    const resolved = resolveItemDelivery(item, state, settings);
+    if (resolved) {
+      hasCustomDelivery = true;
+      cost += resolved.cost * Number(item.quantity || 1);
+      if (resolved.estimate) estimates.push(resolved.estimate);
+    } else {
+      hasStoreDefaultItem = true;
+    }
+  });
+  if (hasStoreDefaultItem) {
+    const storeCost = isTamilNadu(state) ? Number(settings.tamilNaduShippingCost || 0) : Number(settings.otherStateShippingCost || 0);
+    cost += storeCost;
+    estimates.push(isTamilNadu(state) ? settings.tamilNaduDeliveryEstimate : settings.otherStateDeliveryEstimate);
+  }
+  const uniqueEstimates = [...new Set(estimates.filter(Boolean))];
+  const estimate = uniqueEstimates.length > 1 ? uniqueEstimates.join(' / ') : (uniqueEstimates[0] || (isTamilNadu(state) ? 'Within 8 days' : '10-15 days'));
+  return { cost, estimate, hasCustomDelivery };
+};
+
 export default function CheckoutPage() {
   const { cart, cartTotal, clearCart } = useCart();
   const { data: session, status } = useSession();
@@ -40,12 +77,9 @@ export default function CheckoutPage() {
 
   const hasSelectedState = Boolean(address.state);
   const outOfTamilNadu = hasSelectedState && !isTamilNadu(address.state);
-  const shippingCost = hasSelectedState
-    ? (isTamilNadu(address.state) ? Number(settings.tamilNaduShippingCost || 0) : Number(settings.otherStateShippingCost || 0))
-    : 0;
-  const deliveryEstimate = hasSelectedState
-    ? (isTamilNadu(address.state) ? settings.tamilNaduDeliveryEstimate : settings.otherStateDeliveryEstimate)
-    : 'Select state to see delivery estimate';
+  const shippingSummary = calculateShipping(cart, address.state, settings);
+  const shippingCost = hasSelectedState ? shippingSummary.cost : 0;
+  const deliveryEstimate = shippingSummary.estimate;
   const grandTotal = cartTotal + shippingCost;
   const getCartPixelPayload = (items = cart, total = grandTotal, extra = {}) => buildCartMetaPayload(items, total, extra);
 
@@ -301,7 +335,7 @@ export default function CheckoutPage() {
               <div className="flex justify-between text-sm"><span className="flex items-center gap-1.5 text-gray-600"><FiTruck size={13} className="text-primary-600" /> Delivery charge</span>{shippingCost === 0 ? <span className="text-green-600 font-bold">FREE</span> : <span className="text-gray-800 font-semibold">+{formatPrice(shippingCost)}</span>}</div>
               {hasSelectedState ? (
                 <div className={`rounded-xl border px-3 py-2 text-xs ${outOfTamilNadu ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-green-200 bg-green-50 text-green-700'}`}>
-                  {outOfTamilNadu ? 'Out-of-state delivery charge applied.' : 'Tamil Nadu free delivery applied.'}
+                  {shippingSummary.hasCustomDelivery ? 'Product-specific delivery pricing applied.' : (outOfTamilNadu ? 'Out-of-state delivery charge applied.' : 'Tamil Nadu free delivery applied.')}
                 </div>
               ) : (
                 <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-500">Delivery charge appears after state selection.</div>

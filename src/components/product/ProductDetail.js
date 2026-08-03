@@ -36,7 +36,7 @@ export default function ProductDetail({ product }) {
   const [uploadingCustomerPhotos, setUploadingCustomerPhotos] = useState(false);
   const [uploadingFields, setUploadingFields] = useState({});
   const [previewSourceField, setPreviewSourceField] = useState('');
-  const [previewAdjustments, setPreviewAdjustments] = useState({ zoom: 1, x: 0, y: 0, filter: 'none' });
+  const [previewAdjustments, setPreviewAdjustments] = useState({});
   const [giftWrap, setGiftWrap] = useState(false);
   const [giftMessage, setGiftMessage] = useState('');
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -61,14 +61,37 @@ export default function ProductDetail({ product }) {
   const currentMedia = mediaItems[selectedImage] || mediaItems[0];
   const previewConfig = product.customizationPreview || {};
   const previewEnabled = !!previewConfig.enabled;
-  const requiredPhotoCount = Math.max(0, Number(previewConfig.requiredImageCount || 0));
-  const maxPhotoCount = Math.max(requiredPhotoCount, Number(previewConfig.maxImageCount || requiredPhotoCount || 0));
+  const legacyPreviewArea = previewConfig.enabled ? [{
+    label: previewConfig.title || 'Photo 1',
+    width: Number(String(previewConfig.aspectRatio || '1:1').split(':')[0]) || 1,
+    height: Number(String(previewConfig.aspectRatio || '1:1').split(':')[1]) || 1,
+    unit: 'ratio',
+    frameImage: previewConfig.frameImage || '',
+    shape: previewConfig.shape || 'rectangle',
+    required: Number(previewConfig.requiredImageCount || 0) > 0,
+    instructions: previewConfig.instructions || '',
+  }] : [];
+  const previewAreas = previewEnabled
+    ? ((Array.isArray(previewConfig.areas) && previewConfig.areas.length > 0) ? previewConfig.areas : legacyPreviewArea)
+    : [];
+  const requiredPhotoCount = Math.max(0, previewAreas.filter((area) => area.required !== false).length || Number(previewConfig.requiredImageCount || 0));
+  const maxPhotoCount = Math.max(requiredPhotoCount, previewAreas.length || Number(previewConfig.maxImageCount || requiredPhotoCount || 0));
   const needsCustomerPhotos = requiredPhotoCount > 0 || maxPhotoCount > 0;
-  const uploadedPreviewFile = previewSourceField ? customFieldValues[previewSourceField] : (customerPhotos[0] || null);
 
   const getOptionExtraPrice = (opt) => Number(opt?.priceAdjustment ?? opt?.price ?? 0);
   const selectedVariantExtra = Object.values(selectedVariants).reduce((sum, selected) => sum + (selected?.extra || 0), 0);
   const finalUnitPrice = price + selectedVariantExtra + (giftWrap && product.giftWrap?.enabled ? Number(product.giftWrap.price || 0) : 0);
+  const productDelivery = product.delivery || {};
+  const usesProductDelivery = !!productDelivery.useCustomDelivery;
+  const tamilNaduDeliveryCost = usesProductDelivery ? Number(productDelivery.tamilNaduShippingCost || 0) : 0;
+  const otherStateDeliveryCost = usesProductDelivery ? Number(productDelivery.otherStateShippingCost || 0) : null;
+  const getAreaAspectRatio = (area) => {
+    const width = Math.max(1, Number(area?.width || 1));
+    const height = Math.max(1, Number(area?.height || 1));
+    return width + ' / ' + height;
+  };
+  const getAreaAdjustments = (idx) => previewAdjustments[idx] || { zoom: 1, x: 0, y: 0, filter: 'none' };
+  const updateAreaAdjustment = (idx, key, value) => setPreviewAdjustments((prev) => ({ ...prev, [idx]: { ...getAreaAdjustments(idx), [key]: value } }));
   const getProductPixelPayload = (extra = {}) => buildProductMetaPayload(product, {
     price: finalUnitPrice,
     quantity,
@@ -229,14 +252,20 @@ const handleCustomerPhotoUpload = async (files) => {
       customFields: allCustomFields,
       giftWrap,
       giftMessage,
-      customizationPreview: previewEnabled && uploadedPreviewFile?.url ? {
-        sourceField: previewSourceField || 'Customer Photos',
-        uploadedFile: uploadedPreviewFile,
-        adjustments: previewAdjustments,
+      delivery: product.delivery || null,
+      customizationPreview: previewEnabled && previewAreas.some((area, idx) => customerPhotos[idx]?.url) ? {
         previewTitle: previewConfig.title || 'Customization preview',
-        frameImage: previewConfig.frameImage || '',
-        shape: previewConfig.shape || 'rectangle',
-        aspectRatio: previewConfig.aspectRatio || '1:1',
+        previews: previewAreas.map((area, idx) => ({
+          areaLabel: area.label || ('Photo ' + (idx + 1)),
+          width: area.width || '',
+          height: area.height || '',
+          unit: area.unit || 'inch',
+          shape: area.shape || 'rectangle',
+          instructions: area.instructions || '',
+          frameImage: area.frameImage || '',
+          uploadedFile: customerPhotos[idx] || null,
+          adjustments: getAreaAdjustments(idx),
+        })).filter((entry) => entry.uploadedFile?.url),
       } : null,
     }, { openDrawer: openCart });
     trackMetaEvent('AddToCart', getProductPixelPayload());
@@ -303,11 +332,11 @@ const handleCustomerPhotoUpload = async (files) => {
         <div className="bg-primary-50/60 rounded-xl px-4 py-3 mb-6 space-y-2">
           <div className="flex items-center gap-2 text-sm text-gray-700">
             <FiTruck size={14} className="text-primary-600 shrink-0" />
-            <span>Tamil Nadu delivery free. Other states calculated at checkout.</span>
+            <span>{usesProductDelivery ? (`Tamil Nadu delivery ${tamilNaduDeliveryCost === 0 ? 'free' : formatPrice(tamilNaduDeliveryCost)} for this product. Other states calculated at checkout.`) : 'Tamil Nadu delivery free. Other states calculated at checkout.'}</span>
           </div>
           <div className="flex items-center gap-2 text-sm text-gray-700">
             <FiClock size={14} className="text-primary-600 shrink-0" />
-            <span>Tamil Nadu: within 8 days. Other states: 10 to 15 days.</span>
+            <span>{usesProductDelivery ? (`Tamil Nadu: ${productDelivery.tamilNaduDeliveryEstimate || 'within 8 days'}. Other states: ${productDelivery.otherStateDeliveryEstimate || '10 to 15 days'}.`) : 'Tamil Nadu: within 8 days. Other states: 10 to 15 days.'}</span>
           </div>
           <div className="flex items-center gap-2 text-sm text-gray-700">
             <FiShield size={14} className="text-primary-600 shrink-0" />
@@ -415,7 +444,7 @@ const handleCustomerPhotoUpload = async (files) => {
           <div className="mb-5 rounded-2xl border-2 border-dashed border-accent-200 bg-accent-50/30 p-4">
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-3">
               <div>
-                <p className="text-sm font-bold text-gray-900">Required photos</p>
+                <p className="text-sm font-bold text-gray-900">Customer photo areas</p>
                 <p className="text-xs text-gray-500 mt-1">
                   {requiredPhotoCount > 0
                     ? `Please upload ${requiredPhotoCount} photo${requiredPhotoCount === 1 ? '' : 's'} for this product.`
@@ -429,7 +458,7 @@ const handleCustomerPhotoUpload = async (files) => {
             <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl bg-white px-4 py-5 text-center transition-colors hover:bg-accent-50 border border-accent-100">
               <FiUpload size={24} className="text-accent-600" />
               <span className="text-sm font-semibold text-gray-800">Upload customer photos</span>
-              <span className="text-xs text-gray-500">Select clear images for personalization</span>
+              <span className="text-xs text-gray-500">Upload in the same order as the photo areas shown below</span>
               <input type="file" multiple accept="image/*" className="sr-only" disabled={uploadingCustomerPhotos} onChange={e => handleCustomerPhotoUpload(e.target.files)} />
             </label>
             {uploadingCustomerPhotos && <p className="mt-2 text-xs font-semibold text-accent-700">Uploading photos...</p>}
@@ -454,37 +483,60 @@ const handleCustomerPhotoUpload = async (files) => {
             <div className="flex items-start justify-between gap-3 mb-3">
               <div>
                 <p className="text-sm font-bold text-gray-900">{previewConfig.title || 'Preview your personalized gift'}</p>
-                <p className="text-xs text-gray-500 mt-1">Crop, zoom and filter your uploaded image before checkout. Admin will receive these settings with your order.</p>
+                <p className="text-xs text-gray-500 mt-1">Each photo area is controlled by admin size. Crop, zoom and filter every uploaded image before checkout.</p>
               </div>
             </div>
             {previewConfig.instructions && <p className="text-xs text-primary-700 bg-primary-50 rounded-lg px-3 py-2 mb-3">{previewConfig.instructions}</p>}
-            {uploadedPreviewFile?.url ? (
-              <div className="grid md:grid-cols-2 gap-4 items-start">
-                <div className="rounded-2xl bg-gray-100 p-4">
-                  <div className="relative mx-auto w-full max-w-sm overflow-hidden bg-white shadow-inner" style={{ aspectRatio: (previewConfig.aspectRatio || '1:1').replace(':', ' / '), borderRadius: previewConfig.shape === 'circle' ? '9999px' : previewConfig.shape === 'rounded' ? '24px' : '8px' }}>
-                    <img
-                      src={uploadedPreviewFile.url}
-                      alt="Customization preview"
-                      className="absolute inset-0 h-full w-full object-cover"
-                      style={{ transform: 'translate(' + previewAdjustments.x + 'px, ' + previewAdjustments.y + 'px) scale(' + previewAdjustments.zoom + ')', filter: previewAdjustments.filter, transformOrigin: 'center' }}
-                    />
-                    {previewConfig.frameImage && <img src={previewConfig.frameImage} alt="Preview frame" className="absolute inset-0 h-full w-full object-cover pointer-events-none" />}
-                    <div className="absolute inset-3 border border-white/70 pointer-events-none" style={{ borderRadius: previewConfig.shape === 'circle' ? '9999px' : previewConfig.shape === 'rounded' ? '18px' : '6px' }} />
+            <div className="space-y-4">
+              {previewAreas.map((area, idx) => {
+                const photo = customerPhotos[idx];
+                const adjustments = getAreaAdjustments(idx);
+                const shape = area.shape || 'rectangle';
+                const areaLabel = area.label || `Photo ${idx + 1}`;
+                return (
+                  <div key={`${areaLabel}-${idx}`} className="rounded-2xl border bg-gray-50 p-3 sm:p-4">
+                    <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="text-sm font-bold text-gray-900">{areaLabel}</p>
+                        <p className="text-xs text-gray-500">
+                          Size: {area.width || '-'} x {area.height || '-'} {area.unit || 'inch'}{area.required !== false ? ' | Required' : ' | Optional'}
+                        </p>
+                      </div>
+                      {area.instructions && <p className="max-w-sm text-xs text-primary-700 sm:text-right">{area.instructions}</p>}
+                    </div>
+                    {photo?.url ? (
+                      <div className="grid md:grid-cols-2 gap-4 items-start">
+                        <div className="rounded-2xl bg-white p-4">
+                          <div
+                            className="relative mx-auto w-full max-w-sm overflow-hidden bg-white shadow-inner"
+                            style={{ aspectRatio: getAreaAspectRatio(area), borderRadius: shape === 'circle' ? '9999px' : shape === 'rounded' ? '24px' : '8px' }}
+                          >
+                            <img
+                              src={photo.url}
+                              alt={`${areaLabel} preview`}
+                              className="absolute inset-0 h-full w-full object-cover"
+                              style={{ transform: `translate(${adjustments.x}px, ${adjustments.y}px) scale(${adjustments.zoom})`, filter: adjustments.filter, transformOrigin: 'center' }}
+                            />
+                            {area.frameImage && <img src={area.frameImage} alt="Preview frame" className="absolute inset-0 h-full w-full object-cover pointer-events-none" />}
+                            <div className="absolute inset-3 border border-white/70 pointer-events-none" style={{ borderRadius: shape === 'circle' ? '9999px' : shape === 'rounded' ? '18px' : '6px' }} />
+                          </div>
+                        </div>
+                        <div className="space-y-3">
+                          <div><label className="block text-xs font-bold text-gray-600 mb-1">Zoom</label><input type="range" min="1" max="2.4" step="0.05" value={adjustments.zoom} onChange={e => updateAreaAdjustment(idx, 'zoom', Number(e.target.value))} className="w-full" /></div>
+                          <div><label className="block text-xs font-bold text-gray-600 mb-1">Move left / right</label><input type="range" min="-80" max="80" value={adjustments.x} onChange={e => updateAreaAdjustment(idx, 'x', Number(e.target.value))} className="w-full" /></div>
+                          <div><label className="block text-xs font-bold text-gray-600 mb-1">Move up / down</label><input type="range" min="-80" max="80" value={adjustments.y} onChange={e => updateAreaAdjustment(idx, 'y', Number(e.target.value))} className="w-full" /></div>
+                          <div><label className="block text-xs font-bold text-gray-600 mb-1">Filter</label><select value={adjustments.filter} onChange={e => updateAreaAdjustment(idx, 'filter', e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm"><option value="none">Original</option><option value="grayscale(1)">Black & White</option><option value="sepia(0.55)">Warm</option><option value="contrast(1.15) saturate(1.15)">Vivid</option></select></div>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-500 bg-white rounded-xl px-4 py-4">Upload photo {idx + 1} to preview this area.</p>
+                    )}
                   </div>
-                </div>
-                <div className="space-y-3">
-                  <div><label className="block text-xs font-bold text-gray-600 mb-1">Zoom</label><input type="range" min="1" max="2.4" step="0.05" value={previewAdjustments.zoom} onChange={e => setPreviewAdjustments(p => ({ ...p, zoom: Number(e.target.value) }))} className="w-full" /></div>
-                  <div><label className="block text-xs font-bold text-gray-600 mb-1">Move left / right</label><input type="range" min="-80" max="80" value={previewAdjustments.x} onChange={e => setPreviewAdjustments(p => ({ ...p, x: Number(e.target.value) }))} className="w-full" /></div>
-                  <div><label className="block text-xs font-bold text-gray-600 mb-1">Move up / down</label><input type="range" min="-80" max="80" value={previewAdjustments.y} onChange={e => setPreviewAdjustments(p => ({ ...p, y: Number(e.target.value) }))} className="w-full" /></div>
-                  <div><label className="block text-xs font-bold text-gray-600 mb-1">Filter</label><select value={previewAdjustments.filter} onChange={e => setPreviewAdjustments(p => ({ ...p, filter: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm"><option value="none">Original</option><option value="grayscale(1)">Black & White</option><option value="sepia(0.55)">Warm</option><option value="contrast(1.15) saturate(1.15)">Vivid</option></select></div>
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-gray-500 bg-gray-50 rounded-xl px-4 py-4">Upload an image in the customization field above to see the live product preview.</p>
-            )}
+                );
+              })}
+            </div>
           </div>
         )}
-
         {/* Gift Wrap */}
         {product.giftWrap?.enabled && (
           <div className="mb-4">
