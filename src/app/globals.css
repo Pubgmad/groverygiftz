@@ -110,7 +110,7 @@
 }
 
 .announcement-scroll {
-  animation: ticker 28s linear infinite;
+  animation: ticker 18s linear infinite;
 }
 @keyframes ticker {
   0%   { transform: translateX(0); }
@@ -301,6 +301,9 @@ button, a, input, select, textarea {
   min-width: 0;
 }
 @media (max-width: 640px) {
+  .announcement-scroll {
+    animation-duration: 14s;
+  }
   .btn-primary, .btn-secondary, .btn-accent, .btn-outline {
     padding-left: 1rem;
     padding-right: 1rem;

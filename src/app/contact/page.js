@@ -10,7 +10,7 @@ const DEFAULT_CONTACT = {
   address: '126, 3rd St, V.C.K.N.Layout, Sivananda Colony, Tatabad, Coimbatore, Tamil Nadu 641012',
   timings: '11 am to 7 pm',
   socialLinks: { instagram: 'https://www.instagram.com/groverygiftz?igsh=dGNpbHlybWI0cjNy' },
-  tradeName: 'GROVERY GIFTZ',
+  tradeName: 'GroveryGiftz',
   gstNumber: '33KVUPS5560J1ZL',
 };
 
@@ -20,6 +20,7 @@ export default function ContactPage() {
   const [formData, setFormData] = useState({ name: '', email: '', phone: '', message: '' });
   const [settings, setSettings] = useState(DEFAULT_CONTACT);
   const [loading, setLoading] = useState(false);
+  const displayTradeName = String(settings.tradeName || '').trim().toLowerCase() === 'grovery giftz' ? 'GroveryGiftz' : (settings.tradeName || 'GroveryGiftz');
 
   useEffect(() => {
     fetch('/api/settings')
@@ -67,7 +68,7 @@ export default function ContactPage() {
           <div className="rounded-3xl border bg-white p-5 sm:p-6 shadow-sm">
             <h2 className="text-xl font-bold mb-4">Business Details</h2>
             <div className="space-y-3 text-sm text-gray-700">
-              <div className="rounded-2xl bg-gray-50 p-4"><p className="text-xs font-bold uppercase text-gray-400">Trade Name</p><p className="font-bold text-gray-900 mt-1">{settings.tradeName || 'GROVERY GIFTZ'}</p></div>
+              <div className="rounded-2xl bg-gray-50 p-4"><p className="text-xs font-bold uppercase text-gray-400">Trade Name</p><p className="font-bold text-gray-900 mt-1">{displayTradeName}</p></div>
               <div className="rounded-2xl bg-gray-50 p-4"><p className="text-xs font-bold uppercase text-gray-400">GSTIN</p><p className="font-mono font-bold text-gray-900 mt-1 break-all">{settings.gstNumber || '33KVUPS5560J1ZL'}</p></div>
               <div className="rounded-2xl bg-gray-50 p-4"><p className="text-xs font-bold uppercase text-gray-400">Address</p><p className="font-medium text-gray-900 mt-1">{settings.address}</p></div>
             </div>
@@ -103,7 +104,7 @@ export default function ContactPage() {
             <div className="rounded-2xl border bg-white p-5 shadow-sm flex gap-4">
               <FiMapPin className="text-primary-600 mt-1 shrink-0" size={22} />
               <div>
-                <h3 className="font-bold">Visit Us</h3>
+                <h3 className="font-bold">Location</h3>
                 <p className="text-gray-600">{settings.address}</p>
               </div>
             </div>

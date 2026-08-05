@@ -32,7 +32,7 @@ function splitCsv(s) {
 export function resolveGiftFinderForUi(settings) {
   const intro = {
     stillConfused: settings?.giftFinderStillConfused?.trim() || 'Still confused?',
-    tryLine: settings?.giftFinderTryLine?.trim() || 'Try our Smart Gift Finder',
+    tryLine: settings?.giftFinderTryLine?.trim() || 'Try our Gift Recommender',
     description:
       settings?.giftFinderDescription?.trim() ||
       'Pick an occasion and gift style — we search product titles and descriptions so shoppers find the right gift faster.',

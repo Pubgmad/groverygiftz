@@ -46,7 +46,7 @@ const SettingsSchema = new mongoose.Schema({
   promoButtonText: { type: String, default: 'Shop Now' },
   promoButtonLink: { type: String, default: '/shop' },
   gstNumber: { type: String, default: '33KVUPS5560J1ZL' },
-  tradeName: String,
+  tradeName: { type: String, default: 'GroveryGiftz' },
   legalName: String,
   spotlightProductSlug: { type: String, default: '' },
   promoBannerImage: { type: String, default: '' },

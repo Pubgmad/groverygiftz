@@ -33,7 +33,7 @@ export default function PromoCountdown({ title, subtitle, buttonText, buttonLink
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-12 md:py-16">
-      <div className="relative overflow-hidden rounded-3xl bg-primary-800 text-white">
+      <div className="relative overflow-hidden rounded-3xl bg-accent-600 text-white" style={{ background: 'linear-gradient(135deg, #F47920 0%, #D96212 100%)' }}>
         <div className="absolute inset-0 gift-paper-band opacity-20" />
         <div className="relative z-10 px-4 py-10 text-center sm:px-6 sm:py-14 md:px-8 md:py-20">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/12 px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-white backdrop-blur-sm">
@@ -59,7 +59,7 @@ export default function PromoCountdown({ title, subtitle, buttonText, buttonLink
           {hasEnded ? (
             <p className="font-medium text-white/90">This offer has ended. Check back soon for new deals!</p>
           ) : (
-            <Link href={buttonLink || '/shop'} onClick={() => trackMetaCustomEvent('BannerClick', { banner_title: title, banner_link: buttonLink || '/shop', banner_location: 'promo_countdown' })} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-white px-6 py-3.5 text-base font-extrabold text-primary-700 shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:bg-accent-50 hover:shadow-orange sm:w-auto sm:px-10 sm:py-4 sm:text-lg">
+            <Link href={buttonLink || '/shop'} onClick={() => trackMetaCustomEvent('BannerClick', { banner_title: title, banner_link: buttonLink || '/shop', banner_location: 'promo_countdown' })} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-white px-6 py-3.5 text-base font-extrabold text-accent-700 shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:bg-accent-50 hover:shadow-orange sm:w-auto sm:px-10 sm:py-4 sm:text-lg">
               {buttonText || 'Shop Now'} <FiArrowRight size={18} />
             </Link>
           )}

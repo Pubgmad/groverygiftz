@@ -70,7 +70,7 @@ export default async function SearchPage({ searchParams }) {
       )}
       {!q && !occasion && !giftType && (
         <div className="text-center py-16">
-          <p className="text-gray-500 text-lg">Enter a search term or use the Smart Gift Finder on the home page.</p>
+          <p className="text-gray-500 text-lg">Enter a search term or use the Gift Recommender on the home page.</p>
         </div>
       )}
       {(q || occasion || giftType) && data.length === 0 && (

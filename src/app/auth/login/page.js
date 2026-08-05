@@ -1,9 +1,10 @@
-﻿'use client';
+'use client';
 import { useEffect, useState } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
+import PasswordInput from '@/components/common/PasswordInput';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -15,7 +16,9 @@ export default function LoginPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    setCallbackUrl(params.get('callbackUrl') || '/account');
+    const requestedCallback = params.get('callbackUrl') || '/account';
+    const customerCallback = requestedCallback.startsWith('/account/manage') || requestedCallback.startsWith('/admin') || !requestedCallback.startsWith('/') ? '/account' : requestedCallback;
+    setCallbackUrl(customerCallback);
     setEmail('');
     setPassword('');
     const timer = setTimeout(() => setInputReady(true), 300);
@@ -42,8 +45,7 @@ export default function LoginPage() {
       <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
         <input type="email" required placeholder="Email" name="customer_login_email" autoComplete="off" readOnly={!inputReady} onFocus={() => setInputReady(true)} value={email} onChange={e => setEmail(e.target.value)}
           className="w-full border rounded-lg px-4 py-3 focus:outline-none focus:border-primary-500" />
-        <input type="password" required placeholder="Password" name="customer_login_password" autoComplete="new-password" readOnly={!inputReady} onFocus={() => setInputReady(true)} value={password} onChange={e => setPassword(e.target.value)}
-          className="w-full border rounded-lg px-4 py-3 focus:outline-none focus:border-primary-500" />
+        <PasswordInput required placeholder="Password" name="customer_login_password" autoComplete="new-password" readOnly={!inputReady} onFocus={() => setInputReady(true)} value={password} onChange={e => setPassword(e.target.value)} />
         <button disabled={loading} className="btn-primary w-full">{loading ? 'Signing in...' : 'Sign In'}</button>
       </form>
       <p className="text-center mt-6 text-sm text-gray-500">

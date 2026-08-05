@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "seed": "node src/lib/seed.js"
+    "seed": "node src/lib/seed.js",
+    "cleanup:customer-uploads": "node scripts/cleanup-customer-uploads.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

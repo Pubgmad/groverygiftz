@@ -4,28 +4,20 @@ import { useRouter } from 'next/navigation';
 import { useCart } from '@/context/CartContext';
 import { formatPrice, calcSavings, getEffectivePrice, isOfferActive } from '@/lib/utils';
 import { buildProductMetaPayload, trackMetaCustomEvent, trackMetaEvent } from '@/lib/metaPixel';
-import { FiMinus, FiPlus, FiX, FiTruck, FiShield, FiClock, FiShoppingCart, FiZap, FiStar, FiUpload, FiImage } from 'react-icons/fi';
+import { FiMinus, FiPlus, FiX, FiTruck, FiShield, FiClock, FiShoppingCart, FiZap, FiUpload, FiImage } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+const INDIAN_STATES = [
+  'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
+  'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh',
+  'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab',
+  'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand',
+  'West Bengal', 'Delhi', 'Jammu & Kashmir', 'Ladakh', 'Puducherry',
+];
 
-function StarRating({ value, onChange }) {
-  const [hover, setHover] = useState(0);
-  return (
-    <div className="flex gap-1">
-      {[1, 2, 3, 4, 5].map((star) => (
-        <button
-          key={star}
-          type="button"
-          onClick={() => onChange?.(star)}
-          onMouseEnter={() => onChange && setHover(star)}
-          onMouseLeave={() => onChange && setHover(0)}
-          className={`text-2xl transition-colors ${
-            star <= (hover || value) ? 'text-yellow-400' : 'text-gray-300'
-          } ${onChange ? 'cursor-pointer hover:scale-110' : 'cursor-default'}`}
-        ><FiStar size={22} className={star <= (hover || value) ? 'fill-yellow-400 stroke-yellow-400' : 'stroke-gray-300'} /></button>
-      ))}
-    </div>
-  );
-}
+const isTamilNadu = (state) => String(state || '').trim().toLowerCase() === 'tamil nadu';
+const getStateOverride = (delivery, state) => (delivery?.stateOverrides || []).find((row) => String(row.state || '').trim().toLowerCase() === String(state || '').trim().toLowerCase());
+const getDefaultPreviewAdjustments = () => ({ zoom: 1, x: 0, y: 0, orientation: 'auto' });
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 export default function ProductDetail({ product }) {
   const [selectedImage, setSelectedImage] = useState(0);
@@ -35,20 +27,18 @@ export default function ProductDetail({ product }) {
   const [customerPhotos, setCustomerPhotos] = useState([]);
   const [uploadingCustomerPhotos, setUploadingCustomerPhotos] = useState(false);
   const [uploadingFields, setUploadingFields] = useState({});
-  const [previewSourceField, setPreviewSourceField] = useState('');
   const [previewAdjustments, setPreviewAdjustments] = useState({});
   const [giftWrap, setGiftWrap] = useState(false);
   const [giftMessage, setGiftMessage] = useState('');
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [sizeChartOpen, setSizeChartOpen] = useState(false);
-  const [settings, setSettings] = useState({ freeShippingThreshold: 499, whatsapp: '919994549781' });
-  const [reviews, setReviews] = useState([]);
-  const [reviewForm, setReviewForm] = useState({ name: '', rating: 0, comment: '' });
-  const [submittingReview, setSubmittingReview] = useState(false);
+  const [settings, setSettings] = useState({ freeShippingThreshold: 499, whatsapp: '919994549781', tamilNaduShippingCost: 0, otherStateShippingCost: 120, tamilNaduDeliveryEstimate: 'Within 8 days', otherStateDeliveryEstimate: '10-15 days' });
   const { addToCart, setIsCartOpen } = useCart();
   const router = useRouter();
   const viewedProductRef = useRef('');
   const customTextTrackedRef = useRef({});
+  const dragStateRef = useRef(null);
+  const [selectedDeliveryState, setSelectedDeliveryState] = useState('');
 
   const offerActive = isOfferActive(product);
   const savings = offerActive ? calcSavings(product.regularPrice, product.salePrice) : 0;
@@ -83,15 +73,45 @@ export default function ProductDetail({ product }) {
   const finalUnitPrice = price + selectedVariantExtra + (giftWrap && product.giftWrap?.enabled ? Number(product.giftWrap.price || 0) : 0);
   const productDelivery = product.delivery || {};
   const usesProductDelivery = !!productDelivery.useCustomDelivery;
-  const tamilNaduDeliveryCost = usesProductDelivery ? Number(productDelivery.tamilNaduShippingCost || 0) : 0;
-  const otherStateDeliveryCost = usesProductDelivery ? Number(productDelivery.otherStateShippingCost || 0) : null;
-  const getAreaAspectRatio = (area) => {
-    const width = Math.max(1, Number(area?.width || 1));
-    const height = Math.max(1, Number(area?.height || 1));
+  const tamilNaduDeliveryCost = usesProductDelivery ? Number(productDelivery.tamilNaduShippingCost || 0) : Number(settings.tamilNaduShippingCost || 0);
+  const getProductShippingForState = (state) => {
+    if (!state) return { cost: 0, estimate: 'Select state to see delivery estimate' };
+    if (usesProductDelivery) {
+      const override = getStateOverride(productDelivery, state);
+      if (override?.state) return { cost: Number(override.shippingCost || 0), estimate: override.deliveryEstimate || '' };
+      if (isTamilNadu(state)) return { cost: Number(productDelivery.tamilNaduShippingCost || 0), estimate: productDelivery.tamilNaduDeliveryEstimate || settings.tamilNaduDeliveryEstimate || 'Within 8 days' };
+      return { cost: Number(productDelivery.otherStateShippingCost || 0), estimate: productDelivery.otherStateDeliveryEstimate || settings.otherStateDeliveryEstimate || '10-15 days' };
+    }
+    return isTamilNadu(state)
+      ? { cost: Number(settings.tamilNaduShippingCost || 0), estimate: settings.tamilNaduDeliveryEstimate || 'Within 8 days' }
+      : { cost: Number(settings.otherStateShippingCost || 0), estimate: settings.otherStateDeliveryEstimate || '10-15 days' };
+  };
+  const selectedDelivery = getProductShippingForState(selectedDeliveryState);
+  const productPageTotal = finalUnitPrice * quantity + selectedDelivery.cost;
+  const getAreaAspectRatio = (area, orientation = 'auto') => {
+    const rawWidth = Math.max(1, Number(area?.width || 1));
+    const rawHeight = Math.max(1, Number(area?.height || 1));
+    const width = orientation === 'portrait' ? Math.min(rawWidth, rawHeight) : orientation === 'landscape' ? Math.max(rawWidth, rawHeight) : rawWidth;
+    const height = orientation === 'portrait' ? Math.max(rawWidth, rawHeight) : orientation === 'landscape' ? Math.min(rawWidth, rawHeight) : rawHeight;
     return width + ' / ' + height;
   };
-  const getAreaAdjustments = (idx) => previewAdjustments[idx] || { zoom: 1, x: 0, y: 0, filter: 'none' };
-  const updateAreaAdjustment = (idx, key, value) => setPreviewAdjustments((prev) => ({ ...prev, [idx]: { ...getAreaAdjustments(idx), [key]: value } }));
+  const getAreaAdjustments = (idx) => ({ ...getDefaultPreviewAdjustments(), ...(previewAdjustments[idx] || {}) });
+  const updateAreaAdjustments = (idx, updates) => setPreviewAdjustments((prev) => ({ ...prev, [idx]: { ...getDefaultPreviewAdjustments(), ...(prev[idx] || {}), ...updates } }));
+  const updateAreaAdjustment = (idx, key, value) => updateAreaAdjustments(idx, { [key]: value });
+  const startPreviewDrag = (idx, event) => {
+    const current = getAreaAdjustments(idx);
+    dragStateRef.current = { idx, startX: event.clientX, startY: event.clientY, x: current.x, y: current.y };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+  const movePreviewDrag = (event) => {
+    const drag = dragStateRef.current;
+    if (!drag) return;
+    updateAreaAdjustments(drag.idx, {
+      x: clamp(drag.x + event.clientX - drag.startX, -160, 160),
+      y: clamp(drag.y + event.clientY - drag.startY, -160, 160),
+    });
+  };
+  const stopPreviewDrag = () => { dragStateRef.current = null; };
   const getProductPixelPayload = (extra = {}) => buildProductMetaPayload(product, {
     price: finalUnitPrice,
     quantity,
@@ -113,6 +133,10 @@ export default function ProductDetail({ product }) {
   };
 
   const validateSelections = () => {
+    if (!product.isQuoteOnly && !selectedDeliveryState) {
+      toast.error('Please select your delivery state to see the final price');
+      return false;
+    }
     for (const variant of product.variants || []) {
       if (!selectedVariants[variant.name]) {
         toast.error(`Please select ${variant.name}`);
@@ -143,17 +167,23 @@ export default function ProductDetail({ product }) {
         setSettings({
           freeShippingThreshold: Number(d.freeShippingThreshold ?? 499),
           whatsapp: d.whatsapp || '919994549781',
+          tamilNaduShippingCost: Number(d.tamilNaduShippingCost ?? 0),
+          otherStateShippingCost: Number(d.otherStateShippingCost ?? d.shippingCost ?? 120),
+          tamilNaduDeliveryEstimate: d.tamilNaduDeliveryEstimate || 'Within 8 days',
+          otherStateDeliveryEstimate: d.otherStateDeliveryEstimate || '10-15 days',
         });
       })
       .catch(() => {});
   }, []);
 
   useEffect(() => {
-    fetch(`/api/products/${product.slug}/reviews`)
-      .then((r) => r.json())
-      .then((d) => setReviews(d.reviews || []))
-      .catch(() => {});
-  }, [product.slug]);
+    const savedState = window.localStorage?.getItem('groveryDeliveryState');
+    if (savedState) setSelectedDeliveryState(savedState);
+  }, []);
+
+  useEffect(() => {
+    if (selectedDeliveryState) window.localStorage?.setItem('groveryDeliveryState', selectedDeliveryState);
+  }, [selectedDeliveryState]);
 
   const handleCustomizationFileUpload = async (fieldLabel, file) => {
     if (!file) return;
@@ -165,7 +195,6 @@ export default function ProductDetail({ product }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Upload failed');
       setCustomFieldValues((prev) => ({ ...prev, [fieldLabel]: data }));
-      if (data.type?.startsWith('image/')) setPreviewSourceField(fieldLabel);
       toast.success('Customization file uploaded');
       trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'file_upload', field_label: fieldLabel, file_type: data.type || file.type || '' }));
     } catch (error) {
@@ -204,28 +233,6 @@ const handleCustomerPhotoUpload = async (files) => {
       setUploadingCustomerPhotos(false);
     }
   };
-  const handleSubmitReview = async (e) => {
-    e.preventDefault();
-    if (!reviewForm.name.trim()) return toast.error('Please enter your name');
-    if (!reviewForm.rating) return toast.error('Please select a star rating');
-    if (!reviewForm.comment.trim()) return toast.error('Please write a review');
-    setSubmittingReview(true);
-    const res = await fetch(`/api/products/${product.slug}/reviews`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(reviewForm),
-    });
-    setSubmittingReview(false);
-    if (res.ok) {
-      const { review } = await res.json();
-      setReviews((prev) => [review, ...prev]);
-      setReviewForm({ name: '', rating: 0, comment: '' });
-      toast.success('Review submitted! Thank you.');
-    } else {
-      const err = await res.json();
-      toast.error(err.error || 'Failed to submit review');
-    }
-  };
 
   const addConfiguredProductToCart = ({ openCart = true } = {}) => {
     if (isSoldOut) {
@@ -253,6 +260,7 @@ const handleCustomerPhotoUpload = async (files) => {
       giftWrap,
       giftMessage,
       delivery: product.delivery || null,
+      deliveryState: selectedDeliveryState,
       customizationPreview: previewEnabled && previewAreas.some((area, idx) => customerPhotos[idx]?.url) ? {
         previewTitle: previewConfig.title || 'Customization preview',
         previews: previewAreas.map((area, idx) => ({
@@ -329,10 +337,32 @@ const handleCustomerPhotoUpload = async (files) => {
           )}
         </div>
 
+        {!product.isQuoteOnly && (
+          <div className="mb-4 rounded-2xl border border-primary-100 bg-white p-4 shadow-sm">
+            <label className="block text-sm font-bold text-gray-900 mb-2">Select delivery state</label>
+            <select value={selectedDeliveryState} onChange={(e) => setSelectedDeliveryState(e.target.value)} className="w-full rounded-xl border px-4 py-3 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100 bg-white">
+              <option value="">Choose your state to see final price</option>
+              {INDIAN_STATES.map((state) => <option key={state} value={state}>{state}</option>)}
+            </select>
+            <div className="mt-3 rounded-xl bg-primary-50/70 px-4 py-3 text-sm">
+              {selectedDeliveryState ? (
+                <div className="space-y-1">
+                  <div className="flex justify-between gap-3"><span>Product price</span><span className="font-semibold">{formatPrice(finalUnitPrice * quantity)}</span></div>
+                  <div className="flex justify-between gap-3"><span>Delivery charge</span><span className="font-semibold">{selectedDelivery.cost === 0 ? 'FREE' : formatPrice(selectedDelivery.cost)}</span></div>
+                  <div className="flex justify-between gap-3 border-t border-primary-100 pt-2 text-base font-bold"><span>Total for {selectedDeliveryState}</span><span className="text-primary-700">{formatPrice(productPageTotal)}</span></div>
+                  <p className="text-xs text-gray-500">Estimated delivery: <span className="font-semibold text-gray-800">{selectedDelivery.estimate}</span></p>
+                </div>
+              ) : (
+                <p className="text-gray-600">Tamil Nadu delivery is free. Other state shipment cost varies and will be shown after state selection.</p>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="bg-primary-50/60 rounded-xl px-4 py-3 mb-6 space-y-2">
           <div className="flex items-center gap-2 text-sm text-gray-700">
             <FiTruck size={14} className="text-primary-600 shrink-0" />
-            <span>{usesProductDelivery ? (`Tamil Nadu delivery ${tamilNaduDeliveryCost === 0 ? 'free' : formatPrice(tamilNaduDeliveryCost)} for this product. Other states calculated at checkout.`) : 'Tamil Nadu delivery free. Other states calculated at checkout.'}</span>
+            <span>{usesProductDelivery ? (`Tamil Nadu delivery ${tamilNaduDeliveryCost === 0 ? 'free' : formatPrice(tamilNaduDeliveryCost)} for this product. Other states calculated after state selection.`) : 'Tamil Nadu delivery free. Other states calculated after state selection.'}</span>
           </div>
           <div className="flex items-center gap-2 text-sm text-gray-700">
             <FiClock size={14} className="text-primary-600 shrink-0" />
@@ -418,7 +448,7 @@ const handleCustomerPhotoUpload = async (files) => {
                 <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl bg-white px-4 py-5 text-center hover:bg-primary-50 transition-colors">
                   <FiUpload size={24} className="text-primary-600" />
                   <span className="text-sm font-semibold text-gray-800">Upload photo or artwork</span>
-                  <span className="text-xs text-gray-500">JPG, PNG, WEBP, GIF or PDF up to 8 MB</span>
+                  <span className="text-xs text-gray-500">JPG, PNG, WEBP, GIF or PDF up to 200 MB</span>
                   <input type="file" accept="image/*,.pdf" className="sr-only"
                     onChange={e => handleCustomizationFileUpload(field.label, e.target.files?.[0])} />
                 </label>
@@ -483,7 +513,7 @@ const handleCustomerPhotoUpload = async (files) => {
             <div className="flex items-start justify-between gap-3 mb-3">
               <div>
                 <p className="text-sm font-bold text-gray-900">{previewConfig.title || 'Preview your personalized gift'}</p>
-                <p className="text-xs text-gray-500 mt-1">Each photo area is controlled by admin size. Crop, zoom and filter every uploaded image before checkout.</p>
+                <p className="text-xs text-gray-500 mt-1">Each photo area follows the admin-defined size. Choose portrait or landscape, then crop and align the uploaded image before checkout.</p>
               </div>
             </div>
             {previewConfig.instructions && <p className="text-xs text-primary-700 bg-primary-50 rounded-lg px-3 py-2 mb-3">{previewConfig.instructions}</p>}
@@ -509,23 +539,32 @@ const handleCustomerPhotoUpload = async (files) => {
                         <div className="rounded-2xl bg-white p-4">
                           <div
                             className="relative mx-auto w-full max-w-sm overflow-hidden bg-white shadow-inner"
-                            style={{ aspectRatio: getAreaAspectRatio(area), borderRadius: shape === 'circle' ? '9999px' : shape === 'rounded' ? '24px' : '8px' }}
+                            style={{ aspectRatio: getAreaAspectRatio(area, adjustments.orientation), borderRadius: shape === 'circle' ? '9999px' : shape === 'rounded' ? '24px' : '8px', touchAction: 'none' }} onPointerDown={(e) => startPreviewDrag(idx, e)} onPointerMove={movePreviewDrag} onPointerUp={stopPreviewDrag} onPointerCancel={stopPreviewDrag}
                           >
                             <img
                               src={photo.url}
                               alt={`${areaLabel} preview`}
                               className="absolute inset-0 h-full w-full object-cover"
-                              style={{ transform: `translate(${adjustments.x}px, ${adjustments.y}px) scale(${adjustments.zoom})`, filter: adjustments.filter, transformOrigin: 'center' }}
+                              style={{ transform: `translate(${adjustments.x}px, ${adjustments.y}px) scale(${adjustments.zoom})`, transformOrigin: 'center' }}
                             />
                             {area.frameImage && <img src={area.frameImage} alt="Preview frame" className="absolute inset-0 h-full w-full object-cover pointer-events-none" />}
-                            <div className="absolute inset-3 border border-white/70 pointer-events-none" style={{ borderRadius: shape === 'circle' ? '9999px' : shape === 'rounded' ? '18px' : '6px' }} />
+                            <div className="absolute inset-2 border-2 border-white/90 shadow-[0_0_0_999px_rgba(0,0,0,0.08)] pointer-events-none" style={{ borderRadius: shape === 'circle' ? '9999px' : shape === 'rounded' ? '18px' : '6px' }} />
                           </div>
                         </div>
                         <div className="space-y-3">
-                          <div><label className="block text-xs font-bold text-gray-600 mb-1">Zoom</label><input type="range" min="1" max="2.4" step="0.05" value={adjustments.zoom} onChange={e => updateAreaAdjustment(idx, 'zoom', Number(e.target.value))} className="w-full" /></div>
-                          <div><label className="block text-xs font-bold text-gray-600 mb-1">Move left / right</label><input type="range" min="-80" max="80" value={adjustments.x} onChange={e => updateAreaAdjustment(idx, 'x', Number(e.target.value))} className="w-full" /></div>
-                          <div><label className="block text-xs font-bold text-gray-600 mb-1">Move up / down</label><input type="range" min="-80" max="80" value={adjustments.y} onChange={e => updateAreaAdjustment(idx, 'y', Number(e.target.value))} className="w-full" /></div>
-                          <div><label className="block text-xs font-bold text-gray-600 mb-1">Filter</label><select value={adjustments.filter} onChange={e => updateAreaAdjustment(idx, 'filter', e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm"><option value="none">Original</option><option value="grayscale(1)">Black & White</option><option value="sepia(0.55)">Warm</option><option value="contrast(1.15) saturate(1.15)">Vivid</option></select></div>
+                          <div>
+                            <label className="block text-xs font-bold text-gray-600 mb-1">Frame direction</label>
+                            <div className="grid grid-cols-3 gap-2">
+                              {[['auto', 'Admin size'], ['portrait', 'Portrait'], ['landscape', 'Landscape']].map(([value, label]) => (
+                                <button key={value} type="button" onClick={() => updateAreaAdjustment(idx, 'orientation', value)} className={`rounded-lg border px-2 py-2 text-xs font-bold ${adjustments.orientation === value ? 'border-primary-600 bg-primary-50 text-primary-700' : 'border-gray-200 bg-white text-gray-600'}`}>{label}</button>
+                              ))}
+                            </div>
+                          </div>
+                          <p className="rounded-lg bg-white px-3 py-2 text-xs text-gray-500 border">Drag the photo inside the frame, or use the sliders below for exact alignment.</p>
+                          <div><label className="block text-xs font-bold text-gray-600 mb-1">Zoom</label><input type="range" min="1" max="3" step="0.05" value={adjustments.zoom} onChange={e => updateAreaAdjustment(idx, 'zoom', Number(e.target.value))} className="w-full" /></div>
+                          <div><label className="block text-xs font-bold text-gray-600 mb-1">Move left / right</label><input type="range" min="-160" max="160" value={adjustments.x} onChange={e => updateAreaAdjustment(idx, 'x', Number(e.target.value))} className="w-full" /></div>
+                          <div><label className="block text-xs font-bold text-gray-600 mb-1">Move up / down</label><input type="range" min="-160" max="160" value={adjustments.y} onChange={e => updateAreaAdjustment(idx, 'y', Number(e.target.value))} className="w-full" /></div>
+                          <button type="button" onClick={() => updateAreaAdjustments(idx, getDefaultPreviewAdjustments())} className="rounded-lg border px-3 py-2 text-sm font-semibold text-gray-700 hover:border-primary-200 hover:text-primary-700">Reset crop</button>
                         </div>
                       </div>
                     ) : (
@@ -620,73 +659,6 @@ const handleCustomerPhotoUpload = async (files) => {
           </div>
         )}
 
-        {/* Reviews */}
-        <div className="mt-8 border-t pt-6">
-          <h2 className="text-xl font-bold mb-1">Customer Reviews</h2>
-          {reviews.length > 0 ? (
-            <div className="flex items-center gap-2 mb-6">
-              <StarRating value={Math.round(reviews.reduce((s, r) => s + r.rating, 0) / reviews.length)} />
-              <span className="text-sm text-gray-500">
-                {(reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)} out of 5 ({reviews.length} review{reviews.length > 1 ? 's' : ''})
-              </span>
-            </div>
-          ) : (
-            <p className="text-sm text-gray-400 mb-6">No reviews yet. Be the first to review!</p>
-          )}
-
-          {/* Existing reviews list */}
-          {reviews.length > 0 && (
-            <div className="space-y-4 mb-8">
-              {reviews.map((rev) => (
-                <div key={rev._id} className="bg-gray-50 rounded-xl p-4">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-semibold text-gray-800 text-sm">{rev.name}</span>
-                    <span className="text-xs text-gray-400">{new Date(rev.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                  </div>
-                  <StarRating value={rev.rating} />
-                  <p className="text-sm text-gray-600 mt-2 leading-relaxed">{rev.comment}</p>
-                  {rev.verified && <span className="text-xs text-green-600 mt-1 block">Verified Purchase</span>}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Submit review form */}
-          <div className="bg-primary-50/50 rounded-xl p-5 border border-primary-100">
-            <h3 className="font-semibold mb-4 text-gray-800">Write a Review</h3>
-            <form onSubmit={handleSubmitReview} className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium mb-1">Your Name *</label>
-                <input
-                  type="text"
-                  value={reviewForm.name}
-                  onChange={(e) => setReviewForm((p) => ({ ...p, name: e.target.value }))}
-                  className="w-full border rounded-lg px-4 py-2 focus:outline-none focus:border-primary-500 text-sm"
-                  placeholder="John Doe"
-                  maxLength={80}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Rating *</label>
-                <StarRating value={reviewForm.rating} onChange={(v) => setReviewForm((p) => ({ ...p, rating: v }))} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Review *</label>
-                <textarea
-                  value={reviewForm.comment}
-                  onChange={(e) => setReviewForm((p) => ({ ...p, comment: e.target.value }))}
-                  className="w-full border rounded-lg px-4 py-2 focus:outline-none focus:border-primary-500 text-sm"
-                  rows={3}
-                  placeholder="Share your experience with this product..."
-                  maxLength={1000}
-                />
-              </div>
-              <button type="submit" disabled={submittingReview} className="btn-primary py-2 px-6 text-sm">
-                {submittingReview ? 'Submitting...' : 'Submit Review'}
-              </button>
-            </form>
-          </div>
-        </div>
       </div>
 
       {/* Size Chart Modal */}

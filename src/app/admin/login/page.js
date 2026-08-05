@@ -1,8 +1,9 @@
-﻿'use client';
+'use client';
 import { useEffect, useState } from 'react';
 import { getSession, signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
+import PasswordInput from '@/components/common/PasswordInput';
 
 export default function AdminLoginPage() {
   const [email, setEmail] = useState('');
@@ -42,8 +43,7 @@ export default function AdminLoginPage() {
         <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
           <input type="email" required placeholder="Admin email" name="store_admin_email" autoComplete="off" readOnly={!inputReady} onFocus={() => setInputReady(true)} value={email} onChange={e => setEmail(e.target.value)}
             className="w-full border rounded-lg px-4 py-3 focus:outline-none focus:border-primary-500" />
-          <input type="password" required placeholder="Password" name="store_admin_password" autoComplete="new-password" readOnly={!inputReady} onFocus={() => setInputReady(true)} value={password} onChange={e => setPassword(e.target.value)}
-            className="w-full border rounded-lg px-4 py-3 focus:outline-none focus:border-primary-500" />
+          <PasswordInput required placeholder="Password" name="store_admin_password" autoComplete="new-password" readOnly={!inputReady} onFocus={() => setInputReady(true)} value={password} onChange={e => setPassword(e.target.value)} />
           <button disabled={loading} className="btn-primary w-full">{loading ? 'Signing in...' : 'Sign In'}</button>
         </form>
       </div>

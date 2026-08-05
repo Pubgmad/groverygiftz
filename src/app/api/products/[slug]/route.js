@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/db';
 import Product from '@/models/Product';
+import Collection from '@/models/Collection';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import slugify from 'slugify';

@@ -1,6 +1,7 @@
-﻿import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import Product from '@/models/Product';
+import Collection from '@/models/Collection';
 
 function scoreProduct(product, terms) {
   const text = [

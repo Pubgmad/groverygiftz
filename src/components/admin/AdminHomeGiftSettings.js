@@ -12,7 +12,7 @@ export default function AdminHomeGiftSettings({ form, setForm }) {
       giftFinderTypes: g.types,
       giftFinderQuickPicks: g.quickPicks,
     }));
-    toast.success('Gift finder lists reset to built-in defaults - click Save to persist.');
+    toast.success('Gift recommender lists reset to built-in defaults - click Save to persist.');
   };
 
   const updateOccasion = (i, field, val) => {
@@ -128,7 +128,7 @@ export default function AdminHomeGiftSettings({ form, setForm }) {
 
       <div className="bg-white p-6 rounded-xl border space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-bold text-lg">Smart Gift Finder</h2>
+          <h2 className="font-bold text-lg">Gift Recommender</h2>
           <button type="button" className="text-sm px-3 py-1.5 bg-primary-50 text-primary-700 rounded-lg border border-primary-200" onClick={resetGiftFinderLists}>Reset lists to defaults</button>
         </div>
         <p className="text-sm text-gray-500">Leave intro fields empty to use built-in storefront defaults. Occasion/type <strong>value</strong> is the URL param (lowercase, hyphens). <strong>Keywords</strong> (comma-separated) power /search when that filter is chosen.</p>

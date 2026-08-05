@@ -27,7 +27,7 @@ export default function Newsletter({
   return (
     <div
       className="py-14 relative overflow-hidden"
-      style={{ background: 'linear-gradient(135deg, #F47920 0%, #D96212 45%, #2456D8 100%)' }}
+      style={{ background: 'linear-gradient(135deg, #F47920 0%, #F27A1A 52%, #D96212 100%)' }}
     >
       <div className="absolute top-0 left-0 w-72 h-72 rounded-full bg-white/10 blur-3xl -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
       <div className="absolute bottom-0 right-0 w-64 h-64 rounded-full bg-black/10 blur-3xl translate-x-1/3 translate-y-1/3 pointer-events-none" />
@@ -59,7 +59,7 @@ export default function Newsletter({
           <button
             type="submit"
             className="text-white px-7 py-3.5 rounded-xl font-bold text-sm transition-all duration-200 shadow-lg hover:-translate-y-0.5 hover:shadow-xl"
-            style={{ background: 'linear-gradient(135deg, #1B44B8, #2456D8)' }}
+            style={{ background: 'linear-gradient(135deg, #C9570F, #A9480C)' }}
           >
             Subscribe →
           </button>

@@ -1,10 +1,7 @@
 import mongoose from 'mongoose';
 
-const MONGODB_URI = process.env.MONGODB_URI;
-
-if (!MONGODB_URI) {
-  throw new Error('Please define MONGODB_URI in .env.local');
-}
+const LOCAL_MONGODB_URI = 'mongodb://127.0.0.1:27017/groverygiftz';
+const MONGODB_URI = process.env.MONGODB_URI || LOCAL_MONGODB_URI;
 
 let cached = global.mongoose;
 if (!cached) {

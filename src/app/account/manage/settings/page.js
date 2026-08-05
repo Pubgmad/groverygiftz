@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
+import PasswordInput from '@/components/common/PasswordInput';
 import ImageUploader from '@/components/admin/ImageUploader';
 import AdminHomeGiftSettings from '@/components/admin/AdminHomeGiftSettings';
 import { resolveGiftFinderForUi, defaultTickerMessages, defaultHotspotSpots } from '@/lib/giftFinderResolve';
@@ -12,7 +13,7 @@ export default function AdminSettingsPage() {
     socialLinks: { instagram: '', youtube: '' },
     freeShippingThreshold: 499, shippingCost: 40, tamilNaduShippingCost: 0, otherStateShippingCost: 120, tamilNaduDeliveryEstimate: 'Within 8 days', otherStateDeliveryEstimate: '10-15 days',
     promoEnabled: true, promoTitle: '', promoSubtitle: '', promoEndsAt: '', promoButtonText: '', promoButtonLink: '',
-    gstNumber: '33KVUPS5560J1ZL', tradeName: 'GROVERY GIFTZ',
+    gstNumber: '33KVUPS5560J1ZL', tradeName: 'GroveryGiftz',
     spotlightProductSlug: '',
     promoBannerImage: '', promoBannerTitle: '', promoBannerSubtitle: '', promoBannerButtonText: '', promoBannerButtonLink: '',
     cashfreeEnabled: false, cashfreeAppId: '', cashfreeSecretKey: '', cashfreeEnvironment: 'sandbox',
@@ -67,7 +68,7 @@ export default function AdminSettingsPage() {
         promoEndsAt: d.promoEndsAt ? new Date(d.promoEndsAt).toISOString().slice(0, 16) : '',
         promoButtonText: d.promoButtonText || 'Shop Now',
         promoButtonLink: d.promoButtonLink || '/shop',
-        gstNumber: d.gstNumber || '33KVUPS5560J1ZL', tradeName: d.tradeName || 'GROVERY GIFTZ',
+        gstNumber: d.gstNumber || '33KVUPS5560J1ZL', tradeName: d.tradeName || 'GroveryGiftz',
         spotlightProductSlug: d.spotlightProductSlug || '',
         promoBannerImage: d.promoBannerImage || '',
         promoBannerTitle: d.promoBannerTitle || 'Discover Our Latest Collections',
@@ -226,7 +227,7 @@ export default function AdminSettingsPage() {
           <div className="grid md:grid-cols-3 gap-4">
             <div><label className="block text-sm font-medium mb-1">Environment</label><select value={form.cashfreeEnvironment} onChange={e => setForm(p => ({ ...p, cashfreeEnvironment: e.target.value }))} className="w-full border rounded-lg px-4 py-2"><option value="sandbox">Sandbox</option><option value="production">Production</option></select></div>
             <div><label className="block text-sm font-medium mb-1">App ID</label><input value={form.cashfreeAppId} onChange={e => setForm(p => ({ ...p, cashfreeAppId: e.target.value }))} className="w-full border rounded-lg px-4 py-2 font-mono text-sm" placeholder="Cashfree App ID" /></div>
-            <div><label className="block text-sm font-medium mb-1">Secret Key <span className="text-red-400">(keep secret!)</span></label><input type="password" value={form.cashfreeSecretKey} onChange={e => setForm(p => ({ ...p, cashfreeSecretKey: e.target.value }))} className="w-full border rounded-lg px-4 py-2 font-mono text-sm" placeholder="Cashfree Secret Key" /></div>
+            <div><label className="block text-sm font-medium mb-1">Secret Key <span className="text-red-400">(keep secret!)</span></label><PasswordInput value={form.cashfreeSecretKey} onChange={e => setForm(p => ({ ...p, cashfreeSecretKey: e.target.value }))} inputClassName="w-full border rounded-lg px-4 py-2 font-mono text-sm focus:outline-none focus:border-primary-500" placeholder="Cashfree Secret Key" /></div>
           </div>
           {form.cashfreeEnabled && (!form.cashfreeAppId || !form.cashfreeSecretKey) && (
             <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">Cashfree is enabled but keys are not set. Customers will see secure online payment, but payment cannot start until you add the keys.</p>

@@ -1,4 +1,4 @@
-/** Shared Smart Gift Finder options + search keyword maps (moderngifts-style coverage). */
+/** Shared Gift Recommender options + search keyword maps (moderngifts-style coverage). */
 
 export const GIFT_FINDER_OCCASIONS = [
   { value: 'birthday', label: '🎂 Birthday' },

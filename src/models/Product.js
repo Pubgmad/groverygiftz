@@ -72,6 +72,7 @@ const ProductSchema = new mongoose.Schema({
   giftMessage: { type: Boolean, default: false },
   isQuoteOnly: { type: Boolean, default: false },
   isFeatured: { type: Boolean, default: false },
+  isBestSeller: { type: Boolean, default: false },
   isActive: { type: Boolean, default: true },
   seoTitle: String,
   seoDescription: String,

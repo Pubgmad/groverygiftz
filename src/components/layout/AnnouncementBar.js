@@ -24,7 +24,7 @@ export default async function AnnouncementBar() {
   return (
     <div
       className="relative overflow-hidden py-2"
-      style={{ background: 'linear-gradient(90deg, #1B44B8 0%, #2456D8 35%, #F47920 65%, #2456D8 85%, #1B44B8 100%)' }}
+      style={{ background: 'linear-gradient(90deg, #F47920 0%, #F27A1A 50%, #D96212 100%)' }}
     >
       <div className="absolute inset-0 pointer-events-none shimmer-sweep opacity-30" />
       <div className="announcement-scroll relative z-10 flex whitespace-nowrap">

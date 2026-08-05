@@ -6,7 +6,9 @@ export default function PromoBannerImage({ settings }) {
   const title = settings?.promoBannerTitle || 'Discover Our Latest Collections';
   const subtitle = settings?.promoBannerSubtitle || 'Unique gifts for every occasion';
   const btnText = settings?.promoBannerButtonText || 'Shop Now';
-  const btnLink = settings?.promoBannerButtonLink || '/shop';
+  const btnLink = !settings?.promoBannerButtonLink || settings.promoBannerButtonLink === '/shop'
+    ? '/shop?view=latest'
+    : settings.promoBannerButtonLink;
   const image = settings?.promoBannerImage;
 
   return (
@@ -19,7 +21,7 @@ export default function PromoBannerImage({ settings }) {
           className="absolute inset-0 w-full h-full object-cover"
         />
       ) : (
-        <div className="absolute inset-0 bg-gradient-to-r from-primary-700 via-primary-600 to-accent-500" />
+        <div className="absolute inset-0" style={{ background: 'linear-gradient(90deg, #F47920 0%, #F27A1A 55%, #D96212 100%)' }} />
       )}
 
       {/* Overlay for image readability */}
@@ -31,7 +33,7 @@ export default function PromoBannerImage({ settings }) {
       {!image && (
         <>
           <div className="absolute -top-20 -right-20 w-80 h-80 bg-white/10 rounded-full blur-3xl" />
-          <div className="absolute -bottom-24 -left-12 w-64 h-64 bg-accent-400/20 rounded-full blur-2xl" />
+          <div className="absolute -bottom-24 -left-12 w-64 h-64 bg-white/10 rounded-full blur-2xl" />
         </>
       )}
 
@@ -49,7 +51,7 @@ export default function PromoBannerImage({ settings }) {
           <Link
             href={btnLink}
             onClick={() => trackMetaCustomEvent('BannerClick', { banner_title: title, banner_link: btnLink, banner_location: 'promo_image' })}
-            className="inline-flex w-full items-center justify-center gap-2 bg-white text-primary-700 font-bold px-5 py-3.5 rounded-full hover:bg-accent-50 hover:text-accent-600 transition-colors shadow-lg text-sm sm:w-auto sm:px-8 sm:text-base"
+            className="inline-flex w-full items-center justify-center gap-2 bg-white text-accent-700 font-bold px-5 py-3.5 rounded-full hover:bg-accent-50 hover:text-accent-600 transition-colors shadow-lg text-sm sm:w-auto sm:px-8 sm:text-base"
           >
             {btnText}
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">

@@ -46,11 +46,11 @@ export default function CollectionsGrid({ collections = [], settings }) {
                 )}
 
                 <div className="absolute inset-0 bg-gradient-to-t from-black/86 via-black/28 to-transparent" />
-                <div className="absolute left-4 right-4 top-4 flex justify-between">
+                <div className="absolute left-3 right-3 top-3 flex items-start justify-between gap-2 sm:left-4 sm:right-4 sm:top-4">
                   <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white/92 text-primary-700 shadow-sm">
                     <FiGift size={17} />
                   </span>
-                  <span className="rounded-full bg-accent-500 px-3 py-1 text-[11px] font-extrabold uppercase tracking-wide text-white shadow-sm">
+                  <span className="inline-flex shrink-0 items-center justify-center rounded-full bg-accent-500 px-3 py-1.5 text-[10px] font-extrabold uppercase leading-none tracking-wide text-white shadow-sm sm:text-[11px]">
                     Curated
                   </span>
                 </div>

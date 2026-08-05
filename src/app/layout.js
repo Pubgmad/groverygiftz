@@ -4,6 +4,7 @@ import Footer from '@/components/layout/Footer';
 import AnnouncementBar from '@/components/layout/AnnouncementBar';
 import WhatsAppFloat from '@/components/layout/WhatsAppFloat';
 import CartDrawer from '@/components/cart/CartDrawer';
+import ChromeVisibility from '@/components/layout/ChromeVisibility';
 import Providers from '@/components/Providers';
 import MetaPixel from '@/components/meta/MetaPixel';
 import { Toaster } from 'react-hot-toast';
@@ -35,15 +36,18 @@ export default function RootLayout({ children }) {
               success: { iconTheme: { primary: '#2456D8', secondary: '#fff' } },
             }}
           />
-          <AnnouncementBar />
-          <Header />
-          <CartDrawer />
+          <ChromeVisibility>
+            <AnnouncementBar />
+            <Header />
+            <CartDrawer />
+          </ChromeVisibility>
           <main className="min-h-screen antialiased">{children}</main>
-          <Footer />
-          <WhatsAppFloat />
+          <ChromeVisibility>
+            <Footer />
+            <WhatsAppFloat />
+          </ChromeVisibility>
         </Providers>
       </body>
     </html>
   );
 }
-

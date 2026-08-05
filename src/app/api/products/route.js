@@ -3,9 +3,21 @@ import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/db';
 import Product from '@/models/Product';
+import Collection from '@/models/Collection';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import slugify from 'slugify';
+
+function activeOfferFilter(now = new Date()) {
+  return {
+    salePrice: { $gt: 0 },
+    $expr: { $lt: ['$salePrice', '$regularPrice'] },
+    $and: [
+      { $or: [{ offerStartsAt: null }, { offerStartsAt: { $exists: false } }, { offerStartsAt: { $lte: now } }] },
+      { $or: [{ offerEndsAt: null }, { offerEndsAt: { $exists: false } }, { offerEndsAt: { $gte: now } }] },
+    ],
+  };
+}
 
 export async function GET(req) {
   await dbConnect();
@@ -16,12 +28,22 @@ export async function GET(req) {
   const search = searchParams.get('search') || '';
   const collection = searchParams.get('collection');
   const featured = searchParams.get('featured');
+  const bestSeller = searchParams.get('bestSeller');
+  const offer = searchParams.get('offer');
+  const latest = searchParams.get('latest');
   const includeAll = searchParams.get('all') === 'true';
 
   const filter = {};
   if (search) filter.title = { $regex: search, $options: 'i' };
   if (collection) filter.collections = collection;
   if (featured === 'true') filter.isFeatured = true;
+  if (bestSeller === 'true') filter.isBestSeller = true;
+  if (offer === 'true') Object.assign(filter, activeOfferFilter(new Date()));
+  if (latest === 'true') {
+    const latestSince = new Date();
+    latestSince.setMonth(latestSince.getMonth() - 3);
+    filter.createdAt = { $gte: latestSince };
+  }
   // Expose inactive products only to authenticated admins.
   if (!includeAll || !session || session.user.type !== 'admin') filter.isActive = true;
 

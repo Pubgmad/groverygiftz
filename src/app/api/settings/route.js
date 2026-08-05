@@ -33,7 +33,7 @@ export async function GET() {
       promoButtonLink: '/shop',
       promoEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       gstNumber: '33KVUPS5560J1ZL',
-      tradeName: 'GROVERY GIFTZ',
+      tradeName: 'GroveryGiftz',
       metaPixelEnabled: false,
       metaPixelId: '',
       metaPixelTestEventCode: '',

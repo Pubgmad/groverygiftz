@@ -31,7 +31,7 @@ async function getData() {
   const [banners, collections, featured, showcaseProducts] = await Promise.all([
     Banner.find({ isActive: true }).sort({ order: 1 }).lean(),
     Collection.find({ isFeatured: true, isActive: true }).sort({ order: 1 }).limit(4).lean(),
-    Product.find({ isFeatured: true, isActive: true }).sort({ createdAt: -1 }).limit(12).lean(),
+    Product.find({ isActive: true }).sort({ createdAt: -1 }).limit(12).lean(),
     showcaseCollection
       ? Product.find({ collections: showcaseCollection._id, isActive: true }).sort({ createdAt: -1 }).limit(12).lean()
       : Promise.resolve([]),

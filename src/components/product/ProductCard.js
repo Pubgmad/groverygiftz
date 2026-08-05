@@ -26,6 +26,7 @@ export default function ProductCard({ product }) {
       <div className="relative aspect-square overflow-hidden rounded-xl bg-gray-100 image-sheen">
         <div className="absolute left-2.5 top-2.5 z-10 flex max-w-[70%] flex-col gap-1.5">
           {savings > 0 && <div className="badge-save w-fit">Save {formatPrice(savings)}</div>}
+          {product.isBestSeller && <div className="w-fit rounded-lg bg-accent-500 px-2.5 py-1 text-[11px] font-bold text-white shadow-sm">Best Seller</div>}
           {hasCustomization && (
             <div className="inline-flex w-fit items-center gap-1 rounded-lg bg-white/95 px-2.5 py-1 text-[11px] font-bold text-primary-700 shadow-sm">
               <FiGift size={12} /> Customisable

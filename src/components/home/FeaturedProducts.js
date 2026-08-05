@@ -2,7 +2,7 @@ import ProductCard from '@/components/product/ProductCard';
 import Link from 'next/link';
 import { FiArrowRight, FiShoppingBag, FiStar } from 'react-icons/fi';
 
-export default function FeaturedProducts({ products, eyebrow, title, subtitle, buttonText }) {
+export default function FeaturedProducts({ products, eyebrow, title, subtitle, buttonText, buttonLink = '/shop' }) {
   if (!products || products.length === 0) return null;
 
   return (
@@ -20,7 +20,7 @@ export default function FeaturedProducts({ products, eyebrow, title, subtitle, b
               {title && <h2 className="text-3xl font-display font-extrabold leading-tight text-gray-950 md:text-5xl">{title}</h2>}
               {subtitle && <p className="mt-4 max-w-xl text-gray-600">{subtitle}</p>}
             </div>
-            <Link href="/shop" className="btn-accent inline-flex w-fit items-center gap-2 px-6 py-3.5">
+            <Link href={buttonLink} className="btn-accent inline-flex w-fit items-center gap-2 px-6 py-3.5">
               <FiShoppingBag size={17} />
               <span>{buttonText || 'Explore Products'}</span>
               <FiArrowRight size={16} />

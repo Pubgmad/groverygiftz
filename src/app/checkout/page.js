@@ -1,10 +1,10 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { useSession } from 'next-auth/react';
+import { useSession, signOut } from 'next-auth/react';
 import { useCart } from '@/context/CartContext';
 import { formatPrice } from '@/lib/utils';
 import { buildCartMetaPayload, trackMetaEvent } from '@/lib/metaPixel';
-import { FiChevronRight, FiCheckCircle, FiShield, FiTruck, FiCreditCard, FiMapPin, FiEdit2, FiGift } from 'react-icons/fi';
+import { FiChevronRight, FiCheckCircle, FiShield, FiTruck, FiCreditCard, FiMapPin, FiEdit2, FiGift, FiStar } from 'react-icons/fi';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
@@ -90,7 +90,16 @@ export default function CheckoutPage() {
   }, [status, router]);
 
   useEffect(() => {
-    if (session?.user) {
+    const savedState = window.localStorage?.getItem('groveryDeliveryState');
+    if (savedState) setAddress((p) => ({ ...p, state: p.state || savedState }));
+  }, []);
+
+  useEffect(() => {
+    if (address.state) window.localStorage?.setItem('groveryDeliveryState', address.state);
+  }, [address.state]);
+
+  useEffect(() => {
+    if (session?.user?.type === 'customer') {
       setAddress((p) => ({ ...p, fullName: p.fullName || session.user.name || '', email: p.email || session.user.email || '' }));
     }
   }, [session]);
@@ -109,13 +118,13 @@ export default function CheckoutPage() {
   }, []);
 
   useEffect(() => {
-    if (cart.length === 0 && step !== 3 && status === 'authenticated') router.replace('/cart');
-  }, [cart, step, router, status]);
+    if (cart.length === 0 && step !== 3 && status === 'authenticated' && session?.user?.type === 'customer') router.replace('/cart');
+  }, [cart, step, router, status, session]);
   useEffect(() => {
-    if (checkoutTrackedRef.current || status !== 'authenticated' || cart.length === 0 || step === 3) return;
+    if (checkoutTrackedRef.current || status !== 'authenticated' || session?.user?.type !== 'customer' || cart.length === 0 || step === 3) return;
     checkoutTrackedRef.current = true;
     trackMetaEvent('InitiateCheckout', getCartPixelPayload(cart, grandTotal));
-  }, [cart, grandTotal, status, step]);
+  }, [cart, grandTotal, status, step, session]);
 
   const validateAddress = () => {
     const { fullName, email, phone, line1, city, state } = address;
@@ -208,6 +217,18 @@ export default function CheckoutPage() {
     return <div className="min-h-[60vh] flex items-center justify-center text-gray-500">Opening secure sign in...</div>;
   }
 
+  if (session?.user?.type !== 'customer') {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center px-4">
+        <div className="max-w-md rounded-2xl border bg-white p-6 text-center shadow-sm">
+          <h1 className="text-2xl font-display font-bold mb-2">Customer sign in required</h1>
+          <p className="text-sm text-gray-500 mb-5">You are signed in as store admin. Please sign out and sign in with a customer account to place an order.</p>
+          <button onClick={() => signOut({ callbackUrl: '/auth/login?callbackUrl=/checkout' })} className="btn-primary w-full">Sign in as customer</button>
+        </div>
+      </div>
+    );
+  }
+
   if (step === 3 && orderResult) {
     return (
       <div className="min-h-[70vh] bg-gradient-to-b from-primary-50/80 to-white px-4 py-14">
@@ -233,6 +254,14 @@ export default function CheckoutPage() {
                 <p className="font-bold text-primary-600 shrink-0">{formatPrice(item.price * item.quantity)}</p>
               </div>
             ))}
+          </div>
+
+          <div className="mb-6 rounded-2xl border border-primary-100 bg-primary-50/40 p-4">
+            <h2 className="font-bold text-lg mb-1">Share your product review</h2>
+            <p className="text-xs text-gray-500 mb-3">Reviews are shown only after successful payment.</p>
+            <div className="space-y-2">
+              {orderResult.items.map((item, idx) => <CheckoutReviewForm key={`${item.productId || item.title}-${idx}`} orderNumber={orderResult.orderNumber} item={item} customerName={session?.user?.name} />)}
+            </div>
           </div>
 
           <div className="rounded-xl bg-primary-50/70 border border-primary-100 p-4 space-y-2 text-sm mb-6">
@@ -360,4 +389,57 @@ function loadCashfreeScript() {
     script.onerror = () => resolve(false);
     document.body.appendChild(script);
   });
+}
+
+function CheckoutReviewForm({ orderNumber, item, customerName }) {
+  const productId = String(item?.productId || item?.product || '');
+  const [open, setOpen] = useState(false);
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  if (!productId || submitted) return null;
+
+  const submitReview = async (e) => {
+    e.preventDefault();
+    if (!rating) return toast.error('Please select a rating');
+    if (!comment.trim()) return toast.error('Please write your review');
+    setSaving(true);
+    const res = await fetch('/api/reviews', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productId, orderNumber, name: customerName || 'Customer', rating, comment }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setSaving(false);
+    if (res.ok) {
+      setSubmitted(true);
+      toast.success('Thank you for your review');
+      return;
+    }
+    toast.error(data.error || 'Unable to submit review');
+  };
+
+  return (
+    <div className="rounded-xl border bg-white p-3">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="flex w-full items-center justify-between gap-3 text-left">
+        <span className="text-sm font-semibold text-gray-900 line-clamp-1">Review {item.title}</span>
+        <span className="text-xs font-bold text-primary-600">{open ? 'Close' : 'Write review'}</span>
+      </button>
+      {open && (
+        <form onSubmit={submitReview} className="mt-3 space-y-3">
+          <div className="flex gap-1">
+            {[1, 2, 3, 4, 5].map((star) => (
+              <button key={star} type="button" onClick={() => setRating(star)} className="text-amber-400" aria-label={`${star} star`}>
+                <FiStar size={20} className={star <= rating ? 'fill-amber-400 stroke-amber-400' : 'stroke-gray-300'} />
+              </button>
+            ))}
+          </div>
+          <textarea value={comment} onChange={(e) => setComment(e.target.value)} rows={3} maxLength={1000} className="w-full rounded-lg border px-3 py-2 text-sm focus:border-primary-500 focus:outline-none" placeholder="Share your experience with this gift..." />
+          <button disabled={saving} className="btn-primary px-4 py-2 text-sm">{saving ? 'Submitting...' : 'Submit Review'}</button>
+        </form>
+      )}
+    </div>
+  );
 }

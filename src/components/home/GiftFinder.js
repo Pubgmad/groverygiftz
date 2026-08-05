@@ -75,7 +75,7 @@ export default function GiftFinder({ intro, occasions, types, quickPicks }) {
           <form id="gift-finder-form" onSubmit={handleSearch} className="relative bg-white rounded-2xl border border-white shadow-[0_24px_60px_-12px_rgba(15,39,120,0.45)] p-4 sm:p-6 md:p-8">
             <div className="flex items-center gap-2 mb-5 pb-4 border-b border-gray-100">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-600 to-primary-800 flex items-center justify-center text-white shadow-brand"><FiGift size={18} /></div>
-              <div className="text-left"><p className="text-xs font-bold uppercase tracking-widest text-primary-500">Find the perfect gift</p><p className="text-sm text-gray-500">Optional filters + product recommendations</p></div>
+              <div className="text-left"><p className="text-xs font-bold uppercase tracking-widest text-primary-500">Gift Recommender</p><p className="text-sm text-gray-500">Optional filters + product recommendations</p></div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
               <div><label className="flex items-center gap-1.5 text-sm font-semibold text-gray-800 mb-1.5"><FiCalendar size={13} className="text-accent-500" /> Occasion</label><select value={occasion} onChange={(e) => setOccasion(e.target.value)} className="input-field"><option value="">Select Occasion</option>{occOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
@@ -83,7 +83,7 @@ export default function GiftFinder({ intro, occasions, types, quickPicks }) {
             </div>
             <div className="flex flex-col sm:flex-row gap-3">
               <div className="flex-1 relative"><FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} /><input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="e.g. moon lamp, bottle of love, hamper" className="input-field pl-11 py-4 text-base" /></div>
-              <button type="submit" className="inline-flex min-h-[52px] w-full items-center justify-center gap-2 whitespace-normal rounded-xl bg-accent-500 px-5 py-4 text-center text-sm font-bold text-white shadow-orange transition-all duration-200 hover:-translate-y-0.5 hover:bg-accent-600 sm:w-auto sm:whitespace-nowrap sm:px-8 sm:text-base">Find my gift <FiChevronRight size={18} /></button>
+              <button type="submit" className="inline-flex min-h-[52px] w-full items-center justify-center gap-2 whitespace-normal rounded-xl bg-accent-500 px-5 py-4 text-center text-sm font-bold text-white shadow-orange transition-all duration-200 hover:-translate-y-0.5 hover:bg-accent-600 sm:w-auto sm:whitespace-nowrap sm:px-8 sm:text-base">Find my recommendation <FiChevronRight size={18} /></button>
               <button type="button" onClick={getRecommendations} disabled={recommending} className="inline-flex min-h-[52px] w-full items-center justify-center gap-2 whitespace-normal rounded-xl border border-primary-200 bg-primary-50 px-5 py-4 text-center text-sm font-bold text-primary-700 transition-all duration-200 hover:bg-primary-100 disabled:opacity-60 sm:w-auto sm:whitespace-nowrap sm:px-6 sm:text-base"><FiStar size={18} /> {recommending ? 'Finding...' : 'Recommend'}</button>
             </div>
           </form>

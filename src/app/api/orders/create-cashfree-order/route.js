@@ -32,11 +32,12 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Missing required order fields' }, { status: 400 });
     }
 
-    const productIds = [...new Set(items.map((item) => item.productId).filter(Boolean))];
+    const orderItems = items.map((item) => ({ ...item, product: item.product || item.productId || undefined, productId: item.productId || item.product || '' }));
+    const productIds = [...new Set(orderItems.map((item) => item.productId).filter(Boolean))];
     const products = await Product.find({ _id: { $in: productIds } }).select('delivery').lean();
     const productsById = Object.fromEntries(products.map((product) => [String(product._id), product]));
-    const subtotal = items.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 1), 0);
-    const shipping = calculateShipping(items, productsById, shippingAddress.state, settings);
+    const subtotal = orderItems.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 1), 0);
+    const shipping = calculateShipping(orderItems, productsById, shippingAddress.state, settings);
     const shippingCost = shipping.cost;
     const total = subtotal + shippingCost;
 
@@ -78,7 +79,7 @@ export async function POST(req) {
       orderNumber: pendingOrderNumber,
       customer: session.user.id,
       guestEmail: shippingAddress?.email || session.user.email || null,
-      items,
+      items: orderItems,
       shippingAddress,
       subtotal,
       shippingCost,
