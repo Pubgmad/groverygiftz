@@ -18,10 +18,13 @@ async function seed() {
   const adminPassword = await bcrypt.hash(adminPasswordPlain, 12);
   await db.collection('admins').updateOne(
     { email: adminEmail },
-    { $setOnInsert: { name: 'Admin', email: adminEmail, password: adminPassword, role: 'superadmin', createdAt: new Date(), updatedAt: new Date() } },
+    {
+      $set: { name: 'Admin', email: adminEmail, password: adminPassword, role: 'superadmin', updatedAt: new Date() },
+      $setOnInsert: { createdAt: new Date() },
+    },
     { upsert: true }
   );
-  console.log('Admin seeded');
+  console.log('Admin seeded / updated');
 
   // 2. Seed Settings
   const existingSettings = await db.collection('settings').findOne();
