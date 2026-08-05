@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm run seed && next build",
     "start": "next start",
     "seed": "node src/lib/seed.js",
     "cleanup:customer-uploads": "node scripts/cleanup-customer-uploads.js"
