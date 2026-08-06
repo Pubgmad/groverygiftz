@@ -41,6 +41,7 @@ export default function ProductDetail({ product }) {
   const viewedProductRef = useRef('');
   const customTextTrackedRef = useRef({});
   const dragStateRef = useRef(null);
+  const previewFrameRefs = useRef({});
   const galleryTouchRef = useRef({ startX: 0, endX: 0 });
   const lightboxTouchRef = useRef({ startX: 0, endX: 0 });
   const [selectedDeliveryState, setSelectedDeliveryState] = useState('');
@@ -154,6 +155,117 @@ export default function ProductDetail({ product }) {
     return width + ' / ' + height;
   };
   const getAreaAdjustments = (idx) => ({ ...getDefaultPreviewAdjustments(), ...(previewAdjustments[idx] || {}) });
+  const loadPreviewImage = (src) => new Promise((resolve, reject) => {
+    const image = new Image();
+    image.crossOrigin = 'anonymous';
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = src;
+  });
+  const getContainedDrawRect = (sourceWidth, sourceHeight, boxWidth, boxHeight) => {
+    const scale = Math.min(boxWidth / Math.max(1, sourceWidth), boxHeight / Math.max(1, sourceHeight));
+    const width = sourceWidth * scale;
+    const height = sourceHeight * scale;
+    return { x: (boxWidth - width) / 2, y: (boxHeight - height) / 2, width, height };
+  };
+  const getPreviewDimensions = (area, orientation, idx) => {
+    const rect = previewFrameRefs.current[idx]?.getBoundingClientRect();
+    if (rect?.width && rect?.height) return { displayWidth: rect.width, displayHeight: rect.height };
+    const rawWidth = Math.max(1, Number(area?.width || 1));
+    const rawHeight = Math.max(1, Number(area?.height || 1));
+    const width = orientation === 'portrait' ? Math.min(rawWidth, rawHeight) : orientation === 'landscape' ? Math.max(rawWidth, rawHeight) : rawWidth;
+    const height = orientation === 'portrait' ? Math.max(rawWidth, rawHeight) : orientation === 'landscape' ? Math.min(rawWidth, rawHeight) : rawHeight;
+    const displayWidth = 360;
+    return { displayWidth, displayHeight: displayWidth * (height / width) };
+  };
+  const renderFinalPreviewImage = async (area, idx) => {
+    const photo = customerPhotos[idx];
+    if (!photo?.url) return '';
+    try {
+      const adjustments = getAreaAdjustments(idx);
+      const { displayWidth, displayHeight } = getPreviewDimensions(area, adjustments.orientation, idx);
+      const scale = 2;
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(320, Math.round(displayWidth * scale));
+      canvas.height = Math.max(240, Math.round(displayHeight * scale));
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const uploadedImage = await loadPreviewImage(photo.url);
+      const imageRect = getContainedDrawRect(
+        uploadedImage.naturalWidth || uploadedImage.width,
+        uploadedImage.naturalHeight || uploadedImage.height,
+        canvas.width,
+        canvas.height
+      );
+      const zoom = Math.max(0.1, Number(adjustments.zoom || 1));
+      const zoomedWidth = imageRect.width * zoom;
+      const zoomedHeight = imageRect.height * zoom;
+      const translatedX = imageRect.x - ((zoomedWidth - imageRect.width) / 2) + (Number(adjustments.x || 0) * scale);
+      const translatedY = imageRect.y - ((zoomedHeight - imageRect.height) / 2) + (Number(adjustments.y || 0) * scale);
+      ctx.drawImage(uploadedImage, translatedX, translatedY, zoomedWidth, zoomedHeight);
+
+      if (area.frameImage) {
+        try {
+          const frameImage = await loadPreviewImage(area.frameImage);
+          const frameRect = getContainedDrawRect(
+            frameImage.naturalWidth || frameImage.width,
+            frameImage.naturalHeight || frameImage.height,
+            canvas.width,
+            canvas.height
+          );
+          ctx.drawImage(frameImage, frameRect.x, frameRect.y, frameRect.width, frameRect.height);
+        } catch (error) {
+          // The uploaded customer image is still enough for production if an external frame cannot be rendered.
+        }
+      }
+
+      return canvas.toDataURL('image/jpeg', 0.9);
+    } catch (error) {
+      return '';
+    }
+  };
+  const uploadRenderedPreviewImage = async (dataUrl, label, idx) => {
+    if (!dataUrl) return null;
+    try {
+      const blob = await (await fetch(dataUrl)).blob();
+      const safeLabel = String(label || `photo-${idx + 1}`).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `photo-${idx + 1}`;
+      const formData = new FormData();
+      formData.append('file', new File([blob], `${safeLabel}-final-preview.jpg`, { type: 'image/jpeg' }));
+      const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Preview upload failed');
+      return data;
+    } catch (error) {
+      return null;
+    }
+  };
+  const buildCustomizationPreviewPayload = async () => {
+    if (!previewEnabled || !previewAreas.some((area, idx) => customerPhotos[idx]?.url)) return null;
+    const previews = [];
+    for (let idx = 0; idx < previewAreas.length; idx += 1) {
+      const area = previewAreas[idx];
+      const uploadedFile = customerPhotos[idx] || null;
+      if (!uploadedFile?.url) continue;
+      const areaLabel = area.label || ('Photo ' + (idx + 1));
+      const finalPreviewDataUrl = await renderFinalPreviewImage(area, idx);
+      const finalPreviewImage = await uploadRenderedPreviewImage(finalPreviewDataUrl, areaLabel, idx);
+      previews.push({
+        areaLabel,
+        width: area.width || '',
+        height: area.height || '',
+        unit: area.unit || 'inch',
+        instructions: area.instructions || '',
+        frameImage: area.frameImage || '',
+        uploadedFile,
+        adjustments: getAreaAdjustments(idx),
+        finalPreviewImage,
+        finalPreviewDataUrl: finalPreviewImage?.url ? '' : finalPreviewDataUrl,
+      });
+    }
+    return { previewTitle: previewConfig.title || 'Customization preview', previews };
+  };
   const updateAreaAdjustments = (idx, updates) => setPreviewAdjustments((prev) => ({ ...prev, [idx]: { ...getDefaultPreviewAdjustments(), ...(prev[idx] || {}), ...updates } }));
   const updateAreaAdjustment = (idx, key, value) => updateAreaAdjustments(idx, { [key]: value });
   const startPreviewDrag = (idx, event) => {
@@ -344,7 +456,7 @@ const handleCustomerPhotoUpload = async (files) => {
     ...prev,
     [label]: (prev[label] || []).filter((_, photoIdx) => photoIdx !== idx),
   }));
-  const addConfiguredProductToCart = ({ openCart = true } = {}) => {
+  const addConfiguredProductToCart = async ({ openCart = true } = {}) => {
     if (isSoldOut) {
       toast.error('This product is currently sold out');
       return false;
@@ -365,6 +477,8 @@ const handleCustomerPhotoUpload = async (files) => {
     })).filter((group) => group.images.length > 0);
     const allCustomFields = customerPhotos.length > 0 ? { ...customFieldValues, 'Customer Photos': customerPhotos } : customFieldValues;
 
+    const customizationPreviewPayload = await buildCustomizationPreviewPayload();
+
     addToCart({
       productId: product._id,
       title: product.title,
@@ -380,20 +494,7 @@ const handleCustomerPhotoUpload = async (files) => {
       delivery: product.delivery || null,
       variantDelivery: { stateOverrides: selectedVariantOptions.flatMap((selected) => selected?.stateOverrides || []) },
       deliveryState: selectedDeliveryState,
-      customizationPreview: previewEnabled && previewAreas.some((area, idx) => customerPhotos[idx]?.url) ? {
-        previewTitle: previewConfig.title || 'Customization preview',
-        previews: previewAreas.map((area, idx) => ({
-          areaLabel: area.label || ('Photo ' + (idx + 1)),
-          width: area.width || '',
-          height: area.height || '',
-          unit: area.unit || 'inch',
-          shape: area.shape || 'rectangle',
-          instructions: area.instructions || '',
-          frameImage: area.frameImage || '',
-          uploadedFile: customerPhotos[idx] || null,
-          adjustments: getAreaAdjustments(idx),
-        })).filter((entry) => entry.uploadedFile?.url),
-      } : null,
+      customizationPreview: customizationPreviewPayload,
     }, { openDrawer: openCart });
     trackMetaEvent('AddToCart', getProductPixelPayload());
     if (Object.keys(allCustomFields || {}).length > 0 || giftWrap || giftMessage.trim()) {
@@ -402,12 +503,12 @@ const handleCustomerPhotoUpload = async (files) => {
     return true;
   };
 
-  const handleAddToCart = () => {
-    if (addConfiguredProductToCart({ openCart: true })) toast.success('Added to cart!');
+  const handleAddToCart = async () => {
+    if (await addConfiguredProductToCart({ openCart: true })) toast.success('Added to cart!');
   };
 
-  const handleBuyNow = () => {
-    if (!addConfiguredProductToCart({ openCart: false })) return;
+  const handleBuyNow = async () => {
+    if (!(await addConfiguredProductToCart({ openCart: false }))) return;
     setIsCartOpen(false);
     toast.success('Taking you to checkout...');
     router.push('/checkout');
@@ -689,7 +790,7 @@ const handleCustomerPhotoUpload = async (files) => {
             <div className="flex items-start justify-between gap-3 mb-3">
               <div>
                 <p className="text-sm font-bold text-gray-900">{previewConfig.title || 'Preview your personalized gift'}</p>
-                <p className="text-xs text-gray-500 mt-1">Each photo area follows the admin-defined size. Choose portrait or landscape, then crop and align the uploaded image before checkout.</p>
+                <p className="text-xs text-gray-500 mt-1">Each photo area follows the admin-defined size. Choose portrait or landscape, then fit and align the uploaded image before checkout.</p>
               </div>
             </div>
             {previewConfig.instructions && <p className="text-xs text-primary-700 bg-primary-50 rounded-lg px-3 py-2 mb-3">{previewConfig.instructions}</p>}
@@ -697,7 +798,6 @@ const handleCustomerPhotoUpload = async (files) => {
               {previewAreas.map((area, idx) => {
                 const photo = customerPhotos[idx];
                 const adjustments = getAreaAdjustments(idx);
-                const shape = area.shape || 'rectangle';
                 const areaLabel = area.label || `Photo ${idx + 1}`;
                 return (
                   <div key={`${areaLabel}-${idx}`} className="rounded-2xl border bg-gray-50 p-3 sm:p-4">
@@ -714,17 +814,18 @@ const handleCustomerPhotoUpload = async (files) => {
                       <div className="grid md:grid-cols-2 gap-4 items-start">
                         <div className="rounded-2xl bg-white p-4">
                           <div
-                            className="relative mx-auto w-full max-w-sm overflow-hidden bg-white shadow-inner"
-                            style={{ aspectRatio: getAreaAspectRatio(area, adjustments.orientation), borderRadius: shape === 'circle' ? '9999px' : shape === 'rounded' ? '24px' : '8px', touchAction: 'none' }} onPointerDown={(e) => startPreviewDrag(idx, e)} onPointerMove={movePreviewDrag} onPointerUp={stopPreviewDrag} onPointerCancel={stopPreviewDrag}
+                            ref={(node) => { if (node) previewFrameRefs.current[idx] = node; }}
+                            className="relative mx-auto w-full max-w-sm overflow-hidden rounded-lg bg-white shadow-inner"
+                            style={{ aspectRatio: getAreaAspectRatio(area, adjustments.orientation), touchAction: 'none' }} onPointerDown={(e) => startPreviewDrag(idx, e)} onPointerMove={movePreviewDrag} onPointerUp={stopPreviewDrag} onPointerCancel={stopPreviewDrag}
                           >
                             <img
                               src={photo.url}
                               alt={`${areaLabel} preview`}
-                              className="absolute inset-0 h-full w-full object-cover"
+                              className="absolute inset-0 h-full w-full object-contain"
                               style={{ transform: `translate(${adjustments.x}px, ${adjustments.y}px) scale(${adjustments.zoom})`, transformOrigin: 'center' }}
                             />
-                            {area.frameImage && <img src={area.frameImage} alt="Preview frame" className="absolute inset-0 h-full w-full object-cover pointer-events-none" />}
-                            <div className="absolute inset-2 border-2 border-white/90 shadow-[0_0_0_999px_rgba(0,0,0,0.08)] pointer-events-none" style={{ borderRadius: shape === 'circle' ? '9999px' : shape === 'rounded' ? '18px' : '6px' }} />
+                            {area.frameImage && <img src={area.frameImage} alt="Preview frame" className="absolute inset-0 h-full w-full object-contain pointer-events-none" />}
+                            <div className="absolute inset-2 rounded-md border-2 border-white/90 shadow-[0_0_0_999px_rgba(0,0,0,0.08)] pointer-events-none" />
                           </div>
                         </div>
                         <div className="space-y-3">
@@ -740,7 +841,7 @@ const handleCustomerPhotoUpload = async (files) => {
                           <div><label className="block text-xs font-bold text-gray-600 mb-1">Zoom</label><input type="range" min="1" max="3" step="0.05" value={adjustments.zoom} onChange={e => updateAreaAdjustment(idx, 'zoom', Number(e.target.value))} className="w-full" /></div>
                           <div><label className="block text-xs font-bold text-gray-600 mb-1">Move left / right</label><input type="range" min="-160" max="160" value={adjustments.x} onChange={e => updateAreaAdjustment(idx, 'x', Number(e.target.value))} className="w-full" /></div>
                           <div><label className="block text-xs font-bold text-gray-600 mb-1">Move up / down</label><input type="range" min="-160" max="160" value={adjustments.y} onChange={e => updateAreaAdjustment(idx, 'y', Number(e.target.value))} className="w-full" /></div>
-                          <button type="button" onClick={() => updateAreaAdjustments(idx, getDefaultPreviewAdjustments())} className="rounded-lg border px-3 py-2 text-sm font-semibold text-gray-700 hover:border-primary-200 hover:text-primary-700">Reset crop</button>
+                          <button type="button" onClick={() => updateAreaAdjustments(idx, getDefaultPreviewAdjustments())} className="rounded-lg border px-3 py-2 text-sm font-semibold text-gray-700 hover:border-primary-200 hover:text-primary-700">Reset alignment</button>
                         </div>
                       </div>
                     ) : (
@@ -891,7 +992,3 @@ const handleCustomerPhotoUpload = async (files) => {
     </div>
   );
 }
-
-
-
-

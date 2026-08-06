@@ -244,10 +244,7 @@ export default function AdminProductForm({ params }) {
                   <div><label className="block text-xs font-medium mb-1">Height</label><input type="number" min="0" step="0.01" value={area.height ?? ''} onChange={e => updatePreviewArea(idx, 'height', e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="10" /></div>
                   <div><label className="block text-xs font-medium mb-1">Unit</label><select value={area.unit || 'inch'} onChange={e => updatePreviewArea(idx, 'unit', e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm"><option value="inch">Inch</option><option value="cm">CM</option><option value="mm">MM</option></select></div>
                 </div>
-                <div className="grid md:grid-cols-2 gap-3">
-                  <div><label className="block text-xs font-medium mb-1">Shape</label><select value={area.shape || 'rectangle'} onChange={e => updatePreviewArea(idx, 'shape', e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm"><option value="rectangle">Rectangle</option><option value="rounded">Rounded Frame</option><option value="circle">Circle</option></select></div>
-                  <label className="flex items-center gap-2 text-sm text-gray-700 md:mt-6"><input type="checkbox" checked={area.required !== false} onChange={e => updatePreviewArea(idx, 'required', e.target.checked)} /> Photo required for this area</label>
-                </div>
+                <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={area.required !== false} onChange={e => updatePreviewArea(idx, 'required', e.target.checked)} /> Photo required for this area</label>
                 <div><label className="block text-xs font-medium mb-1">Area Instructions</label><input value={area.instructions || ''} onChange={e => updatePreviewArea(idx, 'instructions', e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Example: close-up portrait, landscape photo, family photo" /></div>
               </div>
             ))}
@@ -531,4 +528,3 @@ export default function AdminProductForm({ params }) {
     </div>
   );
 }
-

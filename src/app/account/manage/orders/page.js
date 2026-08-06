@@ -99,12 +99,17 @@ function PreviewDetails({ preview }) {
         <p className="font-semibold text-primary-800">Saved preview / crop instructions</p>
         <p><span className="font-medium">Preview:</span> {preview.previewTitle || '-'}</p>
         {previews.map((entry, index) => (
-          <div key={`${entry.areaLabel || 'area'}-${index}`} className="rounded-md border border-primary-100 bg-white p-2 space-y-1">
+          <div key={`${entry.areaLabel || 'area'}-${index}`} className="rounded-md border border-primary-100 bg-white p-2 space-y-2">
             <p className="font-semibold text-gray-900">{entry.areaLabel || `Photo ${index + 1}`}</p>
-            <p><span className="font-medium">Size:</span> {entry.width || '-'} x {entry.height || '-'} {entry.unit || 'inch'} | <span className="font-medium">Shape:</span> {entry.shape || '-'}</p>
+            {(entry.finalPreviewImage?.url || entry.finalPreviewDataUrl) && (
+              <a href={entry.finalPreviewImage?.url || entry.finalPreviewDataUrl} target="_blank" rel="noopener noreferrer" className="block overflow-hidden rounded-lg border bg-white">
+                <img src={entry.finalPreviewImage?.url || entry.finalPreviewDataUrl} alt={`${entry.areaLabel || 'Preview'} final`} className="max-h-72 w-full object-contain" />
+              </a>
+            )}
+            <p><span className="font-medium">Frame size:</span> {entry.width || '-'} x {entry.height || '-'} {entry.unit || 'inch'}</p>
             {entry.instructions && <p><span className="font-medium">Instructions:</span> {entry.instructions}</p>}
-            {entry.uploadedFile?.url && <a href={entry.uploadedFile.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary-600 hover:text-primary-700">Open uploaded photo</a>}
-            {entry.adjustments && (<p><span className="font-medium">Crop:</span> zoom {entry.adjustments.zoom}, x {entry.adjustments.x}, y {entry.adjustments.y}, filter {entry.adjustments.filter}</p>)}
+            {entry.uploadedFile?.url && <a href={entry.uploadedFile.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary-600 hover:text-primary-700">Open original uploaded photo</a>}
+            {entry.adjustments && (<p><span className="font-medium">Saved alignment:</span> zoom {entry.adjustments.zoom}, x {entry.adjustments.x}, y {entry.adjustments.y}, direction {entry.adjustments.orientation || 'auto'}</p>)}
           </div>
         ))}
       </div>
@@ -117,7 +122,7 @@ function PreviewDetails({ preview }) {
         <a href={preview.uploadedFile.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary-600 hover:text-primary-700">Open uploaded preview image</a>
         <p><span className="font-medium">Source field:</span> {preview.sourceField || '-'}</p>
         <p><span className="font-medium">Frame:</span> {preview.previewTitle || '-'}</p>
-        <p><span className="font-medium">Shape:</span> {preview.shape || '-'} | <span className="font-medium">Ratio:</span> {preview.aspectRatio || '-'}</p>
+        <p><span className="font-medium">Ratio:</span> {preview.aspectRatio || '-'}</p>
         {preview.adjustments && (<p><span className="font-medium">Crop:</span> zoom {preview.adjustments.zoom}, x {preview.adjustments.x}, y {preview.adjustments.y}, filter {preview.adjustments.filter}</p>)}
       </div>
     );
