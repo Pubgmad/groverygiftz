@@ -29,8 +29,8 @@ export async function GET(req) {
   if (status) filter.status = status;
   if (dateFrom || dateTo) {
     filter.paidAt = {};
-    if (dateFrom) filter.paidAt.$gte = new Date(dateFrom + 'T00:00:00.000Z');
-    if (dateTo) filter.paidAt.$lte = new Date(dateTo + 'T23:59:59.999Z');
+    if (dateFrom) filter.paidAt.$gte = new Date(dateFrom + 'T00:00:00.000+05:30');
+    if (dateTo) filter.paidAt.$lte = new Date(dateTo + 'T23:59:59.999+05:30');
   }
 
   const [orders, total] = await Promise.all([

@@ -45,7 +45,7 @@ const normalizeStatus = (status) => {
   return status || 'ordered';
 };
 
-const formatDate = (date) => date ? new Date(date).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
+const formatDate = (date) => date ? new Date(date).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) + ' IST' : '-';
 const isUploadedFile = (value) => value && typeof value === 'object' && value.url;
 const isOutOfTamilNadu = (order) => String(order.shippingAddress?.state || '').trim().toLowerCase() !== 'tamil nadu';
 const addressLine = (address = {}) => [address.line1, address.line2, address.city, address.state].filter(Boolean).join(', ');
@@ -170,7 +170,7 @@ export default function AdminOrdersPage() {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">Orders</h1>
-          <p className="text-sm text-gray-500">Filter by order ID or mobile number. Update production status and ST Couriers tracking from the selected order.</p>
+          <p className="text-sm text-gray-500">Dates are shown and filtered in Indian Standard Time (IST). Update production status and ST Couriers tracking from the selected order.</p>
         </div>
       </div>
 

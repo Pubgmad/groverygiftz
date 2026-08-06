@@ -5,7 +5,7 @@ import { useCart } from '@/context/CartContext';
 import { formatPrice, calcSavings, getEffectivePrice, isOfferActive } from '@/lib/utils';
 import { buildDeliveryEstimateText } from '@/lib/deliveryDate';
 import { buildProductMetaPayload, trackMetaCustomEvent, trackMetaEvent } from '@/lib/metaPixel';
-import { FiMinus, FiPlus, FiX, FiTruck, FiShield, FiClock, FiShoppingCart, FiZap, FiUpload, FiImage } from 'react-icons/fi';
+import { FiMinus, FiPlus, FiX, FiTruck, FiShield, FiClock, FiShoppingCart, FiZap, FiUpload, FiImage, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 const INDIAN_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
@@ -39,6 +39,8 @@ export default function ProductDetail({ product }) {
   const viewedProductRef = useRef('');
   const customTextTrackedRef = useRef({});
   const dragStateRef = useRef(null);
+  const galleryTouchRef = useRef({ startX: 0, endX: 0 });
+  const lightboxTouchRef = useRef({ startX: 0, endX: 0 });
   const [selectedDeliveryState, setSelectedDeliveryState] = useState('');
 
   const offerActive = isOfferActive(product);
@@ -50,6 +52,16 @@ export default function ProductDetail({ product }) {
     ...(product.productVideo?.url ? [{ type: 'video', url: product.productVideo.url, name: product.productVideo.name || 'Product video' }] : []),
   ];
   const currentMedia = mediaItems[selectedImage] || mediaItems[0];
+  const imageItems = mediaItems.filter((item) => item.type === 'image');
+  const goToMedia = (idx) => setSelectedImage((idx + mediaItems.length) % mediaItems.length);
+  const goNextMedia = () => { if (mediaItems.length > 1) goToMedia(selectedImage + 1); };
+  const goPrevMedia = () => { if (mediaItems.length > 1) goToMedia(selectedImage - 1); };
+  const handleGalleryTouchStart = (event) => { galleryTouchRef.current = { startX: event.touches?.[0]?.clientX || 0, endX: event.touches?.[0]?.clientX || 0 }; };
+  const handleGalleryTouchMove = (event) => { galleryTouchRef.current.endX = event.touches?.[0]?.clientX || galleryTouchRef.current.endX; };
+  const handleGalleryTouchEnd = () => { const diff = galleryTouchRef.current.startX - galleryTouchRef.current.endX; if (Math.abs(diff) > 45) diff > 0 ? goNextMedia() : goPrevMedia(); };
+  const handleLightboxTouchStart = (event) => { lightboxTouchRef.current = { startX: event.touches?.[0]?.clientX || 0, endX: event.touches?.[0]?.clientX || 0 }; };
+  const handleLightboxTouchMove = (event) => { lightboxTouchRef.current.endX = event.touches?.[0]?.clientX || lightboxTouchRef.current.endX; };
+  const handleLightboxTouchEnd = () => { const diff = lightboxTouchRef.current.startX - lightboxTouchRef.current.endX; if (Math.abs(diff) > 45) diff > 0 ? goNextMedia() : goPrevMedia(); };
   const previewConfig = product.customizationPreview || {};
   const previewEnabled = !!previewConfig.enabled;
   const legacyPreviewArea = previewConfig.enabled ? [{
@@ -258,6 +270,7 @@ const handleCustomerPhotoUpload = async (files) => {
       productId: product._id,
       title: product.title,
       image: product.images?.[0] || '',
+      images: product.images || [],
       price: finalUnitPrice,
       quantity,
       variant: variantStr,
@@ -303,13 +316,22 @@ const handleCustomerPhotoUpload = async (files) => {
     <div className="grid md:grid-cols-2 gap-8 md:gap-12">
       {/* Product Media Gallery */}
       <div>
-        <div className="aspect-square rounded-2xl overflow-hidden bg-gray-100 mb-4 cursor-pointer" onClick={() => currentMedia?.type === 'image' && setLightboxOpen(true)}>
+        <div className="relative aspect-square rounded-2xl overflow-hidden bg-gray-100 mb-4 cursor-pointer" onClick={() => currentMedia?.type === 'image' && setLightboxOpen(true)} onTouchStart={handleGalleryTouchStart} onTouchMove={handleGalleryTouchMove} onTouchEnd={handleGalleryTouchEnd}>
           {currentMedia?.type === 'video' ? (
-            <video src={currentMedia.url} controls className="w-full h-full object-cover bg-black" />
+            <video src={currentMedia.url} controls className="w-full h-full object-contain bg-black" />
           ) : currentMedia?.url ? (
-            <img src={currentMedia.url} alt={product.title} className="w-full h-full object-cover" />
+            <img src={currentMedia.url} alt={product.title} className="w-full h-full object-contain bg-white" onError={(e) => { e.currentTarget.src = '/placeholder.svg'; }} />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-gray-400">No media</div>
+          )}
+          {mediaItems.length > 1 && (
+            <>
+              <button type="button" onClick={(e) => { e.stopPropagation(); goPrevMedia(); }} className="absolute left-3 top-1/2 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-gray-800 shadow-lg transition hover:bg-white md:flex" aria-label="Previous product media"><FiChevronLeft size={22} /></button>
+              <button type="button" onClick={(e) => { e.stopPropagation(); goNextMedia(); }} className="absolute right-3 top-1/2 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-gray-800 shadow-lg transition hover:bg-white md:flex" aria-label="Next product media"><FiChevronRight size={22} /></button>
+              <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-1.5 rounded-full bg-black/25 px-2 py-1 backdrop-blur-sm">
+                {mediaItems.map((_, idx) => <span key={idx} className={`h-1.5 rounded-full transition-all ${idx === selectedImage ? 'w-5 bg-white' : 'w-1.5 bg-white/60'}`} />)}
+              </div>
+            </>
           )}
         </div>
         {mediaItems.length > 1 && (
@@ -320,7 +342,7 @@ const handleCustomerPhotoUpload = async (files) => {
                 {media.type === 'video' ? (
                   <div className="w-full h-full flex items-center justify-center bg-gray-900 text-white text-xs font-bold">Video</div>
                 ) : (
-                  <img src={media.url} alt="" className="w-full h-full object-cover" />
+                  <img src={media.url} alt="" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.src = '/placeholder.svg'; }} />
                 )}
               </button>
             ))}
@@ -332,12 +354,13 @@ const handleCustomerPhotoUpload = async (files) => {
       <div>
         <h1 className="text-2xl md:text-3xl font-display font-bold mb-4">{product.title}</h1>
 
-        <div className="flex items-center gap-3 mb-4">
+        <div className="flex flex-wrap items-center gap-3 mb-4">
           <span className="text-3xl font-bold text-primary-600">{formatPrice(finalUnitPrice)}</span>
           {savings > 0 && (
             <>
               <span className="text-xl text-gray-400 line-through">{formatPrice(product.regularPrice)}</span>
               <span className="badge-save text-sm">Save {formatPrice(savings)}</span>
+              {product.offerEndsAt && <span className="inline-flex items-center gap-1 rounded-full bg-accent-50 px-3 py-1 text-xs font-extrabold text-accent-700"><FiClock size={12} /> Offer ends {new Date(product.offerEndsAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>}
             </>
           )}
         </div>
@@ -367,11 +390,11 @@ const handleCustomerPhotoUpload = async (files) => {
         <div className="bg-primary-50/60 rounded-xl px-4 py-3 mb-6 space-y-2">
           <div className="flex items-center gap-2 text-sm text-gray-700">
             <FiTruck size={14} className="text-primary-600 shrink-0" />
-            <span>{usesProductDelivery ? (`Tamil Nadu delivery ${tamilNaduDeliveryCost === 0 ? 'free' : formatPrice(tamilNaduDeliveryCost)} for this product. Other states calculated after state selection.`) : 'Tamil Nadu delivery free. Other states calculated after state selection.'}</span>
+            <span>Free Delivery Across Tamil Nadu. Shipping charges for other states will be calculated after selecting your state.</span>
           </div>
           <div className="flex items-center gap-2 text-sm text-gray-700">
             <FiClock size={14} className="text-primary-600 shrink-0" />
-            <span>{usesProductDelivery ? (`Tamil Nadu: ${productDelivery.tamilNaduDeliveryEstimate || 'within 8 days'}. Other states: ${productDelivery.otherStateDeliveryEstimate || '10 to 15 days'}.`) : 'Tamil Nadu: within 8 days. Other states: 10 to 15 days.'}</span>
+            <span>Tamil Nadu Delivery: Within 8 working days | Other States: Within 10-15 working days</span>
           </div>
           <div className="flex items-center gap-2 text-sm text-gray-700">
             <FiShield size={14} className="text-primary-600 shrink-0" />
@@ -700,8 +723,10 @@ const handleCustomerPhotoUpload = async (files) => {
       {lightboxOpen && product.images?.length > 0 && (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={() => setLightboxOpen(false)}>
           <button className="absolute top-4 right-4 text-white hover:text-gray-300 z-50" onClick={() => setLightboxOpen(false)}><FiX size={28} /></button>
-          <div className="max-w-4xl max-h-[90vh] relative" onClick={e => e.stopPropagation()}>
-            <img src={product.images[selectedImage]} alt={product.title} className="max-w-full max-h-[85vh] object-contain rounded-lg" />
+          <div className="max-w-4xl max-h-[90vh] relative" onClick={e => e.stopPropagation()} onTouchStart={handleLightboxTouchStart} onTouchMove={handleLightboxTouchMove} onTouchEnd={handleLightboxTouchEnd}>
+            <img src={currentMedia?.type === 'image' ? currentMedia.url : imageItems[0]?.url} alt={product.title} className="max-w-full max-h-[85vh] object-contain rounded-lg" onError={(e) => { e.currentTarget.src = '/placeholder.svg'; }} />
+            {mediaItems.length > 1 && <button type="button" onClick={goPrevMedia} className="absolute left-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-gray-900 shadow-lg" aria-label="Previous image"><FiChevronLeft size={24} /></button>}
+            {mediaItems.length > 1 && <button type="button" onClick={goNextMedia} className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-gray-900 shadow-lg" aria-label="Next image"><FiChevronRight size={24} /></button>}
             {product.images.length > 1 && (
               <div className="flex justify-center gap-2 mt-4">
                 {product.images.map((img, idx) => (

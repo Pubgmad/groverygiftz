@@ -10,8 +10,11 @@ import MetaPixel from '@/components/meta/MetaPixel';
 import { Toaster } from 'react-hot-toast';
 
 export const metadata = {
+  metadataBase: new URL(process.env.NEXTAUTH_URL || 'https://groverygiftz.in'),
   title: 'GroveryGiftz - Perfect Gifts for Your Loved Ones',
   description: 'Discover unique personalized gifts for every occasion. Customized frames, bottles, hampers, keychains and more.',
+  keywords: ['GroveryGiftz', 'personalized gifts India', 'custom photo frames', 'gifts Coimbatore', 'customized gifts Tamil Nadu'],
+  alternates: { canonical: '/' },
   icons: { icon: '/logo.svg', shortcut: '/logo.svg', apple: '/logo.svg' },
 };
 

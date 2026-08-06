@@ -1,11 +1,30 @@
 'use client';
+import { useEffect, useMemo, useState } from 'react';
 import { useCart } from '@/context/CartContext';
 import { FiX, FiPlus, FiMinus, FiTrash2, FiShoppingBag, FiTruck, FiGift } from 'react-icons/fi';
 import Link from 'next/link';
 import { formatPrice } from '@/lib/utils';
+import { calculateCartShipping } from '@/lib/shipping';
 
 export default function CartDrawer() {
   const { cart, isCartOpen, setIsCartOpen, removeFromCart, updateQuantity, cartTotal, cartCount } = useCart();
+  const [settings, setSettings] = useState({ tamilNaduShippingCost: 0, otherStateShippingCost: 120, tamilNaduDeliveryEstimate: 'Within 8 days', otherStateDeliveryEstimate: '10-15 days' });
+  const selectedState = cart.find((item) => item.deliveryState)?.deliveryState || (typeof window !== 'undefined' ? window.localStorage?.getItem('groveryDeliveryState') : '') || '';
+  const shippingSummary = useMemo(() => calculateCartShipping(cart, selectedState, settings), [cart, selectedState, settings]);
+  const checkoutTotal = cartTotal + (selectedState ? shippingSummary.cost : 0);
+
+  useEffect(() => {
+    fetch('/api/settings')
+      .then((r) => r.json())
+      .then((d) => setSettings({
+        tamilNaduShippingCost: Number(d.tamilNaduShippingCost ?? 0),
+        otherStateShippingCost: Number(d.otherStateShippingCost ?? d.shippingCost ?? 120),
+        tamilNaduDeliveryEstimate: d.tamilNaduDeliveryEstimate || 'Within 8 days',
+        otherStateDeliveryEstimate: d.otherStateDeliveryEstimate || '10-15 days',
+      }))
+      .catch(() => {});
+  }, []);
+
   if (!isCartOpen) return null;
 
   return (
@@ -41,6 +60,15 @@ export default function CartDrawer() {
                   <div className="flex-1 min-w-0">
                     <h4 className="font-semibold text-sm leading-snug line-clamp-2">{item.title}</h4>
                     {item.variant && <p className="text-xs text-gray-500 mt-0.5">{item.variant}</p>}
+                    {Array.isArray(item.images) && item.images.length > 1 && (
+                      <div className="mt-2 flex max-w-full gap-1.5 overflow-x-auto pb-1">
+                        {item.images.slice(0, 6).map((img, imgIdx) => (
+                          <a key={img || imgIdx} href={img} target="_blank" rel="noopener noreferrer" className="block h-10 w-10 shrink-0 overflow-hidden rounded-md border bg-white">
+                            <img src={img} alt={`${item.title} ${imgIdx + 1}`} className="h-full w-full object-contain bg-gray-50" onError={(e) => { e.currentTarget.src = '/placeholder.svg'; }} />
+                          </a>
+                        ))}
+                      </div>
+                    )}
                     {item.giftWrap && <p className="text-xs text-primary-600 mt-0.5">Gift wrapped</p>}
                     {item.deliveryState && <p className="text-xs text-gray-500 mt-0.5">State: {item.deliveryState}</p>}
                     {item.customizationPreview?.uploadedFile?.url && <a href={item.customizationPreview.uploadedFile.url} target="_blank" rel="noopener noreferrer" className="text-xs text-accent-600 mt-0.5 inline-block">View uploaded photo</a>}
@@ -48,7 +76,7 @@ export default function CartDrawer() {
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {item.customizationPreview.previews.filter(p => p.uploadedFile?.url).slice(0, 4).map((preview, pIdx) => (
                           <a key={preview.uploadedFile.url || pIdx} href={preview.uploadedFile.url} target="_blank" rel="noopener noreferrer" className="block h-10 w-10 overflow-hidden rounded-md border bg-white">
-                            <img src={preview.uploadedFile.url} alt={preview.areaLabel || 'Uploaded photo'} className="h-full w-full object-cover" />
+                            <img src={preview.uploadedFile.url} alt={preview.areaLabel || 'Uploaded photo'} className="h-full w-full object-contain bg-gray-50" />
                           </a>
                         ))}
                       </div>
@@ -67,7 +95,12 @@ export default function CartDrawer() {
 
         {cart.length > 0 && (
           <div className="border-t px-6 py-5 space-y-4 bg-white">
-            <div className="flex justify-between items-center"><span className="text-gray-600 font-medium">Subtotal</span><span className="text-xl font-bold text-primary-700">{formatPrice(cartTotal)}</span></div>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center"><span className="text-gray-600 font-medium">Subtotal</span><span className="text-lg font-bold text-gray-900">{formatPrice(cartTotal)}</span></div>
+              {selectedState && <div className="flex justify-between items-center text-sm"><span className="text-gray-600">Delivery charge</span><span className="font-bold text-gray-900">{shippingSummary.cost === 0 ? 'FREE' : formatPrice(shippingSummary.cost)}</span></div>}
+              {selectedState && <div className="flex justify-between items-center border-t pt-2"><span className="text-gray-900 font-bold">Checkout total</span><span className="text-xl font-bold text-primary-700">{formatPrice(checkoutTotal)}</span></div>}
+              {!selectedState && <div className="rounded-lg bg-primary-50 px-3 py-2 text-xs text-gray-600">Select state on product or checkout page to see delivery charge.</div>}
+            </div>
             <Link href="/checkout" onClick={() => setIsCartOpen(false)} className="flex items-center justify-center gap-2 btn-accent w-full text-center text-base font-bold py-4">Checkout Now</Link>
             <Link href="/cart" onClick={() => setIsCartOpen(false)} className="block w-full text-center text-sm font-semibold text-primary-600 hover:text-primary-700 transition-colors">View cart</Link>
             <button onClick={() => setIsCartOpen(false)} className="w-full text-center text-sm text-gray-500 hover:text-primary-600 transition-colors">Continue Shopping</button>
