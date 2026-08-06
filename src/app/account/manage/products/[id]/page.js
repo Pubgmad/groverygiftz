@@ -214,7 +214,6 @@ export default function AdminProductForm({ params }) {
                   <label className="flex items-center gap-2 text-sm text-gray-700 md:mt-6"><input type="checkbox" checked={area.required !== false} onChange={e => updatePreviewArea(idx, 'required', e.target.checked)} /> Photo required for this area</label>
                 </div>
                 <div><label className="block text-xs font-medium mb-1">Area Instructions</label><input value={area.instructions || ''} onChange={e => updatePreviewArea(idx, 'instructions', e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Example: close-up portrait, landscape photo, family photo" /></div>
-                <div><label className="block text-xs font-medium mb-1">Frame / Mockup Image For This Area</label><ImageUploader images={area.frameImage ? [area.frameImage] : []} onChange={imgs => updatePreviewArea(idx, 'frameImage', imgs[0] || '')} /></div>
               </div>
             ))}
             {(form.customizationPreview?.areas || []).length === 0 && <p className="rounded-lg bg-white px-4 py-3 text-sm text-gray-500">No photo areas added yet.</p>}
