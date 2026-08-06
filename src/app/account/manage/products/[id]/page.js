@@ -29,7 +29,7 @@ export default function AdminProductForm({ params }) {
   const [collections, setCollections] = useState([]);
   const [form, setForm] = useState({
     title: '', description: '', images: [], productVideo: { url: '', name: '', poster: '' }, customizationPreview: { enabled: false, title: 'Preview your personalized gift', frameImage: '', aspectRatio: '1:1', shape: 'rectangle', instructions: '', requiredImageCount: 0, maxImageCount: 0, areas: [] }, delivery: defaultDelivery(), regularPrice: '', salePrice: '', offerStartsAt: '', offerEndsAt: '',
-    stock: 100, collections: [], variants: [], customFields: [], collageTemplates: [],
+    stock: 100, collections: [], variants: [], customFields: [], collageEnabled: false, collageTemplates: [],
     giftWrap: { enabled: false, price: 0 }, giftMessage: false,
     isQuoteOnly: false, isFeatured: false, isBestSeller: false, isActive: true,
     seoTitle: '', seoDescription: '',
@@ -48,7 +48,7 @@ export default function AdminProductForm({ params }) {
           offerStartsAt: d.offerStartsAt ? new Date(d.offerStartsAt).toISOString().slice(0, 16) : '',
           offerEndsAt: d.offerEndsAt ? new Date(d.offerEndsAt).toISOString().slice(0, 16) : '',
           stock: d.stock ?? 100, collections: d.collections?.map(c => c._id || c) || [],
-          variants: d.variants || [], customFields: d.customFields || [], collageTemplates: d.collageTemplates || [],
+          variants: d.variants || [], customFields: d.customFields || [], collageEnabled: !!d.collageEnabled, collageTemplates: d.collageTemplates || [],
           giftWrap: d.giftWrap || { enabled: false, price: 0 }, giftMessage: d.giftMessage || false,
           isQuoteOnly: d.isQuoteOnly || false, isFeatured: d.isFeatured || false, isBestSeller: d.isBestSeller || false,
           isActive: d.isActive ?? true, seoTitle: d.seoTitle || d.metaTitle || '', seoDescription: d.seoDescription || d.metaDescription || '',
@@ -419,11 +419,15 @@ export default function AdminProductForm({ params }) {
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="font-bold text-lg">Collage Upload Templates</h2>
-              <p className="text-xs text-gray-500 mt-1">Use this for collage products. Each label creates a separate customer upload section with its own minimum and maximum image count.</p>
+              <p className="text-xs text-gray-500 mt-1">Switch this on only for collage products. Each label creates a separate customer upload section with its own minimum and maximum image count.</p>
             </div>
-            <button type="button" onClick={addCollageTemplate} className="inline-flex w-full items-center justify-center gap-1 rounded-lg border px-3 py-2 text-sm font-semibold text-primary-600 sm:w-auto"><FiPlus /> Add Collage Label</button>
+            <button type="button" onClick={addCollageTemplate} disabled={!form.collageEnabled} className="inline-flex w-full items-center justify-center gap-1 rounded-lg border px-3 py-2 text-sm font-semibold text-primary-600 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"><FiPlus /> Add Collage Label</button>
           </div>
-          {(form.collageTemplates || []).map((template, idx) => (
+          <label className="flex items-center gap-2 rounded-xl border bg-primary-50/50 px-4 py-3 text-sm font-semibold text-gray-800">
+            <input type="checkbox" checked={!!form.collageEnabled} onChange={e => setForm(p => ({ ...p, collageEnabled: e.target.checked }))} />
+            Enable collage uploads for this product
+          </label>
+          {form.collageEnabled && (form.collageTemplates || []).map((template, idx) => (
             <div key={idx} className="rounded-xl border bg-gray-50 p-3 space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-sm font-semibold text-gray-900">Collage Label {idx + 1}</p>
@@ -438,7 +442,8 @@ export default function AdminProductForm({ params }) {
               <label className="flex items-center gap-2 text-xs text-gray-700"><input type="checkbox" checked={template.isActive !== false} onChange={e => updateCollageTemplate(idx, { isActive: e.target.checked })} /> Active for customers</label>
             </div>
           ))}
-          {(form.collageTemplates || []).length === 0 && <p className="rounded-lg bg-gray-50 px-4 py-3 text-sm text-gray-500">No collage labels added. Add labels only for products that need multiple collage uploads.</p>}
+          {form.collageEnabled && (form.collageTemplates || []).length === 0 && <p className="rounded-lg bg-gray-50 px-4 py-3 text-sm text-gray-500">No collage labels added. Add labels only for products that need multiple collage uploads.</p>}
+          {!form.collageEnabled && <p className="rounded-lg bg-gray-50 px-4 py-3 text-sm text-gray-500">Collage uploads are disabled for this product.</p>}
         </div>
         {/* Custom Fields */}
         <div className="bg-white p-4 sm:p-6 rounded-xl border">

@@ -71,6 +71,7 @@ const ProductSchema = new mongoose.Schema({
     type: { type: String, enum: ['text', 'file', 'textarea'] },
     required: { type: Boolean, default: false },
   }],
+  collageEnabled: { type: Boolean, default: false },
   collageTemplates: [CollageTemplateSchema],
   delivery: {
     useCustomDelivery: { type: Boolean, default: false },
