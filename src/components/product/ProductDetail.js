@@ -459,9 +459,9 @@ const handleCustomerPhotoUpload = async (files) => {
 
         {/* Variants */}
         {product.variants?.map((variant, vIdx) => (
-          <div key={vIdx} className="mb-4">
-            <div className="flex items-center gap-3 mb-2">
-              <label className="font-semibold text-sm">
+          <div key={vIdx} className="mb-5 rounded-2xl border border-gray-100 bg-white/80 p-3 shadow-sm sm:p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <label className="text-sm font-extrabold uppercase tracking-wide text-gray-900">
                 {variant.name} {selectedVariants[variant.name]?.label && `(${selectedVariants[variant.name].label})`}
               </label>
               {variant.name.toLowerCase() === 'size' && (
@@ -470,7 +470,7 @@ const handleCustomerPhotoUpload = async (files) => {
                 </button>
               )}
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
               {variant.options?.map((opt, oIdx) => {
                 const extra = getOptionExtraPrice(opt);
                 const optionSoldOut = opt.inStock === false || (typeof opt.stock === 'number' && opt.stock <= 0);
@@ -482,17 +482,17 @@ const handleCustomerPhotoUpload = async (files) => {
                     type="button"
                     disabled={optionSoldOut}
                     onClick={() => setSelectedVariants(prev => { const next = { ...prev }; next[variant.name] = { label: opt.label, extra, useOwnPrice: !!opt.useOwnPrice, regularPrice: opt.regularPrice, salePrice: opt.salePrice, stateOverrides: opt.stateOverrides || [] }; return next; })}
-                    className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                    className={`flex min-h-[58px] w-full flex-col items-center justify-center gap-1 rounded-xl border px-2.5 py-2 text-center text-xs font-bold leading-tight transition-all sm:min-h-[64px] sm:text-sm ${
                       selected
-                        ? 'border-primary-600 bg-primary-50 text-primary-600'
+                        ? 'border-primary-600 bg-primary-50 text-primary-700 shadow-sm ring-2 ring-primary-100'
                         : optionSoldOut
                           ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
-                          : 'border-gray-300 hover:border-gray-400'
+                          : 'border-gray-200 bg-white text-gray-800 hover:border-primary-300 hover:bg-primary-50/40'
                     }`}
                   >
-                    {opt.label}
-                    {opt.useOwnPrice && optionRegularPrice > 0 ? ` ${formatPrice(optionEffectivePrice)}` : extra > 0 && ` (+${formatPrice(extra)})`}
-                    {optionSoldOut && ' (Sold out)'}
+                    <span className="line-clamp-2 break-words">{opt.label}</span>
+                    {(opt.useOwnPrice && optionRegularPrice > 0) ? <span className="text-[11px] font-extrabold text-primary-700 sm:text-xs">{formatPrice(optionEffectivePrice)}</span> : extra > 0 ? <span className="text-[11px] font-extrabold text-primary-700 sm:text-xs">+{formatPrice(extra)}</span> : null}
+                    {optionSoldOut && <span className="text-[10px] font-bold text-red-500">Sold out</span>}
                   </button>
                 );
               })}
