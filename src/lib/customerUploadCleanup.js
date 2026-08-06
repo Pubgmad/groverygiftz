@@ -87,6 +87,7 @@ async function collectProtectedUrls(cutoff) {
     for (const item of order.items || []) {
       extractCustomizationUrls(item.customFields, protectedUrls);
       extractCustomizationUrls(item.customizationPreview, protectedUrls);
+      extractCustomizationUrls(item.collageUploads, protectedUrls);
     }
   }
 
@@ -109,12 +110,14 @@ async function redactOldOrderReferences(cutoff, dryRun) {
     const nextItems = (order.items || []).map((item) => {
       const customFields = redactCustomizationUrls(item.customFields, deletedAt, orderRedactedUrls);
       const customizationPreview = redactCustomizationUrls(item.customizationPreview, deletedAt, orderRedactedUrls);
-      if (!customFields.changed && !customizationPreview.changed) return item;
+      const collageUploads = redactCustomizationUrls(item.collageUploads, deletedAt, orderRedactedUrls);
+      if (!customFields.changed && !customizationPreview.changed && !collageUploads.changed) return item;
       orderChanged = true;
       return {
         ...item,
         customFields: customFields.value,
         customizationPreview: customizationPreview.value,
+        collageUploads: collageUploads.value,
       };
     });
 
