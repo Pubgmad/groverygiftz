@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import Image from 'next/image';
 import { FiInstagram, FiYoutube, FiMail, FiPhone, FiMapPin, FiPackage } from 'react-icons/fi';
 import Newsletter from './Newsletter';
 import dbConnect from '@/lib/db';
@@ -15,6 +14,8 @@ export default async function Footer() {
   const timingText = settings?.timings || '11 am to 7 pm';
   const instagram = settings?.socialLinks?.instagram || 'https://www.instagram.com/groverygiftz?igsh=dGNpbHlybWI0cjNy';
   const youtube = settings?.socialLinks?.youtube || '';
+  const logoSrc = settings?.logo || '';
+  const siteName = settings?.siteName || 'GroveryGiftz';
 
   return (
     <footer className="bg-gray-950 text-gray-400">
@@ -34,11 +35,14 @@ export default async function Footer() {
           {/* Brand column */}
           <div>
             <Link href="/" className="flex items-center gap-2.5 mb-4">
-              <Image src="/logo.svg" alt="GroveryGiftz" width={36} height={44} />
-              <div className="leading-none">
-                <span className="text-lg font-display font-bold text-white">Grovery</span>
-                <span className="text-lg font-display font-bold text-accent-400">Giftz</span>
-              </div>
+              {logoSrc ? (
+                <img src={logoSrc} alt={siteName} className="h-12 max-w-[220px] object-contain" />
+              ) : (
+                <div className="leading-none">
+                  <span className="text-lg font-display font-bold text-white">Grovery</span>
+                  <span className="text-lg font-display font-bold text-accent-400">Giftz</span>
+                </div>
+              )}
             </Link>
             <p className="text-sm leading-relaxed mb-5">
               We understand that gifts are more than just material objects; they&apos;re a representation of emotions, relationships, and unforgettable moments.

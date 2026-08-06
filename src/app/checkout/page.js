@@ -8,6 +8,7 @@ import { FiChevronRight, FiCheckCircle, FiShield, FiTruck, FiCreditCard, FiMapPi
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
+import { buildDeliveryEstimateText } from '@/lib/deliveryDate';
 
 const STEPS = ['Address', 'Payment', 'Confirm'];
 const INDIAN_STATES = [
@@ -53,7 +54,8 @@ const calculateShipping = (items, state, settings) => {
     estimates.push(isTamilNadu(state) ? settings.tamilNaduDeliveryEstimate : settings.otherStateDeliveryEstimate);
   }
   const uniqueEstimates = [...new Set(estimates.filter(Boolean))];
-  const estimate = uniqueEstimates.length > 1 ? uniqueEstimates.join(' / ') : (uniqueEstimates[0] || (isTamilNadu(state) ? 'Within 8 days' : '10-15 days'));
+  const rawEstimate = uniqueEstimates.length > 1 ? uniqueEstimates.join(' / ') : (uniqueEstimates[0] || (isTamilNadu(state) ? 'Within 8 days' : '10-15 days'));
+  const estimate = buildDeliveryEstimateText(rawEstimate, { fallbackDays: isTamilNadu(state) ? 8 : 15 });
   return { cost, estimate, hasCustomDelivery };
 };
 

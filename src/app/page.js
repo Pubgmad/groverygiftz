@@ -16,6 +16,18 @@ import Banner from '@/models/Banner';
 import Settings from '@/models/Settings';
 import { resolveGiftFinderForUi, resolveTickerMessages } from '@/lib/giftFinderResolve';
 
+function activeOfferQuery(now) {
+  return {
+    isActive: true,
+    salePrice: { $gt: 0 },
+    $expr: { $lt: ['$salePrice', '$regularPrice'] },
+    $and: [
+      { $or: [{ offerStartsAt: null }, { offerStartsAt: { $exists: false } }, { offerStartsAt: { $lte: now } }] },
+      { $or: [{ offerEndsAt: null }, { offerEndsAt: { $exists: false } }, { offerEndsAt: { $gte: now } }] },
+    ],
+  };
+}
+
 export const dynamic = 'force-dynamic';
 
 async function getData() {
@@ -28,10 +40,13 @@ async function getData() {
     ? await Collection.findOne({ slug: showcaseSlug, isActive: true }).lean()
     : null;
 
-  const [banners, collections, featured, showcaseProducts] = await Promise.all([
+  const now = new Date();
+  const [banners, collections, featured, offerProducts, bestSellers, showcaseProducts] = await Promise.all([
     Banner.find({ isActive: true }).sort({ order: 1 }).lean(),
     Collection.find({ isFeatured: true, isActive: true }).sort({ order: 1 }).limit(4).lean(),
-    Product.find({ isActive: true }).sort({ createdAt: -1 }).limit(12).lean(),
+    Product.find({ isFeatured: true, isActive: true }).sort({ createdAt: -1 }).limit(12).lean(),
+    Product.find(activeOfferQuery(now)).sort({ createdAt: -1 }).limit(12).lean(),
+    Product.find({ isBestSeller: true, isActive: true }).sort({ createdAt: -1 }).limit(12).lean(),
     showcaseCollection
       ? Product.find({ collections: showcaseCollection._id, isActive: true }).sort({ createdAt: -1 }).limit(12).lean()
       : Promise.resolve([]),
@@ -49,6 +64,8 @@ async function getData() {
     banners: JSON.parse(JSON.stringify(banners)),
     collections: JSON.parse(JSON.stringify(collections)),
     featured: JSON.parse(JSON.stringify(featured)),
+    offerProducts: JSON.parse(JSON.stringify(offerProducts)),
+    bestSellers: JSON.parse(JSON.stringify(bestSellers)),
     showcaseProducts: JSON.parse(JSON.stringify(showcaseProducts)),
     showcaseSlug: showcaseCollection?.slug || '',
     settings: s,
@@ -64,6 +81,8 @@ export default async function HomePage() {
     banners,
     collections,
     featured,
+    offerProducts,
+    bestSellers,
     showcaseProducts,
     showcaseSlug,
     settings,
@@ -83,6 +102,23 @@ export default async function HomePage() {
         title={settings?.homeFeaturedProductsTitle || ''}
         subtitle={settings?.homeFeaturedProductsSubtitle || ''}
         buttonText={settings?.homeFeaturedProductsButtonText || ''}
+        buttonLink="/shop"
+      />
+      <FeaturedProducts
+        products={offerProducts}
+        eyebrow="Limited offers"
+        title="Limited Time Offers"
+        subtitle="Only products with an active admin-defined sale price appear here."
+        buttonText="View Offers"
+        buttonLink="/shop?view=offers"
+      />
+      <FeaturedProducts
+        products={bestSellers}
+        eyebrow="Best sellers"
+        title="Customer Favourite Gifts"
+        subtitle="Only products marked Best Seller by admin appear here."
+        buttonText="View Best Sellers"
+        buttonLink="/shop?view=best-sellers"
       />
       <CollectionShowcase
         products={showcaseProducts}

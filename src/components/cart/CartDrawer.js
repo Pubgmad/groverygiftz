@@ -21,7 +21,7 @@ export default function CartDrawer() {
         {cart.length > 0 && (
           <div className="px-6 py-3 bg-primary-50/60 border-b text-sm text-gray-700 flex gap-2">
             <FiTruck size={15} className="text-primary-600 mt-0.5 shrink-0" />
-            <span>Delivery is calculated at checkout from the selected state.</span>
+            <span>Delivery charges are added from the selected state at checkout.</span>
           </div>
         )}
 
@@ -42,7 +42,17 @@ export default function CartDrawer() {
                     <h4 className="font-semibold text-sm leading-snug line-clamp-2">{item.title}</h4>
                     {item.variant && <p className="text-xs text-gray-500 mt-0.5">{item.variant}</p>}
                     {item.giftWrap && <p className="text-xs text-primary-600 mt-0.5">Gift wrapped</p>}
-                    {item.customizationPreview?.uploadedFile?.url && <p className="text-xs text-accent-600 mt-0.5">Preview saved</p>}
+                    {item.deliveryState && <p className="text-xs text-gray-500 mt-0.5">State: {item.deliveryState}</p>}
+                    {item.customizationPreview?.uploadedFile?.url && <a href={item.customizationPreview.uploadedFile.url} target="_blank" rel="noopener noreferrer" className="text-xs text-accent-600 mt-0.5 inline-block">View uploaded photo</a>}
+                    {item.customizationPreview?.previews?.some?.(p => p.uploadedFile?.url) && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {item.customizationPreview.previews.filter(p => p.uploadedFile?.url).slice(0, 4).map((preview, pIdx) => (
+                          <a key={preview.uploadedFile.url || pIdx} href={preview.uploadedFile.url} target="_blank" rel="noopener noreferrer" className="block h-10 w-10 overflow-hidden rounded-md border bg-white">
+                            <img src={preview.uploadedFile.url} alt={preview.areaLabel || 'Uploaded photo'} className="h-full w-full object-cover" />
+                          </a>
+                        ))}
+                      </div>
+                    )}
                     <p className="font-bold text-primary-600 mt-1">{formatPrice(item.price * item.quantity)}</p>
                     <div className="flex items-center gap-2 mt-2">
                       <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden"><button onClick={() => updateQuantity(item.productId, item.variant, item.quantity - 1)} className="w-7 h-7 flex items-center justify-center hover:bg-gray-200 transition-colors text-gray-600"><FiMinus size={12} /></button><span className="w-8 text-center text-sm font-semibold">{item.quantity}</span><button onClick={() => updateQuantity(item.productId, item.variant, item.quantity + 1)} className="w-7 h-7 flex items-center justify-center hover:bg-gray-200 transition-colors text-gray-600"><FiPlus size={12} /></button></div>

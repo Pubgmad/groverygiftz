@@ -5,6 +5,7 @@ import Order from '@/models/Order';
 import Product from '@/models/Product';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { buildDeliveryEstimateText } from '@/lib/deliveryDate';
 
 const CASHFREE_VERSION = '2025-01-01';
 const endpointFor = (environment) => environment === 'production'
@@ -63,7 +64,7 @@ const calculateShipping = (items, productsById, state, settings) => {
   const uniqueEstimates = [...new Set(estimates.filter(Boolean))];
   return {
     cost,
-    estimate: uniqueEstimates.length > 1 ? uniqueEstimates.join(' / ') : (uniqueEstimates[0] || (isTamilNadu(state) ? 'Within 8 days' : '10-15 days')),
+    estimate: buildDeliveryEstimateText(uniqueEstimates.length > 1 ? uniqueEstimates.join(' / ') : (uniqueEstimates[0] || (isTamilNadu(state) ? 'Within 8 days' : '10-15 days')), { fallbackDays: isTamilNadu(state) ? 8 : 15 }),
   };
 };
 
@@ -138,9 +139,7 @@ export async function POST(req) {
       subtotal,
       shippingCost,
       total,
-      deliveryEstimate: isTamilNadu(shippingAddress.state)
-        ? settings.tamilNaduDeliveryEstimate || 'Within 8 days'
-        : settings.otherStateDeliveryEstimate || '10-15 days',
+      deliveryEstimate: shipping.estimate,
       isOutOfTamilNadu: !isTamilNadu(shippingAddress.state),
       paymentMethod: 'Cashfree',
       paymentStatus: 'pending',

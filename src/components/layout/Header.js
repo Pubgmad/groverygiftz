@@ -31,10 +31,29 @@ export default function Header() {
   const [suggestions, setSuggestions] = useState([]);
   const [suggesting, setSuggesting] = useState(false);
   const [megaOpen, setMegaOpen] = useState(false);
+  const [settings, setSettings] = useState(null);
+  const [menuCollections, setMenuCollections] = useState([]);
   const { cartCount, setIsCartOpen } = useCart();
   const { wishlistCount } = useWishlist();
   const { data: session } = useSession();
   const accountHref = session?.user?.type === 'customer' ? '/account' : '/auth/login';
+  const logoSrc = settings?.logo || '';
+  const siteName = settings?.siteName || 'GroveryGiftz';
+
+  useEffect(() => {
+    fetch('/api/settings').then((r) => r.json()).then(setSettings).catch(() => {});
+    fetch('/api/collections')
+      .then((r) => r.json())
+      .then((data) => {
+        const colors = ['bg-accent-50 text-accent-600', 'bg-amber-50 text-amber-600', 'bg-primary-50 text-primary-600', 'bg-primary-100 text-primary-700'];
+        setMenuCollections((data.collections || []).slice(0, 6).map((col, idx) => ({
+          label: col.name,
+          href: `/collections/${col.slug}`,
+          color: colors[idx % colors.length],
+        })));
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const query = searchQuery.trim();
@@ -53,6 +72,8 @@ export default function Header() {
     }, 180);
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  const visibleMegaCollections = menuCollections.length ? menuCollections : megaCollections;
 
   const closeSearch = () => {
     setSearchOpen(false);
@@ -80,11 +101,17 @@ export default function Header() {
           </button>
 
           <Link href="/" className="group flex min-w-0 items-center justify-center gap-1.5 sm:gap-2.5 md:justify-start md:flex-shrink-0">
-            <Image src="/logo.svg" alt="GroveryGiftz Logo" width={34} height={42} className="h-10 w-auto shrink-0 transition-transform duration-200 group-hover:scale-105 sm:h-[46px]" priority />
-            <div className="min-w-0 leading-none">
-              <span className="text-[17px] sm:text-xl md:text-2xl font-display font-bold text-primary-600 tracking-tight">Grovery</span>
-              <span className="text-[17px] sm:text-xl md:text-2xl font-display font-bold text-accent-500 tracking-tight">Giftz</span>
-            </div>
+            {logoSrc ? (
+              <img src={logoSrc} alt={siteName} className="h-10 max-w-[190px] shrink-0 object-contain transition-transform duration-200 group-hover:scale-105 sm:h-12 md:max-w-[240px]" />
+            ) : (
+              <>
+                <Image src="/logo.svg" alt="GroveryGiftz Logo" width={34} height={42} className="h-10 w-auto shrink-0 transition-transform duration-200 group-hover:scale-105 sm:h-[46px]" priority />
+                <div className="min-w-0 leading-none">
+                  <span className="text-[17px] sm:text-xl md:text-2xl font-display font-bold text-primary-600 tracking-tight">Grovery</span>
+                  <span className="text-[17px] sm:text-xl md:text-2xl font-display font-bold text-accent-500 tracking-tight">Giftz</span>
+                </div>
+              </>
+            )}
           </Link>
 
           <nav className="hidden md:flex items-center space-x-1">
@@ -97,7 +124,7 @@ export default function Header() {
                   <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 bg-white rounded-2xl shadow-brand-lg border border-primary-100 p-5 w-[480px] z-50">
                     <p className="text-xs font-semibold uppercase tracking-widest text-primary-400 mb-3 px-1">Collections</p>
                     <div className="grid grid-cols-2 gap-2">
-                      {megaCollections.map(col => (
+                      {visibleMegaCollections.map(col => (
                         <Link key={col.href} href={col.href} className="group flex items-center gap-3 p-3 rounded-xl hover:bg-primary-50 transition-colors">
                           <div className={`w-12 h-12 rounded-xl ${col.color} flex items-center justify-center flex-shrink-0`}><FiGift size={20} /></div>
                           <div>
@@ -166,7 +193,7 @@ export default function Header() {
                 <Link href={item.href} onClick={() => setMobileOpen(false)} className="px-5 py-3 text-gray-700 hover:bg-primary-50 hover:text-primary-600 font-medium block transition-colors">{item.label}</Link>
                 {item.megaMenu && (
                   <div className="bg-gray-50 px-5 sm:px-8 py-2 grid grid-cols-1 sm:grid-cols-2 gap-1">
-                    {megaCollections.map(col => (
+                    {visibleMegaCollections.map(col => (
                       <Link key={col.href} href={col.href} onClick={() => setMobileOpen(false)} className="py-2 text-sm text-gray-600 hover:text-primary-600 flex items-center gap-1.5 transition-colors"><FiGift size={14} /> {col.label}</Link>
                     ))}
                   </div>

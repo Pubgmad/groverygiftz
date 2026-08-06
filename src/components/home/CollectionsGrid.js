@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { FiArrowRight, FiGift } from 'react-icons/fi';
+import { FiArrowRight } from 'react-icons/fi';
 
 const COLLECTION_STYLES = [
   { gradient: 'from-rose-500 via-accent-500 to-primary-700', label: 'Love' },
@@ -20,7 +20,7 @@ export default function CollectionsGrid({ collections = [], settings }) {
             {settings?.homeCollectionsTitle && <h2 className="text-3xl font-display font-extrabold leading-tight text-gray-950 md:text-5xl">{settings.homeCollectionsTitle}</h2>}
             {settings?.homeCollectionsSubtitle && <p className="mt-4 max-w-xl text-gray-600">{settings.homeCollectionsSubtitle}</p>}
           </div>
-          <Link href="/shop" className="btn-outline inline-flex w-fit items-center gap-2 px-5 py-3">
+          <Link href="/shop?view=collections" className="btn-outline inline-flex w-fit items-center gap-2 px-5 py-3">
             All gifts <FiArrowRight size={16} />
           </Link>
         </div>
@@ -46,17 +46,14 @@ export default function CollectionsGrid({ collections = [], settings }) {
                 )}
 
                 <div className="absolute inset-0 bg-gradient-to-t from-black/86 via-black/28 to-transparent" />
-                <div className="absolute left-3 right-3 top-3 flex items-start justify-between gap-2 sm:left-4 sm:right-4 sm:top-4">
-                  <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white/92 text-primary-700 shadow-sm">
-                    <FiGift size={17} />
-                  </span>
-                  <span className="inline-flex shrink-0 items-center justify-center rounded-full bg-accent-500 px-3 py-1.5 text-[10px] font-extrabold uppercase leading-none tracking-wide text-white shadow-sm sm:text-[11px]">
+                <div className="absolute left-3 right-3 top-3 flex items-start justify-between gap-2 sm:left-4 sm:right-4 sm:top-4">
+                  <span className="ml-auto inline-flex shrink-0 items-center justify-center rounded-full bg-accent-500 px-3 py-1.5 text-[10px] font-extrabold uppercase leading-none tracking-wide text-white shadow-sm sm:text-[11px]">
                     Curated
                   </span>
                 </div>
 
                 <div className="absolute inset-x-0 bottom-0 p-4 md:p-5">
-                  <h3 className="text-lg font-display font-extrabold leading-tight text-white drop-shadow md:text-xl">{col.name}</h3>
+                  <h3 className="text-lg font-display font-extrabold leading-tight text-white drop-shadow-[0_3px_8px_rgba(0,0,0,0.95)] md:text-xl">{col.name}</h3>
                   <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-extrabold text-primary-700 shadow-md transition-all duration-300 group-hover:bg-accent-500 group-hover:text-white md:text-sm">
                     {settings?.homeCollectionsButtonText || 'Shop gifts'} <FiArrowRight size={14} />
                   </div>

@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { FiChevronLeft, FiChevronRight, FiTruck, FiGift, FiStar, FiShoppingBag, FiShield } from 'react-icons/fi';
@@ -16,15 +16,18 @@ export default function HeroCarousel({ banners = [], settings }) {
   const fallbackTitle = settings?.heroFallbackTitle || 'Personalized Gifts Made With Love';
   const fallbackSubtitle = settings?.heroFallbackSubtitle || 'Create memorable photo frames, LED lamps, engravings and custom gifts for every occasion.';
   const fallbackButtonText = settings?.heroFallbackButtonText || 'Shop gifts';
+  const touchStartX = useRef(null);
+  const touchEndX = useRef(null);
+  const handleTouchStart = (event) => { touchStartX.current = event.touches?.[0]?.clientX ?? null; };
+  const handleTouchMove = (event) => { touchEndX.current = event.touches?.[0]?.clientX ?? null; };
+  const handleTouchEnd = () => {
+    if (slides.length <= 1 || touchStartX.current === null || touchEndX.current === null) return;
+    const diff = touchStartX.current - touchEndX.current;
+    if (Math.abs(diff) > 45) goTo(diff > 0 ? (current + 1) % slides.length : (current - 1 + slides.length) % slides.length);
+    touchStartX.current = null;
+    touchEndX.current = null;
+  };
 
-  useEffect(() => {
-    if (slides.length <= 1) return undefined;
-    const timer = setInterval(() => {
-      setCurrent((c) => (c + 1) % slides.length);
-      setKey((k) => k + 1);
-    }, 5500);
-    return () => clearInterval(timer);
-  }, [slides.length]);
 
   if (slides.length === 0) return null;
 
@@ -47,7 +50,7 @@ export default function HeroCarousel({ banners = [], settings }) {
   };
 
   return (
-    <section className="relative min-h-[520px] overflow-hidden sm:min-h-[560px] md:min-h-[640px] lg:min-h-[690px]">
+    <section className="relative min-h-[520px] overflow-hidden sm:min-h-[560px] md:min-h-[620px] lg:min-h-[650px]">
       {slides.map((slide, idx) => (
         <div
           key={slide._id || idx}
@@ -55,15 +58,18 @@ export default function HeroCarousel({ banners = [], settings }) {
           role="link"
           tabIndex={idx === current ? 0 : -1}
           onClick={(event) => openBanner(slide, event)}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
           onKeyDown={(event) => { if (event.key === 'Enter') openBanner(slide, event); }}
         >
           {slide.image ? (
-            <img src={slide.image} alt={slide.title || ''} className="h-full w-full object-cover" />
+            <img src={slide.image} alt={slide.title || ''} className="h-full w-full object-cover object-center md:object-contain md:bg-white" />
           ) : (
             <div className="h-full w-full bg-gradient-to-br from-primary-800 via-primary-600 to-accent-500" />
           )}
-          <div className="absolute inset-0 bg-gradient-to-b from-black/75 via-black/45 to-black/25 sm:bg-gradient-to-r sm:from-black/80 sm:via-black/48 sm:to-black/15" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/72 via-transparent to-black/20" />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/38 via-black/18 to-black/10 sm:bg-gradient-to-r sm:from-black/46 sm:via-black/20 sm:to-black/5" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-black/5" />
           <div className="relative z-10 mx-auto flex min-h-[520px] max-w-7xl items-center px-4 pb-28 pt-12 sm:min-h-[560px] sm:pt-20 md:min-h-[640px] md:px-6 lg:min-h-[690px]">
             <div key={key} className={`max-w-3xl ${idx === current ? 'hero-text-in' : ''}`}>
               {settings?.heroEyebrow && (

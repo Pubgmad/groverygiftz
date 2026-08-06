@@ -21,15 +21,15 @@ export async function GET() {
 
   const [products, orders, customers, collections, banners, blogs, messages, subscribers, revenue, recentOrders] = await Promise.all([
     Product.countDocuments(),
-    Order.countDocuments(),
+    Order.countDocuments({ paymentStatus: 'paid' }),
     Customer.countDocuments(),
     Collection.countDocuments(),
     Banner.countDocuments(),
     Blog.countDocuments(),
     Contact.countDocuments({ isRead: false }),
     Newsletter.countDocuments(),
-    Order.aggregate([{ $match: { status: { $ne: 'cancelled' } } }, { $group: { _id: null, total: { $sum: '$total' } } }]),
-    Order.find().sort({ createdAt: -1 }).limit(5).lean(),
+    Order.aggregate([{ $match: { paymentStatus: 'paid', status: { $ne: 'cancelled' } } }, { $group: { _id: null, total: { $sum: '$total' } } }]),
+    Order.find({ paymentStatus: 'paid' }).sort({ paidAt: -1, createdAt: -1 }).limit(5).lean(),
   ]);
 
   return NextResponse.json({

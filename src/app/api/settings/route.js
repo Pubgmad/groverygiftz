@@ -6,11 +6,19 @@ import Settings from '@/models/Settings';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 
+function sanitizePublicSettings(settings) {
+  const publicSettings = { ...settings };
+  publicSettings.cashfreeSecretKey = '';
+  publicSettings.metaPixelTestEventCode = '';
+  return publicSettings;
+}
+
 export async function GET() {
+  const session = await getServerSession(authOptions);
   await dbConnect();
   let settings = await Settings.findOne().lean();
   if (!settings) {
-    settings = await Settings.create({
+    const created = await Settings.create({
       siteName: 'GroveryGiftz',
       tagline: 'Your One-Stop Gift Shop',
       announcementText: 'Tamil Nadu delivery free | Pan India delivery available',
@@ -38,6 +46,11 @@ export async function GET() {
       metaPixelId: '',
       metaPixelTestEventCode: '',
     });
+    settings = created.toObject();
+  }
+
+  if (!session || session.user.type !== 'admin') {
+    return NextResponse.json(sanitizePublicSettings(settings));
   }
   return NextResponse.json(settings);
 }
@@ -55,4 +68,3 @@ export async function PUT(req) {
   revalidatePath('/');
   return NextResponse.json(settings);
 }
-

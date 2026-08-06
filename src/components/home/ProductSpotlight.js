@@ -81,7 +81,7 @@ export default function ProductSpotlight({ product }) {
 
             <div className="grid grid-cols-1 gap-2 text-center text-xs font-bold text-gray-600 sm:grid-cols-3">
               <div className="rounded-xl bg-primary-50 px-2 py-3"><FiTruck className="mx-auto mb-1 text-primary-700" /> Delivery ready</div>
-              <div className="rounded-xl bg-accent-50 px-2 py-3"><FiGift className="mx-auto mb-1 text-accent-700" /> Gift packed</div>
+              <div className="rounded-xl bg-accent-50 px-2 py-3"><FiGift className="mx-auto mb-1 text-accent-700" /> Premium quality</div>
               <div className="rounded-xl bg-emerald-50 px-2 py-3"><FiShield className="mx-auto mb-1 text-emerald-700" /> Secure order</div>
             </div>
 

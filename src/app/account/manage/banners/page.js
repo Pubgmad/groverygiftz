@@ -58,6 +58,9 @@ export default function AdminBannersPage() {
             <input required placeholder="Title" value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} className="w-full border rounded-lg px-4 py-2" />
             <input placeholder="Subtitle" value={form.subtitle} onChange={e => setForm(p => ({ ...p, subtitle: e.target.value }))} className="w-full border rounded-lg px-4 py-2" />
             <ImageUploader images={form.image ? [form.image] : []} onChange={imgs => setForm(p => ({ ...p, image: imgs[0] || '' }))} />
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              Recommended banner image: 1920 x 900 px landscape. Keep important faces/products in the center and avoid placing text near the edges, because mobile crops the sides while desktop shows the full banner area.
+            </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div className="sm:col-span-1"><input placeholder="/products/product-slug or /collections/collection-slug" value={form.link} onChange={e => setForm(p => ({ ...p, link: e.target.value }))} className="w-full border rounded-lg px-4 py-2" /><p className="mt-1 text-xs text-gray-500">Copy the exact public link from Products or Collections and paste it here.</p></div>
               <input placeholder="Button Text" value={form.buttonText} onChange={e => setForm(p => ({ ...p, buttonText: e.target.value }))} className="border rounded-lg px-4 py-2" />

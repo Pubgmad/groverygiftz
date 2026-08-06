@@ -36,7 +36,17 @@ export default function CartPage() {
                 <h3 className="font-semibold text-sm leading-snug line-clamp-2 mb-0.5">{item.title}</h3>
                 {item.variant && <p className="text-xs text-gray-400 mb-1">{item.variant}</p>}
                 {item.giftWrap && <p className="text-xs text-primary-600 mb-1">Gift wrapped</p>}
-                {item.customizationPreview?.uploadedFile?.url && <p className="text-xs text-accent-600 mb-1">Preview saved</p>}
+                {item.deliveryState && <p className="text-xs text-gray-500 mb-1">State: {item.deliveryState}</p>}
+                {item.customizationPreview?.uploadedFile?.url && <a href={item.customizationPreview.uploadedFile.url} target="_blank" rel="noopener noreferrer" className="text-xs text-accent-600 mb-1 inline-block">View uploaded photo</a>}
+                {item.customizationPreview?.previews?.some?.(p => p.uploadedFile?.url) && (
+                  <div className="mb-2 flex flex-wrap gap-1.5">
+                    {item.customizationPreview.previews.filter(p => p.uploadedFile?.url).slice(0, 5).map((preview, pIdx) => (
+                      <a key={preview.uploadedFile.url || pIdx} href={preview.uploadedFile.url} target="_blank" rel="noopener noreferrer" className="block h-10 w-10 overflow-hidden rounded-md border bg-white">
+                        <img src={preview.uploadedFile.url} alt={preview.areaLabel || 'Uploaded photo'} className="h-full w-full object-cover" />
+                      </a>
+                    ))}
+                  </div>
+                )}
                 <p className="font-bold text-primary-600">{formatPrice(item.price)}</p>
               </div>
               <div className="flex flex-col items-end justify-between gap-2">
@@ -57,7 +67,7 @@ export default function CartPage() {
             <div className="px-5 py-4 border-b bg-gray-50/80"><h2 className="font-bold text-base">Order Summary</h2></div>
             <div className="p-5 space-y-3">
               <div className="flex justify-between text-sm text-gray-600"><span>Items ({cart.reduce((s, i) => s + i.quantity, 0)})</span><span>{formatPrice(cartTotal)}</span></div>
-              <div className="rounded-xl border border-primary-100 bg-primary-50/70 px-3 py-3 text-sm text-gray-700 flex gap-2"><FiTruck size={16} className="text-primary-600 mt-0.5 shrink-0" /><span>Delivery is calculated after you select your state. Tamil Nadu delivery is free; other states may include a charge.</span></div>
+              <div className="rounded-xl border border-primary-100 bg-primary-50/70 px-3 py-3 text-sm text-gray-700 flex gap-2"><FiTruck size={16} className="text-primary-600 mt-0.5 shrink-0" /><span>Delivery charges are added after you select your state. Tamil Nadu delivery is free; other states may include a charge.</span></div>
               <div className="border-t border-dashed pt-3 flex justify-between font-bold text-lg"><span>Subtotal</span><span className="text-primary-600">{formatPrice(cartTotal)}</span></div>
               <button type="button" onClick={() => router.push('/checkout')} className="btn-accent w-full py-4 text-base font-bold flex items-center justify-center gap-2">Proceed to Checkout</button>
               <Link href="/shop" className="block text-center text-sm text-gray-400 hover:text-primary-600 transition-colors mt-1">Continue Shopping</Link>

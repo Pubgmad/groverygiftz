@@ -107,9 +107,14 @@ export default function AdminOrdersPage() {
   const [trackingDraft, setTrackingDraft] = useState('');
   const [orderFilter, setOrderFilter] = useState('');
   const [mobileFilter, setMobileFilter] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   const fetchOrders = async () => {
-    const res = await fetch('/api/orders');
+    const query = new URLSearchParams();
+    if (dateFrom) query.set('dateFrom', dateFrom);
+    if (dateTo) query.set('dateTo', dateTo);
+    const res = await fetch(`/api/orders${query.toString() ? `?${query.toString()}` : ''}`);
     const data = await res.json();
     const nextOrders = data.orders || [];
     setOrders(nextOrders);
@@ -117,7 +122,7 @@ export default function AdminOrdersPage() {
     if (selected?._id) setSelected(nextOrders.find((order) => order._id === selected._id) || null);
   };
 
-  useEffect(() => { fetchOrders(); }, []);
+  useEffect(() => { fetchOrders(); }, [dateFrom, dateTo]);
 
   useEffect(() => {
     setTrackingDraft(selected?.trackingNumber || '');
@@ -171,7 +176,7 @@ export default function AdminOrdersPage() {
 
       <div className="grid xl:grid-cols-3 gap-6">
         <div className="xl:col-span-2 bg-white rounded-xl border overflow-hidden">
-          <div className="grid sm:grid-cols-2 gap-3 border-b bg-gray-50 p-4">
+          <div className="grid sm:grid-cols-4 gap-3 border-b bg-gray-50 p-4">
             <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1">Order ID</label>
               <input value={orderFilter} onChange={(e) => setOrderFilter(e.target.value)} placeholder="Search GG0001" className="w-full rounded-lg border px-3 py-2 text-sm" />
@@ -179,6 +184,14 @@ export default function AdminOrdersPage() {
             <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1">Mobile Number</label>
               <input value={mobileFilter} onChange={(e) => setMobileFilter(e.target.value)} placeholder="Search mobile" className="w-full rounded-lg border px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">From Date</label>
+              <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">To Date</label>
+              <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm" />
             </div>
           </div>
 
@@ -235,6 +248,7 @@ export default function AdminOrdersPage() {
                 )}
                 <div><span className="text-gray-500">Order date:</span> {formatDate(selected.paidAt || selected.createdAt)}</div>
                 <div><span className="text-gray-500">Estimated delivery:</span> <span className="font-medium">{selected.deliveryEstimate || '-'}</span></div>
+                {selected.notes && <div className="rounded-lg border bg-yellow-50 p-3"><span className="text-gray-500">Customer note:</span> <p className="font-medium text-gray-900 whitespace-pre-wrap">{selected.notes}</p></div>}
                 <div>
                   <span className="text-gray-500">Status:</span>
                   <select value={normalizeStatus(selected.status)} onChange={e => updateStatus(selected._id, e.target.value)} className="ml-2 border rounded px-2 py-1 text-sm">

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useCart } from '@/context/CartContext';
 import { formatPrice, calcSavings, getEffectivePrice, isOfferActive } from '@/lib/utils';
+import { buildDeliveryEstimateText } from '@/lib/deliveryDate';
 import { buildProductMetaPayload, trackMetaCustomEvent, trackMetaEvent } from '@/lib/metaPixel';
 import { FiMinus, FiPlus, FiX, FiTruck, FiShield, FiClock, FiShoppingCart, FiZap, FiUpload, FiImage } from 'react-icons/fi';
 import toast from 'react-hot-toast';
@@ -212,7 +213,11 @@ const handleCustomerPhotoUpload = async (files) => {
       toast.error(`Maximum ${maxPhotoCount} photos allowed for this product`);
       return;
     }
-    const filesToUpload = selectedFiles.slice(0, remainingSlots);
+    if (maxPhotoCount > 0 && selectedFiles.length > remainingSlots) {
+      toast.error(`Please upload exactly the requested photos. You can add ${remainingSlots} more photo${remainingSlots === 1 ? '' : 's'} for this product.`);
+      return;
+    }
+    const filesToUpload = selectedFiles;
     setUploadingCustomerPhotos(true);
     try {
       const uploaded = [];

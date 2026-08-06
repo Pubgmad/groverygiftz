@@ -15,16 +15,23 @@ export async function GET(req) {
   const { searchParams } = new URL(req?.url || 'http://localhost', 'http://localhost');
   const customerId = searchParams.get('customerId');
   const status = searchParams.get('status');
+  const dateFrom = searchParams.get('dateFrom');
+  const dateTo = searchParams.get('dateTo');
   const page = Number(searchParams.get('page')) || 1;
   const limit = 20;
 
-  const filter = {};
+  const filter = { paymentStatus: 'paid' };
   if (session.user.type === 'admin') {
     if (customerId) filter.customer = customerId;
   } else {
     filter.customer = session.user.id;
   }
   if (status) filter.status = status;
+  if (dateFrom || dateTo) {
+    filter.paidAt = {};
+    if (dateFrom) filter.paidAt.$gte = new Date(dateFrom + 'T00:00:00.000Z');
+    if (dateTo) filter.paidAt.$lte = new Date(dateTo + 'T23:59:59.999Z');
+  }
 
   const [orders, total] = await Promise.all([
     Order.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
