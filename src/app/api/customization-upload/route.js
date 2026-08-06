@@ -1,9 +1,9 @@
-﻿import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
 
 const MAX_FILE_SIZE = 200 * 1024 * 1024;
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf'];
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif', 'image/heic-sequence', 'image/heif-sequence', 'application/pdf'];
 
 export async function POST(req) {
   try {
@@ -11,7 +11,7 @@ export async function POST(req) {
     const file = formData.get('file');
     if (!file) return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
     if (!ALLOWED_TYPES.includes(file.type)) {
-      return NextResponse.json({ error: 'Only JPG, PNG, WEBP, GIF or PDF files are allowed' }, { status: 400 });
+      return NextResponse.json({ error: 'Only JPG, PNG, WEBP, GIF, HEIC, HEIF or PDF files are allowed' }, { status: 400 });
     }
     if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json({ error: 'File must be under 200 MB' }, { status: 400 });

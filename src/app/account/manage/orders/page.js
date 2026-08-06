@@ -49,19 +49,43 @@ const formatDate = (date) => date ? new Date(date).toLocaleString('en-IN', { tim
 const isUploadedFile = (value) => value && typeof value === 'object' && value.url;
 const isOutOfTamilNadu = (order) => String(order.shippingAddress?.state || '').trim().toLowerCase() !== 'tamil nadu';
 const addressLine = (address = {}) => [address.line1, address.line2, address.city, address.state].filter(Boolean).join(', ');
+const getFileExtension = (file = {}) => {
+  const fromName = String(file.name || '').split('.').pop();
+  if (fromName && fromName !== file.name) return fromName.toLowerCase();
+  const fromUrl = String(file.url || '').split('?')[0].split('.').pop();
+  if (fromUrl && fromUrl !== file.url) return fromUrl.toLowerCase();
+  if (file.type?.includes('/')) return file.type.split('/').pop().toLowerCase();
+  return 'file';
+};
+const buildDownloadName = (prefix, label, index, file) => {
+  const safeLabel = String(label || 'file').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'file';
+  return `${prefix}-${safeLabel}-${index + 1}.${getFileExtension(file)}`;
+};
+
+function DownloadButton({ href, filename, children, tone = 'primary' }) {
+  if (!href) return null;
+  const styles = tone === 'accent'
+    ? 'border-accent-200 bg-accent-50 text-accent-700 hover:bg-accent-100'
+    : 'border-primary-200 bg-primary-50 text-primary-700 hover:bg-primary-100';
+  return (
+    <a href={href} download={filename} target="_blank" rel="noopener noreferrer" className={`inline-flex w-full items-center justify-center rounded-lg border px-3 py-2 text-center text-xs font-bold transition sm:w-auto ${styles}`}>
+      {children}
+    </a>
+  );
+}
 
 function CustomValue({ value }) {
   if (Array.isArray(value)) {
     return (
-      <span className="inline-flex flex-wrap gap-1">
+      <span className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
         {value.map((file, idx) => isUploadedFile(file) ? (
-          <a key={file.url || idx} href={file.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary-600 hover:text-primary-700">File {idx + 1}{file.name ? ` (${file.name})` : ''}</a>
+          <DownloadButton key={file.url || idx} href={file.url} filename={buildDownloadName('original-upload', file.name || 'custom-file', idx, file)}>Download original {idx + 1}{file.name ? ` (${file.name})` : ''}</DownloadButton>
         ) : <span key={idx}>{String(file || '-')}</span>)}
       </span>
     );
   }
   if (isUploadedFile(value)) {
-    return <a href={value.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary-600 hover:text-primary-700">View uploaded file{value.name ? ` (${value.name})` : ''}</a>;
+    return <DownloadButton href={value.url} filename={buildDownloadName('original-upload', value.name || 'custom-file', 0, value)}>Download original{value.name ? ` (${value.name})` : ''}</DownloadButton>;
   }
   return <span>{String(value || '-')}</span>;
 }
@@ -80,10 +104,13 @@ function CollageUploadDetails({ groups }) {
           </div>
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
             {group.images.map((image, index) => (
-              <a key={image.url || index} href={image.url} target="_blank" rel="noopener noreferrer" className="relative aspect-square overflow-hidden rounded-lg border bg-white">
-                <img src={image.url} alt={`${group.label} ${index + 1}`} className="h-full w-full object-cover" />
-                <span className="absolute left-1 top-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[10px] font-bold text-white">{index + 1}</span>
-              </a>
+              <div key={image.url || index} className="space-y-1">
+                <a href={image.url} target="_blank" rel="noopener noreferrer" className="relative block aspect-square overflow-hidden rounded-lg border bg-white">
+                  <img src={image.url} alt={`${group.label} ${index + 1}`} className="h-full w-full object-cover" />
+                  <span className="absolute left-1 top-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[10px] font-bold text-white">{index + 1}</span>
+                </a>
+                <DownloadButton href={image.url} filename={buildDownloadName('collage-original', group.label, index, image)}>Original {index + 1}</DownloadButton>
+              </div>
             ))}
           </div>
         </div>
@@ -98,20 +125,28 @@ function PreviewDetails({ preview }) {
       <div className="rounded-md bg-primary-50 border border-primary-100 p-2 space-y-2 text-xs text-gray-700">
         <p className="font-semibold text-primary-800">Saved preview / crop instructions</p>
         <p><span className="font-medium">Preview:</span> {preview.previewTitle || '-'}</p>
-        {previews.map((entry, index) => (
-          <div key={`${entry.areaLabel || 'area'}-${index}`} className="rounded-md border border-primary-100 bg-white p-2 space-y-2">
-            <p className="font-semibold text-gray-900">{entry.areaLabel || `Photo ${index + 1}`}</p>
-            {(entry.finalPreviewImage?.url || entry.finalPreviewDataUrl) && (
-              <a href={entry.finalPreviewImage?.url || entry.finalPreviewDataUrl} target="_blank" rel="noopener noreferrer" className="block overflow-hidden rounded-lg border bg-white">
-                <img src={entry.finalPreviewImage?.url || entry.finalPreviewDataUrl} alt={`${entry.areaLabel || 'Preview'} final`} className="max-h-72 w-full object-contain" />
-              </a>
-            )}
-            <p><span className="font-medium">Frame size:</span> {entry.width || '-'} x {entry.height || '-'} {entry.unit || 'inch'}</p>
-            {entry.instructions && <p><span className="font-medium">Instructions:</span> {entry.instructions}</p>}
-            {entry.uploadedFile?.url && <a href={entry.uploadedFile.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary-600 hover:text-primary-700">Open original uploaded photo</a>}
-            {entry.adjustments && (<p><span className="font-medium">Saved alignment:</span> zoom {entry.adjustments.zoom}, x {entry.adjustments.x}, y {entry.adjustments.y}, direction {entry.adjustments.orientation || 'auto'}</p>)}
-          </div>
-        ))}
+        {previews.map((entry, index) => {
+          const finalPreviewUrl = entry.finalPreviewImage?.url || entry.finalPreviewDataUrl;
+          return (
+            <div key={`${entry.areaLabel || 'area'}-${index}`} className="rounded-md border border-primary-100 bg-white p-2 space-y-3">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                <p className="font-semibold text-gray-900">{entry.areaLabel || `Photo ${index + 1}`}</p>
+                <p className="text-[11px] font-semibold text-gray-500">Frame: {entry.width || '-'} x {entry.height || '-'} {entry.unit || 'inch'}</p>
+              </div>
+              {finalPreviewUrl && (
+                <a href={finalPreviewUrl} target="_blank" rel="noopener noreferrer" className="block overflow-hidden rounded-lg border bg-white">
+                  <img src={finalPreviewUrl} alt={`${entry.areaLabel || 'Preview'} final`} className="max-h-72 w-full object-contain" />
+                </a>
+              )}
+              <div className="grid gap-2 sm:grid-cols-2">
+                <DownloadButton href={entry.uploadedFile?.url} filename={buildDownloadName('original-upload', entry.areaLabel, index, entry.uploadedFile)}>Download original image</DownloadButton>
+                <DownloadButton href={finalPreviewUrl} filename={buildDownloadName('customized-preview', entry.areaLabel, index, entry.finalPreviewImage || { url: finalPreviewUrl, type: 'image/jpeg' })} tone="accent">Download final preview</DownloadButton>
+              </div>
+              {entry.instructions && <p><span className="font-medium">Instructions:</span> {entry.instructions}</p>}
+              {entry.adjustments && (<p><span className="font-medium">Saved alignment:</span> zoom {entry.adjustments.zoom}, x {entry.adjustments.x}, y {entry.adjustments.y}, direction {entry.adjustments.orientation || 'auto'}</p>)}
+            </div>
+          );
+        })}
       </div>
     );
   }
@@ -119,7 +154,10 @@ function PreviewDetails({ preview }) {
     return (
       <div className="rounded-md bg-primary-50 border border-primary-100 p-2 space-y-1 text-xs text-gray-700">
         <p className="font-semibold text-primary-800">Saved preview / crop instructions</p>
-        <a href={preview.uploadedFile.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary-600 hover:text-primary-700">Open uploaded preview image</a>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <DownloadButton href={preview.uploadedFile.url} filename={buildDownloadName('original-upload', preview.sourceField || 'preview', 0, preview.uploadedFile)}>Download original image</DownloadButton>
+          <DownloadButton href={preview.finalPreviewImage?.url || preview.finalPreviewDataUrl || preview.uploadedFile.url} filename={buildDownloadName('customized-preview', preview.sourceField || 'preview', 0, preview.finalPreviewImage || preview.uploadedFile)} tone="accent">Download final preview</DownloadButton>
+        </div>
         <p><span className="font-medium">Source field:</span> {preview.sourceField || '-'}</p>
         <p><span className="font-medium">Frame:</span> {preview.previewTitle || '-'}</p>
         <p><span className="font-medium">Ratio:</span> {preview.aspectRatio || '-'}</p>
