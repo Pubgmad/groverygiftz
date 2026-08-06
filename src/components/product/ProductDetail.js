@@ -44,8 +44,6 @@ export default function ProductDetail({ product }) {
   const [selectedDeliveryState, setSelectedDeliveryState] = useState('');
 
   const offerActive = isOfferActive(product);
-  const savings = offerActive ? calcSavings(product.regularPrice, product.salePrice) : 0;
-  const price = getEffectivePrice(product);
   const isSoldOut = Number(product.stock) <= 0;
   const mediaItems = [
     ...(product.images || []).map((url) => ({ type: 'image', url })),
@@ -81,9 +79,27 @@ export default function ProductDetail({ product }) {
   const maxPhotoCount = Math.max(requiredPhotoCount, previewAreas.length || Number(previewConfig.maxImageCount || requiredPhotoCount || 0));
   const needsCustomerPhotos = requiredPhotoCount > 0 || maxPhotoCount > 0;
 
-  const getOptionExtraPrice = (opt) => Number(opt?.priceAdjustment ?? opt?.price ?? 0);
-  const selectedVariantExtra = Object.values(selectedVariants).reduce((sum, selected) => sum + (selected?.extra || 0), 0);
-  const finalUnitPrice = price + selectedVariantExtra + (giftWrap && product.giftWrap?.enabled ? Number(product.giftWrap.price || 0) : 0);
+  const getOptionExtraPrice = (opt) => opt?.useOwnPrice ? 0 : Number(opt?.priceAdjustment ?? opt?.price ?? 0);
+  const getOptionRegularPrice = (opt) => Number(opt?.regularPrice || 0);
+  const getOptionSalePrice = (opt) => Number(opt?.salePrice || 0);
+  const getOptionEffectivePrice = (opt) => {
+    const regular = getOptionRegularPrice(opt);
+    const sale = getOptionSalePrice(opt);
+    return sale > 0 && sale < regular ? sale : regular;
+  };
+  const selectedVariantOptions = Object.values(selectedVariants).filter(Boolean);
+  const defaultOwnPriceOption = product.variants?.flatMap((variant) => variant.options || []).find((opt) => opt?.useOwnPrice && getOptionRegularPrice(opt) > 0);
+  const selectedOwnPriceOption = selectedVariantOptions.find((selected) => selected?.useOwnPrice && getOptionRegularPrice(selected) > 0) || defaultOwnPriceOption;
+  const baseRegularPrice = selectedOwnPriceOption ? getOptionRegularPrice(selectedOwnPriceOption) : Number(product.regularPrice || 0);
+  const baseSalePrice = selectedOwnPriceOption ? getOptionSalePrice(selectedOwnPriceOption) : Number(product.salePrice || 0);
+  const baseOfferActive = selectedOwnPriceOption ? (baseSalePrice > 0 && baseSalePrice < baseRegularPrice) : offerActive;
+  const baseDisplayPrice = baseOfferActive ? baseSalePrice : baseRegularPrice;
+  const selectedVariantExtra = selectedVariantOptions.reduce((sum, selected) => sum + (selected?.useOwnPrice ? 0 : Number(selected?.extra || 0)), 0);
+  const giftWrapPrice = giftWrap && product.giftWrap?.enabled ? Number(product.giftWrap.price || 0) : 0;
+  const finalUnitPrice = baseDisplayPrice + selectedVariantExtra + giftWrapPrice;
+  const compareAtPrice = baseRegularPrice + selectedVariantExtra + giftWrapPrice;
+  const savings = compareAtPrice > finalUnitPrice ? compareAtPrice - finalUnitPrice : 0;
+  const price = baseDisplayPrice;
   const productDelivery = product.delivery || {};
   const usesProductDelivery = !!productDelivery.useCustomDelivery;
   const tamilNaduDeliveryCost = usesProductDelivery ? Number(productDelivery.tamilNaduShippingCost || 0) : Number(settings.tamilNaduShippingCost || 0);
@@ -263,7 +279,7 @@ const handleCustomerPhotoUpload = async (files) => {
       window.open(`https://wa.me/${settings.whatsapp}?text=Hi, I'm interested in: ${product.title}`, '_blank');
       return false;
     }
-    const variantStr = Object.entries(selectedVariants).map(([k, v]) => `${k}: ${v.label}`).join(', ');
+    const variantStr = Object.entries(selectedVariants).filter(([, v]) => v?.label).map(([k, v]) => `${k}: ${v.label}`).join(', ');
     const allCustomFields = customerPhotos.length > 0 ? { ...customFieldValues, 'Customer Photos': customerPhotos } : customFieldValues;
 
     addToCart({
@@ -358,7 +374,7 @@ const handleCustomerPhotoUpload = async (files) => {
           <span className="text-3xl font-bold text-primary-600">{formatPrice(finalUnitPrice)}</span>
           {savings > 0 && (
             <>
-              <span className="text-xl text-gray-400 line-through">{formatPrice(product.regularPrice)}</span>
+              <span className="text-xl text-gray-400 line-through">{formatPrice(compareAtPrice)}</span>
               <span className="badge-save text-sm">Save {formatPrice(savings)}</span>
               {product.offerEndsAt && <span className="inline-flex items-center gap-1 rounded-full bg-accent-50 px-3 py-1 text-xs font-extrabold text-accent-700"><FiClock size={12} /> Offer ends {new Date(product.offerEndsAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>}
             </>
@@ -435,12 +451,14 @@ const handleCustomerPhotoUpload = async (files) => {
               {variant.options?.map((opt, oIdx) => {
                 const extra = getOptionExtraPrice(opt);
                 const optionSoldOut = opt.inStock === false || (typeof opt.stock === 'number' && opt.stock <= 0);
+                const optionRegularPrice = getOptionRegularPrice(opt);
+                const optionEffectivePrice = getOptionEffectivePrice(opt);
                 const selected = selectedVariants[variant.name]?.label === opt.label;
                 return (
                   <button key={oIdx}
                     type="button"
                     disabled={optionSoldOut}
-                    onClick={() => setSelectedVariants(prev => ({ ...prev, [variant.name]: { label: opt.label, extra } }))}
+                    onClick={() => setSelectedVariants(prev => { const selectedNow = prev[variant.name]?.label === opt.label; const next = { ...prev }; if (selectedNow) delete next[variant.name]; else next[variant.name] = { label: opt.label, extra, useOwnPrice: !!opt.useOwnPrice, regularPrice: opt.regularPrice, salePrice: opt.salePrice }; return next; })}
                     className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
                       selected
                         ? 'border-primary-600 bg-primary-50 text-primary-600'
@@ -450,7 +468,7 @@ const handleCustomerPhotoUpload = async (files) => {
                     }`}
                   >
                     {opt.label}
-                    {extra > 0 && ` (+${formatPrice(extra)})`}
+                    {opt.useOwnPrice && optionRegularPrice > 0 ? ` - ${formatPrice(optionEffectivePrice)}` : extra > 0 && ` (+${formatPrice(extra)})`}
                     {optionSoldOut && ' (Sold out)'}
                   </button>
                 );

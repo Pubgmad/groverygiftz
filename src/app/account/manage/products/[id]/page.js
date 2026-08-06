@@ -73,11 +73,11 @@ export default function AdminProductForm({ params }) {
     }
   };
 
-  const addVariant = () => setForm(p => ({ ...p, variants: [...p.variants, { name: '', type: 'size', options: [{ label: '', priceAdjustment: 0, inStock: true }] }] }));
+  const addVariant = () => setForm(p => ({ ...p, variants: [...p.variants, { name: '', type: 'size', options: [{ label: '', priceAdjustment: 0, useOwnPrice: false, regularPrice: '', salePrice: '', inStock: true }] }] }));
   const removeVariant = (idx) => setForm(p => ({ ...p, variants: p.variants.filter((_, i) => i !== idx) }));
   const addVariantOption = (vIdx) => {
     const variants = [...form.variants];
-    variants[vIdx].options.push({ label: '', priceAdjustment: 0, inStock: true });
+    variants[vIdx].options.push({ label: '', priceAdjustment: 0, useOwnPrice: false, regularPrice: '', salePrice: '', inStock: true });
     setForm(p => ({ ...p, variants }));
   };
 
@@ -310,7 +310,7 @@ export default function AdminProductForm({ params }) {
         {/* Variants */}
         <div className="bg-white p-4 sm:p-6 rounded-xl border">
           <div className="flex justify-between items-center mb-4">
-            <div><h2 className="font-bold text-lg">Variants</h2><p className="text-xs text-gray-500 mt-1">Variants let customers choose options like size, color, or quantity. Extra price is added to the product price.</p></div>
+            <div><h2 className="font-bold text-lg">Variants</h2><p className="text-xs text-gray-500 mt-1">Variants let customers choose options like size, color, or quantity. Use extra price for add-ons, or switch on own pricing when each option has its own regular/sale price.</p></div>
             <button type="button" onClick={addVariant} className="text-sm text-primary-600 flex items-center gap-1"><FiPlus /> Add Variant</button>
           </div>
           {form.variants.map((variant, vIdx) => (
@@ -326,20 +326,38 @@ export default function AdminProductForm({ params }) {
                 <button type="button" onClick={() => removeVariant(vIdx)} className="text-red-500"><FiX /></button>
               </div>
               {variant.options?.map((opt, oIdx) => (
-                <div key={oIdx} className="grid grid-cols-1 gap-2 mb-2 sm:ml-4 sm:grid-cols-[1fr_auto_auto_auto] sm:items-center">
-                  <input placeholder="Option label" value={opt.label}
-                    onChange={e => { const v = [...form.variants]; v[vIdx].options[oIdx].label = e.target.value; setForm(p => ({ ...p, variants: v })); }}
-                    className="flex-1 border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary-500" />
-                  <input type="number" placeholder="Extra price" value={opt.priceAdjustment ?? opt.price ?? 0}
-                    onChange={e => { const v = [...form.variants]; v[vIdx].options[oIdx].priceAdjustment = e.target.value; setForm(p => ({ ...p, variants: v })); }}
-                    className="w-full sm:w-24 border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary-500" />
-                  <label className="flex items-center gap-1 text-xs text-gray-600">
+                <div key={oIdx} className="mb-3 rounded-xl border bg-gray-50 p-3 sm:ml-4">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-center">
+                    <input placeholder="Option label" value={opt.label}
+                      onChange={e => { const v = [...form.variants]; v[vIdx].options[oIdx].label = e.target.value; setForm(p => ({ ...p, variants: v })); }}
+                      className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary-500 bg-white" />
+                    <label className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-xs font-semibold text-gray-700">
+                      <input type="checkbox" checked={!!opt.useOwnPrice}
+                        onChange={e => { const v = [...form.variants]; v[vIdx].options[oIdx].useOwnPrice = e.target.checked; setForm(p => ({ ...p, variants: v })); }} />
+                      Own regular/sale price
+                    </label>
+                    <button type="button" onClick={() => { const v = [...form.variants]; v[vIdx].options.splice(oIdx, 1); setForm(p => ({ ...p, variants: v })); }}
+                      className="justify-self-start text-red-500 sm:justify-self-end"><FiX size={16} /></button>
+                  </div>
+                  {opt.useOwnPrice ? (
+                    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <div><label className="block text-xs font-medium text-gray-600 mb-1">Variant Regular Price</label><input type="number" placeholder="Regular price" value={opt.regularPrice ?? ''}
+                        onChange={e => { const v = [...form.variants]; v[vIdx].options[oIdx].regularPrice = e.target.value; setForm(p => ({ ...p, variants: v })); }}
+                        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary-500 bg-white" /></div>
+                      <div><label className="block text-xs font-medium text-gray-600 mb-1">Variant Sale Price</label><input type="number" placeholder="Sale price optional" value={opt.salePrice ?? ''}
+                        onChange={e => { const v = [...form.variants]; v[vIdx].options[oIdx].salePrice = e.target.value; setForm(p => ({ ...p, variants: v })); }}
+                        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary-500 bg-white" /></div>
+                    </div>
+                  ) : (
+                    <div className="mt-3"><label className="block text-xs font-medium text-gray-600 mb-1">Extra Price Added To Product</label><input type="number" placeholder="Extra price" value={opt.priceAdjustment ?? opt.price ?? 0}
+                      onChange={e => { const v = [...form.variants]; v[vIdx].options[oIdx].priceAdjustment = e.target.value; setForm(p => ({ ...p, variants: v })); }}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary-500 bg-white sm:w-40" /></div>
+                  )}
+                  <label className="mt-3 flex items-center gap-2 text-xs text-gray-600">
                     <input type="checkbox" checked={opt.inStock !== false}
                       onChange={e => { const v = [...form.variants]; v[vIdx].options[oIdx].inStock = e.target.checked; setForm(p => ({ ...p, variants: v })); }} />
                     In stock
                   </label>
-                  <button type="button" onClick={() => { const v = [...form.variants]; v[vIdx].options.splice(oIdx, 1); setForm(p => ({ ...p, variants: v })); }}
-                    className="text-red-400"><FiX size={14} /></button>
                 </div>
               ))}
               <button type="button" onClick={() => addVariantOption(vIdx)} className="text-xs text-primary-600 ml-4">+ Add Option</button>
