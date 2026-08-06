@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useCart } from '@/context/CartContext';
-import { formatPrice, calcSavings, getEffectivePrice, isOfferActive } from '@/lib/utils';
+import { formatPrice, calcSavings, getEffectivePrice, isOfferActive, getVariantRegularPrice, getVariantSalePrice, getVariantEffectivePrice } from '@/lib/utils';
 import { buildDeliveryEstimateText } from '@/lib/deliveryDate';
 import { buildProductMetaPayload, trackMetaCustomEvent, trackMetaEvent } from '@/lib/metaPixel';
 import { FiMinus, FiPlus, FiX, FiTruck, FiShield, FiClock, FiShoppingCart, FiZap, FiUpload, FiImage, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
@@ -80,13 +80,30 @@ export default function ProductDetail({ product }) {
   const needsCustomerPhotos = requiredPhotoCount > 0 || maxPhotoCount > 0;
 
   const getOptionExtraPrice = (opt) => opt?.useOwnPrice ? 0 : Number(opt?.priceAdjustment ?? opt?.price ?? 0);
-  const getOptionRegularPrice = (opt) => Number(opt?.regularPrice || 0);
-  const getOptionSalePrice = (opt) => Number(opt?.salePrice || 0);
-  const getOptionEffectivePrice = (opt) => {
-    const regular = getOptionRegularPrice(opt);
-    const sale = getOptionSalePrice(opt);
-    return sale > 0 && sale < regular ? sale : regular;
-  };
+  const getOptionRegularPrice = getVariantRegularPrice;
+  const getOptionSalePrice = getVariantSalePrice;
+  const getOptionEffectivePrice = getVariantEffectivePrice;
+  useEffect(() => {
+    setSelectedVariants((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const variant of product.variants || []) {
+        if (!variant?.name || next[variant.name]?.label) continue;
+        const firstAvailable = (variant.options || []).find((opt) => opt?.label && opt.inStock !== false && !(typeof opt.stock === 'number' && opt.stock <= 0));
+        if (!firstAvailable) continue;
+        next[variant.name] = {
+          label: firstAvailable.label,
+          extra: getOptionExtraPrice(firstAvailable),
+          useOwnPrice: !!firstAvailable.useOwnPrice,
+          regularPrice: firstAvailable.regularPrice,
+          salePrice: firstAvailable.salePrice,
+          stateOverrides: firstAvailable.stateOverrides || [],
+        };
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [product.variants]);
   const selectedVariantOptions = Object.values(selectedVariants).filter(Boolean);
   const defaultOwnPriceOption = product.variants?.flatMap((variant) => variant.options || []).find((opt) => opt?.useOwnPrice && getOptionRegularPrice(opt) > 0);
   const selectedOwnPriceOption = selectedVariantOptions.find((selected) => selected?.useOwnPrice && getOptionRegularPrice(selected) > 0) || defaultOwnPriceOption;
@@ -103,8 +120,13 @@ export default function ProductDetail({ product }) {
   const productDelivery = product.delivery || {};
   const usesProductDelivery = !!productDelivery.useCustomDelivery;
   const tamilNaduDeliveryCost = usesProductDelivery ? Number(productDelivery.tamilNaduShippingCost || 0) : Number(settings.tamilNaduShippingCost || 0);
+  const getSelectedVariantShippingOverride = (state) => selectedVariantOptions
+    .flatMap((selected) => selected?.stateOverrides || [])
+    .find((row) => String(row.state || '').trim().toLowerCase() === String(state || '').trim().toLowerCase());
   const getProductShippingForState = (state) => {
     if (!state) return { cost: 0, estimate: 'Select state to see delivery estimate' };
+    const variantOverride = getSelectedVariantShippingOverride(state);
+    if (variantOverride?.state) return { cost: Number(variantOverride.shippingCost || 0), estimate: variantOverride.deliveryEstimate || '' };
     if (usesProductDelivery) {
       const override = getStateOverride(productDelivery, state);
       if (override?.state) return { cost: Number(override.shippingCost || 0), estimate: override.deliveryEstimate || '' };
@@ -294,6 +316,7 @@ const handleCustomerPhotoUpload = async (files) => {
       giftWrap,
       giftMessage,
       delivery: product.delivery || null,
+      variantDelivery: { stateOverrides: selectedVariantOptions.flatMap((selected) => selected?.stateOverrides || []) },
       deliveryState: selectedDeliveryState,
       customizationPreview: previewEnabled && previewAreas.some((area, idx) => customerPhotos[idx]?.url) ? {
         previewTitle: previewConfig.title || 'Customization preview',
@@ -458,7 +481,7 @@ const handleCustomerPhotoUpload = async (files) => {
                   <button key={oIdx}
                     type="button"
                     disabled={optionSoldOut}
-                    onClick={() => setSelectedVariants(prev => { const selectedNow = prev[variant.name]?.label === opt.label; const next = { ...prev }; if (selectedNow) delete next[variant.name]; else next[variant.name] = { label: opt.label, extra, useOwnPrice: !!opt.useOwnPrice, regularPrice: opt.regularPrice, salePrice: opt.salePrice }; return next; })}
+                    onClick={() => setSelectedVariants(prev => { const next = { ...prev }; next[variant.name] = { label: opt.label, extra, useOwnPrice: !!opt.useOwnPrice, regularPrice: opt.regularPrice, salePrice: opt.salePrice, stateOverrides: opt.stateOverrides || [] }; return next; })}
                     className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
                       selected
                         ? 'border-primary-600 bg-primary-50 text-primary-600'
@@ -468,7 +491,7 @@ const handleCustomerPhotoUpload = async (files) => {
                     }`}
                   >
                     {opt.label}
-                    {opt.useOwnPrice && optionRegularPrice > 0 ? ` - ${formatPrice(optionEffectivePrice)}` : extra > 0 && ` (+${formatPrice(extra)})`}
+                    {opt.useOwnPrice && optionRegularPrice > 0 ? ` ${formatPrice(optionEffectivePrice)}` : extra > 0 && ` (+${formatPrice(extra)})`}
                     {optionSoldOut && ' (Sold out)'}
                   </button>
                 );

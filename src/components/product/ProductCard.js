@@ -1,15 +1,15 @@
 'use client';
 import Link from 'next/link';
 import { FiHeart, FiGift, FiShoppingBag, FiChevronRight, FiClock } from 'react-icons/fi';
-import { formatPrice, calcSavings, getEffectivePrice, isOfferActive } from '@/lib/utils';
+import { formatPrice, calcSavings, getDisplayPrice, getDisplayRegularPrice } from '@/lib/utils';
 import { useWishlist } from '@/context/WishlistContext';
 
 export default function ProductCard({ product }) {
   const { toggleWishlist, isWishlisted } = useWishlist();
   const wishlisted = isWishlisted(product._id);
-  const offerActive = isOfferActive(product);
-  const displayPrice = getEffectivePrice(product);
-  const savings = offerActive ? calcSavings(product.regularPrice, product.salePrice) : 0;
+  const displayPrice = getDisplayPrice(product);
+  const displayRegularPrice = getDisplayRegularPrice(product);
+  const savings = displayRegularPrice > displayPrice ? calcSavings(displayRegularPrice, displayPrice) : 0;
   const hasVariants = product.variants?.length > 0;
   const hasCustomization = product.customFields?.length > 0;
   const canGiftWrap = product.giftWrap?.enabled || product.giftMessage;
@@ -72,7 +72,7 @@ export default function ProductCard({ product }) {
           <span className="text-base font-extrabold text-primary-700 sm:text-lg">
             {hasVariants ? 'From ' : ''}{formatPrice(displayPrice)}
           </span>
-          {savings > 0 && <span className="text-xs font-medium text-gray-400 line-through">{formatPrice(product.regularPrice)}</span>}
+          {savings > 0 && <span className="text-xs font-medium text-gray-400 line-through">{formatPrice(displayRegularPrice)}</span>}
         </div>
 
         <div className="mt-2 flex min-h-[22px] flex-wrap items-center gap-1.5 text-[11px] font-semibold text-gray-500">
@@ -81,7 +81,7 @@ export default function ProductCard({ product }) {
           {product.isQuoteOnly && <span className="rounded-full bg-gray-100 px-2 py-1 text-gray-700">Contact for price</span>}
         </div>
 
-        {offerActive && product.offerEndsAt && (
+        {savings > 0 && product.offerEndsAt && (
           <p className="mt-2 flex items-center gap-1 text-xs font-bold text-accent-600">
             <FiClock size={12} /> Offer ends {new Date(product.offerEndsAt).toLocaleDateString('en-IN')}
           </p>

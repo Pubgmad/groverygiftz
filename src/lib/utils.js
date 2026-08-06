@@ -1,4 +1,4 @@
-﻿export function formatPrice(price) {
+export function formatPrice(price) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(Number(price) || 0);
 }
 
@@ -15,6 +15,35 @@ export function getEffectivePrice(product, now = Date.now()) {
   return isOfferActive(product, now) ? Number(product.salePrice) : Number(product?.regularPrice || 0);
 }
 
+export function getVariantRegularPrice(option) {
+  return Number(option?.regularPrice || 0);
+}
+
+export function getVariantSalePrice(option) {
+  return Number(option?.salePrice || 0);
+}
+
+export function getVariantEffectivePrice(option) {
+  const regular = getVariantRegularPrice(option);
+  const sale = getVariantSalePrice(option);
+  return sale > 0 && sale < regular ? sale : regular;
+}
+
+export function getFirstPricedVariantOption(product) {
+  return product?.variants
+    ?.flatMap((variant) => variant.options || [])
+    ?.find((option) => option?.useOwnPrice && getVariantRegularPrice(option) > 0 && option.inStock !== false);
+}
+
+export function getDisplayPrice(product, now = Date.now()) {
+  const variantOption = getFirstPricedVariantOption(product);
+  return variantOption ? getVariantEffectivePrice(variantOption) : getEffectivePrice(product, now);
+}
+
+export function getDisplayRegularPrice(product) {
+  const variantOption = getFirstPricedVariantOption(product);
+  return variantOption ? getVariantRegularPrice(variantOption) : Number(product?.regularPrice || 0);
+}
 export function calcSavings(regular, sale) {
   return Math.max(0, Number(regular || 0) - Number(sale || 0));
 }

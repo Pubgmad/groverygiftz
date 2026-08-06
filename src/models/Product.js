@@ -54,6 +54,7 @@ const ProductSchema = new mongoose.Schema({
       useOwnPrice: { type: Boolean, default: false },
       regularPrice: { type: Number, default: 0 },
       salePrice: { type: Number, default: 0 },
+      stateOverrides: [StateDeliveryOverrideSchema],
       stock: Number,
       inStock: { type: Boolean, default: true },
     }],

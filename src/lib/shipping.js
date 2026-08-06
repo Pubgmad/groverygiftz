@@ -5,6 +5,8 @@ export const isTamilNadu = (state) => String(state || '').trim().toLowerCase() =
 export const getStateOverride = (delivery, state) => (delivery?.stateOverrides || []).find((row) => String(row.state || '').trim().toLowerCase() === String(state || '').trim().toLowerCase());
 
 export function resolveItemDelivery(item, state, settings = {}) {
+  const variantOverride = getStateOverride(item?.variantDelivery, state);
+  if (variantOverride?.state) return { cost: Number(variantOverride.shippingCost || 0), estimate: variantOverride.deliveryEstimate || '' };
   const delivery = item?.delivery || {};
   if (!delivery.useCustomDelivery) return null;
   const override = getStateOverride(delivery, state);

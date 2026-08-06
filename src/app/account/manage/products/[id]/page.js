@@ -73,11 +73,11 @@ export default function AdminProductForm({ params }) {
     }
   };
 
-  const addVariant = () => setForm(p => ({ ...p, variants: [...p.variants, { name: '', type: 'size', options: [{ label: '', priceAdjustment: 0, useOwnPrice: false, regularPrice: '', salePrice: '', inStock: true }] }] }));
+  const addVariant = () => setForm(p => ({ ...p, variants: [...p.variants, { name: '', type: 'size', options: [{ label: '', priceAdjustment: 0, useOwnPrice: false, regularPrice: '', salePrice: '', stateOverrides: [], inStock: true }] }] }));
   const removeVariant = (idx) => setForm(p => ({ ...p, variants: p.variants.filter((_, i) => i !== idx) }));
   const addVariantOption = (vIdx) => {
     const variants = [...form.variants];
-    variants[vIdx].options.push({ label: '', priceAdjustment: 0, useOwnPrice: false, regularPrice: '', salePrice: '', inStock: true });
+    variants[vIdx].options.push({ label: '', priceAdjustment: 0, useOwnPrice: false, regularPrice: '', salePrice: '', stateOverrides: [], inStock: true });
     setForm(p => ({ ...p, variants }));
   };
 
@@ -120,6 +120,34 @@ export default function AdminProductForm({ params }) {
   };
   const addStateOverride = () => setForm(p => ({ ...p, delivery: { ...p.delivery, stateOverrides: [...(p.delivery?.stateOverrides || []), { state: '', shippingCost: 0, deliveryEstimate: '' }] } }));
   const removeStateOverride = (idx) => setForm(p => ({ ...p, delivery: { ...p.delivery, stateOverrides: (p.delivery?.stateOverrides || []).filter((_, i) => i !== idx) } }));
+  const updateVariantOption = (vIdx, oIdx, updates) => {
+    const variants = [...form.variants];
+    variants[vIdx].options[oIdx] = { ...(variants[vIdx].options[oIdx] || {}), ...updates };
+    setForm(p => ({ ...p, variants }));
+  };
+  const updateVariantStateOverride = (vIdx, oIdx, rowIdx, key, value) => {
+    const variants = [...form.variants];
+    const option = { ...(variants[vIdx].options[oIdx] || {}) };
+    const stateOverrides = [...(option.stateOverrides || [])];
+    stateOverrides[rowIdx] = { ...stateOverrides[rowIdx], [key]: value };
+    option.stateOverrides = stateOverrides;
+    variants[vIdx].options[oIdx] = option;
+    setForm(p => ({ ...p, variants }));
+  };
+  const addVariantStateOverride = (vIdx, oIdx) => {
+    const variants = [...form.variants];
+    const option = { ...(variants[vIdx].options[oIdx] || {}) };
+    option.stateOverrides = [...(option.stateOverrides || []), { state: '', shippingCost: 0, deliveryEstimate: '' }];
+    variants[vIdx].options[oIdx] = option;
+    setForm(p => ({ ...p, variants }));
+  };
+  const removeVariantStateOverride = (vIdx, oIdx, rowIdx) => {
+    const variants = [...form.variants];
+    const option = { ...(variants[vIdx].options[oIdx] || {}) };
+    option.stateOverrides = (option.stateOverrides || []).filter((_, i) => i !== rowIdx);
+    variants[vIdx].options[oIdx] = option;
+    setForm(p => ({ ...p, variants }));
+  };
 
   return (
     <div>
@@ -329,11 +357,11 @@ export default function AdminProductForm({ params }) {
                 <div key={oIdx} className="mb-3 rounded-xl border bg-gray-50 p-3 sm:ml-4">
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-center">
                     <input placeholder="Option label" value={opt.label}
-                      onChange={e => { const v = [...form.variants]; v[vIdx].options[oIdx].label = e.target.value; setForm(p => ({ ...p, variants: v })); }}
+                      onChange={e => updateVariantOption(vIdx, oIdx, { label: e.target.value })}
                       className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary-500 bg-white" />
                     <label className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-xs font-semibold text-gray-700">
                       <input type="checkbox" checked={!!opt.useOwnPrice}
-                        onChange={e => { const v = [...form.variants]; v[vIdx].options[oIdx].useOwnPrice = e.target.checked; setForm(p => ({ ...p, variants: v })); }} />
+                        onChange={e => updateVariantOption(vIdx, oIdx, { useOwnPrice: e.target.checked })} />
                       Own regular/sale price
                     </label>
                     <button type="button" onClick={() => { const v = [...form.variants]; v[vIdx].options.splice(oIdx, 1); setForm(p => ({ ...p, variants: v })); }}
@@ -342,22 +370,36 @@ export default function AdminProductForm({ params }) {
                   {opt.useOwnPrice ? (
                     <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                       <div><label className="block text-xs font-medium text-gray-600 mb-1">Variant Regular Price</label><input type="number" placeholder="Regular price" value={opt.regularPrice ?? ''}
-                        onChange={e => { const v = [...form.variants]; v[vIdx].options[oIdx].regularPrice = e.target.value; setForm(p => ({ ...p, variants: v })); }}
+                        onChange={e => updateVariantOption(vIdx, oIdx, { regularPrice: e.target.value })}
                         className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary-500 bg-white" /></div>
                       <div><label className="block text-xs font-medium text-gray-600 mb-1">Variant Sale Price</label><input type="number" placeholder="Sale price optional" value={opt.salePrice ?? ''}
-                        onChange={e => { const v = [...form.variants]; v[vIdx].options[oIdx].salePrice = e.target.value; setForm(p => ({ ...p, variants: v })); }}
+                        onChange={e => updateVariantOption(vIdx, oIdx, { salePrice: e.target.value })}
                         className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary-500 bg-white" /></div>
                     </div>
                   ) : (
                     <div className="mt-3"><label className="block text-xs font-medium text-gray-600 mb-1">Extra Price Added To Product</label><input type="number" placeholder="Extra price" value={opt.priceAdjustment ?? opt.price ?? 0}
-                      onChange={e => { const v = [...form.variants]; v[vIdx].options[oIdx].priceAdjustment = e.target.value; setForm(p => ({ ...p, variants: v })); }}
+                      onChange={e => updateVariantOption(vIdx, oIdx, { priceAdjustment: e.target.value })}
                       className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary-500 bg-white sm:w-40" /></div>
                   )}
                   <label className="mt-3 flex items-center gap-2 text-xs text-gray-600">
                     <input type="checkbox" checked={opt.inStock !== false}
-                      onChange={e => { const v = [...form.variants]; v[vIdx].options[oIdx].inStock = e.target.checked; setForm(p => ({ ...p, variants: v })); }} />
+                      onChange={e => updateVariantOption(vIdx, oIdx, { inStock: e.target.checked })} />
                     In stock
                   </label>
+                  <div className="mt-3 rounded-lg border bg-white p-3 space-y-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div><p className="text-xs font-bold text-gray-800">Variant State Delivery Charges</p><p className="text-[11px] text-gray-500">Optional. These override product delivery charges only when this option is selected.</p></div>
+                      <button type="button" onClick={() => addVariantStateOverride(vIdx, oIdx)} className="inline-flex w-full items-center justify-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-semibold text-primary-600 sm:w-auto"><FiPlus /> Add State</button>
+                    </div>
+                    {(opt.stateOverrides || []).map((row, rowIdx) => (
+                      <div key={rowIdx} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_110px_1fr_auto] sm:items-center">
+                        <select value={row.state || ''} onChange={e => updateVariantStateOverride(vIdx, oIdx, rowIdx, 'state', e.target.value)} className="border rounded-lg px-3 py-2 text-xs"><option value="">Select state</option>{INDIAN_STATES.map(state => <option key={state} value={state}>{state}</option>)}</select>
+                        <input type="number" min="0" value={row.shippingCost ?? 0} onChange={e => updateVariantStateOverride(vIdx, oIdx, rowIdx, 'shippingCost', Number(e.target.value || 0))} className="border rounded-lg px-3 py-2 text-xs" placeholder="Cost" />
+                        <input value={row.deliveryEstimate || ''} onChange={e => updateVariantStateOverride(vIdx, oIdx, rowIdx, 'deliveryEstimate', e.target.value)} className="border rounded-lg px-3 py-2 text-xs" placeholder="Estimate" />
+                        <button type="button" onClick={() => removeVariantStateOverride(vIdx, oIdx, rowIdx)} className="text-red-500"><FiX size={14} /></button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
               <button type="button" onClick={() => addVariantOption(vIdx)} className="text-xs text-primary-600 ml-4">+ Add Option</button>

@@ -6,7 +6,7 @@ import { FiSearch, FiUser, FiShoppingBag, FiMenu, FiX, FiChevronDown, FiHeart, F
 import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
 import { useSession } from 'next-auth/react';
-import { formatPrice, getEffectivePrice } from '@/lib/utils';
+import { formatPrice, getDisplayPrice } from '@/lib/utils';
 
 const menuItems = [
   { label: 'Home', href: '/' },
@@ -175,7 +175,7 @@ export default function Header() {
                     <img src={product.images?.[0] || '/placeholder.svg'} alt="" className="h-11 w-11 rounded-lg object-cover bg-gray-100" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold text-gray-900">{product.title}</p>
-                      <p className="text-xs font-bold text-primary-600">{formatPrice(getEffectivePrice(product))}</p>
+                      <p className="text-xs font-bold text-primary-600">{formatPrice(getDisplayPrice(product))}</p>
                     </div>
                   </Link>
                 ))}

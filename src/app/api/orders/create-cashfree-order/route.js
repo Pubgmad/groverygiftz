@@ -19,6 +19,8 @@ const getStateOverride = (delivery, state) => (delivery?.stateOverrides || []).f
 );
 
 const resolveItemDelivery = (item, productsById, state, settings) => {
+  const variantOverride = getStateOverride(item?.variantDelivery, state);
+  if (variantOverride?.state) return { cost: Number(variantOverride.shippingCost || 0), estimate: variantOverride.deliveryEstimate || '' };
   const product = productsById[String(item.productId || item.product || '')];
   const delivery = product?.delivery || item.delivery || {};
   if (!delivery.useCustomDelivery) return null;
