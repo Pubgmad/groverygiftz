@@ -27,6 +27,8 @@ export default function ProductDetail({ product }) {
   const [customFieldValues, setCustomFieldValues] = useState({});
   const [customerPhotos, setCustomerPhotos] = useState([]);
   const [uploadingCustomerPhotos, setUploadingCustomerPhotos] = useState(false);
+  const [collageUploads, setCollageUploads] = useState({});
+  const [uploadingCollageLabels, setUploadingCollageLabels] = useState({});
   const [uploadingFields, setUploadingFields] = useState({});
   const [previewAdjustments, setPreviewAdjustments] = useState({});
   const [giftWrap, setGiftWrap] = useState(false);
@@ -78,6 +80,8 @@ export default function ProductDetail({ product }) {
   const requiredPhotoCount = Math.max(0, previewAreas.filter((area) => area.required !== false).length || Number(previewConfig.requiredImageCount || 0));
   const maxPhotoCount = Math.max(requiredPhotoCount, previewAreas.length || Number(previewConfig.maxImageCount || requiredPhotoCount || 0));
   const needsCustomerPhotos = requiredPhotoCount > 0 || maxPhotoCount > 0;
+  const collageTemplates = (product.collageTemplates || []).filter((template) => template?.label && template.isActive !== false);
+  const needsCollageUploads = collageTemplates.length > 0;
 
   const getOptionExtraPrice = (opt) => opt?.useOwnPrice ? 0 : Number(opt?.priceAdjustment ?? opt?.price ?? 0);
   const getOptionRegularPrice = getVariantRegularPrice;
@@ -290,6 +294,47 @@ const handleCustomerPhotoUpload = async (files) => {
     }
   };
 
+  const handleCollageUpload = async (label, files) => {
+    const template = collageTemplates.find((entry) => entry.label === label);
+    const selectedFiles = Array.from(files || []);
+    if (!template || selectedFiles.length === 0) return;
+    const current = collageUploads[label] || [];
+    const min = Math.max(0, Number(template.minImages || 0));
+    const max = Math.max(min, Number(template.maxImages || min || 0));
+    const remainingSlots = max - current.length;
+    if (remainingSlots <= 0) {
+      toast.error(`${label}: maximum ${max} images allowed`);
+      return;
+    }
+    if (selectedFiles.length > remainingSlots) {
+      toast.error(`${label}: you can add only ${remainingSlots} more image${remainingSlots === 1 ? '' : 's'}`);
+      return;
+    }
+    setUploadingCollageLabels((prev) => ({ ...prev, [label]: true }));
+    try {
+      const uploaded = [];
+      for (const file of selectedFiles) {
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `Failed to upload ${file.name}`);
+        uploaded.push(data);
+      }
+      setCollageUploads((prev) => ({ ...prev, [label]: [...(prev[label] || []), ...uploaded] }));
+      toast.success(`${label}: ${uploaded.length} image${uploaded.length === 1 ? '' : 's'} uploaded`);
+      trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'collage_upload', collage_label: label, photo_count: uploaded.length }));
+    } catch (error) {
+      toast.error(error.message || `${label}: failed to upload images`);
+    } finally {
+      setUploadingCollageLabels((prev) => ({ ...prev, [label]: false }));
+    }
+  };
+
+  const removeCollagePhoto = (label, idx) => setCollageUploads((prev) => ({
+    ...prev,
+    [label]: (prev[label] || []).filter((_, photoIdx) => photoIdx !== idx),
+  }));
   const addConfiguredProductToCart = ({ openCart = true } = {}) => {
     if (isSoldOut) {
       toast.error('This product is currently sold out');
@@ -303,6 +348,12 @@ const handleCustomerPhotoUpload = async (files) => {
       return false;
     }
     const variantStr = Object.entries(selectedVariants).filter(([, v]) => v?.label).map(([k, v]) => `${k}: ${v.label}`).join(', ');
+    const collageGroups = collageTemplates.map((template) => ({
+      label: template.label,
+      minImages: Number(template.minImages || 0),
+      maxImages: Number(template.maxImages || template.minImages || 0),
+      images: collageUploads[template.label] || [],
+    })).filter((group) => group.images.length > 0);
     const allCustomFields = customerPhotos.length > 0 ? { ...customFieldValues, 'Customer Photos': customerPhotos } : customFieldValues;
 
     addToCart({
@@ -314,6 +365,7 @@ const handleCustomerPhotoUpload = async (files) => {
       quantity,
       variant: variantStr,
       customFields: allCustomFields,
+      collageUploads: collageGroups,
       giftWrap,
       giftMessage,
       delivery: product.delivery || null,
@@ -577,6 +629,51 @@ const handleCustomerPhotoUpload = async (files) => {
           </div>
         )}
 
+        {needsCollageUploads && (
+          <div className="mb-5 rounded-2xl border-2 border-dashed border-primary-200 bg-primary-50/30 p-4 space-y-4">
+            <div>
+              <p className="text-sm font-bold text-gray-900">Collage photo uploads</p>
+              <p className="text-xs text-gray-500 mt-1">Upload photos label-wise. No editing or preview is needed; photos are saved in the same order you upload them.</p>
+            </div>
+            {collageTemplates.map((template) => {
+              const label = template.label;
+              const photos = collageUploads[label] || [];
+              const min = Math.max(0, Number(template.minImages || 0));
+              const max = Math.max(min, Number(template.maxImages || min || 0));
+              const isUploading = !!uploadingCollageLabels[label];
+              return (
+                <div key={label} className="rounded-2xl border bg-white p-3 sm:p-4">
+                  <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-sm font-extrabold text-gray-900">{label}</p>
+                      <p className="text-xs text-gray-500">Upload between {min} and {max} images.</p>
+                      {template.instructions && <p className="mt-1 text-xs text-primary-700">{template.instructions}</p>}
+                    </div>
+                    <span className={`self-start rounded-full px-3 py-1 text-xs font-bold border ${photos.length >= min && photos.length <= max ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>{photos.length}/{min}-{max}</span>
+                  </div>
+                  <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-primary-100 bg-primary-50/50 px-4 py-5 text-center transition-colors hover:bg-primary-50">
+                    <FiUpload size={22} className="text-primary-600" />
+                    <span className="text-sm font-semibold text-gray-800">Upload images for {label}</span>
+                    <span className="text-xs text-gray-500">Images stay in upload order</span>
+                    <input type="file" multiple accept="image/*" className="sr-only" disabled={isUploading} onChange={e => handleCollageUpload(label, e.target.files)} />
+                  </label>
+                  {isUploading && <p className="mt-2 text-xs font-semibold text-primary-700">Uploading {label} images...</p>}
+                  {photos.length > 0 && (
+                    <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
+                      {photos.map((photo, idx) => (
+                        <div key={photo.url || idx} className="relative aspect-square overflow-hidden rounded-xl border bg-gray-50">
+                          <img src={photo.url} alt={`${label} ${idx + 1}`} className="h-full w-full object-cover" />
+                          <span className="absolute left-1 top-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[10px] font-bold text-white">{idx + 1}</span>
+                          <button type="button" onClick={() => removeCollagePhoto(label, idx)} className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-white/95 text-red-500 shadow-sm" aria-label="Remove collage photo"><FiX size={14} /></button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
         {/* Live Customization Preview */}
         {previewEnabled && (
           <div className="mb-5 rounded-2xl border border-primary-100 bg-white p-4 shadow-sm">

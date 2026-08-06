@@ -12,6 +12,7 @@ const OrderSchema = new mongoose.Schema({
     quantity: Number,
     variant: String,
     customFields: mongoose.Schema.Types.Mixed,
+    collageUploads: mongoose.Schema.Types.Mixed,
     giftWrap: Boolean,
     giftMessage: String,
     customizationPreview: mongoose.Schema.Types.Mixed,

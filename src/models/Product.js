@@ -16,6 +16,13 @@ const StateDeliveryOverrideSchema = new mongoose.Schema({
   shippingCost: { type: Number, default: 0 },
   deliveryEstimate: { type: String, default: '' },
 }, { _id: false });
+const CollageTemplateSchema = new mongoose.Schema({
+  label: { type: String, default: '' },
+  minImages: { type: Number, default: 1 },
+  maxImages: { type: Number, default: 1 },
+  instructions: { type: String, default: '' },
+  isActive: { type: Boolean, default: true },
+}, { _id: false });
 
 const ProductSchema = new mongoose.Schema({
   title: { type: String, required: true },
@@ -64,6 +71,7 @@ const ProductSchema = new mongoose.Schema({
     type: { type: String, enum: ['text', 'file', 'textarea'] },
     required: { type: Boolean, default: false },
   }],
+  collageTemplates: [CollageTemplateSchema],
   delivery: {
     useCustomDelivery: { type: Boolean, default: false },
     tamilNaduShippingCost: { type: Number, default: 0 },

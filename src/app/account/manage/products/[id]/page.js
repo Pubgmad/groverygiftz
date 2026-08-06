@@ -29,7 +29,7 @@ export default function AdminProductForm({ params }) {
   const [collections, setCollections] = useState([]);
   const [form, setForm] = useState({
     title: '', description: '', images: [], productVideo: { url: '', name: '', poster: '' }, customizationPreview: { enabled: false, title: 'Preview your personalized gift', frameImage: '', aspectRatio: '1:1', shape: 'rectangle', instructions: '', requiredImageCount: 0, maxImageCount: 0, areas: [] }, delivery: defaultDelivery(), regularPrice: '', salePrice: '', offerStartsAt: '', offerEndsAt: '',
-    stock: 100, collections: [], variants: [], customFields: [],
+    stock: 100, collections: [], variants: [], customFields: [], collageTemplates: [],
     giftWrap: { enabled: false, price: 0 }, giftMessage: false,
     isQuoteOnly: false, isFeatured: false, isBestSeller: false, isActive: true,
     seoTitle: '', seoDescription: '',
@@ -48,7 +48,7 @@ export default function AdminProductForm({ params }) {
           offerStartsAt: d.offerStartsAt ? new Date(d.offerStartsAt).toISOString().slice(0, 16) : '',
           offerEndsAt: d.offerEndsAt ? new Date(d.offerEndsAt).toISOString().slice(0, 16) : '',
           stock: d.stock ?? 100, collections: d.collections?.map(c => c._id || c) || [],
-          variants: d.variants || [], customFields: d.customFields || [],
+          variants: d.variants || [], customFields: d.customFields || [], collageTemplates: d.collageTemplates || [],
           giftWrap: d.giftWrap || { enabled: false, price: 0 }, giftMessage: d.giftMessage || false,
           isQuoteOnly: d.isQuoteOnly || false, isFeatured: d.isFeatured || false, isBestSeller: d.isBestSeller || false,
           isActive: d.isActive ?? true, seoTitle: d.seoTitle || d.metaTitle || '', seoDescription: d.seoDescription || d.metaDescription || '',
@@ -99,6 +99,13 @@ export default function AdminProductForm({ params }) {
 
   const addCustomField = () => setForm(p => ({ ...p, customFields: [...p.customFields, { label: '', type: 'text', required: false }] }));
   const removeCustomField = (idx) => setForm(p => ({ ...p, customFields: p.customFields.filter((_, i) => i !== idx) }));
+  const addCollageTemplate = () => setForm(p => ({ ...p, collageTemplates: [...(p.collageTemplates || []), { label: '', minImages: 1, maxImages: 1, instructions: '', isActive: true }] }));
+  const updateCollageTemplate = (idx, updates) => {
+    const collageTemplates = [...(form.collageTemplates || [])];
+    collageTemplates[idx] = { ...(collageTemplates[idx] || {}), ...updates };
+    setForm(p => ({ ...p, collageTemplates }));
+  };
+  const removeCollageTemplate = (idx) => setForm(p => ({ ...p, collageTemplates: (p.collageTemplates || []).filter((_, i) => i !== idx) }));
 
   const updatePreviewArea = (idx, key, value) => {
     const areas = [...(form.customizationPreview?.areas || [])];
@@ -407,6 +414,32 @@ export default function AdminProductForm({ params }) {
           ))}
         </div>
 
+        {/* Collage Upload Templates */}
+        <div className="bg-white p-4 sm:p-6 rounded-xl border space-y-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="font-bold text-lg">Collage Upload Templates</h2>
+              <p className="text-xs text-gray-500 mt-1">Use this for collage products. Each label creates a separate customer upload section with its own minimum and maximum image count.</p>
+            </div>
+            <button type="button" onClick={addCollageTemplate} className="inline-flex w-full items-center justify-center gap-1 rounded-lg border px-3 py-2 text-sm font-semibold text-primary-600 sm:w-auto"><FiPlus /> Add Collage Label</button>
+          </div>
+          {(form.collageTemplates || []).map((template, idx) => (
+            <div key={idx} className="rounded-xl border bg-gray-50 p-3 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-gray-900">Collage Label {idx + 1}</p>
+                <button type="button" onClick={() => removeCollageTemplate(idx)} className="text-red-500"><FiX /></button>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div><label className="block text-xs font-medium mb-1">Label</label><input value={template.label || ''} onChange={e => updateCollageTemplate(idx, { label: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" placeholder="Example: 20 Photos" /></div>
+                <div><label className="block text-xs font-medium mb-1">Minimum Images</label><input type="number" min="1" value={template.minImages ?? 1} onChange={e => updateCollageTemplate(idx, { minImages: Number(e.target.value || 1) })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" /></div>
+                <div><label className="block text-xs font-medium mb-1">Maximum Images</label><input type="number" min="1" value={template.maxImages ?? 1} onChange={e => updateCollageTemplate(idx, { maxImages: Number(e.target.value || 1) })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" /></div>
+              </div>
+              <div><label className="block text-xs font-medium mb-1">Customer Instructions</label><input value={template.instructions || ''} onChange={e => updateCollageTemplate(idx, { instructions: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" placeholder="Upload photos in the order you want them used" /></div>
+              <label className="flex items-center gap-2 text-xs text-gray-700"><input type="checkbox" checked={template.isActive !== false} onChange={e => updateCollageTemplate(idx, { isActive: e.target.checked })} /> Active for customers</label>
+            </div>
+          ))}
+          {(form.collageTemplates || []).length === 0 && <p className="rounded-lg bg-gray-50 px-4 py-3 text-sm text-gray-500">No collage labels added. Add labels only for products that need multiple collage uploads.</p>}
+        </div>
         {/* Custom Fields */}
         <div className="bg-white p-4 sm:p-6 rounded-xl border">
           <div className="flex justify-between items-center mb-4">

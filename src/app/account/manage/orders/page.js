@@ -66,6 +66,31 @@ function CustomValue({ value }) {
   return <span>{String(value || '-')}</span>;
 }
 
+function CollageUploadDetails({ groups }) {
+  const visibleGroups = Array.isArray(groups) ? groups.filter((group) => group?.label && Array.isArray(group.images) && group.images.length > 0) : [];
+  if (visibleGroups.length === 0) return null;
+  return (
+    <div className="rounded-md bg-white border p-2 space-y-3">
+      <p className="text-xs font-semibold text-gray-700">Collage uploads</p>
+      {visibleGroups.map((group) => (
+        <div key={group.label} className="rounded-lg border bg-gray-50 p-2">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-bold text-gray-900">{group.label}</p>
+            <span className="rounded-full bg-primary-50 px-2 py-0.5 text-[11px] font-bold text-primary-700">{group.images.length} image{group.images.length === 1 ? '' : 's'} | allowed {group.minImages || 0}-{group.maxImages || group.images.length}</span>
+          </div>
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+            {group.images.map((image, index) => (
+              <a key={image.url || index} href={image.url} target="_blank" rel="noopener noreferrer" className="relative aspect-square overflow-hidden rounded-lg border bg-white">
+                <img src={image.url} alt={`${group.label} ${index + 1}`} className="h-full w-full object-cover" />
+                <span className="absolute left-1 top-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[10px] font-bold text-white">{index + 1}</span>
+              </a>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 function PreviewDetails({ preview }) {
   const previews = Array.isArray(preview?.previews) ? preview.previews : [];
   if (previews.length > 0) {
@@ -275,6 +300,7 @@ export default function AdminOrdersPage() {
                       {item.customFields && Object.keys(item.customFields).length > 0 && (
                         <div className="rounded-md bg-white border p-2 space-y-1"><p className="text-xs font-semibold text-gray-600">Customization</p>{Object.entries(item.customFields).map(([label, value]) => (<div key={label} className="text-xs text-gray-700"><span className="font-medium">{label}: </span><CustomValue value={value} /></div>))}</div>
                       )}
+                      {item.collageUploads && <CollageUploadDetails groups={item.collageUploads} />}
                       {item.customizationPreview && <PreviewDetails preview={item.customizationPreview} />}
                     </div>
                   ))}
