@@ -213,6 +213,15 @@ export default function ProductDetail({ product }) {
       toast.error(`Please upload no more than ${maxPhotoCount} photo${maxPhotoCount === 1 ? '' : 's'}`);
       return false;
     }
+    for (const template of collageTemplates) {
+      const photos = collageUploads[template.label] || [];
+      const min = Math.max(0, Number(template.minImages || 0));
+      const max = Math.max(min, Number(template.maxImages || min || 0));
+      if (photos.length < min || photos.length > max) {
+        toast.error(`${template.label}: upload between ${min} and ${max} images`);
+        return false;
+      }
+    }
     return true;
   };
 
