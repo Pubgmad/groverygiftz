@@ -84,26 +84,30 @@ export default function ProductDetail({ product }) {
   const getOptionSalePrice = getVariantSalePrice;
   const getOptionEffectivePrice = getVariantEffectivePrice;
   useEffect(() => {
-    setSelectedVariants((prev) => {
-      const next = { ...prev };
-      let changed = false;
-      for (const variant of product.variants || []) {
-        if (!variant?.name || next[variant.name]?.label) continue;
-        const firstAvailable = (variant.options || []).find((opt) => opt?.label && opt.inStock !== false && !(typeof opt.stock === 'number' && opt.stock <= 0));
-        if (!firstAvailable) continue;
-        next[variant.name] = {
-          label: firstAvailable.label,
-          extra: getOptionExtraPrice(firstAvailable),
-          useOwnPrice: !!firstAvailable.useOwnPrice,
-          regularPrice: firstAvailable.regularPrice,
-          salePrice: firstAvailable.salePrice,
-          stateOverrides: firstAvailable.stateOverrides || [],
-        };
-        changed = true;
-      }
-      return changed ? next : prev;
+    const firstVariantWithOption = (product.variants || [])
+      .map((variant) => ({
+        variant,
+        option: (variant.options || []).find((opt) => opt?.label && opt.inStock !== false && !(typeof opt.stock === 'number' && opt.stock <= 0)),
+      }))
+      .find((entry) => entry.variant?.name && entry.option);
+
+    if (!firstVariantWithOption) {
+      setSelectedVariants({});
+      return;
+    }
+
+    const { variant, option } = firstVariantWithOption;
+    setSelectedVariants({
+      [variant.name]: {
+        label: option.label,
+        extra: getOptionExtraPrice(option),
+        useOwnPrice: !!option.useOwnPrice,
+        regularPrice: option.regularPrice,
+        salePrice: option.salePrice,
+        stateOverrides: option.stateOverrides || [],
+      },
     });
-  }, [product.variants]);
+  }, [product._id, product.variants]);
   const selectedVariantOptions = Object.values(selectedVariants).filter(Boolean);
   const selectedOwnPriceOption = selectedVariantOptions.find((selected) => selected?.useOwnPrice && getOptionRegularPrice(selected) > 0);
   const baseRegularPrice = selectedOwnPriceOption ? getOptionRegularPrice(selectedOwnPriceOption) : Number(product.regularPrice || 0);
@@ -187,11 +191,9 @@ export default function ProductDetail({ product }) {
       toast.error('Please select your delivery state to see the final price');
       return false;
     }
-    for (const variant of product.variants || []) {
-      if (!selectedVariants[variant.name]) {
-        toast.error(`Please select ${variant.name}`);
-        return false;
-      }
+    if ((product.variants || []).length > 0 && selectedVariantOptions.length === 0) {
+      toast.error('Please select one variant option');
+      return false;
     }
     for (const field of product.customFields || []) {
       if (field.required && !customFieldValues[field.label]) {
@@ -480,7 +482,7 @@ const handleCustomerPhotoUpload = async (files) => {
                   <button key={oIdx}
                     type="button"
                     disabled={optionSoldOut}
-                    onClick={() => setSelectedVariants(prev => { const selectedNow = prev[variant.name]?.label === opt.label; const next = { ...prev }; if (selectedNow) delete next[variant.name]; else next[variant.name] = { label: opt.label, extra, useOwnPrice: !!opt.useOwnPrice, regularPrice: opt.regularPrice, salePrice: opt.salePrice, stateOverrides: opt.stateOverrides || [] }; return next; })}
+                    onClick={() => setSelectedVariants(prev => { const selectedNow = prev[variant.name]?.label === opt.label; if (selectedNow) return {}; return { [variant.name]: { label: opt.label, extra, useOwnPrice: !!opt.useOwnPrice, regularPrice: opt.regularPrice, salePrice: opt.salePrice, stateOverrides: opt.stateOverrides || [] } }; })}
                     className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
                       selected
                         ? 'border-primary-600 bg-primary-50 text-primary-600'
