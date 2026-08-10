@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import Customer from '@/models/Customer';
 import bcrypt from 'bcryptjs';
+import { validateStrongPassword, strongPasswordMessage } from '@/lib/passwordPolicy';
 
 export async function POST(req) {
   await dbConnect();
@@ -10,6 +11,11 @@ export async function POST(req) {
 
   if (!name || !normalizedEmail || !password) {
     return NextResponse.json({ error: 'Name, email, and password are required' }, { status: 400 });
+  }
+
+  const passwordCheck = validateStrongPassword(password);
+  if (!passwordCheck.valid) {
+    return NextResponse.json({ error: strongPasswordMessage() }, { status: 400 });
   }
 
   const existing = await Customer.findOne({ email: normalizedEmail });

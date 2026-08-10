@@ -3,14 +3,20 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import dbConnect from '@/lib/db';
 import Customer from '@/models/Customer';
+import { validateStrongPassword, strongPasswordMessage } from '@/lib/passwordPolicy';
 
 const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
 
 export async function POST(req) {
   await dbConnect();
   const { token, password } = await req.json();
-  if (!token || !password || password.length < 6) {
-    return NextResponse.json({ error: 'Valid token and password with at least 6 characters are required' }, { status: 400 });
+  if (!token || !password) {
+    return NextResponse.json({ error: 'Valid token and password are required' }, { status: 400 });
+  }
+
+  const passwordCheck = validateStrongPassword(password);
+  if (!passwordCheck.valid) {
+    return NextResponse.json({ error: strongPasswordMessage() }, { status: 400 });
   }
 
   const customer = await Customer.findOne({
