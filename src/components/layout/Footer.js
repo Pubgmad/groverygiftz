@@ -14,7 +14,7 @@ export default async function Footer() {
   const timingText = settings?.timings || '11 am to 7 pm';
   const instagram = settings?.socialLinks?.instagram || 'https://www.instagram.com/groverygiftz?igsh=dGNpbHlybWI0cjNy';
   const youtube = settings?.socialLinks?.youtube || '';
-  const logoSrc = settings?.logo || '';
+  const logoSrc = settings?.desktopLogo || settings?.logo || '';
   const siteName = settings?.siteName || 'GroveryGiftz';
 
   return (

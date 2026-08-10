@@ -116,7 +116,6 @@ export default async function HomePage() {
         products={bestSellers}
         eyebrow="Best sellers"
         title="Best Selling Gifts"
-        subtitle="Only products marked Best Seller by admin appear here."
         buttonText="View Best Sellers"
         buttonLink="/shop?view=best-sellers"
       />
