@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { signIn } from 'next-auth/react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { trackMetaEvent } from '@/lib/metaPixel';
@@ -54,6 +55,8 @@ export default function RegisterPage() {
         <PasswordInput required placeholder="Password" name="customer_register_password" autoComplete="new-password" readOnly={!inputReady} onFocus={() => setInputReady(true)} minLength={6} value={formData.password} onChange={e => setFormData(p => ({ ...p, password: e.target.value }))} />
         <button disabled={loading} className="btn-primary w-full">{loading ? 'Creating...' : 'Create Account'}</button>
       </form>
+      <div className="my-5 flex items-center gap-3 text-xs font-semibold uppercase tracking-widest text-gray-400"><span className="h-px flex-1 bg-gray-200" />or<span className="h-px flex-1 bg-gray-200" /></div>
+      <button type="button" onClick={() => signIn('google', { callbackUrl: '/account' })} className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 transition hover:border-primary-200 hover:bg-primary-50">Continue with Google</button>
       <p className="text-center mt-6 text-sm text-gray-500">
         Already have an account? <Link href="/auth/login" className="text-primary-600 hover:underline">Sign In</Link>
       </p>

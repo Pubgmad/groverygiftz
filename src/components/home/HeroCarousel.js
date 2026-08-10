@@ -63,8 +63,12 @@ export default function HeroCarousel({ banners = [], settings }) {
           onTouchEnd={handleTouchEnd}
           onKeyDown={(event) => { if (event.key === 'Enter') openBanner(slide, event); }}
         >
-          {slide.image ? (
-            <img src={slide.image} alt={slide.title || ''} className="h-full w-full object-cover object-center md:object-contain md:bg-white" />
+          {(slide.mobileImage || slide.tabletImage || slide.desktopImage || slide.image) ? (
+            <picture className="block h-full w-full">
+              <source media="(max-width: 639px)" srcSet={slide.mobileImage || slide.tabletImage || slide.desktopImage || slide.image} />
+              <source media="(max-width: 1023px)" srcSet={slide.tabletImage || slide.desktopImage || slide.image || slide.mobileImage} />
+              <img src={slide.desktopImage || slide.image || slide.tabletImage || slide.mobileImage} alt={slide.title || ''} className="h-full w-full bg-white object-contain" />
+            </picture>
           ) : (
             <div className="h-full w-full bg-gradient-to-br from-primary-800 via-primary-600 to-accent-500" />
           )}

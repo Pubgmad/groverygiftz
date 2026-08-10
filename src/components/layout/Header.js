@@ -37,7 +37,9 @@ export default function Header() {
   const { wishlistCount } = useWishlist();
   const { data: session } = useSession();
   const accountHref = session?.user?.type === 'customer' ? '/account' : '/auth/login';
-  const logoSrc = settings?.logo || '';
+  const logoSrc = settings?.desktopLogo || settings?.logo || '';
+  const tabletLogoSrc = settings?.tabletLogo || logoSrc;
+  const mobileLogoSrc = settings?.mobileLogo || tabletLogoSrc;
   const siteName = settings?.siteName || 'GroveryGiftz';
 
   useEffect(() => {
@@ -102,7 +104,11 @@ export default function Header() {
 
           <Link href="/" className="group flex min-w-0 items-center justify-center gap-1.5 sm:gap-2.5 md:justify-start md:flex-shrink-0">
             {logoSrc ? (
-              <img src={logoSrc} alt={siteName} className="h-10 max-w-[190px] shrink-0 object-contain transition-transform duration-200 group-hover:scale-105 sm:h-12 md:max-w-[240px]" />
+              <picture>
+                <source media="(max-width: 639px)" srcSet={mobileLogoSrc} />
+                <source media="(max-width: 1023px)" srcSet={tabletLogoSrc} />
+                <img src={logoSrc} alt={siteName} className="h-12 max-w-[210px] shrink-0 object-contain transition-transform duration-200 group-hover:scale-105 sm:h-14 md:h-16 md:max-w-[280px]" />
+              </picture>
             ) : (
               <>
                 <Image src="/logo.svg" alt="GroveryGiftz Logo" width={34} height={42} className="h-10 w-auto shrink-0 transition-transform duration-200 group-hover:scale-105 sm:h-[46px]" priority />
@@ -192,10 +198,15 @@ export default function Header() {
               <div key={item.href}>
                 <Link href={item.href} onClick={() => setMobileOpen(false)} className="px-5 py-3 text-gray-700 hover:bg-primary-50 hover:text-primary-600 font-medium block transition-colors">{item.label}</Link>
                 {item.megaMenu && (
-                  <div className="bg-gray-50 px-5 sm:px-8 py-2 grid grid-cols-1 sm:grid-cols-2 gap-1">
-                    {visibleMegaCollections.map(col => (
-                      <Link key={col.href} href={col.href} onClick={() => setMobileOpen(false)} className="py-2 text-sm text-gray-600 hover:text-primary-600 flex items-center gap-1.5 transition-colors"><FiGift size={14} /> {col.label}</Link>
-                    ))}
+                  <div className="bg-gray-50 px-5 py-3 sm:px-8">
+                    <div className="grid grid-cols-2 gap-3">
+                      {visibleMegaCollections.map(col => (
+                        <Link key={col.href} href={col.href} onClick={() => setMobileOpen(false)} className="group flex items-center gap-3 rounded-xl bg-white p-3 shadow-sm ring-1 ring-gray-100 transition-colors hover:bg-primary-50">
+                          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${col.color}`}><FiGift size={18} /></div>
+                          <div className="min-w-0"><span className="block truncate text-sm font-semibold text-gray-800 group-hover:text-primary-600">{col.label}</span><span className="text-xs text-gray-400">Explore</span></div>
+                        </Link>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>

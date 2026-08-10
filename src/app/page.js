@@ -1,4 +1,4 @@
-﻿import HeroCarousel from '@/components/home/HeroCarousel';
+import HeroCarousel from '@/components/home/HeroCarousel';
 import CollectionsGrid from '@/components/home/CollectionsGrid';
 import FeaturedProducts from '@/components/home/FeaturedProducts';
 import CollectionShowcase from '@/components/home/CollectionShowcase';
@@ -20,11 +20,9 @@ function activeOfferQuery(now) {
   return {
     isActive: true,
     salePrice: { $gt: 0 },
+    offerStartsAt: { $type: 'date', $lte: now },
+    offerEndsAt: { $type: 'date', $gte: now },
     $expr: { $lt: ['$salePrice', '$regularPrice'] },
-    $and: [
-      { $or: [{ offerStartsAt: null }, { offerStartsAt: { $exists: false } }, { offerStartsAt: { $lte: now } }] },
-      { $or: [{ offerEndsAt: null }, { offerEndsAt: { $exists: false } }, { offerEndsAt: { $gte: now } }] },
-    ],
   };
 }
 
@@ -41,9 +39,11 @@ async function getData() {
     : null;
 
   const now = new Date();
+  const latestSince = new Date(now);
+  latestSince.setMonth(latestSince.getMonth() - 3);
   const [banners, collections, featured, offerProducts, bestSellers, showcaseProducts] = await Promise.all([
     Banner.find({ isActive: true }).sort({ order: 1 }).lean(),
-    Collection.find({ isFeatured: true, isActive: true }).sort({ order: 1 }).limit(4).lean(),
+    Collection.find({ isFeatured: true, isActive: true, createdAt: { $gte: latestSince } }).sort({ createdAt: -1, order: 1 }).limit(4).lean(),
     Product.find({ isFeatured: true, isActive: true }).sort({ createdAt: -1 }).limit(12).lean(),
     Product.find(activeOfferQuery(now)).sort({ createdAt: -1 }).limit(12).lean(),
     Product.find({ isBestSeller: true, isActive: true }).sort({ createdAt: -1 }).limit(12).lean(),
@@ -115,7 +115,7 @@ export default async function HomePage() {
       <FeaturedProducts
         products={bestSellers}
         eyebrow="Best sellers"
-        title="Customer Favourite Gifts"
+        title="Best Selling Gifts"
         subtitle="Only products marked Best Seller by admin appear here."
         buttonText="View Best Sellers"
         buttonLink="/shop?view=best-sellers"

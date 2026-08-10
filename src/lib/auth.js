@@ -1,4 +1,5 @@
 import CredentialsProvider from 'next-auth/providers/credentials';
+import GoogleProvider from 'next-auth/providers/google';
 import bcrypt from 'bcryptjs';
 import dbConnect from './db';
 import Admin from '@/models/Admin';
@@ -37,8 +38,34 @@ export const authOptions = {
         return { id: customer._id.toString(), email: customer.email, name: customer.name, type: 'customer' };
       },
     }),
+    ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET ? [GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    })] : []),
   ],
   callbacks: {
+    async signIn({ user, account }) {
+      if (account?.provider !== 'google') return true;
+      await dbConnect();
+      const email = user.email?.trim().toLowerCase();
+      if (!email) return false;
+      let customer = await Customer.findOne({ email });
+      if (!customer) {
+        customer = await Customer.create({
+          name: user.name || email.split('@')[0],
+          email,
+          googleId: account.providerAccountId,
+          image: user.image || '',
+        });
+      } else {
+        customer.googleId = customer.googleId || account.providerAccountId;
+        customer.image = user.image || customer.image || '';
+        await customer.save();
+      }
+      user.id = customer._id.toString();
+      user.type = 'customer';
+      return true;
+    },
     async jwt({ token, user }) {
       if (user) {
         token.type = user.type;
@@ -60,4 +87,3 @@ export const authOptions = {
   session: { strategy: 'jwt' },
   secret: process.env.NEXTAUTH_SECRET,
 };
-

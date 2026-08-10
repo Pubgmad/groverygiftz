@@ -3,7 +3,11 @@ import mongoose from 'mongoose';
 const CustomerSchema = new mongoose.Schema({
   name: { type: String, required: true },
   email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
+  password: { type: String },
+  googleId: { type: String, default: '' },
+  image: { type: String, default: '' },
+  resetPasswordToken: { type: String, default: '' },
+  resetPasswordExpires: Date,
   phone: String,
   addresses: [{
     fullName: String,

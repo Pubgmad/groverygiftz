@@ -46,12 +46,14 @@ export default function LoginPage() {
         <input type="email" required placeholder="Email" name="customer_login_email" autoComplete="off" readOnly={!inputReady} onFocus={() => setInputReady(true)} value={email} onChange={e => setEmail(e.target.value)}
           className="w-full border rounded-lg px-4 py-3 focus:outline-none focus:border-primary-500" />
         <PasswordInput required placeholder="Password" name="customer_login_password" autoComplete="new-password" readOnly={!inputReady} onFocus={() => setInputReady(true)} value={password} onChange={e => setPassword(e.target.value)} />
+        <div className="text-right"><Link href="/auth/forgot-password" className="text-sm font-semibold text-primary-600 hover:underline">Forgot Password?</Link></div>
         <button disabled={loading} className="btn-primary w-full">{loading ? 'Signing in...' : 'Sign In'}</button>
       </form>
+      <div className="my-5 flex items-center gap-3 text-xs font-semibold uppercase tracking-widest text-gray-400"><span className="h-px flex-1 bg-gray-200" />or<span className="h-px flex-1 bg-gray-200" /></div>
+      <button type="button" onClick={() => signIn('google', { callbackUrl })} className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 transition hover:border-primary-200 hover:bg-primary-50">Continue with Google</button>
       <p className="text-center mt-6 text-sm text-gray-500">
         Don&apos;t have an account? <Link href="/auth/register" className="text-primary-600 hover:underline">Create Account</Link>
       </p>
     </div>
   );
 }
-

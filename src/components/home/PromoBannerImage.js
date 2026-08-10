@@ -9,17 +9,23 @@ export default function PromoBannerImage({ settings }) {
   const btnLink = !settings?.promoBannerButtonLink || settings.promoBannerButtonLink === '/shop'
     ? '/shop?view=latest'
     : settings.promoBannerButtonLink;
-  const image = settings?.promoBannerImage;
+  const image = settings?.promoBannerDesktopImage || settings?.promoBannerImage;
+  const tabletImage = settings?.promoBannerTabletImage || image;
+  const mobileImage = settings?.promoBannerMobileImage || tabletImage;
 
   return (
     <section className="relative overflow-hidden min-h-[320px] md:min-h-[420px] flex items-center">
       {/* Background: image or gradient */}
       {image ? (
-        <img
-          src={image}
-          alt={title}
-          className="absolute inset-0 w-full h-full object-cover"
-        />
+        <picture className="absolute inset-0 block h-full w-full">
+          <source media="(max-width: 639px)" srcSet={mobileImage} />
+          <source media="(max-width: 1023px)" srcSet={tabletImage} />
+          <img
+            src={image}
+            alt={title}
+            className="absolute inset-0 h-full w-full bg-white object-contain"
+          />
+        </picture>
       ) : (
         <div className="absolute inset-0" style={{ background: 'linear-gradient(90deg, #F47920 0%, #F27A1A 55%, #D96212 100%)' }} />
       )}

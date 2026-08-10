@@ -21,10 +21,10 @@ export default function ProductCard({ product }) {
   return (
     <Link
       href={`/products/${product.slug}`}
-      className="group product-card block rounded-2xl border border-white bg-white/95 p-2 sm:p-2.5 product-lift transition-all duration-300 hover:-translate-y-1"
+      className="group product-card block rounded-2xl border border-white bg-white/95 p-2.5 shadow-sm product-lift transition-all duration-300 hover:-translate-y-1 sm:p-3"
     >
-      <div className="relative aspect-square overflow-hidden rounded-xl bg-gray-100 image-sheen">
-        <div className="absolute left-2.5 top-2.5 z-10 flex max-w-[70%] flex-col gap-1.5">
+      <div className="relative aspect-[1/1.08] overflow-hidden rounded-xl bg-gray-100 image-sheen sm:aspect-square">
+        <div className="absolute left-2 top-2 z-10 flex max-w-[76%] flex-col gap-1.5 sm:left-2.5 sm:top-2.5 sm:max-w-[70%]">
           {savings > 0 && <div className="badge-save w-fit">Save {formatPrice(savings)}</div>}
           {product.isBestSeller && <div className="w-fit rounded-lg bg-accent-500 px-2.5 py-1 text-[11px] font-bold text-white shadow-sm">Best Seller</div>}
           {hasCustomization && (
@@ -63,13 +63,13 @@ export default function ProductCard({ product }) {
         </div>
       </div>
 
-      <div className="px-1.5 pb-1 pt-3">
-        <h3 className="min-h-[38px] text-[13px] font-semibold leading-snug text-gray-900 line-clamp-2 transition-colors group-hover:text-primary-700 sm:min-h-[40px] sm:text-sm">
+      <div className="px-1 pb-1.5 pt-3.5 sm:px-1.5">
+        <h3 className="min-h-[42px] text-[14px] font-semibold leading-snug text-gray-900 line-clamp-2 transition-colors group-hover:text-primary-700 sm:min-h-[40px] sm:text-sm">
           {product.title}
         </h3>
 
         <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-          <span className="text-base font-extrabold text-primary-700 sm:text-lg">
+          <span className="text-lg font-extrabold text-primary-700 sm:text-lg">
             {hasVariants ? 'From ' : ''}{formatPrice(displayPrice)}
           </span>
           {savings > 0 && <span className="text-xs font-medium text-gray-400 line-through">{formatPrice(displayRegularPrice)}</span>}

@@ -8,14 +8,14 @@ import { resolveGiftFinderForUi, defaultTickerMessages, defaultHotspotSpots } fr
 
 export default function AdminSettingsPage() {
   const [form, setForm] = useState({
-    siteName: '', tagline: '', logo: '', announcementText: '',
+    siteName: '', tagline: '', logo: '', desktopLogo: '', tabletLogo: '', mobileLogo: '', announcementText: '',
     phone: '', email: '', whatsapp: '', address: '', timings: '',
     socialLinks: { instagram: '', youtube: '' },
     freeShippingThreshold: 499, shippingCost: 40, tamilNaduShippingCost: 0, otherStateShippingCost: 120, tamilNaduDeliveryEstimate: 'Within 8 days', otherStateDeliveryEstimate: '10-15 days',
     promoEnabled: true, promoTitle: '', promoSubtitle: '', promoEndsAt: '', promoButtonText: '', promoButtonLink: '',
     gstNumber: '33KVUPS5560J1ZL', tradeName: 'GroveryGiftz',
     spotlightProductSlug: '',
-    promoBannerImage: '', promoBannerTitle: '', promoBannerSubtitle: '', promoBannerButtonText: '', promoBannerButtonLink: '',
+    promoBannerImage: '', promoBannerDesktopImage: '', promoBannerTabletImage: '', promoBannerMobileImage: '', promoBannerTitle: '', promoBannerSubtitle: '', promoBannerButtonText: '', promoBannerButtonLink: '',
     cashfreeEnabled: false, cashfreeAppId: '', cashfreeSecretKey: '', cashfreeEnvironment: 'sandbox',
     metaPixelEnabled: false, metaPixelId: '', metaPixelTestEventCode: '',
     heroEyebrow: '',
@@ -57,7 +57,7 @@ export default function AdminSettingsPage() {
     fetch('/api/settings').then(r => r.json()).then((d) => {
       const gf = resolveGiftFinderForUi(d);
       setForm({
-        siteName: d.siteName || '', tagline: d.tagline || '', logo: d.logo || '',
+        siteName: d.siteName || '', tagline: d.tagline || '', logo: d.logo || '', desktopLogo: d.desktopLogo || d.logo || '', tabletLogo: d.tabletLogo || '', mobileLogo: d.mobileLogo || '',
         announcementText: d.announcementText || '', phone: d.phone || '', email: d.email || '',
         whatsapp: d.whatsapp || '', address: d.address || '', timings: d.timings || '',
         socialLinks: { instagram: d.socialLinks?.instagram || '', youtube: d.socialLinks?.youtube || '' },
@@ -71,6 +71,9 @@ export default function AdminSettingsPage() {
         gstNumber: d.gstNumber || '33KVUPS5560J1ZL', tradeName: d.tradeName || 'GroveryGiftz',
         spotlightProductSlug: d.spotlightProductSlug || '',
         promoBannerImage: d.promoBannerImage || '',
+        promoBannerDesktopImage: d.promoBannerDesktopImage || d.promoBannerImage || '',
+        promoBannerTabletImage: d.promoBannerTabletImage || '',
+        promoBannerMobileImage: d.promoBannerMobileImage || '',
         promoBannerTitle: d.promoBannerTitle || 'Discover Our Latest Collections',
         promoBannerSubtitle: d.promoBannerSubtitle || 'Unique gifts for every occasion',
         promoBannerButtonText: d.promoBannerButtonText || 'Shop Now',
@@ -157,7 +160,14 @@ export default function AdminSettingsPage() {
             <div><label className="block text-sm font-medium mb-1">Site Name</label><input value={form.siteName} onChange={e => setForm(p => ({ ...p, siteName: e.target.value }))} className="w-full border rounded-lg px-4 py-2" /></div>
             <div><label className="block text-sm font-medium mb-1">Tagline</label><input value={form.tagline} onChange={e => setForm(p => ({ ...p, tagline: e.target.value }))} className="w-full border rounded-lg px-4 py-2" /></div>
           </div>
-          <div><label className="block text-sm font-medium mb-1">Logo</label><ImageUploader images={form.logo ? [form.logo] : []} onChange={imgs => setForm(p => ({ ...p, logo: imgs[0] || '' }))} /></div>
+          <div className="space-y-3">
+            <label className="block text-sm font-medium">Website Logo Assets</label>
+            <div className="grid gap-4 lg:grid-cols-3">
+              <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3"><p className="mb-1 text-sm font-semibold">Desktop Logo</p><p className="mb-2 text-xs text-gray-500">Recommended: 420 x 120 px transparent PNG/WebP</p><ImageUploader images={(form.desktopLogo || form.logo) ? [form.desktopLogo || form.logo] : []} onChange={imgs => setForm(p => ({ ...p, desktopLogo: imgs[0] || '', logo: imgs[0] || p.logo }))} /></div>
+              <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3"><p className="mb-1 text-sm font-semibold">Tablet Logo</p><p className="mb-2 text-xs text-gray-500">Recommended: 360 x 110 px</p><ImageUploader images={form.tabletLogo ? [form.tabletLogo] : []} onChange={imgs => setForm(p => ({ ...p, tabletLogo: imgs[0] || '' }))} /></div>
+              <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3"><p className="mb-1 text-sm font-semibold">Mobile Logo</p><p className="mb-2 text-xs text-gray-500">Recommended: 300 x 90 px</p><ImageUploader images={form.mobileLogo ? [form.mobileLogo] : []} onChange={imgs => setForm(p => ({ ...p, mobileLogo: imgs[0] || '' }))} /></div>
+            </div>
+          </div>
           <div><label className="block text-sm font-medium mb-1">Announcement Bar Text</label><input value={form.announcementText} onChange={e => setForm(p => ({ ...p, announcementText: e.target.value }))} className="w-full border rounded-lg px-4 py-2" /></div>
         </div>
 
@@ -258,7 +268,11 @@ export default function AdminSettingsPage() {
         <div className="bg-white p-6 rounded-xl border space-y-4">
           <h2 className="font-bold text-lg">Promo Image Banner</h2>
           <p className="text-sm text-gray-500">Full-width banner shown between sections on the homepage. If no image is set, a gradient is shown.</p>
-          <div><label className="block text-sm font-medium mb-1">Banner Image</label><ImageUploader images={form.promoBannerImage ? [form.promoBannerImage] : []} onChange={imgs => setForm(p => ({ ...p, promoBannerImage: imgs[0] || '' }))} /></div>
+          <div className="grid gap-4 lg:grid-cols-3">
+            <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3"><label className="mb-1 block text-sm font-semibold">Desktop Promo Banner</label><p className="mb-2 text-xs text-gray-500">Recommended: 1920 x 560 px</p><ImageUploader images={(form.promoBannerDesktopImage || form.promoBannerImage) ? [form.promoBannerDesktopImage || form.promoBannerImage] : []} onChange={imgs => setForm(p => ({ ...p, promoBannerDesktopImage: imgs[0] || '', promoBannerImage: imgs[0] || p.promoBannerImage }))} /></div>
+            <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3"><label className="mb-1 block text-sm font-semibold">Tablet Promo Banner</label><p className="mb-2 text-xs text-gray-500">Recommended: 1200 x 600 px</p><ImageUploader images={form.promoBannerTabletImage ? [form.promoBannerTabletImage] : []} onChange={imgs => setForm(p => ({ ...p, promoBannerTabletImage: imgs[0] || '' }))} /></div>
+            <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3"><label className="mb-1 block text-sm font-semibold">Mobile Promo Banner</label><p className="mb-2 text-xs text-gray-500">Recommended: 900 x 900 px</p><ImageUploader images={form.promoBannerMobileImage ? [form.promoBannerMobileImage] : []} onChange={imgs => setForm(p => ({ ...p, promoBannerMobileImage: imgs[0] || '' }))} /></div>
+          </div>
           <div className="grid md:grid-cols-2 gap-4">
             <div><label className="block text-sm font-medium mb-1">Title</label><input value={form.promoBannerTitle} onChange={e => setForm(p => ({ ...p, promoBannerTitle: e.target.value }))} className="w-full border rounded-lg px-4 py-2" /></div>
             <div><label className="block text-sm font-medium mb-1">Subtitle</label><input value={form.promoBannerSubtitle} onChange={e => setForm(p => ({ ...p, promoBannerSubtitle: e.target.value }))} className="w-full border rounded-lg px-4 py-2" /></div>
@@ -276,6 +290,3 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
-
-
-

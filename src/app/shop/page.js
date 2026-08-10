@@ -27,11 +27,9 @@ function effectivePriceExpression(now) {
 function activeOfferMatch(now) {
   return {
     salePrice: { $gt: 0 },
+    offerStartsAt: { $type: 'date', $lte: now },
+    offerEndsAt: { $type: 'date', $gte: now },
     $expr: { $lt: ['$salePrice', '$regularPrice'] },
-    $and: [
-      { $or: [{ offerStartsAt: null }, { offerStartsAt: { $exists: false } }, { offerStartsAt: { $lte: now } }] },
-      { $or: [{ offerEndsAt: null }, { offerEndsAt: { $exists: false } }, { offerEndsAt: { $gte: now } }] },
-    ],
   };
 }
 

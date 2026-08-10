@@ -3,7 +3,10 @@ import mongoose from 'mongoose';
 const BannerSchema = new mongoose.Schema({
   title: String,
   subtitle: String,
-  image: { type: String, required: true },
+  image: { type: String, default: '' },
+  desktopImage: { type: String, default: '' },
+  tabletImage: { type: String, default: '' },
+  mobileImage: { type: String, default: '' },
   link: String,
   buttonText: { type: String, default: 'Shop Now' },
   order: { type: Number, default: 0 },

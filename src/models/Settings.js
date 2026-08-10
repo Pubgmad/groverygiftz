@@ -23,6 +23,9 @@ const SettingsSchema = new mongoose.Schema({
   siteName: { type: String, default: 'GroveryGiftz' },
   tagline: { type: String, default: 'Perfect Gifts for Your Loved Ones' },
   logo: String,
+  desktopLogo: { type: String, default: '' },
+  tabletLogo: { type: String, default: '' },
+  mobileLogo: { type: String, default: '' },
   announcementText: { type: String, default: 'Free shipping on orders above INR 499' },
   phone: { type: String, default: '+91 99945 49781' },
   email: { type: String, default: 'Groverygiftz@gmail.com' },
@@ -50,6 +53,9 @@ const SettingsSchema = new mongoose.Schema({
   legalName: String,
   spotlightProductSlug: { type: String, default: '' },
   promoBannerImage: { type: String, default: '' },
+  promoBannerDesktopImage: { type: String, default: '' },
+  promoBannerTabletImage: { type: String, default: '' },
+  promoBannerMobileImage: { type: String, default: '' },
   promoBannerTitle: { type: String, default: 'Discover Our Latest Collections' },
   promoBannerSubtitle: { type: String, default: 'Unique gifts for every occasion' },
   promoBannerButtonText: { type: String, default: 'Shop Now' },
@@ -99,4 +105,3 @@ const SettingsSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 export default mongoose.models.Settings || mongoose.model('Settings', SettingsSchema);
-
