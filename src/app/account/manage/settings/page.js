@@ -260,6 +260,25 @@ export default function AdminSettingsPage() {
           )}
         </div>
 
+        <div className="bg-white rounded-xl shadow-sm p-6 mb-6 space-y-4">
+          <h2 className="font-bold text-lg">Google Reviews via SerpApi</h2>
+          <p className="text-sm text-gray-500">Fetch real Google Maps reviews through SerpApi. The API key is stored server-side and never sent to customers.</p>
+          <label className="flex items-center gap-2 text-sm font-semibold">
+            <input type="checkbox" checked={form.googleReviewsEnabled} onChange={e => setForm(p => ({ ...p, googleReviewsEnabled: e.target.checked }))} />
+            Enable Google Reviews
+          </label>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div><label className="block text-sm font-medium mb-1">SerpApi Key <span className="text-red-400">(keep secret!)</span></label><PasswordInput value={form.googleReviewsSerpApiKey} onChange={e => setForm(p => ({ ...p, googleReviewsSerpApiKey: e.target.value }))} inputClassName="w-full border rounded-lg px-4 py-2 font-mono text-sm focus:outline-none focus:border-primary-500" placeholder="SerpApi private key" /></div>
+            <div><label className="block text-sm font-medium mb-1">Google Place ID</label><input value={form.googleReviewsPlaceId} onChange={e => setForm(p => ({ ...p, googleReviewsPlaceId: e.target.value }))} className="w-full border rounded-lg px-4 py-2 font-mono text-sm" placeholder="ChIJ..." /></div>
+            <div><label className="block text-sm font-medium mb-1">Google Maps Data ID <span className="text-gray-400">(optional)</span></label><input value={form.googleReviewsDataId} onChange={e => setForm(p => ({ ...p, googleReviewsDataId: e.target.value }))} className="w-full border rounded-lg px-4 py-2 font-mono text-sm" placeholder="0x...:0x..." /></div>
+            <div><label className="block text-sm font-medium mb-1">Sort Reviews</label><select value={form.googleReviewsSortBy} onChange={e => setForm(p => ({ ...p, googleReviewsSortBy: e.target.value }))} className="w-full border rounded-lg px-4 py-2"><option value="newestFirst">Newest first</option><option value="qualityScore">Most relevant</option><option value="ratingHigh">Highest rating</option><option value="ratingLow">Lowest rating</option></select></div>
+            <div><label className="block text-sm font-medium mb-1">Refresh Cache Every Hours</label><input type="number" min="1" value={form.googleReviewsCacheHours} onChange={e => setForm(p => ({ ...p, googleReviewsCacheHours: e.target.value }))} className="w-full border rounded-lg px-4 py-2" /></div>
+          </div>
+          {form.googleReviewsEnabled && !form.googleReviewsPlaceId && !form.googleReviewsDataId && (
+            <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">Add either Google Place ID or Data ID for SerpApi reviews to work.</p>
+          )}
+        </div>
+
         <div className="bg-white p-6 rounded-xl border space-y-4">
           <h2 className="font-bold text-lg">Product Spotlight</h2>
           <p className="text-sm text-gray-500">Enter the slug of the product to feature in the spotlight section on the homepage.</p>

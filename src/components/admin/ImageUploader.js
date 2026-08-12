@@ -68,9 +68,9 @@ export default function ImageUploader({ images = [], onChange, replaceOnUpload =
 
   const uploadTile = (label) => (
     <label className={`relative flex h-24 w-24 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed hover:bg-gray-50 ${uploading ? 'pointer-events-none opacity-80' : ''}`}>
-      {uploading ? <FiLoader className="mb-1 animate-spin text-primary-600" /> : <FiUpload className="mb-1 text-gray-400" />}
-      <span className="text-xs text-gray-400">{uploading ? 'Uploading...' : label}</span>
-      {uploading && <span className="absolute inset-0 rounded-lg bg-white/60" />}
+      {uploading && <span className="absolute inset-0 z-0 rounded-lg bg-white/80" />}
+      {uploading ? <span className="relative z-10 mb-1 h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-primary-600" /> : <FiUpload className="mb-1 text-gray-400" />}
+      <span className="relative z-10 text-xs font-semibold text-gray-500">{uploading ? 'Uploading...' : label}</span>
       <input ref={inputRef} type="file" multiple={!replaceOnUpload} accept="image/*,.svg,.avif" onChange={handleUpload} className="hidden" disabled={uploading} />
     </label>
   );

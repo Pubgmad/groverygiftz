@@ -1049,29 +1049,50 @@ const handleCustomerPhotoUpload = async (files) => {
 
 
         {/* Product Reviews */}
-        <div className="mt-8 border-t pt-6">
-          <div className="mb-4 flex items-center gap-2">
-            <FiStar className="text-accent-500" />
-            <h2 className="text-xl font-bold">Customer Submitted Reviews</h2>
-          </div>
-          <div className="rounded-2xl bg-gray-50 p-5">
-            <p className="text-lg font-bold text-gray-900">Customer Reviews</p>
-            <div className="mt-3 flex items-center gap-3">
-              <span className="text-3xl font-extrabold text-gray-950">{reviewCount ? roundedRating.toFixed(1) : '0.0'}</span>
-              <div><div className="flex gap-1 text-accent-500">{[1, 2, 3, 4, 5].map((star) => <FiStar key={star} className={star <= Math.round(averageRating) ? 'fill-accent-500 stroke-accent-500' : 'stroke-gray-300'} />)}</div><p className="mt-1 text-xs text-gray-500">{reviewCount} verified review{reviewCount === 1 ? '' : 's'}</p></div>
+        {(googleReviews.enabled || reviews.length > 0) && (
+          <div className="mt-8 border-t pt-6">
+            <div className="mb-4 flex items-center gap-2">
+              <FiStar className="text-accent-500" />
+              <h2 className="text-xl font-bold">Customer Submitted Reviews</h2>
             </div>
-          </div>
-          {reviews.length > 0 ? (
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              {reviews.slice(0, 4).map((review) => (
-                <div key={review._id} className="rounded-2xl border bg-white p-4 shadow-sm">
-                  <div className="mb-2 flex items-center justify-between gap-3"><p className="font-bold text-gray-900">{review.name || 'Customer'}</p><div className="flex gap-0.5 text-accent-500">{[1, 2, 3, 4, 5].map((star) => <FiStar key={star} size={14} className={star <= Number(review.rating || 0) ? 'fill-accent-500 stroke-accent-500' : 'stroke-gray-300'} />)}</div></div>
-                  <p className="text-sm leading-6 text-gray-600">{review.comment}</p>
+            {googleReviews.enabled && (
+              <div className="space-y-4">
+                <div className="rounded-3xl bg-gray-50 p-5 shadow-sm">
+                  <p className="text-lg font-bold"><span className="text-blue-500">G</span><span className="text-red-500">o</span><span className="text-yellow-500">o</span><span className="text-blue-500">g</span><span className="text-emerald-500">l</span><span className="text-red-500">e</span> Reviews</p>
+                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                    <span className="text-3xl font-extrabold text-gray-950">{googleRating ? googleRating.toFixed(1) : '0.0'}</span>
+                    <div className="flex gap-1 text-yellow-400">{[1, 2, 3, 4, 5].map((star) => <FiStar key={star} className={star <= Math.round(googleRating) ? 'fill-yellow-400 stroke-yellow-400' : 'stroke-gray-300'} />)}</div>
+                    <span className="text-sm text-gray-500">({googleReviewCount.toLocaleString('en-IN')})</span>
+                  </div>
                 </div>
-              ))}
-            </div>
-          ) : <p className="mt-4 rounded-2xl border bg-white p-4 text-sm text-gray-500">No customer reviews yet. Reviews will appear after customers complete paid orders.</p>}
-        </div>
+                {visibleGoogleReviews.map((review) => (
+                  <div key={review.id} className="rounded-3xl bg-gray-50 p-5 shadow-sm">
+                    <div className="flex items-start gap-3">
+                      {review.avatar ? <img src={review.avatar} alt={review.name} className="h-11 w-11 rounded-full object-cover" /> : <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary-100 text-sm font-bold text-primary-700">{String(review.name || 'G').slice(0, 1)}</div>}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2"><p className="font-bold text-gray-900">{review.name}</p><span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-600">Google</span></div>
+                        {review.date && <p className="text-xs text-gray-400">{review.date}</p>}
+                        <div className="mt-2 flex gap-0.5 text-yellow-400">{[1, 2, 3, 4, 5].map((star) => <FiStar key={star} size={15} className={star <= Number(review.rating || 0) ? 'fill-yellow-400 stroke-yellow-400' : 'stroke-gray-300'} />)}</div>
+                        {review.text && <p className="mt-2 text-sm leading-6 text-gray-700">{review.text}</p>}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {googleReviewImages.length > 0 && <div className="flex snap-x gap-3 overflow-x-auto pb-2">{googleReviewImages.map((image, idx) => <img key={image + idx} src={image} alt="Google review image" className="h-28 w-28 shrink-0 snap-start rounded-xl border object-cover" />)}</div>}
+              </div>
+            )}
+            {reviews.length > 0 && (
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {reviews.slice(0, 4).map((review) => (
+                  <div key={review._id} className="rounded-2xl border bg-white p-4 shadow-sm">
+                    <div className="mb-2 flex items-center justify-between gap-3"><p className="font-bold text-gray-900">{review.name || 'Customer'}</p><div className="flex gap-0.5 text-accent-500">{[1, 2, 3, 4, 5].map((star) => <FiStar key={star} size={14} className={star <= Number(review.rating || 0) ? 'fill-accent-500 stroke-accent-500' : 'stroke-gray-300'} />)}</div></div>
+                    <p className="text-sm leading-6 text-gray-600">{review.comment}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         {/* Description */}
         {product.description && (
           <div className="mt-8 border-t pt-6">

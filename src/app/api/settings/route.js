@@ -10,6 +10,7 @@ function sanitizePublicSettings(settings) {
   const publicSettings = { ...settings };
   publicSettings.cashfreeSecretKey = '';
   publicSettings.metaPixelTestEventCode = '';
+  publicSettings.googleReviewsSerpApiKey = '';
   return publicSettings;
 }
 
@@ -45,6 +46,12 @@ export async function GET() {
       metaPixelEnabled: false,
       metaPixelId: '',
       metaPixelTestEventCode: '',
+      googleReviewsEnabled: false,
+      googleReviewsSerpApiKey: '',
+      googleReviewsPlaceId: '',
+      googleReviewsDataId: '',
+      googleReviewsSortBy: 'newestFirst',
+      googleReviewsCacheHours: 12,
     });
     settings = created.toObject();
   }
