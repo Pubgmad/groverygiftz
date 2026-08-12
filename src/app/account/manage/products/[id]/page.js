@@ -22,6 +22,20 @@ function normalizePreviewAreas(preview = {}) {
   const ratio = String(preview.aspectRatio || '1:1').split(':').map(Number);
   return [{ ...defaultPreviewArea(), label: preview.title || 'Photo 1', width: ratio[0] || 1, height: ratio[1] || 1, frameImage: preview.frameImage || '', shape: preview.shape || 'rectangle', instructions: preview.instructions || '' }];
 }
+function toDatetimeLocalInput(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return localDate.toISOString().slice(0, 16);
+}
+
+function fromDatetimeLocalInput(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
 export default function AdminProductForm({ params }) {
   const isEdit = params?.id && params.id !== 'new';
   const router = useRouter();
@@ -47,8 +61,8 @@ export default function AdminProductForm({ params }) {
           customizationPreview: { ...(d.customizationPreview || { enabled: false, title: 'Preview your personalized gift', frameImage: '', aspectRatio: '1:1', shape: 'rectangle', instructions: '' }), areas: normalizePreviewAreas(d.customizationPreview || {}) },
           delivery: { ...defaultDelivery(), ...(d.delivery || {}), stateOverrides: d.delivery?.stateOverrides || [] },
           regularPrice: d.regularPrice || '', salePrice: d.salePrice || '',
-          offerStartsAt: d.offerStartsAt ? new Date(d.offerStartsAt).toISOString().slice(0, 16) : '',
-          offerEndsAt: d.offerEndsAt ? new Date(d.offerEndsAt).toISOString().slice(0, 16) : '',
+          offerStartsAt: toDatetimeLocalInput(d.offerStartsAt),
+          offerEndsAt: toDatetimeLocalInput(d.offerEndsAt),
           stock: d.stock ?? 100, collections: d.collections?.map(c => c._id || c) || [],
           variants: d.variants || [], customFields: d.customFields || [], collageEnabled: !!d.collageEnabled, collageTemplates: d.collageTemplates || [],
           giftWrap: d.giftWrap || { enabled: false, price: 0 }, giftMessage: d.giftMessage || false,
@@ -64,7 +78,7 @@ export default function AdminProductForm({ params }) {
     setLoading(true);
     const url = isEdit ? `/api/products/${params.id}` : '/api/products';
     const method = isEdit ? 'PUT' : 'POST';
-    const payload = { ...form, offerStartsAt: form.offerStartsAt || null, offerEndsAt: form.offerEndsAt || null };
+    const payload = { ...form, offerStartsAt: fromDatetimeLocalInput(form.offerStartsAt), offerEndsAt: fromDatetimeLocalInput(form.offerEndsAt) };
     const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     setLoading(false);
     if (res.ok) {

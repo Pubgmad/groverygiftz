@@ -7,15 +7,7 @@ import Collection from '@/models/Collection';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import slugify from 'slugify';
-
-function activeOfferFilter(now = new Date()) {
-  return {
-    salePrice: { $gt: 0 },
-    offerStartsAt: { $type: 'date', $lte: now },
-    offerEndsAt: { $type: 'date', $gte: now },
-    $expr: { $lt: ['$salePrice', '$regularPrice'] },
-  };
-}
+import { activeOfferMatch } from '@/lib/offers';
 
 export async function GET(req) {
   await dbConnect();
@@ -36,7 +28,7 @@ export async function GET(req) {
   if (collection) filter.collections = collection;
   if (featured === 'true') filter.isFeatured = true;
   if (bestSeller === 'true') filter.isBestSeller = true;
-  if (offer === 'true') Object.assign(filter, activeOfferFilter(new Date()));
+  if (offer === 'true') Object.assign(filter, activeOfferMatch(new Date()));
   if (latest === 'true') {
     const latestSince = new Date();
     latestSince.setMonth(latestSince.getMonth() - 3);

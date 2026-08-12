@@ -4,36 +4,9 @@ import Product from '@/models/Product';
 import Collection from '@/models/Collection';
 import ProductCard from '@/components/product/ProductCard';
 import Link from 'next/link';
+import { activeOfferMatch, effectivePriceExpression } from '@/lib/offers';
 
 const VALID_VIEWS = ['collections', 'offers', 'latest', 'best-sellers'];
-
-function effectivePriceExpression(now) {
-  return {
-    $cond: [
-      {
-        $and: [
-          { $gt: ['$salePrice', 0] },
-          { $lt: ['$salePrice', '$regularPrice'] },
-          { $or: [{ $eq: [{ $ifNull: ['$offerStartsAt', null] }, null] }, { $lte: ['$offerStartsAt', now] }] },
-          { $or: [{ $eq: [{ $ifNull: ['$offerEndsAt', null] }, null] }, { $gte: ['$offerEndsAt', now] }] },
-        ],
-      },
-      '$salePrice',
-      '$regularPrice',
-    ],
-  };
-}
-
-function activeOfferMatch(now) {
-  return {
-    salePrice: { $gt: 0 },
-    $and: [
-      { $or: [{ offerStartsAt: { $exists: false } }, { offerStartsAt: null }, { offerStartsAt: { $lte: now } }] },
-      { $or: [{ offerEndsAt: { $exists: false } }, { offerEndsAt: null }, { offerEndsAt: { $gte: now } }] },
-    ],
-    $expr: { $lt: ['$salePrice', '$regularPrice'] },
-  };
-}
 
 export default async function ShopPage({ searchParams }) {
   await dbConnect();

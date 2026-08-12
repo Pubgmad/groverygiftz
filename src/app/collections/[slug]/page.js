@@ -5,6 +5,7 @@ import Product from '@/models/Product';
 import ProductCard from '@/components/product/ProductCard';
 import Breadcrumbs from '@/components/ui/Breadcrumbs';
 import { notFound } from 'next/navigation';
+import { effectivePriceExpression } from '@/lib/offers';
 
 const PRICE_RANGES = [
   { label: 'Under INR 299', min: 0, max: 299 },
@@ -13,23 +14,6 @@ const PRICE_RANGES = [
   { label: 'INR 999 - INR 1,999', min: 999, max: 1999 },
   { label: 'Above INR 1,999', min: 1999, max: null },
 ];
-
-function effectivePriceExpression(now) {
-  return {
-    $cond: [
-      {
-        $and: [
-          { $gt: ['$salePrice', 0] },
-          { $lt: ['$salePrice', '$regularPrice'] },
-          { $or: [{ $eq: [{ $ifNull: ['$offerStartsAt', null] }, null] }, { $lte: ['$offerStartsAt', now] }] },
-          { $or: [{ $eq: [{ $ifNull: ['$offerEndsAt', null] }, null] }, { $gte: ['$offerEndsAt', now] }] },
-        ],
-      },
-      '$salePrice',
-      '$regularPrice',
-    ],
-  };
-}
 
 export default async function CollectionPage({ params, searchParams }) {
   await dbConnect();

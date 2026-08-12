@@ -1,14 +1,7 @@
+export { getOfferStatus, isOfferActive } from './offers';
+
 export function formatPrice(price) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(Number(price) || 0);
-}
-
-export function isOfferActive(product, now = Date.now()) {
-  if (!product?.salePrice || Number(product.salePrice) >= Number(product.regularPrice || 0)) return false;
-  const startsAt = product.offerStartsAt ? new Date(product.offerStartsAt).getTime() : null;
-  const endsAt = product.offerEndsAt ? new Date(product.offerEndsAt).getTime() : null;
-  if (startsAt && !Number.isNaN(startsAt) && now < startsAt) return false;
-  if (endsAt && !Number.isNaN(endsAt) && now > endsAt) return false;
-  return true;
 }
 
 export function getEffectivePrice(product, now = Date.now()) {

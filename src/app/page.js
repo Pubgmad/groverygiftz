@@ -15,18 +15,7 @@ import Collection from '@/models/Collection';
 import Banner from '@/models/Banner';
 import Settings from '@/models/Settings';
 import { resolveGiftFinderForUi, resolveTickerMessages } from '@/lib/giftFinderResolve';
-
-function activeOfferQuery(now) {
-  return {
-    isActive: true,
-    salePrice: { $gt: 0 },
-    $and: [
-      { $or: [{ offerStartsAt: { $exists: false } }, { offerStartsAt: null }, { offerStartsAt: { $lte: now } }] },
-      { $or: [{ offerEndsAt: { $exists: false } }, { offerEndsAt: null }, { offerEndsAt: { $gte: now } }] },
-    ],
-    $expr: { $lt: ['$salePrice', '$regularPrice'] },
-  };
-}
+import { activeOfferMatch } from '@/lib/offers';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,12 +32,13 @@ async function getData() {
   const now = new Date();
   const latestSince = new Date(now);
   latestSince.setMonth(latestSince.getMonth() - 3);
-  const [banners, collections, featured, offerProducts, bestSellers, showcaseProducts] = await Promise.all([
+  const [banners, collections, featured, offerProducts, bestSellers, allProductPreviews, showcaseProducts] = await Promise.all([
     Banner.find({ isActive: true }).sort({ order: 1 }).lean(),
     Collection.find({ isFeatured: true, isActive: true, createdAt: { $gte: latestSince } }).sort({ createdAt: -1, order: 1 }).limit(4).lean(),
     Product.find({ isFeatured: true, isActive: true }).sort({ createdAt: -1 }).limit(12).lean(),
-    Product.find(activeOfferQuery(now)).sort({ createdAt: -1 }).limit(12).lean(),
+    Product.find(activeOfferMatch(now, { includeActive: true })).sort({ createdAt: -1 }).limit(12).lean(),
     Product.find({ isBestSeller: true, isActive: true }).sort({ createdAt: -1 }).limit(12).lean(),
+    Product.find({ isActive: true }).sort({ createdAt: -1 }).limit(12).lean(),
     showcaseCollection
       ? Product.find({ collections: showcaseCollection._id, isActive: true }).sort({ createdAt: -1 }).limit(12).lean()
       : Promise.resolve([]),
@@ -68,6 +58,7 @@ async function getData() {
     featured: JSON.parse(JSON.stringify(featured)),
     offerProducts: JSON.parse(JSON.stringify(offerProducts)),
     bestSellers: JSON.parse(JSON.stringify(bestSellers)),
+    allProductPreviews: JSON.parse(JSON.stringify(allProductPreviews)),
     showcaseProducts: JSON.parse(JSON.stringify(showcaseProducts)),
     showcaseSlug: showcaseCollection?.slug || '',
     settings: s,
@@ -85,6 +76,7 @@ export default async function HomePage() {
     featured,
     offerProducts,
     bestSellers,
+    allProductPreviews,
     showcaseProducts,
     showcaseSlug,
     settings,
@@ -115,7 +107,7 @@ export default async function HomePage() {
         buttonLink="/shop?view=offers"
       />
       <FeaturedProducts
-        products={featured}
+        products={allProductPreviews}
         eyebrow={settings?.homeAllProductsEyebrow || settings?.homeFeaturedProductsEyebrow || ''}
         title={settings?.homeAllProductsTitle || settings?.homeFeaturedProductsTitle || 'All Products'}
         subtitle={settings?.homeAllProductsSubtitle || settings?.homeFeaturedProductsSubtitle || ''}
