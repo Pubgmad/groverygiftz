@@ -24,7 +24,7 @@ export async function POST(req) {
   }
 
   const hashedPassword = await bcrypt.hash(password, 12);
-  await Customer.create({ name, email: normalizedEmail, password: hashedPassword, phone });
+  await Customer.create({ name, email: normalizedEmail, password: hashedPassword, phone: normalizedPhone });
 
   return NextResponse.json({ message: 'Account created' }, { status: 201 });
 }

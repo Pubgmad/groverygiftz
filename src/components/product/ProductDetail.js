@@ -5,7 +5,7 @@ import { useCart } from '@/context/CartContext';
 import { formatPrice, calcSavings, getEffectivePrice, isOfferActive, getVariantRegularPrice, getVariantSalePrice, getVariantEffectivePrice } from '@/lib/utils';
 import { buildDeliveryEstimateText } from '@/lib/deliveryDate';
 import { buildProductMetaPayload, trackMetaCustomEvent, trackMetaEvent } from '@/lib/metaPixel';
-import { FiMinus, FiPlus, FiX, FiTruck, FiShield, FiClock, FiShoppingCart, FiZap, FiUpload, FiImage, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
+import { FiMinus, FiPlus, FiX, FiTruck, FiShield, FiClock, FiShoppingCart, FiZap, FiUpload, FiImage, FiChevronLeft, FiChevronRight, FiStar } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 const INDIAN_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
@@ -26,11 +26,15 @@ export default function ProductDetail({ product }) {
   const [selectedVariants, setSelectedVariants] = useState({});
   const [customFieldValues, setCustomFieldValues] = useState({});
   const [customerPhotos, setCustomerPhotos] = useState([]);
+  const [variantLabelUploads, setVariantLabelUploads] = useState({});
+  const [uploadingVariantLabels, setUploadingVariantLabels] = useState({});
   const [uploadingCustomerPhotos, setUploadingCustomerPhotos] = useState(false);
   const [collageUploads, setCollageUploads] = useState({});
   const [uploadingCollageLabels, setUploadingCollageLabels] = useState({});
   const [uploadingFields, setUploadingFields] = useState({});
   const [previewAdjustments, setPreviewAdjustments] = useState({});
+  const [savedPreviewAreas, setSavedPreviewAreas] = useState({});
+  const [reviews, setReviews] = useState([]);
   const [giftWrap, setGiftWrap] = useState(false);
   const [giftMessage, setGiftMessage] = useState('');
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -75,14 +79,16 @@ export default function ProductDetail({ product }) {
     required: Number(previewConfig.requiredImageCount || 0) > 0,
     instructions: previewConfig.instructions || '',
   }] : [];
-  const previewAreas = previewEnabled
+  const configuredPreviewAreas = previewEnabled
     ? ((Array.isArray(previewConfig.areas) && previewConfig.areas.length > 0) ? previewConfig.areas : legacyPreviewArea)
     : [];
+  const previewAreas = configuredPreviewAreas.filter((area) => area.requiresImageUpload !== false);
   const requiredPhotoCount = Math.max(0, previewAreas.filter((area) => area.required !== false).length || Number(previewConfig.requiredImageCount || 0));
   const maxPhotoCount = Math.max(requiredPhotoCount, previewAreas.length || Number(previewConfig.maxImageCount || requiredPhotoCount || 0));
   const needsCustomerPhotos = requiredPhotoCount > 0 || maxPhotoCount > 0;
   const collageTemplates = product.collageEnabled ? (product.collageTemplates || []).filter((template) => template?.label && template.isActive !== false) : [];
   const needsCollageUploads = collageTemplates.length > 0;
+  const selectedVariantUploadOptions = selectedVariantOptions.filter((selected) => selected?.requiresImageUpload && selected?.label);
 
   const getOptionExtraPrice = (opt) => opt?.useOwnPrice ? 0 : Number(opt?.priceAdjustment ?? opt?.price ?? 0);
   const getOptionRegularPrice = getVariantRegularPrice;
@@ -110,6 +116,7 @@ export default function ProductDetail({ product }) {
         regularPrice: option.regularPrice,
         salePrice: option.salePrice,
         stateOverrides: option.stateOverrides || [],
+        requiresImageUpload: !!option.requiresImageUpload,
       },
     });
   }, [product._id, product.variants]);
@@ -147,6 +154,9 @@ export default function ProductDetail({ product }) {
   };
   const selectedDelivery = getProductShippingForState(selectedDeliveryState);
   const productPageTotal = finalUnitPrice * quantity + selectedDelivery.cost;
+  const reviewCount = reviews.length;
+  const averageRating = reviewCount ? reviews.reduce((sum, review) => sum + Number(review.rating || 0), 0) / reviewCount : 0;
+  const roundedRating = Math.round(averageRating * 10) / 10;
   const getAreaAspectRatio = (area, orientation = 'auto') => {
     const rawWidth = Math.max(1, Number(area?.width || 1));
     const rawHeight = Math.max(1, Number(area?.height || 1));
@@ -266,7 +276,10 @@ export default function ProductDetail({ product }) {
     }
     return { previewTitle: previewConfig.title || 'Customization preview', previews };
   };
-  const updateAreaAdjustments = (idx, updates) => setPreviewAdjustments((prev) => ({ ...prev, [idx]: { ...getDefaultPreviewAdjustments(), ...(prev[idx] || {}), ...updates } }));
+  const updateAreaAdjustments = (idx, updates) => {
+    if (savedPreviewAreas[idx]) return;
+    setPreviewAdjustments((prev) => ({ ...prev, [idx]: { ...getDefaultPreviewAdjustments(), ...(prev[idx] || {}), ...updates } }));
+  };
   const updateAreaAdjustment = (idx, key, value) => updateAreaAdjustments(idx, { [key]: value });
   const startPreviewDrag = (idx, event) => {
     const current = getAreaAdjustments(idx);
@@ -282,6 +295,9 @@ export default function ProductDetail({ product }) {
     });
   };
   const stopPreviewDrag = () => { dragStateRef.current = null; };
+  const savePreviewArea = (idx) => setSavedPreviewAreas((prev) => ({ ...prev, [idx]: true }));
+  const editPreviewArea = (idx) => setSavedPreviewAreas((prev) => ({ ...prev, [idx]: false }));
+  const resetPreviewArea = (idx) => { setSavedPreviewAreas((prev) => ({ ...prev, [idx]: false })); setPreviewAdjustments((prev) => ({ ...prev, [idx]: getDefaultPreviewAdjustments() })); };
   const getProductPixelPayload = (extra = {}) => buildProductMetaPayload(product, {
     price: finalUnitPrice,
     quantity,
@@ -294,6 +310,13 @@ export default function ProductDetail({ product }) {
     viewedProductRef.current = product._id;
     trackMetaEvent('ViewContent', buildProductMetaPayload(product, { price, value: price }));
   }, [price, product]);
+
+  useEffect(() => {
+    fetch(`/api/products/${product.slug || product._id}/reviews`)
+      .then((r) => r.json())
+      .then((d) => setReviews(d.reviews || []))
+      .catch(() => setReviews([]));
+  }, [product.slug, product._id]);
 
   const trackCustomTextInput = (fieldLabel, value) => {
     setCustomFieldValues((prev) => ({ ...prev, [fieldLabel]: value }));
@@ -324,6 +347,12 @@ export default function ProductDetail({ product }) {
     if (maxPhotoCount > 0 && customerPhotos.length > maxPhotoCount) {
       toast.error(`Please upload no more than ${maxPhotoCount} photo${maxPhotoCount === 1 ? '' : 's'}`);
       return false;
+    }
+    for (const selected of selectedVariantUploadOptions) {
+      if (!variantLabelUploads[selected.label]?.url) {
+        toast.error(`Please upload image for ${selected.label}`);
+        return false;
+      }
     }
     for (const template of collageTemplates) {
       const photos = collageUploads[template.label] || [];
@@ -415,6 +444,26 @@ const handleCustomerPhotoUpload = async (files) => {
     }
   };
 
+
+  const handleVariantLabelUpload = async (label, file) => {
+    if (!label || !file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    setUploadingVariantLabels((prev) => ({ ...prev, [label]: true }));
+    try {
+      const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      setVariantLabelUploads((prev) => ({ ...prev, [label]: { ...data, label } }));
+      toast.success(`${label} image uploaded`);
+      trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'variant_label_upload', field_label: label, file_type: data.type || file.type || '' }));
+    } catch (error) {
+      setVariantLabelUploads((prev) => ({ ...prev, [label]: null }));
+      toast.error(error.message || 'Failed to upload image');
+    } finally {
+      setUploadingVariantLabels((prev) => ({ ...prev, [label]: false }));
+    }
+  };
   const handleCollageUpload = async (label, files) => {
     const template = collageTemplates.find((entry) => entry.label === label);
     const selectedFiles = Array.from(files || []);
@@ -475,7 +524,8 @@ const handleCustomerPhotoUpload = async (files) => {
       maxImages: Number(template.maxImages || template.minImages || 0),
       images: collageUploads[template.label] || [],
     })).filter((group) => group.images.length > 0);
-    const allCustomFields = customerPhotos.length > 0 ? { ...customFieldValues, 'Customer Photos': customerPhotos } : customFieldValues;
+    const variantUploads = Object.fromEntries(Object.entries(variantLabelUploads).filter(([, value]) => value?.url));
+    const allCustomFields = { ...customFieldValues, ...(customerPhotos.length > 0 ? { 'Customer Photos': customerPhotos } : {}), ...(Object.keys(variantUploads).length > 0 ? { 'Variant Label Uploads': variantUploads } : {}) };
 
     const customizationPreviewPayload = await buildCustomizationPreviewPayload();
 
@@ -644,7 +694,7 @@ const handleCustomerPhotoUpload = async (files) => {
                   <button key={oIdx}
                     type="button"
                     disabled={optionSoldOut}
-                    onClick={() => setSelectedVariants(prev => { const selectedNow = prev[variant.name]?.label === opt.label; if (selectedNow) return {}; return { [variant.name]: { label: opt.label, extra, useOwnPrice: !!opt.useOwnPrice, regularPrice: opt.regularPrice, salePrice: opt.salePrice, stateOverrides: opt.stateOverrides || [] } }; })}
+                    onClick={() => setSelectedVariants(prev => { const selectedNow = prev[variant.name]?.label === opt.label; if (selectedNow) return {}; return { [variant.name]: { label: opt.label, extra, useOwnPrice: !!opt.useOwnPrice, regularPrice: opt.regularPrice, salePrice: opt.salePrice, stateOverrides: opt.stateOverrides || [], requiresImageUpload: !!opt.requiresImageUpload } }; })}
                     className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
                       selected
                         ? 'border-primary-600 bg-primary-50 text-primary-600'
@@ -702,6 +752,34 @@ const handleCustomerPhotoUpload = async (files) => {
           </div>
         ))}
 
+
+        {selectedVariantUploadOptions.length > 0 && (
+          <div className="mb-5 rounded-2xl border-2 border-dashed border-primary-200 bg-primary-50/30 p-4 space-y-4">
+            <div>
+              <p className="text-sm font-bold text-gray-900">Selected variant image uploads</p>
+              <p className="mt-1 text-xs text-gray-500">Upload the required image for each selected option label. These are saved label-wise for admin production.</p>
+            </div>
+            {selectedVariantUploadOptions.map((selected) => {
+              const upload = variantLabelUploads[selected.label];
+              const isUploading = !!uploadingVariantLabels[selected.label];
+              return (
+                <div key={selected.label} className="rounded-2xl border bg-white p-3 sm:p-4">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div><p className="text-sm font-extrabold text-gray-900">{selected.label}</p><p className="text-xs text-gray-500">Required image and preview</p></div>
+                    <span className={`rounded-full px-3 py-1 text-xs font-bold ${upload?.url ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{upload?.url ? 'Uploaded' : 'Required'}</span>
+                  </div>
+                  <label className={`relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-primary-100 bg-primary-50/50 px-4 py-5 text-center transition-colors hover:bg-primary-50 ${isUploading ? 'pointer-events-none opacity-80' : ''}`}>
+                    <FiUpload size={22} className="text-primary-600" />
+                    <span className="text-sm font-semibold text-gray-800">{isUploading ? 'Uploading image...' : `Upload image for ${selected.label}`}</span>
+                    <input type="file" accept="image/*,.heic,.heif" className="sr-only" disabled={isUploading} onChange={e => handleVariantLabelUpload(selected.label, e.target.files?.[0])} />
+                    {isUploading && <span className="absolute inset-0 flex items-center justify-center rounded-xl bg-white/75 text-xs font-bold text-primary-700">Uploading...</span>}
+                  </label>
+                  {upload?.url && <div className="mt-3 grid gap-3 sm:grid-cols-[96px_1fr] sm:items-center"><img src={upload.url} alt={selected.label} className="h-24 w-24 rounded-xl border object-contain bg-white" /><div><p className="text-xs font-semibold text-gray-700">Preview for {selected.label}</p><a href={upload.url} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-primary-600">Open original uploaded image</a></div></div>}
+                </div>
+              );
+            })}
+          </div>
+        )}
         {needsCustomerPhotos && (
           <div className="mb-5 rounded-2xl border-2 border-dashed border-accent-200 bg-accent-50/30 p-4">
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-3">
@@ -717,13 +795,13 @@ const handleCustomerPhotoUpload = async (files) => {
                 {customerPhotos.length}/{requiredPhotoCount || maxPhotoCount}
               </span>
             </div>
-            <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl bg-white px-4 py-5 text-center transition-colors hover:bg-accent-50 border border-accent-100">
+            <label className={`relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl bg-white px-4 py-5 text-center transition-colors hover:bg-accent-50 border border-accent-100 ${uploadingCustomerPhotos ? 'pointer-events-none opacity-80' : ''}`}>
               <FiUpload size={24} className="text-accent-600" />
               <span className="text-sm font-semibold text-gray-800">Upload customer photos</span>
               <span className="text-xs text-gray-500">Upload in the same order as the photo areas shown below</span>
               <input type="file" multiple accept="image/*" className="sr-only" disabled={uploadingCustomerPhotos} onChange={e => handleCustomerPhotoUpload(e.target.files)} />
             </label>
-            {uploadingCustomerPhotos && <p className="mt-2 text-xs font-semibold text-accent-700">Uploading photos...</p>}
+
             {customerPhotos.length > 0 && (
               <div className="mt-4 grid grid-cols-3 sm:grid-cols-4 gap-2">
                 {customerPhotos.map((photo, idx) => (
@@ -815,8 +893,8 @@ const handleCustomerPhotoUpload = async (files) => {
                         <div className="rounded-2xl bg-white p-4">
                           <div
                             ref={(node) => { if (node) previewFrameRefs.current[idx] = node; }}
-                            className="relative mx-auto w-full max-w-sm overflow-hidden rounded-lg bg-white shadow-inner"
-                            style={{ aspectRatio: getAreaAspectRatio(area, adjustments.orientation), touchAction: 'none' }} onPointerDown={(e) => startPreviewDrag(idx, e)} onPointerMove={movePreviewDrag} onPointerUp={stopPreviewDrag} onPointerCancel={stopPreviewDrag}
+                            className="relative mx-auto w-full max-w-sm overflow-hidden rounded-lg border-2 border-gray-950 bg-white"
+                            style={{ aspectRatio: getAreaAspectRatio(area, adjustments.orientation), touchAction: 'none' }} onPointerDown={(e) => !savedPreviewAreas[idx] && startPreviewDrag(idx, e)} onPointerMove={movePreviewDrag} onPointerUp={stopPreviewDrag} onPointerCancel={stopPreviewDrag}
                           >
                             <img
                               src={photo.url}
@@ -825,7 +903,8 @@ const handleCustomerPhotoUpload = async (files) => {
                               style={{ transform: `translate(${adjustments.x}px, ${adjustments.y}px) scale(${adjustments.zoom})`, transformOrigin: 'center' }}
                             />
                             {area.frameImage && <img src={area.frameImage} alt="Preview frame" className="absolute inset-0 h-full w-full object-contain pointer-events-none" />}
-                            <div className="absolute inset-2 rounded-md border-2 border-white/90 shadow-[0_0_0_999px_rgba(0,0,0,0.08)] pointer-events-none" />
+                            <div className="pointer-events-none absolute inset-0 border-2 border-gray-950" />
+                            {savedPreviewAreas[idx] && <div className="absolute right-2 top-2 rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-bold text-white">Saved</div>}
                           </div>
                         </div>
                         <div className="space-y-3">
@@ -841,7 +920,7 @@ const handleCustomerPhotoUpload = async (files) => {
                           <div><label className="block text-xs font-bold text-gray-600 mb-1">Zoom</label><input type="range" min="1" max="3" step="0.05" value={adjustments.zoom} onChange={e => updateAreaAdjustment(idx, 'zoom', Number(e.target.value))} className="w-full" /></div>
                           <div><label className="block text-xs font-bold text-gray-600 mb-1">Move left / right</label><input type="range" min="-160" max="160" value={adjustments.x} onChange={e => updateAreaAdjustment(idx, 'x', Number(e.target.value))} className="w-full" /></div>
                           <div><label className="block text-xs font-bold text-gray-600 mb-1">Move up / down</label><input type="range" min="-160" max="160" value={adjustments.y} onChange={e => updateAreaAdjustment(idx, 'y', Number(e.target.value))} className="w-full" /></div>
-                          <button type="button" onClick={() => updateAreaAdjustments(idx, getDefaultPreviewAdjustments())} className="rounded-lg border px-3 py-2 text-sm font-semibold text-gray-700 hover:border-primary-200 hover:text-primary-700">Reset alignment</button>
+                          <div className="flex flex-wrap gap-2"><button type="button" onClick={() => savePreviewArea(idx)} className="rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white">Save Preview</button><button type="button" onClick={() => editPreviewArea(idx)} className="rounded-lg border px-3 py-2 text-sm font-semibold text-gray-700 hover:border-primary-200 hover:text-primary-700">Edit Again</button><button type="button" onClick={() => resetPreviewArea(idx)} className="rounded-lg border px-3 py-2 text-sm font-semibold text-gray-700 hover:border-primary-200 hover:text-primary-700">Reset alignment</button></div>
                         </div>
                       </div>
                     ) : (
@@ -928,6 +1007,41 @@ const handleCustomerPhotoUpload = async (files) => {
           </div>
         )}
 
+
+        {/* Product Reviews */}
+        <div className="mt-8 border-t pt-6">
+          <div className="mb-4 flex items-center gap-2">
+            <FiStar className="text-accent-500" />
+            <h2 className="text-xl font-bold">Customer Submitted Reviews</h2>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
+            <div className="rounded-2xl bg-gray-50 p-5">
+              <p className="text-lg font-bold text-gray-900">GroveryGiftz Reviews</p>
+              <div className="mt-3 flex items-center gap-3">
+                <span className="text-3xl font-extrabold text-gray-950">{reviewCount ? roundedRating.toFixed(1) : '0.0'}</span>
+                <div><div className="flex gap-1 text-accent-500">{[1, 2, 3, 4, 5].map((star) => <FiStar key={star} className={star <= Math.round(averageRating) ? 'fill-accent-500 stroke-accent-500' : 'stroke-gray-300'} />)}</div><p className="mt-1 text-xs text-gray-500">{reviewCount} verified review{reviewCount === 1 ? '' : 's'}</p></div>
+              </div>
+            </div>
+            <div className="rounded-2xl bg-primary-50/50 p-5">
+              <p className="text-sm font-extrabold text-primary-700">Review Summary</p>
+              <ul className="mt-3 space-y-2 text-sm text-gray-700">
+                <li>? Reviews are submitted only after successful payment.</li>
+                <li>? Product quality, packaging, and customization feedback appear here.</li>
+                <li>? New reviews update this product automatically.</li>
+              </ul>
+            </div>
+          </div>
+          {reviews.length > 0 ? (
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {reviews.slice(0, 4).map((review) => (
+                <div key={review._id} className="rounded-2xl border bg-white p-4 shadow-sm">
+                  <div className="mb-2 flex items-center justify-between gap-3"><p className="font-bold text-gray-900">{review.name || 'Customer'}</p><div className="flex gap-0.5 text-accent-500">{[1, 2, 3, 4, 5].map((star) => <FiStar key={star} size={14} className={star <= Number(review.rating || 0) ? 'fill-accent-500 stroke-accent-500' : 'stroke-gray-300'} />)}</div></div>
+                  <p className="text-sm leading-6 text-gray-600">{review.comment}</p>
+                </div>
+              ))}
+            </div>
+          ) : <p className="mt-4 rounded-2xl border bg-white p-4 text-sm text-gray-500">No customer reviews yet. Reviews will appear after customers complete paid orders.</p>}
+        </div>
         {/* Description */}
         {product.description && (
           <div className="mt-8 border-t pt-6">

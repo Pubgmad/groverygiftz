@@ -1,6 +1,6 @@
 'use client';
 import { useRef, useState } from 'react';
-import { FiUpload, FiX } from 'react-icons/fi';
+import { FiLoader, FiUpload, FiX } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
 export default function ImageUploader({ images = [], onChange, replaceOnUpload = false, deleteOnRemove = false, confirmRemove = false }) {
@@ -24,7 +24,7 @@ export default function ImageUploader({ images = [], onChange, replaceOnUpload =
 
   const handleUpload = async (e) => {
     const selectedFiles = Array.from(e.target.files || []);
-    if (selectedFiles.length === 0) return;
+    if (selectedFiles.length === 0 || uploading) return;
 
     const files = replaceOnUpload ? selectedFiles.slice(0, 1) : selectedFiles;
     setUploading(true);
@@ -58,6 +58,7 @@ export default function ImageUploader({ images = [], onChange, replaceOnUpload =
   };
 
   const removeImage = async (idx) => {
+    if (uploading) return;
     const image = images[idx];
     if (confirmRemove && !window.confirm('Remove this image permanently?')) return;
     await deleteUploadedFile(image);
@@ -65,32 +66,29 @@ export default function ImageUploader({ images = [], onChange, replaceOnUpload =
     toast.success('Image removed');
   };
 
+  const uploadTile = (label) => (
+    <label className={`relative flex h-24 w-24 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed hover:bg-gray-50 ${uploading ? 'pointer-events-none opacity-80' : ''}`}>
+      {uploading ? <FiLoader className="mb-1 animate-spin text-primary-600" /> : <FiUpload className="mb-1 text-gray-400" />}
+      <span className="text-xs text-gray-400">{uploading ? 'Uploading...' : label}</span>
+      {uploading && <span className="absolute inset-0 rounded-lg bg-white/60" />}
+      <input ref={inputRef} type="file" multiple={!replaceOnUpload} accept="image/*,.svg,.avif" onChange={handleUpload} className="hidden" disabled={uploading} />
+    </label>
+  );
+
   return (
     <div>
-      <div className="flex flex-wrap gap-3 mb-4">
+      <div className="mb-4 flex flex-wrap gap-3">
         {images.map((img, idx) => (
-          <div key={img || idx} className="relative w-24 h-24 rounded-lg overflow-hidden border group bg-gray-50">
-            <img src={img} alt="" className="w-full h-full object-contain" />
+          <div key={img || idx} className="group relative h-24 w-24 overflow-hidden rounded-lg border bg-gray-50">
+            <img src={img} alt="" className="h-full w-full object-contain" />
             <button type="button" onClick={() => removeImage(idx)}
-              className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity" aria-label="Remove image">
+              className="absolute right-1 top-1 rounded-full bg-red-500 p-1 text-white opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100" aria-label="Remove image">
               <FiX size={12} />
             </button>
           </div>
         ))}
-        {(!replaceOnUpload || images.length === 0) && (
-          <label className="w-24 h-24 border-2 border-dashed rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50">
-            <FiUpload className="text-gray-400 mb-1" />
-            <span className="text-xs text-gray-400">{uploading ? 'Uploading...' : 'Upload'}</span>
-            <input ref={inputRef} type="file" multiple={!replaceOnUpload} accept="image/*,.svg,.avif" onChange={handleUpload} className="hidden" disabled={uploading} />
-          </label>
-        )}
-        {replaceOnUpload && images.length > 0 && (
-          <label className="w-24 h-24 border-2 border-dashed rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50">
-            <FiUpload className="text-gray-400 mb-1" />
-            <span className="text-xs text-gray-400">{uploading ? 'Uploading...' : 'Replace'}</span>
-            <input ref={inputRef} type="file" accept="image/*,.svg,.avif" onChange={handleUpload} className="hidden" disabled={uploading} />
-          </label>
-        )}
+        {(!replaceOnUpload || images.length === 0) && uploadTile('Upload')}
+        {replaceOnUpload && images.length > 0 && uploadTile('Replace')}
       </div>
     </div>
   );

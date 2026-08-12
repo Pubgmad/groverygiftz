@@ -23,6 +23,11 @@ export default function RegisterPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const normalizedPhone = String(formData.phone || '').replace(/\D/g, '');
+    if (normalizedPhone.length < 10 || normalizedPhone.length > 15) {
+      toast.error('Please enter a valid contact number');
+      return;
+    }
     const check = validateStrongPassword(formData.password);
     if (!check.valid) {
       toast.error(strongPasswordMessage());
@@ -59,7 +64,7 @@ export default function RegisterPage() {
           className="w-full rounded-lg border px-4 py-3 focus:border-primary-500 focus:outline-none" />
         <input type="email" required placeholder="Email" name="customer_register_email" autoComplete="off" readOnly={!inputReady} onFocus={() => setInputReady(true)} value={formData.email} onChange={e => setFormData(p => ({ ...p, email: e.target.value }))}
           className="w-full rounded-lg border px-4 py-3 focus:border-primary-500 focus:outline-none" />
-        <input placeholder="Phone (optional)" name="customer_register_phone" autoComplete="off" readOnly={!inputReady} onFocus={() => setInputReady(true)} value={formData.phone} onChange={e => setFormData(p => ({ ...p, phone: e.target.value }))}
+        <input required inputMode="tel" placeholder="Contact Number *" name="customer_register_phone" autoComplete="off" readOnly={!inputReady} onFocus={() => setInputReady(true)} value={formData.phone} onChange={e => setFormData(p => ({ ...p, phone: e.target.value }))}
           className="w-full rounded-lg border px-4 py-3 focus:border-primary-500 focus:outline-none" />
         <PasswordInput required placeholder="Password" name="customer_register_password" autoComplete="new-password" readOnly={!inputReady} onFocus={() => setInputReady(true)} minLength={8} value={formData.password} onChange={e => setFormData(p => ({ ...p, password: e.target.value }))} />
         <div className="rounded-xl bg-primary-50/70 p-3 text-xs">

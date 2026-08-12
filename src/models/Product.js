@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 
 const PreviewAreaSchema = new mongoose.Schema({
   label: { type: String, default: '' },
+  requiresImageUpload: { type: Boolean, default: true },
   width: { type: Number, default: 0 },
   height: { type: Number, default: 0 },
   unit: { type: String, default: 'inch' },
@@ -9,6 +10,12 @@ const PreviewAreaSchema = new mongoose.Schema({
   shape: { type: String, enum: ['rectangle', 'circle', 'rounded'], default: 'rectangle' },
   required: { type: Boolean, default: true },
   instructions: { type: String, default: '' },
+}, { _id: false });
+
+const ResponsiveImagesSchema = new mongoose.Schema({
+  desktop: [String],
+  tablet: [String],
+  mobile: [String],
 }, { _id: false });
 
 const StateDeliveryOverrideSchema = new mongoose.Schema({
@@ -29,6 +36,7 @@ const ProductSchema = new mongoose.Schema({
   slug: { type: String, required: true, unique: true },
   description: { type: String, default: '' },
   images: [String],
+  responsiveImages: { type: ResponsiveImagesSchema, default: () => ({ desktop: [], tablet: [], mobile: [] }) },
   productVideo: {
     url: { type: String, default: '' },
     name: { type: String, default: '' },
@@ -62,6 +70,8 @@ const ProductSchema = new mongoose.Schema({
       regularPrice: { type: Number, default: 0 },
       salePrice: { type: Number, default: 0 },
       stateOverrides: [StateDeliveryOverrideSchema],
+      shippingTemplate: { type: mongoose.Schema.Types.ObjectId, ref: 'ShippingTemplate' },
+      requiresImageUpload: { type: Boolean, default: false },
       stock: Number,
       inStock: { type: Boolean, default: true },
     }],
@@ -80,6 +90,7 @@ const ProductSchema = new mongoose.Schema({
     tamilNaduDeliveryEstimate: { type: String, default: '' },
     otherStateDeliveryEstimate: { type: String, default: '' },
     stateOverrides: [StateDeliveryOverrideSchema],
+    shippingTemplate: { type: mongoose.Schema.Types.ObjectId, ref: 'ShippingTemplate' },
   },
   giftWrap: { enabled: { type: Boolean, default: false }, price: { type: Number, default: 20 } },
   giftMessage: { type: Boolean, default: false },

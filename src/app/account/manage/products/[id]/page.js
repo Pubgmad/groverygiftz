@@ -13,7 +13,7 @@ const INDIAN_STATES = [
   'West Bengal', 'Delhi', 'Jammu & Kashmir', 'Ladakh', 'Puducherry',
 ];
 
-const defaultPreviewArea = () => ({ label: '', width: '', height: '', unit: 'inch', frameImage: '', shape: 'rectangle', required: true, instructions: '' });
+const defaultPreviewArea = () => ({ label: '', width: '', height: '', unit: 'inch', frameImage: '', shape: 'rectangle', required: true, requiresImageUpload: true, instructions: '' });
 const defaultDelivery = () => ({ useCustomDelivery: false, tamilNaduShippingCost: 0, otherStateShippingCost: 120, tamilNaduDeliveryEstimate: 'Within 8 days', otherStateDeliveryEstimate: '10-15 days', stateOverrides: [] });
 
 function normalizePreviewAreas(preview = {}) {
@@ -27,8 +27,9 @@ export default function AdminProductForm({ params }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [collections, setCollections] = useState([]);
+  const [shippingTemplates, setShippingTemplates] = useState([]);
   const [form, setForm] = useState({
-    title: '', description: '', images: [], productVideo: { url: '', name: '', poster: '' }, customizationPreview: { enabled: false, title: 'Preview your personalized gift', frameImage: '', aspectRatio: '1:1', shape: 'rectangle', instructions: '', requiredImageCount: 0, maxImageCount: 0, areas: [] }, delivery: defaultDelivery(), regularPrice: '', salePrice: '', offerStartsAt: '', offerEndsAt: '',
+    title: '', description: '', images: [], responsiveImages: { desktop: [], tablet: [], mobile: [] }, productVideo: { url: '', name: '', poster: '' }, customizationPreview: { enabled: false, title: 'Preview your personalized gift', frameImage: '', aspectRatio: '1:1', shape: 'rectangle', instructions: '', requiredImageCount: 0, maxImageCount: 0, areas: [] }, delivery: defaultDelivery(), regularPrice: '', salePrice: '', offerStartsAt: '', offerEndsAt: '',
     stock: 100, collections: [], variants: [], customFields: [], collageEnabled: false, collageTemplates: [],
     giftWrap: { enabled: false, price: 0 }, giftMessage: false,
     isQuoteOnly: false, isFeatured: false, isBestSeller: false, isActive: true,
@@ -37,10 +38,11 @@ export default function AdminProductForm({ params }) {
 
   useEffect(() => {
     fetch('/api/collections').then(r => r.json()).then(d => setCollections(d.collections || []));
+    fetch('/api/shipping-templates').then(r => r.json()).then(d => setShippingTemplates(d.templates || [])).catch(() => {});
     if (isEdit) {
       fetch(`/api/products/${params.id}`).then(r => r.json()).then(d => {
         setForm({
-          title: d.title || '', description: d.description || '', images: d.images || [],
+          title: d.title || '', description: d.description || '', images: d.images || [], responsiveImages: { desktop: d.responsiveImages?.desktop || d.images || [], tablet: d.responsiveImages?.tablet || [], mobile: d.responsiveImages?.mobile || [] },
           productVideo: d.productVideo || { url: '', name: '', poster: '' },
           customizationPreview: { ...(d.customizationPreview || { enabled: false, title: 'Preview your personalized gift', frameImage: '', aspectRatio: '1:1', shape: 'rectangle', instructions: '' }), areas: normalizePreviewAreas(d.customizationPreview || {}) },
           delivery: { ...defaultDelivery(), ...(d.delivery || {}), stateOverrides: d.delivery?.stateOverrides || [] },
@@ -73,11 +75,11 @@ export default function AdminProductForm({ params }) {
     }
   };
 
-  const addVariant = () => setForm(p => ({ ...p, variants: [...p.variants, { name: '', type: 'size', options: [{ label: '', priceAdjustment: 0, useOwnPrice: false, regularPrice: '', salePrice: '', stateOverrides: [], inStock: true }] }] }));
+  const addVariant = () => setForm(p => ({ ...p, variants: [...p.variants, { name: '', type: 'size', options: [{ label: '', priceAdjustment: 0, useOwnPrice: false, regularPrice: '', salePrice: '', stateOverrides: [], shippingTemplate: '', requiresImageUpload: false, inStock: true }] }] }));
   const removeVariant = (idx) => setForm(p => ({ ...p, variants: p.variants.filter((_, i) => i !== idx) }));
   const addVariantOption = (vIdx) => {
     const variants = [...form.variants];
-    variants[vIdx].options.push({ label: '', priceAdjustment: 0, useOwnPrice: false, regularPrice: '', salePrice: '', stateOverrides: [], inStock: true });
+    variants[vIdx].options.push({ label: '', priceAdjustment: 0, useOwnPrice: false, regularPrice: '', salePrice: '', stateOverrides: [], shippingTemplate: '', requiresImageUpload: false, inStock: true });
     setForm(p => ({ ...p, variants }));
   };
 
@@ -141,6 +143,15 @@ export default function AdminProductForm({ params }) {
     variants[vIdx].options[oIdx] = option;
     setForm(p => ({ ...p, variants }));
   };
+  const templateRatesToOverrides = (templateId) => {
+    const template = shippingTemplates.find((entry) => entry._id === templateId);
+    return (template?.rates || []).map((row) => ({ state: row.state, shippingCost: Number(row.shippingCost || 0), deliveryEstimate: row.deliveryEstimate || '' }));
+  };
+  const applyProductShippingTemplate = (templateId) => setForm(p => ({ ...p, delivery: { ...defaultDelivery(), ...p.delivery, useCustomDelivery: true, shippingTemplate: templateId, stateOverrides: templateRatesToOverrides(templateId) } }));
+  const applyVariantShippingTemplate = (vIdx, oIdx, templateId) => {
+    const overrides = templateRatesToOverrides(templateId);
+    updateVariantOption(vIdx, oIdx, { shippingTemplate: templateId, stateOverrides: overrides });
+  };
   const addVariantStateOverride = (vIdx, oIdx) => {
     const variants = [...form.variants];
     const option = { ...(variants[vIdx].options[oIdx] || {}) };
@@ -176,9 +187,16 @@ export default function AdminProductForm({ params }) {
         </div>
 
         {/* Images */}
-        <div className="bg-white p-4 sm:p-6 rounded-xl border">
-          <h2 className="font-bold text-lg mb-4">Images</h2>
-          <ImageUploader images={form.images} onChange={images => setForm(p => ({ ...p, images }))} />
+        <div className="bg-white p-4 sm:p-6 rounded-xl border space-y-4">
+          <div>
+            <h2 className="font-bold text-lg">Product Images</h2>
+            <p className="mt-1 text-sm text-gray-500">Upload device-specific product images so banners/gallery previews fit correctly on every screen.</p>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-3">
+            <div className="rounded-xl border bg-primary-50/40 p-3"><p className="text-sm font-semibold">Desktop Images</p><p className="mb-2 text-xs text-gray-500">Recommended: 5 x 4 inches landscape/square</p><ImageUploader images={form.responsiveImages?.desktop?.length ? form.responsiveImages.desktop : form.images} onChange={images => setForm(p => ({ ...p, images, responsiveImages: { ...(p.responsiveImages || {}), desktop: images } }))} /></div>
+            <div className="rounded-xl border bg-primary-50/40 p-3"><p className="text-sm font-semibold">Tablet Images</p><p className="mb-2 text-xs text-gray-500">Recommended: 4 x 4 inches square</p><ImageUploader images={form.responsiveImages?.tablet || []} onChange={images => setForm(p => ({ ...p, responsiveImages: { ...(p.responsiveImages || {}), tablet: images } }))} /></div>
+            <div className="rounded-xl border bg-primary-50/40 p-3"><p className="text-sm font-semibold">Mobile Images</p><p className="mb-2 text-xs text-gray-500">Recommended: 3 x 4 inches portrait</p><ImageUploader images={form.responsiveImages?.mobile || []} onChange={images => setForm(p => ({ ...p, responsiveImages: { ...(p.responsiveImages || {}), mobile: images } }))} /></div>
+          </div>
         </div>
 
         {/* Product Video */}
@@ -244,7 +262,7 @@ export default function AdminProductForm({ params }) {
                   <div><label className="block text-xs font-medium mb-1">Height</label><input type="number" min="0" step="0.01" value={area.height ?? ''} onChange={e => updatePreviewArea(idx, 'height', e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="10" /></div>
                   <div><label className="block text-xs font-medium mb-1">Unit</label><select value={area.unit || 'inch'} onChange={e => updatePreviewArea(idx, 'unit', e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm"><option value="inch">Inch</option><option value="cm">CM</option><option value="mm">MM</option></select></div>
                 </div>
-                <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={area.required !== false} onChange={e => updatePreviewArea(idx, 'required', e.target.checked)} /> Photo required for this area</label>
+                <div className="grid gap-2 sm:grid-cols-2"><label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={area.required !== false} onChange={e => updatePreviewArea(idx, 'required', e.target.checked)} /> Photo required for this area</label><label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={area.requiresImageUpload !== false} onChange={e => updatePreviewArea(idx, 'requiresImageUpload', e.target.checked)} /> Enable upload and preview for this label</label></div>
                 <div><label className="block text-xs font-medium mb-1">Area Instructions</label><input value={area.instructions || ''} onChange={e => updatePreviewArea(idx, 'instructions', e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Example: close-up portrait, landscape photo, family photo" /></div>
               </div>
             ))}
@@ -294,6 +312,9 @@ export default function AdminProductForm({ params }) {
             <input type="checkbox" checked={form.delivery?.useCustomDelivery || false} onChange={e => setForm(p => ({ ...p, delivery: { ...defaultDelivery(), ...p.delivery, useCustomDelivery: e.target.checked } }))} />
             Use custom delivery pricing for this product
           </label>
+          {form.delivery?.useCustomDelivery && shippingTemplates.length > 0 && (
+            <div><label className="block text-sm font-medium mb-1">Apply Shipping Template</label><select value={form.delivery?.shippingTemplate || ''} onChange={e => applyProductShippingTemplate(e.target.value)} className="w-full border rounded-lg px-4 py-2"><option value="">Select template</option>{shippingTemplates.map(template => <option key={template._id} value={template._id}>{template.name}</option>)}</select><p className="mt-1 text-xs text-gray-500">Selecting a template copies all state-wise prices and estimates below.</p></div>
+          )}
           {form.delivery?.useCustomDelivery && (
             <div className="space-y-4">
               <div className="grid md:grid-cols-2 gap-4">
@@ -390,9 +411,15 @@ export default function AdminProductForm({ params }) {
                       onChange={e => updateVariantOption(vIdx, oIdx, { inStock: e.target.checked })} />
                     In stock
                   </label>
+                  <label className="mt-2 flex items-center gap-2 text-xs text-gray-600">
+                    <input type="checkbox" checked={!!opt.requiresImageUpload}
+                      onChange={e => updateVariantOption(vIdx, oIdx, { requiresImageUpload: e.target.checked })} />
+                    Require customer image upload and preview for this option label
+                  </label>
                   <div className="mt-3 rounded-lg border bg-white p-3 space-y-2">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div><p className="text-xs font-bold text-gray-800">Variant State Delivery Charges</p><p className="text-[11px] text-gray-500">Optional. These override product delivery charges only when this option is selected.</p></div>
+                      {shippingTemplates.length > 0 && <select value={opt.shippingTemplate || ''} onChange={e => applyVariantShippingTemplate(vIdx, oIdx, e.target.value)} className="rounded-lg border px-2.5 py-1.5 text-xs"><option value="">Apply template</option>{shippingTemplates.map(template => <option key={template._id} value={template._id}>{template.name}</option>)}</select>}
                       <button type="button" onClick={() => addVariantStateOverride(vIdx, oIdx)} className="inline-flex w-full items-center justify-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-semibold text-primary-600 sm:w-auto"><FiPlus /> Add State</button>
                     </div>
                     {(opt.stateOverrides || []).map((row, rowIdx) => (
