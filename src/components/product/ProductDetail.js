@@ -88,8 +88,6 @@ export default function ProductDetail({ product }) {
   const needsCustomerPhotos = requiredPhotoCount > 0 || maxPhotoCount > 0;
   const collageTemplates = product.collageEnabled ? (product.collageTemplates || []).filter((template) => template?.label && template.isActive !== false) : [];
   const needsCollageUploads = collageTemplates.length > 0;
-  const selectedVariantUploadOptions = selectedVariantOptions.filter((selected) => selected?.requiresImageUpload && selected?.label);
-
   const getOptionExtraPrice = (opt) => opt?.useOwnPrice ? 0 : Number(opt?.priceAdjustment ?? opt?.price ?? 0);
   const getOptionRegularPrice = getVariantRegularPrice;
   const getOptionSalePrice = getVariantSalePrice;
@@ -121,6 +119,7 @@ export default function ProductDetail({ product }) {
     });
   }, [product._id, product.variants]);
   const selectedVariantOptions = Object.values(selectedVariants).filter(Boolean);
+  const selectedVariantUploadOptions = selectedVariantOptions.filter((selected) => selected?.requiresImageUpload && selected?.label);
   const selectedOwnPriceOption = selectedVariantOptions.find((selected) => selected?.useOwnPrice && getOptionRegularPrice(selected) > 0);
   const baseRegularPrice = selectedOwnPriceOption ? getOptionRegularPrice(selectedOwnPriceOption) : Number(product.regularPrice || 0);
   const baseSalePrice = selectedOwnPriceOption ? getOptionSalePrice(selectedOwnPriceOption) : Number(product.salePrice || 0);
