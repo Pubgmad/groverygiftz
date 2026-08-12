@@ -8,6 +8,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import slugify from 'slugify';
 import { activeOfferMatch } from '@/lib/offers';
+import { sanitizeProductPayload } from '@/lib/productPayload';
 
 export async function GET(req) {
   await dbConnect();
@@ -52,7 +53,7 @@ export async function POST(req) {
   }
 
   await dbConnect();
-  const body = await req.json();
+  const body = sanitizeProductPayload(await req.json());
   body.slug = slugify(body.title, { lower: true, strict: true });
 
   const existing = await Product.findOne({ slug: body.slug });

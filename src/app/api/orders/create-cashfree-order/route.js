@@ -119,7 +119,7 @@ export async function POST(req) {
           customer_id: session.user.id,
           customer_name: shippingAddress.fullName,
           customer_email: shippingAddress.email || session.user.email,
-          customer_phone: shippingAddress.phone,
+          customer_phone: shippingAddress.whatsappNumber || shippingAddress.phone,
         },
         order_meta: {
           return_url: `${origin}/checkout?cashfree_order_id={order_id}`,

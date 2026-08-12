@@ -6,6 +6,7 @@ import Collection from '@/models/Collection';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import slugify from 'slugify';
+import { sanitizeProductPayload } from '@/lib/productPayload';
 
 function productLookup(segment) {
   if (typeof segment === 'string' && /^[a-fA-F0-9]{24}$/.test(segment)) {
@@ -30,7 +31,7 @@ export async function PUT(req, { params }) {
 
   const { slug: segment } = await params;
   await dbConnect();
-  const body = await req.json();
+  const body = sanitizeProductPayload(await req.json());
   if (body.title) body.slug = slugify(body.title, { lower: true, strict: true });
 
   const product = await Product.findOneAndUpdate(productLookup(segment), body, { new: true });

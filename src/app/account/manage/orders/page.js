@@ -213,7 +213,8 @@ export default function AdminOrdersPage() {
     return orders.filter((order) => {
       const matchesOrder = !orderTerm || String(order.orderNumber || '').toLowerCase().includes(orderTerm);
       const phone = String(order.shippingAddress?.phone || '').replace(/\D/g, '');
-      const matchesMobile = !mobileTerm || phone.includes(mobileTerm);
+      const whatsapp = String(order.shippingAddress?.whatsappNumber || '').replace(/\D/g, '');
+      const matchesMobile = !mobileTerm || phone.includes(mobileTerm) || whatsapp.includes(mobileTerm);
       return matchesOrder && matchesMobile;
     });
   }, [orders, orderFilter, mobileFilter]);
@@ -300,7 +301,7 @@ export default function AdminOrdersPage() {
                         <td className="p-4 font-bold text-primary-700">{order.orderNumber}</td>
                         <td className="p-4 text-gray-600 whitespace-nowrap">{formatDate(order.paidAt || order.createdAt)}</td>
                         <td className="p-4"><p className="font-medium text-gray-900">{order.shippingAddress?.fullName || '-'}</p><p className="text-xs text-gray-500">{order.shippingAddress?.email || order.guestEmail || '-'}</p></td>
-                        <td className="p-4 font-medium whitespace-nowrap">{order.shippingAddress?.phone || '-'}</td>
+                        <td className="p-4 font-medium whitespace-nowrap"><p>{order.shippingAddress?.phone || '-'}</p>{order.shippingAddress?.whatsappNumber && <p className="text-xs text-green-700">WA: {order.shippingAddress.whatsappNumber}</p>}</td>
                         <td className="p-4 max-w-[250px]"><p className="line-clamp-2 text-gray-600">{addressLine(order.shippingAddress) || '-'}</p>{outOfTn && <span className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">Outside TN: charge applies</span>}</td>
                         <td className="p-4"><span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusColors[normalized] || statusColors.ordered}`}>{statusLabels[normalized] || normalized}</span></td>
                         <td className="p-4"><span className={`px-2 py-1 rounded-full text-xs font-semibold ${paymentStatusColors[order.paymentStatus] || paymentStatusColors.pending}`}>{order.paymentMethod || 'Cashfree'} {order.paymentStatus}</span></td>
@@ -366,7 +367,7 @@ export default function AdminOrdersPage() {
                     <h3 className="font-semibold mt-4 mb-2">Shipping</h3>
                     <div className="rounded-lg border bg-gray-50 p-3 space-y-1">
                       <p className="font-semibold">{selected.shippingAddress.fullName}</p>
-                      <p>Mobile: {selected.shippingAddress.phone}</p>
+                      <p>Mobile: {selected.shippingAddress.phone}</p>{selected.shippingAddress.whatsappNumber && <p>WhatsApp: {selected.shippingAddress.whatsappNumber}</p>}
                       <p>{selected.shippingAddress.line1}</p>
                       {selected.shippingAddress.line2 && <p>{selected.shippingAddress.line2}</p>}
                       <p>{selected.shippingAddress.city}, {selected.shippingAddress.state}</p>

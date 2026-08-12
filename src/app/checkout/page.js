@@ -24,7 +24,7 @@ export default function CheckoutPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [step, setStep] = useState(1);
-  const [address, setAddress] = useState({ fullName: '', email: '', phone: '', line1: '', line2: '', city: '', state: '' });
+  const [address, setAddress] = useState({ fullName: '', email: '', phone: '', whatsappNumber: '', line1: '', line2: '', city: '', state: '' });
   const [orderNote, setOrderNote] = useState('');
   const [loading, setLoading] = useState(false);
   const [settings, setSettings] = useState({
@@ -89,10 +89,11 @@ export default function CheckoutPage() {
   }, [cart, grandTotal, status, step, session]);
 
   const validateAddress = () => {
-    const { fullName, email, phone, line1, city, state } = address;
+    const { fullName, email, phone, whatsappNumber, line1, city, state } = address;
     if (!fullName.trim()) return 'Full name is required';
     if (!email.trim() || !/\S+@\S+\.\S+/.test(email)) return 'Valid email is required';
     if (!phone.trim() || !/^[6-9]\d{9}$/.test(phone.replace(/\s/g, ''))) return 'Valid 10-digit Indian mobile number required';
+    if (!whatsappNumber.trim() || !/^[6-9]\d{9}$/.test(whatsappNumber.replace(/\s/g, ''))) return 'Valid 10-digit WhatsApp number required';
     if (!line1.trim()) return 'Address line 1 is required';
     if (!city.trim()) return 'City is required';
     if (!state) return 'State is required';
@@ -269,7 +270,8 @@ export default function CheckoutPage() {
               <div className="p-6 space-y-4">
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div><label className="block text-sm font-medium mb-1.5">Full Name *</label><input value={address.fullName} onChange={e => setAddress(p => ({ ...p, fullName: e.target.value }))} className="w-full border rounded-xl px-4 py-2.5 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 text-sm" placeholder="Your full name" /></div>
-                  <div><label className="block text-sm font-medium mb-1.5">Phone Number *</label><input value={address.phone} onChange={e => setAddress(p => ({ ...p, phone: e.target.value }))} className="w-full border rounded-xl px-4 py-2.5 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 text-sm" placeholder="9876543210" maxLength={10} inputMode="numeric" /><p className="mt-1.5 text-xs leading-relaxed text-gray-500">Enter the active mobile number for delivery calls, payment confirmation, and order updates.</p></div>
+                  <div><label className="block text-sm font-medium mb-1.5">Phone *</label><input value={address.phone} onChange={e => setAddress(p => ({ ...p, phone: e.target.value }))} className="w-full border rounded-xl px-4 py-2.5 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 text-sm" placeholder="9876543210" maxLength={10} inputMode="numeric" /></div>
+                  <div><div className="mb-1.5 flex items-center justify-between gap-2"><label className="block text-sm font-medium">WhatsApp Number *</label><span className="rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-700">Recommended</span></div><input value={address.whatsappNumber} onChange={e => setAddress(p => ({ ...p, whatsappNumber: e.target.value }))} className="w-full border rounded-xl px-4 py-2.5 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 text-sm" placeholder="9876543210" maxLength={10} inputMode="numeric" /><p className="mt-1.5 text-xs leading-relaxed text-gray-500">The number should be the customer’s WhatsApp number (the person placing the order), not the parcel receiver’s number.</p></div>
                 </div>
                 <div><label className="block text-sm font-medium mb-1.5">Email *</label><input type="email" value={address.email} onChange={e => setAddress(p => ({ ...p, email: e.target.value }))} className="w-full border rounded-xl px-4 py-2.5 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 text-sm" placeholder="you@example.com" /></div>
                 <div><label className="block text-sm font-medium mb-1.5">Address Line 1 *</label><input value={address.line1} onChange={e => setAddress(p => ({ ...p, line1: e.target.value }))} className="w-full border rounded-xl px-4 py-2.5 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 text-sm" placeholder="House no., street name" /></div>

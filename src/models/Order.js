@@ -20,6 +20,7 @@ const OrderSchema = new mongoose.Schema({
   shippingAddress: {
     fullName: String,
     phone: String,
+    whatsappNumber: String,
     email: String,
     line1: String,
     line2: String,
