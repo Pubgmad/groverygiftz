@@ -3,7 +3,13 @@ import { useRef, useState } from 'react';
 import { FiLoader, FiUpload, FiX } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
-export default function ImageUploader({ images = [], onChange, replaceOnUpload = false, deleteOnRemove = false, confirmRemove = false }) {
+export default function ImageUploader({ images, value = '', onChange, label = 'Upload', replaceOnUpload = false, deleteOnRemove = false, confirmRemove = false }) {
+  const currentImages = Array.isArray(images) ? images : (value ? [value] : []);
+  const isSingleValue = !Array.isArray(images) && typeof value === 'string';
+  const emitChange = (nextImages) => {
+    if (isSingleValue) onChange?.(nextImages[0] || '');
+    else onChange?.(nextImages);
+  };
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef(null);
 
@@ -45,10 +51,10 @@ export default function ImageUploader({ images = [], onChange, replaceOnUpload =
 
     if (uploaded.length > 0) {
       if (replaceOnUpload) {
-        await Promise.all(images.filter(Boolean).map(deleteUploadedFile));
-        onChange(uploaded);
+        await Promise.all(currentImages.filter(Boolean).map(deleteUploadedFile));
+        emitChange(uploaded);
       } else {
-        onChange([...images, ...uploaded]);
+        emitChange([...currentImages, ...uploaded]);
       }
       toast.success(uploaded.length === 1 ? 'Image uploaded' : `${uploaded.length} images uploaded`);
     }
@@ -59,10 +65,10 @@ export default function ImageUploader({ images = [], onChange, replaceOnUpload =
 
   const removeImage = async (idx) => {
     if (uploading) return;
-    const image = images[idx];
+    const image = currentImages[idx];
     if (confirmRemove && !window.confirm('Remove this image permanently?')) return;
     await deleteUploadedFile(image);
-    onChange(images.filter((_, i) => i !== idx));
+    emitChange(currentImages.filter((_, i) => i !== idx));
     toast.success('Image removed');
   };
 
@@ -78,7 +84,7 @@ export default function ImageUploader({ images = [], onChange, replaceOnUpload =
   return (
     <div>
       <div className="mb-4 flex flex-wrap gap-3">
-        {images.map((img, idx) => (
+        {currentImages.map((img, idx) => (
           <div key={img || idx} className="group relative h-24 w-24 overflow-hidden rounded-lg border bg-gray-50">
             <img src={img} alt="" className="h-full w-full object-contain" />
             <button type="button" onClick={() => removeImage(idx)}
@@ -87,8 +93,8 @@ export default function ImageUploader({ images = [], onChange, replaceOnUpload =
             </button>
           </div>
         ))}
-        {(!replaceOnUpload || images.length === 0) && uploadTile('Upload')}
-        {replaceOnUpload && images.length > 0 && uploadTile('Replace')}
+        {(!replaceOnUpload || currentImages.length === 0) && uploadTile(label)}
+        {replaceOnUpload && currentImages.length > 0 && uploadTile('Replace')}
       </div>
     </div>
   );

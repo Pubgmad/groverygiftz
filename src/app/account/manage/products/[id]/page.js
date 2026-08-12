@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import ImageUploader from '@/components/admin/ImageUploader';
-import { FiPlus, FiX, FiVideo, FiUpload, FiImage } from 'react-icons/fi';
+import { FiPlus, FiX, FiVideo, FiUpload, FiImage, FiLoader } from 'react-icons/fi';
 
 const INDIAN_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
@@ -42,6 +42,7 @@ export default function AdminProductForm({ params }) {
   const [loading, setLoading] = useState(false);
   const [collections, setCollections] = useState([]);
   const [shippingTemplates, setShippingTemplates] = useState([]);
+  const [videoUploading, setVideoUploading] = useState(false);
   const [form, setForm] = useState({
     title: '', description: '', images: [], responsiveImages: { desktop: [], tablet: [], mobile: [] }, productVideo: { url: '', name: '', poster: '' }, customizationPreview: { enabled: false, title: 'Preview your personalized gift', frameImage: '', aspectRatio: '1:1', shape: 'rectangle', instructions: '', requiredImageCount: 0, maxImageCount: 0, areas: [] }, delivery: defaultDelivery(), regularPrice: '', salePrice: '', offerStartsAt: '', offerEndsAt: '',
     stock: 100, collections: [], variants: [], customFields: [], collageEnabled: false, collageTemplates: [],
@@ -101,6 +102,7 @@ export default function AdminProductForm({ params }) {
     if (!file) return;
     const formData = new FormData();
     formData.append('file', file);
+    setVideoUploading(true);
     const toastId = toast.loading('Uploading product video...');
     try {
       const res = await fetch('/api/upload/video', { method: 'POST', body: formData });
@@ -110,6 +112,8 @@ export default function AdminProductForm({ params }) {
       toast.success('Product video uploaded', { id: toastId });
     } catch (error) {
       toast.error(error.message || 'Video upload failed', { id: toastId });
+    } finally {
+      setVideoUploading(false);
     }
   };
 
@@ -228,11 +232,11 @@ export default function AdminProductForm({ params }) {
               <p className="text-xs text-gray-500 mt-2 truncate">{form.productVideo.name || form.productVideo.url}</p>
             </div>
           ) : (
-            <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-primary-200 bg-primary-50/40 px-4 py-8 text-center hover:bg-primary-50">
-              <FiUpload size={24} className="text-primary-600" />
-              <span className="text-sm font-semibold text-gray-800">Upload product video</span>
+            <label className={`relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-primary-200 bg-primary-50/40 px-4 py-8 text-center hover:bg-primary-50 ${videoUploading ? 'pointer-events-none opacity-80' : ''}`}>
+              {videoUploading ? <FiLoader size={28} className="animate-spin text-primary-600" /> : <FiUpload size={24} className="text-primary-600" />}
+              <span className="text-sm font-semibold text-gray-800">{videoUploading ? 'Uploading video...' : 'Upload product video'}</span>
               <span className="text-xs text-gray-500">MP4, WEBM or MOV up to 100 MB</span>
-              <input type="file" accept="video/mp4,video/webm,video/quicktime" className="sr-only" onChange={e => uploadProductVideo(e.target.files?.[0])} />
+              <input type="file" accept="video/mp4,video/webm,video/quicktime" className="sr-only" disabled={videoUploading} onChange={e => uploadProductVideo(e.target.files?.[0])} />
             </label>
           )}
         </div>

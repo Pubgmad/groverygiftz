@@ -5,7 +5,7 @@ import { useCart } from '@/context/CartContext';
 import { formatPrice, calcSavings, getEffectivePrice, isOfferActive, getVariantRegularPrice, getVariantSalePrice, getVariantEffectivePrice } from '@/lib/utils';
 import { buildDeliveryEstimateText } from '@/lib/deliveryDate';
 import { buildProductMetaPayload, trackMetaCustomEvent, trackMetaEvent } from '@/lib/metaPixel';
-import { FiMinus, FiPlus, FiX, FiTruck, FiShield, FiClock, FiShoppingCart, FiZap, FiUpload, FiImage, FiChevronLeft, FiChevronRight, FiStar } from 'react-icons/fi';
+import { FiMinus, FiPlus, FiX, FiTruck, FiShield, FiClock, FiShoppingCart, FiZap, FiUpload, FiImage, FiChevronLeft, FiChevronRight, FiStar, FiLoader } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 const INDIAN_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
@@ -17,6 +17,15 @@ const INDIAN_STATES = [
 
 const isTamilNadu = (state) => String(state || '').trim().toLowerCase() === 'tamil nadu';
 const getStateOverride = (delivery, state) => (delivery?.stateOverrides || []).find((row) => String(row.state || '').trim().toLowerCase() === String(state || '').trim().toLowerCase());
+
+function UploadSpinner({ label = 'Uploading...' }) {
+  return (
+    <span className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-xl bg-white/85 text-xs font-bold text-primary-700">
+      <FiLoader size={28} className="animate-spin" />
+      {label}
+    </span>
+  );
+}
 const getDefaultPreviewAdjustments = () => ({ zoom: 1, x: 0, y: 0, orientation: 'auto' });
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -49,7 +58,7 @@ export default function ProductDetail({ product }) {
   const previewFrameRefs = useRef({});
   const galleryTouchRef = useRef({ startX: 0, endX: 0 });
   const lightboxTouchRef = useRef({ startX: 0, endX: 0 });
-  const [selectedDeliveryState, setSelectedDeliveryState] = useState('');
+  const [selectedDeliveryState, setSelectedDeliveryState] = useState('Tamil Nadu');
 
   const offerActive = isOfferActive(product);
   const isSoldOut = Number(product.stock) <= 0;
@@ -345,10 +354,6 @@ export default function ProductDetail({ product }) {
   };
 
   const validateSelections = () => {
-    if (!product.isQuoteOnly && !selectedDeliveryState) {
-      toast.error('Please select your delivery state to see the final price');
-      return false;
-    }
     if ((product.variants || []).length > 0 && selectedVariantOptions.length === 0) {
       toast.error('Please select one variant option');
       return false;
@@ -746,14 +751,14 @@ const handleCustomerPhotoUpload = async (files) => {
               />
             ) : field.type === 'file' ? (
               <div className="rounded-2xl border-2 border-dashed border-primary-200 bg-primary-50/40 p-4">
-                <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl bg-white px-4 py-5 text-center hover:bg-primary-50 transition-colors">
-                  <FiUpload size={24} className="text-primary-600" />
-                  <span className="text-sm font-semibold text-gray-800">Upload photo or artwork</span>
-                  <span className="text-xs text-gray-500">JPG, PNG, WEBP, GIF or PDF up to 200 MB</span>
-                  <input type="file" accept="image/*,.pdf" className="sr-only"
+                <label className={`relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl bg-white px-4 py-5 text-center transition-colors hover:bg-primary-50 ${uploadingFields[field.label] ? 'pointer-events-none opacity-80' : ''}`}>
+                  {uploadingFields[field.label] ? <FiLoader size={28} className="animate-spin text-primary-600" /> : <FiUpload size={24} className="text-primary-600" />}
+                  <span className="text-sm font-semibold text-gray-800">{uploadingFields[field.label] ? 'Uploading file...' : 'Upload photo or artwork'}</span>
+                  <span className="text-xs text-gray-500">JPG, PNG, WEBP, GIF, HEIC, HEIF or PDF up to 200 MB</span>
+                  <input type="file" accept="image/*,.heic,.heif,.pdf" className="sr-only" disabled={uploadingFields[field.label]}
                     onChange={e => handleCustomizationFileUpload(field.label, e.target.files?.[0])} />
                 </label>
-                {uploadingFields[field.label] && <p className="mt-2 text-xs font-semibold text-primary-600">Uploading...</p>}
+                {uploadingFields[field.label] && <p className="mt-2 text-xs font-semibold text-primary-600">Uploading original file...</p>}
                 {customFieldValues[field.label]?.url && (
                   <div className="mt-3 flex items-center gap-3 rounded-xl bg-white border border-primary-100 p-3">
                     <FiImage size={18} className="text-accent-500 shrink-0" />
@@ -788,10 +793,10 @@ const handleCustomerPhotoUpload = async (files) => {
                     <span className={`rounded-full px-3 py-1 text-xs font-bold ${upload?.url ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{upload?.url ? 'Uploaded' : 'Required'}</span>
                   </div>
                   <label className={`relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-primary-100 bg-primary-50/50 px-4 py-5 text-center transition-colors hover:bg-primary-50 ${isUploading ? 'pointer-events-none opacity-80' : ''}`}>
-                    <FiUpload size={22} className="text-primary-600" />
+                    {isUploading ? <FiLoader size={28} className="animate-spin text-primary-600" /> : <FiUpload size={22} className="text-primary-600" />}
                     <span className="text-sm font-semibold text-gray-800">{isUploading ? 'Uploading image...' : `Upload image for ${selected.label}`}</span>
                     <input type="file" accept="image/*,.heic,.heif" className="sr-only" disabled={isUploading} onChange={e => handleVariantLabelUpload(selected.label, e.target.files?.[0])} />
-                    {isUploading && <span className="absolute inset-0 flex items-center justify-center rounded-xl bg-white/75 text-xs font-bold text-primary-700">Uploading...</span>}
+                    {isUploading && <UploadSpinner label="Uploading original image..." />}
                   </label>
                   {upload?.url && (() => {
                     const previewKey = `variant-${selected.label}`;
@@ -848,10 +853,11 @@ const handleCustomerPhotoUpload = async (files) => {
               </span>
             </div>
             <label className={`relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl bg-white px-4 py-5 text-center transition-colors hover:bg-accent-50 border border-accent-100 ${uploadingCustomerPhotos ? 'pointer-events-none opacity-80' : ''}`}>
-              <FiUpload size={24} className="text-accent-600" />
-              <span className="text-sm font-semibold text-gray-800">Upload customer photos</span>
+              {uploadingCustomerPhotos ? <FiLoader size={28} className="animate-spin text-accent-600" /> : <FiUpload size={24} className="text-accent-600" />}
+              <span className="text-sm font-semibold text-gray-800">{uploadingCustomerPhotos ? 'Uploading photos...' : 'Upload customer photos'}</span>
               <span className="text-xs text-gray-500">Upload in the same order as the photo areas shown below</span>
-              <input type="file" multiple accept="image/*" className="sr-only" disabled={uploadingCustomerPhotos} onChange={e => handleCustomerPhotoUpload(e.target.files)} />
+              <input type="file" multiple accept="image/*,.heic,.heif" className="sr-only" disabled={uploadingCustomerPhotos} onChange={e => handleCustomerPhotoUpload(e.target.files)} />
+            {uploadingCustomerPhotos && <UploadSpinner label="Uploading original photos..." />}
             </label>
 
             {customerPhotos.length > 0 && (
@@ -873,7 +879,6 @@ const handleCustomerPhotoUpload = async (files) => {
           <div className="mb-5 rounded-2xl border-2 border-dashed border-primary-200 bg-primary-50/30 p-4 space-y-4">
             <div>
               <p className="text-sm font-bold text-gray-900">Collage photo uploads</p>
-              <p className="text-xs text-gray-500 mt-1">Upload photos label-wise. No editing or preview is needed; photos are saved in the same order you upload them.</p>
             </div>
             {collageTemplates.map((template) => {
               const label = template.label;
@@ -891,11 +896,12 @@ const handleCustomerPhotoUpload = async (files) => {
                     </div>
                     <span className={`self-start rounded-full px-3 py-1 text-xs font-bold border ${photos.length >= min && photos.length <= max ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>{photos.length}/{min}-{max}</span>
                   </div>
-                  <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-primary-100 bg-primary-50/50 px-4 py-5 text-center transition-colors hover:bg-primary-50">
-                    <FiUpload size={22} className="text-primary-600" />
-                    <span className="text-sm font-semibold text-gray-800">Upload images for {label}</span>
+                  <label className={`relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-primary-100 bg-primary-50/50 px-4 py-5 text-center transition-colors hover:bg-primary-50 ${isUploading ? 'pointer-events-none opacity-80' : ''}`}>
+                    {isUploading ? <FiLoader size={28} className="animate-spin text-primary-600" /> : <FiUpload size={22} className="text-primary-600" />}
+                    <span className="text-sm font-semibold text-gray-800">{isUploading ? `Uploading ${label}...` : `Upload images for ${label}`}</span>
                     <span className="text-xs text-gray-500">Images stay in upload order</span>
-                    <input type="file" multiple accept="image/*" className="sr-only" disabled={isUploading} onChange={e => handleCollageUpload(label, e.target.files)} />
+                    <input type="file" multiple accept="image/*,.heic,.heif" className="sr-only" disabled={isUploading} onChange={e => handleCollageUpload(label, e.target.files)} />
+                  {isUploading && <UploadSpinner label="Uploading original images..." />}
                   </label>
                   {isUploading && <p className="mt-2 text-xs font-semibold text-primary-700">Uploading {label} images...</p>}
                   {photos.length > 0 && (
