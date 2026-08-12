@@ -38,7 +38,7 @@ async function getData() {
     Product.find({ isFeatured: true, isActive: true }).sort({ createdAt: -1 }).limit(12).lean(),
     Product.find(activeOfferMatch(now, { includeActive: true })).sort({ createdAt: -1 }).limit(12).lean(),
     Product.find({ isBestSeller: true, isActive: true }).sort({ createdAt: -1 }).limit(12).lean(),
-    Product.find({ isActive: true }).sort({ createdAt: -1 }).limit(12).lean(),
+    Product.aggregate([{ $match: { isActive: true } }, { $sample: { size: 4 } }]),
     showcaseCollection
       ? Product.find({ collections: showcaseCollection._id, isActive: true }).sort({ createdAt: -1 }).limit(12).lean()
       : Promise.resolve([]),
