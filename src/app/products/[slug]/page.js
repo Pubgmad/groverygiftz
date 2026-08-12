@@ -22,7 +22,7 @@ export default async function ProductPage({ params }) {
   const relatedData = JSON.parse(JSON.stringify(related));
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
+    <div className="product-mobile-safe mx-auto max-w-7xl overflow-hidden px-3 py-6 sm:px-4 sm:py-8">
       <Breadcrumbs items={[{ label: 'Products', href: '/shop' }, { label: data.title }]} />
       <ProductDetail product={data} />
       {relatedData.length > 0 && (

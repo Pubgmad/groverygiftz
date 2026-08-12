@@ -584,7 +584,7 @@ const handleCustomerPhotoUpload = async (files) => {
   };
 
   return (
-    <div className="grid md:grid-cols-2 gap-8 md:gap-12">
+    <div className="product-mobile-safe grid max-w-full grid-cols-1 gap-8 md:grid-cols-2 md:gap-12">
       {/* Product Media Gallery */}
       <div>
         <div className="relative aspect-square rounded-2xl overflow-hidden bg-gray-100 mb-4 cursor-pointer" onClick={() => currentMedia?.type === 'image' && setLightboxOpen(true)} onTouchStart={handleGalleryTouchStart} onTouchMove={handleGalleryTouchMove} onTouchEnd={handleGalleryTouchEnd}>
@@ -1087,10 +1087,10 @@ const handleCustomerPhotoUpload = async (files) => {
                   </div>
                 )}
                 {visibleGoogleReviews.length > 0 && (
-                  <div className="-mx-1 overflow-x-auto pb-3">
-                    <div className="flex snap-x snap-mandatory gap-4 px-1">
+                  <div className="review-scroll w-full max-w-full overflow-x-auto overscroll-x-contain pb-3">
+                    <div className="flex w-max snap-x snap-mandatory gap-3 pr-3">
                       {visibleGoogleReviews.map((review) => (
-                        <div key={review.id} className="min-h-[210px] w-[82vw] max-w-[360px] shrink-0 snap-start rounded-3xl bg-gray-50 p-5 shadow-sm sm:w-[320px]">
+                        <div key={review.id} className="min-h-[210px] w-[calc(100vw-3rem)] max-w-[340px] shrink-0 snap-start rounded-3xl bg-gray-50 p-4 shadow-sm sm:w-[320px] sm:p-5">
                           <div className="flex items-start gap-3">
                             {review.avatar ? <img src={review.avatar} alt={review.name} className="h-11 w-11 rounded-full object-cover" /> : <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary-100 text-sm font-bold text-primary-700">{String(review.name || 'G').slice(0, 1)}</div>}
                             <div className="min-w-0 flex-1">
@@ -1105,7 +1105,7 @@ const handleCustomerPhotoUpload = async (files) => {
                     </div>
                   </div>
                 )}
-                {googleReviewImages.length > 0 && <div className="flex snap-x gap-3 overflow-x-auto pb-2">{googleReviewImages.map((image, idx) => <img key={image + idx} src={image} alt="Google review image" className="h-28 w-28 shrink-0 snap-start rounded-xl border object-cover" />)}</div>}
+                {googleReviewImages.length > 0 && <div className="flex w-full max-w-full snap-x gap-3 overflow-x-auto overscroll-x-contain pb-2">{googleReviewImages.map((image, idx) => <img key={image + idx} src={image} alt="Google review image" className="h-28 w-28 shrink-0 snap-start rounded-xl border object-cover" />)}</div>}
               </div>
             )}
             {reviews.length > 0 && (

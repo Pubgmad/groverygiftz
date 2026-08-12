@@ -313,3 +313,6 @@ button, a, input, select, textarea {
     line-height: 2rem;
   }
 }
+.review-scroll { scrollbar-width: thin; -webkit-overflow-scrolling: touch; contain: layout paint; }
+.review-scroll > * { max-width: none; }
+.product-mobile-safe, .product-mobile-safe * { min-width: 0; }
