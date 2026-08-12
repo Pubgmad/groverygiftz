@@ -276,15 +276,46 @@ export default function ProductDetail({ product }) {
     }
   };
   const buildCustomizationPreviewPayload = async () => {
-    if (!previewEnabled || !previewAreas.some((area, idx) => customerPhotos[idx]?.url)) return null;
     const previews = [];
-    for (let idx = 0; idx < previewAreas.length; idx += 1) {
-      const area = previewAreas[idx];
-      const uploadedFile = customerPhotos[idx] || null;
+
+    if (previewEnabled) {
+      for (let idx = 0; idx < previewAreas.length; idx += 1) {
+        const area = previewAreas[idx];
+        const uploadedFile = customerPhotos[idx] || null;
+        if (!uploadedFile?.url) continue;
+        const areaLabel = area.label || ('Photo ' + (idx + 1));
+        const finalPreviewDataUrl = await renderFinalPreviewImage(area, idx);
+        const finalPreviewImage = await uploadRenderedPreviewImage(finalPreviewDataUrl, areaLabel, idx);
+        previews.push({
+          areaLabel,
+          width: area.width || '',
+          height: area.height || '',
+          unit: area.unit || 'inch',
+          instructions: area.instructions || '',
+          frameImage: area.frameImage || '',
+          uploadedFile,
+          adjustments: getAreaAdjustments(idx),
+          finalPreviewImage,
+          finalPreviewDataUrl: finalPreviewImage?.url ? '' : finalPreviewDataUrl,
+        });
+      }
+    }
+
+    for (const selected of selectedVariantUploadOptions) {
+      const uploadedFile = variantLabelUploads[selected.label] || null;
       if (!uploadedFile?.url) continue;
-      const areaLabel = area.label || ('Photo ' + (idx + 1));
-      const finalPreviewDataUrl = await renderFinalPreviewImage(area, idx);
-      const finalPreviewImage = await uploadRenderedPreviewImage(finalPreviewDataUrl, areaLabel, idx);
+      const previewKey = `variant-${selected.label}`;
+      const area = {
+        label: selected.label,
+        width: selected.previewWidth || 1,
+        height: selected.previewHeight || 1,
+        unit: selected.previewUnit || 'inch',
+        frameImage: selected.previewFrameImage || '',
+        instructions: selected.previewInstructions || '',
+      };
+      const areaLabel = `Variant: ${selected.label}`;
+      const finalPreviewDataUrl = await renderFinalPreviewImage(area, previewKey, uploadedFile.url);
+      const finalPreviewImage = await uploadRenderedPreviewImage(finalPreviewDataUrl, areaLabel, previews.length);
       previews.push({
         areaLabel,
         width: area.width || '',
@@ -293,11 +324,14 @@ export default function ProductDetail({ product }) {
         instructions: area.instructions || '',
         frameImage: area.frameImage || '',
         uploadedFile,
-        adjustments: getAreaAdjustments(idx),
+        adjustments: getAreaAdjustments(previewKey),
         finalPreviewImage,
         finalPreviewDataUrl: finalPreviewImage?.url ? '' : finalPreviewDataUrl,
+        sourceType: 'variant',
       });
     }
+
+    if (previews.length === 0) return null;
     return { previewTitle: previewConfig.title || 'Customization preview', previews };
   };
   const updateAreaAdjustments = (idx, updates) => {

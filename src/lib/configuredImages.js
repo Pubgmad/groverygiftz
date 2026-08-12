@@ -78,16 +78,16 @@ const collectPreviewSections = (sections, preview) => {
 export const getConfiguredImageSections = (item, { includeCollage = false, includeProductImages = true } = {}) => {
   const sections = [];
 
-  if (includeProductImages) {
-    const productImages = Array.isArray(item?.images) && item.images.length > 0 ? item.images : [item?.image].filter(Boolean);
-    pushSection(sections, 'Product images', productImages.map((url, index) => ({ url, type: 'image', caption: `Product image ${index + 1}` })));
-  }
-
   collectCustomFieldSections(sections, item?.customFields);
   collectPreviewSections(sections, item?.customizationPreview);
 
   if (includeCollage && Array.isArray(item?.collageUploads)) {
     item.collageUploads.forEach((group) => pushSection(sections, `Collage: ${group.label || 'Photos'}`, group.images || []));
+  }
+
+  if (includeProductImages) {
+    const productImages = Array.isArray(item?.images) && item.images.length > 0 ? item.images : [item?.image].filter(Boolean);
+    pushSection(sections, 'Product images', productImages.map((url, index) => ({ url, type: 'image', caption: `Product image ${index + 1}` })));
   }
 
   return sections;
