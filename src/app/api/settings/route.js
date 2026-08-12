@@ -6,6 +6,15 @@ import Settings from '@/models/Settings';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 
+const GOOGLE_REVIEW_SETTING_KEYS = [
+  'googleReviewsEnabled',
+  'googleReviewsSerpApiKey',
+  'googleReviewsPlaceId',
+  'googleReviewsDataId',
+  'googleReviewsSortBy',
+  'googleReviewsCacheHours',
+];
+
 function sanitizePublicSettings(settings) {
   const publicSettings = { ...settings };
   publicSettings.cashfreeSecretKey = '';
@@ -70,6 +79,11 @@ export async function PUT(req) {
 
   await dbConnect();
   const body = await req.json();
+  if (GOOGLE_REVIEW_SETTING_KEYS.some((key) => Object.prototype.hasOwnProperty.call(body, key))) {
+    body.googleReviewsCache = null;
+    body.googleReviewsCacheFetchedAt = null;
+    body.googleReviewsCacheSignature = '';
+  }
   const settings = await Settings.findOneAndUpdate({}, body, { new: true, upsert: true });
   revalidatePath('/', 'layout');
   revalidatePath('/');

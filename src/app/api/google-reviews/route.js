@@ -1,4 +1,4 @@
-﻿export const dynamic = 'force-dynamic';
+export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import Settings from '@/models/Settings';
@@ -17,6 +17,15 @@ function normalizeReview(review = {}) {
     link: review.link || '',
     images: Array.isArray(review.images) ? review.images.map((img) => img.thumbnail || img.image || img).filter(Boolean) : [],
   };
+}
+
+function getCacheSignature(settings) {
+  return JSON.stringify({
+    placeId: settings.googleReviewsPlaceId || '',
+    dataId: settings.googleReviewsDataId || '',
+    sortBy: settings.googleReviewsSortBy || 'newestFirst',
+    lang: 'en',
+  });
 }
 
 function rotateReviews(reviews = []) {
@@ -43,12 +52,13 @@ function buildPayload(data = {}) {
   };
 }
 
-async function fetchFromSerpApi(settings) {
+async function fetchFromSerpApi(settings, options = {}) {
   const url = new URL(SERPAPI_ENDPOINT);
   url.searchParams.set('engine', 'google_maps_reviews');
   url.searchParams.set('api_key', settings.googleReviewsSerpApiKey);
   url.searchParams.set('hl', 'en');
   url.searchParams.set('sort_by', settings.googleReviewsSortBy || 'newestFirst');
+  if (options.noCache) url.searchParams.set('no_cache', 'true');
   if (settings.googleReviewsPlaceId) url.searchParams.set('place_id', settings.googleReviewsPlaceId);
   else url.searchParams.set('data_id', settings.googleReviewsDataId);
 
@@ -66,23 +76,25 @@ export async function GET(request) {
   }
 
   const forceRefresh = new URL(request.url).searchParams.get('refresh') === '1';
+  const cacheSignature = getCacheSignature(settings);
   const cacheHours = Math.max(1, Number(settings.googleReviewsCacheHours || 12));
   const fetchedAt = settings.googleReviewsCacheFetchedAt ? new Date(settings.googleReviewsCacheFetchedAt).getTime() : 0;
   const cacheFresh = fetchedAt && (Date.now() - fetchedAt) < cacheHours * 60 * 60 * 1000;
 
-  if (!forceRefresh && cacheFresh && settings.googleReviewsCache) {
+  if (!forceRefresh && cacheFresh && settings.googleReviewsCache && settings.googleReviewsCacheSignature === cacheSignature) {
     const cached = settings.googleReviewsCache;
     return NextResponse.json({ ...cached, reviews: rotateReviews(cached.reviews || []) });
   }
 
   try {
-    const payload = await fetchFromSerpApi(settings);
+    const payload = await fetchFromSerpApi(settings, { noCache: forceRefresh });
     settings.googleReviewsCache = payload;
     settings.googleReviewsCacheFetchedAt = new Date();
+    settings.googleReviewsCacheSignature = cacheSignature;
     await settings.save();
     return NextResponse.json({ ...payload, reviews: rotateReviews(payload.reviews || []) });
   } catch (error) {
-    if (settings.googleReviewsCache) {
+    if (settings.googleReviewsCache && settings.googleReviewsCacheSignature === cacheSignature) {
       const cached = settings.googleReviewsCache;
       return NextResponse.json({ ...cached, stale: true, error: error.message, reviews: rotateReviews(cached.reviews || []) });
     }

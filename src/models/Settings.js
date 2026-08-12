@@ -75,6 +75,7 @@ const SettingsSchema = new mongoose.Schema({
   googleReviewsCacheHours: { type: Number, default: 12 },
   googleReviewsCache: { type: mongoose.Schema.Types.Mixed, default: null },
   googleReviewsCacheFetchedAt: Date,
+  googleReviewsCacheSignature: { type: String, default: '' },
 
   heroEyebrow: { type: String, default: '' },
   heroTrustBadges: [{ type: String }],
