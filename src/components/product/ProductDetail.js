@@ -170,6 +170,8 @@ export default function ProductDetail({ product }) {
   const googleRating = Number(googleReviews?.rating || 0);
   const visibleGoogleReviews = googleReviews?.enabled ? googleReviewsList.slice(0, 3) : [];
   const googleReviewImages = visibleGoogleReviews.flatMap((review) => Array.isArray(review?.images) ? review.images : []).slice(0, 8);
+  const googleReviewTopics = Array.isArray(googleReviews?.topics) ? googleReviews.topics.filter((topic) => topic?.keyword).slice(0, 3) : [];
+  const googleBusinessName = googleReviews?.title || 'Grovery giftz - Customized Photo Frames';
   const getAreaAspectRatio = (area, orientation = 'auto') => {
     const rawWidth = Math.max(1, Number(area?.width || 1));
     const rawHeight = Math.max(1, Number(area?.height || 1));
@@ -1068,13 +1070,22 @@ const handleCustomerPhotoUpload = async (files) => {
             {googleReviews.enabled && (
               <div className="space-y-4">
                 <div className="rounded-3xl bg-gray-50 p-5 shadow-sm">
-                  <p className="text-lg font-bold"><span className="text-blue-500">G</span><span className="text-red-500">o</span><span className="text-yellow-500">o</span><span className="text-blue-500">g</span><span className="text-emerald-500">l</span><span className="text-red-500">e</span> Reviews</p>
+                  <p className="text-sm font-bold uppercase tracking-wide text-gray-500">{googleBusinessName}</p>
+                  <p className="mt-1 text-lg font-bold"><span className="text-blue-500">G</span><span className="text-red-500">o</span><span className="text-yellow-500">o</span><span className="text-blue-500">g</span><span className="text-emerald-500">l</span><span className="text-red-500">e</span> Reviews</p>
                   <div className="mt-3 flex flex-wrap items-center gap-3">
                     <span className="text-3xl font-extrabold text-gray-950">{googleRating ? googleRating.toFixed(1) : '0.0'}</span>
                     <div className="flex gap-1 text-yellow-400">{[1, 2, 3, 4, 5].map((star) => <FiStar key={star} className={star <= Math.round(googleRating) ? 'fill-yellow-400 stroke-yellow-400' : 'stroke-gray-300'} />)}</div>
                     <span className="text-sm text-gray-500">({googleReviewCount.toLocaleString('en-IN')})</span>
                   </div>
                 </div>
+                {googleReviewTopics.length > 0 && (
+                  <div className="rounded-3xl bg-primary-50/70 p-5 shadow-sm">
+                    <p className="text-sm font-extrabold text-primary-700">Review Highlights</p>
+                    <ul className="mt-3 space-y-2 text-sm text-gray-700">
+                      {googleReviewTopics.map((topic) => <li key={topic.keyword} className="flex gap-2"><span className="font-bold text-primary-600">-</span><span>{topic.keyword}{topic.mentions ? " (" + topic.mentions + ")" : ""}</span></li>)}
+                    </ul>
+                  </div>
+                )}
                 {visibleGoogleReviews.map((review) => (
                   <div key={review.id} className="rounded-3xl bg-gray-50 p-5 shadow-sm">
                     <div className="flex items-start gap-3">
