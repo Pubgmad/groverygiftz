@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import dbConnect from './db';
 import Admin from '@/models/Admin';
 import Customer from '@/models/Customer';
+import { cookies } from 'next/headers';
 
 export const authOptions = {
   providers: [
@@ -48,8 +49,15 @@ export const authOptions = {
       if (account?.provider !== 'google') return true;
       await dbConnect();
       const email = user.email?.trim().toLowerCase();
-      if (!email) return false;
+      if (!email) return '/auth/login?googleError=missing-email';
+
+      const intent = cookies().get('google_auth_intent')?.value || 'signin';
       let customer = await Customer.findOne({ email });
+
+      if (!customer && intent !== 'signup') {
+        return '/auth/register?googleAccountMissing=1';
+      }
+
       if (!customer) {
         customer = await Customer.create({
           name: user.name || email.split('@')[0],
@@ -62,6 +70,7 @@ export const authOptions = {
         customer.image = user.image || customer.image || '';
         await customer.save();
       }
+
       user.id = customer._id.toString();
       user.type = 'customer';
       return true;

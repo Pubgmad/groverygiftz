@@ -21,9 +21,15 @@ export default function LoginPage() {
     setCallbackUrl(customerCallback);
     setEmail('');
     setPassword('');
+    if (params.get('googleError') === 'missing-email') toast.error('Google did not return an email address. Please use email/password login.');
     const timer = setTimeout(() => setInputReady(true), 300);
     return () => clearTimeout(timer);
   }, []);
+
+  const handleGoogleSignIn = () => {
+    document.cookie = 'google_auth_intent=signin; path=/; max-age=600; SameSite=Lax';
+    signIn('google', { callbackUrl });
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -50,7 +56,7 @@ export default function LoginPage() {
         <button disabled={loading} className="btn-primary w-full">{loading ? 'Signing in...' : 'Sign In'}</button>
       </form>
       <div className="my-5 flex items-center gap-3 text-xs font-semibold uppercase tracking-widest text-gray-400"><span className="h-px flex-1 bg-gray-200" />or<span className="h-px flex-1 bg-gray-200" /></div>
-      <button type="button" onClick={() => signIn('google', { callbackUrl })} className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 transition hover:border-primary-200 hover:bg-primary-50">Continue with Google</button>
+      <button type="button" onClick={handleGoogleSignIn} className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 transition hover:border-primary-200 hover:bg-primary-50">Continue with Google</button>
       <p className="text-center mt-6 text-sm text-gray-500">
         Don&apos;t have an account? <Link href="/auth/register" className="text-primary-600 hover:underline">Create Account</Link>
       </p>
