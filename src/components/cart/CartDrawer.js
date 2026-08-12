@@ -5,6 +5,7 @@ import { FiX, FiPlus, FiMinus, FiTrash2, FiShoppingBag, FiTruck, FiGift } from '
 import Link from 'next/link';
 import { formatPrice } from '@/lib/utils';
 import { calculateCartShipping } from '@/lib/shipping';
+import ConfiguredImageSections from '@/components/cart/ConfiguredImageSections';
 
 export default function CartDrawer() {
   const { cart, isCartOpen, setIsCartOpen, removeFromCart, updateQuantity, cartTotal, cartCount } = useCart();
@@ -60,31 +61,13 @@ export default function CartDrawer() {
                   <div className="flex-1 min-w-0">
                     <h4 className="font-semibold text-sm leading-snug line-clamp-2">{item.title}</h4>
                     {item.variant && <p className="text-xs text-gray-500 mt-0.5">{item.variant}</p>}
-                    {Array.isArray(item.images) && item.images.length > 1 && (
-                      <div className="mt-2 flex max-w-full gap-1.5 overflow-x-auto pb-1">
-                        {item.images.slice(0, 6).map((img, imgIdx) => (
-                          <a key={img || imgIdx} href={img} target="_blank" rel="noopener noreferrer" className="block h-10 w-10 shrink-0 overflow-hidden rounded-md border bg-white">
-                            <img src={img} alt={`${item.title} ${imgIdx + 1}`} className="h-full w-full object-contain bg-gray-50" onError={(e) => { e.currentTarget.src = '/placeholder.svg'; }} />
-                          </a>
-                        ))}
-                      </div>
-                    )}
                     {item.giftWrap && <p className="text-xs text-primary-600 mt-0.5">Gift wrapped</p>}
                     {item.deliveryState && <p className="text-xs text-gray-500 mt-0.5">State: {item.deliveryState}</p>}
-                    {item.customizationPreview?.uploadedFile?.url && <a href={item.customizationPreview.uploadedFile.url} target="_blank" rel="noopener noreferrer" className="text-xs text-accent-600 mt-0.5 inline-block">View uploaded photo</a>}
-                    {item.customizationPreview?.previews?.some?.(p => p.uploadedFile?.url) && (
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {item.customizationPreview.previews.filter(p => p.uploadedFile?.url).slice(0, 4).map((preview, pIdx) => (
-                          <a key={preview.uploadedFile.url || pIdx} href={preview.uploadedFile.url} target="_blank" rel="noopener noreferrer" className="block h-10 w-10 overflow-hidden rounded-md border bg-white">
-                            <img src={preview.uploadedFile.url} alt={preview.areaLabel || 'Uploaded photo'} className="h-full w-full object-contain bg-gray-50" />
-                          </a>
-                        ))}
-                      </div>
-                    )}
+                    <ConfiguredImageSections item={item} compact />
                     <p className="font-bold text-primary-600 mt-1">{formatPrice(item.price * item.quantity)}</p>
                     <div className="flex items-center gap-2 mt-2">
-                      <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden"><button onClick={() => updateQuantity(item.productId, item.variant, item.quantity - 1)} className="w-7 h-7 flex items-center justify-center hover:bg-gray-200 transition-colors text-gray-600"><FiMinus size={12} /></button><span className="w-8 text-center text-sm font-semibold">{item.quantity}</span><button onClick={() => updateQuantity(item.productId, item.variant, item.quantity + 1)} className="w-7 h-7 flex items-center justify-center hover:bg-gray-200 transition-colors text-gray-600"><FiPlus size={12} /></button></div>
-                      <button onClick={() => removeFromCart(item.productId, item.variant)} className="ml-auto w-7 h-7 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><FiTrash2 size={14} /></button>
+                      <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden"><button onClick={() => updateQuantity(item.productId, item.variant, item.quantity - 1, item.cartItemId)} className="w-7 h-7 flex items-center justify-center hover:bg-gray-200 transition-colors text-gray-600"><FiMinus size={12} /></button><span className="w-8 text-center text-sm font-semibold">{item.quantity}</span><button onClick={() => updateQuantity(item.productId, item.variant, item.quantity + 1, item.cartItemId)} className="w-7 h-7 flex items-center justify-center hover:bg-gray-200 transition-colors text-gray-600"><FiPlus size={12} /></button></div>
+                      <button onClick={() => removeFromCart(item.productId, item.variant, item.cartItemId)} className="ml-auto w-7 h-7 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><FiTrash2 size={14} /></button>
                     </div>
                   </div>
                 </div>

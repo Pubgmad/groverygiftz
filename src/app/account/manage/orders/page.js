@@ -87,9 +87,20 @@ function CustomValue({ value }) {
   if (isUploadedFile(value)) {
     return <DownloadButton href={value.url} filename={buildDownloadName('original-upload', value.name || 'custom-file', 0, value)}>Download original{value.name ? ` (${value.name})` : ''}</DownloadButton>;
   }
+  if (value && typeof value === 'object') {
+    return (
+      <span className="mt-1 flex flex-col gap-2">
+        {Object.entries(value).map(([childLabel, childValue]) => (
+          <span key={childLabel} className="rounded-md border bg-gray-50 p-2">
+            <span className="mb-1 block font-semibold text-gray-700">{childValue?.label || childLabel}</span>
+            <CustomValue value={childValue} />
+          </span>
+        ))}
+      </span>
+    );
+  }
   return <span>{String(value || '-')}</span>;
 }
-
 function CollageUploadDetails({ groups }) {
   const visibleGroups = Array.isArray(groups) ? groups.filter((group) => group?.label && Array.isArray(group.images) && group.images.length > 0) : [];
   if (visibleGroups.length === 0) return null;

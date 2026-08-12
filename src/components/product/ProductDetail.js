@@ -552,9 +552,11 @@ const handleCustomerPhotoUpload = async (files) => {
     const allCustomFields = { ...customFieldValues, ...(customerPhotos.length > 0 ? { 'Customer Photos': customerPhotos } : {}), ...(Object.keys(variantUploads).length > 0 ? { 'Variant Label Uploads': variantUploads } : {}) };
 
     const customizationPreviewPayload = await buildCustomizationPreviewPayload();
+    const hasConfiguredAssets = Object.keys(allCustomFields).length > 0 || collageGroups.length > 0 || Boolean(customizationPreviewPayload) || giftWrap || Boolean(giftMessage.trim());
 
     addToCart({
       productId: product._id,
+      cartItemId: hasConfiguredAssets ? `${product._id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` : undefined,
       title: product.title,
       image: product.images?.[0] || '',
       images: product.images || [],

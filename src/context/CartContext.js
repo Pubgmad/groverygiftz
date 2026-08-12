@@ -1,7 +1,12 @@
-﻿'use client';
+'use client';
 import { createContext, useContext, useState, useEffect } from 'react';
 
 const CartContext = createContext();
+
+const isSameCartLine = (cartItem, productId, variant, cartItemId) => {
+  if (cartItemId) return cartItem.cartItemId === cartItemId;
+  return cartItem.productId === productId && cartItem.variant === variant && !cartItem.cartItemId;
+};
 
 export function CartProvider({ children }) {
   const [cart, setCart] = useState([]);
@@ -18,9 +23,9 @@ export function CartProvider({ children }) {
 
   const addToCart = (item, options = {}) => {
     setCart(prev => {
-      const existing = prev.find(i => i.productId === item.productId && i.variant === item.variant);
+      const existing = !item.cartItemId && prev.find(i => isSameCartLine(i, item.productId, item.variant));
       if (existing) {
-        return prev.map(i => i.productId === item.productId && i.variant === item.variant
+        return prev.map(i => isSameCartLine(i, item.productId, item.variant)
           ? { ...i, quantity: i.quantity + item.quantity }
           : i
         );
@@ -30,14 +35,14 @@ export function CartProvider({ children }) {
     if (options.openDrawer !== false) setIsCartOpen(true);
   };
 
-  const removeFromCart = (productId, variant) => {
-    setCart(prev => prev.filter(i => !(i.productId === productId && i.variant === variant)));
+  const removeFromCart = (productId, variant, cartItemId) => {
+    setCart(prev => prev.filter(i => !isSameCartLine(i, productId, variant, cartItemId)));
   };
 
-  const updateQuantity = (productId, variant, quantity) => {
-    if (quantity <= 0) return removeFromCart(productId, variant);
+  const updateQuantity = (productId, variant, quantity, cartItemId) => {
+    if (quantity <= 0) return removeFromCart(productId, variant, cartItemId);
     setCart(prev => prev.map(i =>
-      i.productId === productId && i.variant === variant ? { ...i, quantity } : i
+      isSameCartLine(i, productId, variant, cartItemId) ? { ...i, quantity } : i
     ));
   };
 
