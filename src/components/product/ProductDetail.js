@@ -631,7 +631,7 @@ const handleCustomerPhotoUpload = async (files) => {
             <>
               <span className="text-xl text-gray-400 line-through">{formatPrice(compareAtPrice)}</span>
               <span className="badge-save text-sm">Save {formatPrice(savings)}</span>
-              {product.offerEndsAt && <span className="inline-flex items-center gap-1 rounded-full bg-accent-50 px-3 py-1 text-xs font-extrabold text-accent-700"><FiClock size={12} /> Offer ends {new Date(product.offerEndsAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>}
+              {!selectedOwnPriceOption && baseOfferActive && product.offerEndsAt && <span className="inline-flex items-center gap-1 rounded-full bg-accent-50 px-3 py-1 text-xs font-extrabold text-accent-700"><FiClock size={12} /> Offer ends {new Date(product.offerEndsAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>}
             </>
           )}
         </div>

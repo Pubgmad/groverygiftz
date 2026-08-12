@@ -20,8 +20,10 @@ function activeOfferQuery(now) {
   return {
     isActive: true,
     salePrice: { $gt: 0 },
-    offerStartsAt: { $type: 'date', $lte: now },
-    offerEndsAt: { $type: 'date', $gte: now },
+    $and: [
+      { $or: [{ offerStartsAt: { $exists: false } }, { offerStartsAt: null }, { offerStartsAt: { $lte: now } }] },
+      { $or: [{ offerEndsAt: { $exists: false } }, { offerEndsAt: null }, { offerEndsAt: { $gte: now } }] },
+    ],
     $expr: { $lt: ['$salePrice', '$regularPrice'] },
   };
 }
@@ -97,27 +99,28 @@ export default async function HomePage() {
       <HeroCarousel banners={banners} settings={settings} />
       <CollectionsGrid collections={collections} settings={settings} />
       <FeaturedProducts
-        products={featured}
-        eyebrow={settings?.homeFeaturedProductsEyebrow || ''}
-        title={settings?.homeFeaturedProductsTitle || ''}
-        subtitle={settings?.homeFeaturedProductsSubtitle || ''}
-        buttonText={settings?.homeFeaturedProductsButtonText || ''}
-        buttonLink="/shop"
+        products={bestSellers}
+        eyebrow={settings?.homeBestSellersEyebrow || 'Best sellers'}
+        title={settings?.homeBestSellersTitle || 'Customer Favourite Gifts'}
+        subtitle={settings?.homeBestSellersSubtitle || ''}
+        buttonText={settings?.homeBestSellersButtonText || 'View Best Sellers'}
+        buttonLink="/shop?view=best-sellers"
       />
       <FeaturedProducts
         products={offerProducts}
-        eyebrow="Limited offers"
-        title="Limited Time Offers"
-        subtitle="Only products with an active admin-defined sale price appear here."
-        buttonText="View Offers"
+        eyebrow={settings?.homeOffersEyebrow || 'Limited offers'}
+        title={settings?.homeOffersTitle || 'Limited Time Offers'}
+        subtitle={settings?.homeOffersSubtitle || ''}
+        buttonText={settings?.homeOffersButtonText || 'View Offers'}
         buttonLink="/shop?view=offers"
       />
       <FeaturedProducts
-        products={bestSellers}
-        eyebrow="Best sellers"
-        title="Best Selling Gifts"
-        buttonText="View Best Sellers"
-        buttonLink="/shop?view=best-sellers"
+        products={featured}
+        eyebrow={settings?.homeAllProductsEyebrow || settings?.homeFeaturedProductsEyebrow || ''}
+        title={settings?.homeAllProductsTitle || settings?.homeFeaturedProductsTitle || 'All Products'}
+        subtitle={settings?.homeAllProductsSubtitle || settings?.homeFeaturedProductsSubtitle || ''}
+        buttonText={settings?.homeAllProductsButtonText || settings?.homeFeaturedProductsButtonText || 'Explore Products'}
+        buttonLink="/shop"
       />
       <CollectionShowcase
         products={showcaseProducts}

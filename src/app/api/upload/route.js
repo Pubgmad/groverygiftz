@@ -4,7 +4,7 @@ import path from 'path';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 
-const MAX_FILE_SIZE = 20 * 1024 * 1024;
+const MAX_FILE_SIZE = 200 * 1024 * 1024;
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml', 'image/avif'];
 const UPLOAD_PREFIX = '/uploads/';
 
@@ -33,7 +33,7 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Only JPG, PNG, WEBP, GIF, SVG, or AVIF images are allowed' }, { status: 400 });
     }
     if (file.size > MAX_FILE_SIZE) {
-      return NextResponse.json({ error: 'Image must be under 20 MB' }, { status: 400 });
+      return NextResponse.json({ error: 'Image must be under 200 MB' }, { status: 400 });
     }
 
     const bytes = await file.arrayBuffer();

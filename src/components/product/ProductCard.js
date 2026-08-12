@@ -1,8 +1,18 @@
 'use client';
 import Link from 'next/link';
 import { FiHeart, FiGift, FiShoppingBag, FiChevronRight, FiClock } from 'react-icons/fi';
-import { formatPrice, calcSavings, getDisplayPrice, getDisplayRegularPrice } from '@/lib/utils';
+import { formatPrice, calcSavings, getDisplayPrice, getDisplayRegularPrice, isOfferActive } from '@/lib/utils';
 import { useWishlist } from '@/context/WishlistContext';
+
+function firstProductImage(product, index = 0) {
+  const responsive = [
+    product?.responsiveImages?.desktop,
+    product?.responsiveImages?.tablet,
+    product?.responsiveImages?.mobile,
+  ].filter(Boolean);
+  const images = [...(product?.images || []), ...responsive].filter((url) => typeof url === 'string' && url.trim());
+  return images[index] || images[0] || '/placeholder.svg';
+}
 
 export default function ProductCard({ product }) {
   const { toggleWishlist, isWishlisted } = useWishlist();
@@ -10,13 +20,14 @@ export default function ProductCard({ product }) {
   const displayPrice = getDisplayPrice(product);
   const displayRegularPrice = getDisplayRegularPrice(product);
   const savings = displayRegularPrice > displayPrice ? calcSavings(displayRegularPrice, displayPrice) : 0;
+  const baseOfferActive = isOfferActive(product);
   const hasVariants = product.variants?.length > 0;
   const hasCustomization = product.customFields?.length > 0;
   const canGiftWrap = product.giftWrap?.enabled || product.giftMessage;
   const isSoldOut = Number(product.stock) <= 0;
   const lowStock = !isSoldOut && Number(product.stock) > 0 && Number(product.stock) <= 10;
-  const img1 = product.images?.[0] || '/placeholder.svg';
-  const img2 = product.images?.[1] || img1;
+  const img1 = firstProductImage(product, 0);
+  const img2 = firstProductImage(product, 1);
 
   return (
     <Link
@@ -53,8 +64,8 @@ export default function ProductCard({ product }) {
           </div>
         )}
 
-        <img src={img1} alt={product.title} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110" />
-        <img src={img2} alt={product.title} className="product-img-hover absolute inset-0 h-full w-full object-cover" />
+        <img src={img1} alt={product.title} onError={(e) => { e.currentTarget.src = '/placeholder.svg'; }} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110" />
+        <img src={img2} alt={product.title} onError={(e) => { e.currentTarget.src = '/placeholder.svg'; }} className="product-img-hover absolute inset-0 h-full w-full object-cover" />
 
         <div className="absolute inset-x-0 bottom-0 translate-y-0 transition-transform duration-300 sm:translate-y-full sm:group-hover:translate-y-0">
           <div className="shop-cta-ribbon flex items-center justify-center gap-1.5 py-2 text-center text-[11px] font-bold tracking-wide text-white sm:gap-2 sm:py-2.5 sm:text-xs">
@@ -81,7 +92,7 @@ export default function ProductCard({ product }) {
           {product.isQuoteOnly && <span className="rounded-full bg-gray-100 px-2 py-1 text-gray-700">Contact for price</span>}
         </div>
 
-        {savings > 0 && product.offerEndsAt && (
+        {baseOfferActive && savings > 0 && product.offerEndsAt && (
           <p className="mt-2 flex items-center gap-1 text-xs font-bold text-accent-600">
             <FiClock size={12} /> Offer ends {new Date(product.offerEndsAt).toLocaleDateString('en-IN')}
           </p>
