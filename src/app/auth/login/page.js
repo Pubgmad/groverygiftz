@@ -28,7 +28,7 @@ export default function LoginPage() {
 
   const handleGoogleSignIn = () => {
     document.cookie = 'google_auth_intent=signin; path=/; max-age=600; SameSite=Lax';
-    signIn('google', { callbackUrl });
+    signIn('google', { callbackUrl }, { prompt: 'select_account' });
   };
 
   const handleSubmit = async (e) => {
