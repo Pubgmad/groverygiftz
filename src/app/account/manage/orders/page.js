@@ -49,6 +49,18 @@ const formatDate = (date) => date ? new Date(date).toLocaleString('en-IN', { tim
 const isUploadedFile = (value) => value && typeof value === 'object' && value.url;
 const isOutOfTamilNadu = (order) => String(order.shippingAddress?.state || '').trim().toLowerCase() !== 'tamil nadu';
 const addressLine = (address = {}) => [address.line1, address.line2, address.city, address.state].filter(Boolean).join(', ');
+const formatFileSize = (bytes) => {
+  const size = Number(bytes || 0);
+  if (!size) return '';
+  if (size >= 1024 * 1024 * 1024) return `${(size / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  if (size >= 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(2)} MB`;
+  if (size >= 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${size} B`;
+};
+const fileSizeLabel = (file) => {
+  const size = formatFileSize(file?.size);
+  return size ? ` (${size})` : '';
+};
 const getFileExtension = (file = {}) => {
   const fromName = String(file.name || '').split('.').pop();
   if (fromName && fromName !== file.name) return fromName.toLowerCase();
@@ -120,7 +132,7 @@ function CollageUploadDetails({ groups }) {
                   <img src={image.url} alt={`${group.label} ${index + 1}`} className="h-full w-full object-cover" />
                   <span className="absolute left-1 top-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[10px] font-bold text-white">{index + 1}</span>
                 </a>
-                <DownloadButton href={image.url} filename={buildDownloadName('collage-original', group.label, index, image)}>Original {index + 1}</DownloadButton>
+                <DownloadButton href={image.url} filename={buildDownloadName('collage-original', group.label, index, image)}>Original {index + 1}{fileSizeLabel(image)}</DownloadButton>
               </div>
             ))}
           </div>
@@ -150,7 +162,7 @@ function PreviewDetails({ preview }) {
                 </a>
               )}
               <div className="grid gap-2 sm:grid-cols-2">
-                <DownloadButton href={entry.uploadedFile?.url} filename={buildDownloadName('original-upload', entry.areaLabel, index, entry.uploadedFile)}>Download original image</DownloadButton>
+                <DownloadButton href={entry.uploadedFile?.url} filename={buildDownloadName('original-upload', entry.areaLabel, index, entry.uploadedFile)}>Download original image{fileSizeLabel(entry.uploadedFile)}</DownloadButton>
                 <DownloadButton href={finalPreviewUrl} filename={buildDownloadName('customized-preview', entry.areaLabel, index, entry.finalPreviewImage || { url: finalPreviewUrl, type: 'image/jpeg' })} tone="accent">Download final preview</DownloadButton>
               </div>
               {entry.instructions && <p><span className="font-medium">Instructions:</span> {entry.instructions}</p>}
@@ -166,7 +178,7 @@ function PreviewDetails({ preview }) {
       <div className="rounded-md bg-primary-50 border border-primary-100 p-2 space-y-1 text-xs text-gray-700">
         <p className="font-semibold text-primary-800">Saved preview / crop instructions</p>
         <div className="grid gap-2 sm:grid-cols-2">
-          <DownloadButton href={preview.uploadedFile.url} filename={buildDownloadName('original-upload', preview.sourceField || 'preview', 0, preview.uploadedFile)}>Download original image</DownloadButton>
+          <DownloadButton href={preview.uploadedFile.url} filename={buildDownloadName('original-upload', preview.sourceField || 'preview', 0, preview.uploadedFile)}>Download original image{fileSizeLabel(preview.uploadedFile)}</DownloadButton>
           <DownloadButton href={preview.finalPreviewImage?.url || preview.finalPreviewDataUrl || preview.uploadedFile.url} filename={buildDownloadName('customized-preview', preview.sourceField || 'preview', 0, preview.finalPreviewImage || preview.uploadedFile)} tone="accent">Download final preview</DownloadButton>
         </div>
         <p><span className="font-medium">Source field:</span> {preview.sourceField || '-'}</p>

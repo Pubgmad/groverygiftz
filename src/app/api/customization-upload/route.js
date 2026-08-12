@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
 
-const MAX_FILE_SIZE = 200 * 1024 * 1024;
+const MAX_FILE_SIZE = 500 * 1024 * 1024;
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif', 'image/heic-sequence', 'image/heif-sequence', 'application/pdf'];
 
 export async function POST(req) {
@@ -14,7 +14,7 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Only JPG, PNG, WEBP, GIF, HEIC, HEIF or PDF files are allowed' }, { status: 400 });
     }
     if (file.size > MAX_FILE_SIZE) {
-      return NextResponse.json({ error: 'File must be under 200 MB' }, { status: 400 });
+      return NextResponse.json({ error: 'File must be under 500 MB' }, { status: 400 });
     }
 
     const bytes = await file.arrayBuffer();
@@ -26,7 +26,7 @@ export async function POST(req) {
     await mkdir(uploadDir, { recursive: true });
     await writeFile(path.join(uploadDir, filename), buffer);
 
-    return NextResponse.json({ name: file.name, type: file.type, url: `/customizations/${filename}` }, { status: 201 });
+    return NextResponse.json({ name: file.name, type: file.type, size: file.size, url: `/customizations/${filename}` }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to upload customization file' }, { status: 500 });
   }
