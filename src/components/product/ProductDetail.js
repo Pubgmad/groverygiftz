@@ -152,6 +152,9 @@ export default function ProductDetail({ product }) {
       : { cost: Number(settings.otherStateShippingCost || 0), estimate: settings.otherStateDeliveryEstimate || '10-15 days' };
   };
   const selectedDelivery = getProductShippingForState(selectedDeliveryState);
+  const selectedDeliveryEstimateText = selectedDeliveryState
+    ? buildDeliveryEstimateText(selectedDelivery.estimate, { fallbackDays: isTamilNadu(selectedDeliveryState) ? 8 : 15 })
+    : '';
   const productPageTotal = finalUnitPrice * quantity + selectedDelivery.cost;
   const reviewCount = reviews.length;
   const averageRating = reviewCount ? reviews.reduce((sum, review) => sum + Number(review.rating || 0), 0) / reviewCount : 0;
@@ -629,7 +632,7 @@ const handleCustomerPhotoUpload = async (files) => {
                   <div className="flex justify-between gap-3"><span>Product price</span><span className="font-semibold">{formatPrice(finalUnitPrice * quantity)}</span></div>
                   <div className="flex justify-between gap-3"><span>Delivery charge</span><span className="font-semibold">{selectedDelivery.cost === 0 ? 'FREE' : formatPrice(selectedDelivery.cost)}</span></div>
                   <div className="flex justify-between gap-3 border-t border-primary-100 pt-2 text-base font-bold"><span>Total for {selectedDeliveryState}</span><span className="text-primary-700">{formatPrice(productPageTotal)}</span></div>
-                  <p className="text-xs text-gray-500">Estimated delivery: <span className="font-semibold text-gray-800">{selectedDelivery.estimate}</span></p>
+                  <p className="text-xs text-gray-500">Estimated delivery: <span className="font-semibold text-gray-800">{selectedDeliveryEstimateText}</span></p>
                 </div>
               ) : (
                 <p className="text-gray-600">Tamil Nadu delivery is free. Other state shipment cost varies and will be shown after state selection.</p>
@@ -1013,21 +1016,11 @@ const handleCustomerPhotoUpload = async (files) => {
             <FiStar className="text-accent-500" />
             <h2 className="text-xl font-bold">Customer Submitted Reviews</h2>
           </div>
-          <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
-            <div className="rounded-2xl bg-gray-50 p-5">
-              <p className="text-lg font-bold text-gray-900">GroveryGiftz Reviews</p>
-              <div className="mt-3 flex items-center gap-3">
-                <span className="text-3xl font-extrabold text-gray-950">{reviewCount ? roundedRating.toFixed(1) : '0.0'}</span>
-                <div><div className="flex gap-1 text-accent-500">{[1, 2, 3, 4, 5].map((star) => <FiStar key={star} className={star <= Math.round(averageRating) ? 'fill-accent-500 stroke-accent-500' : 'stroke-gray-300'} />)}</div><p className="mt-1 text-xs text-gray-500">{reviewCount} verified review{reviewCount === 1 ? '' : 's'}</p></div>
-              </div>
-            </div>
-            <div className="rounded-2xl bg-primary-50/50 p-5">
-              <p className="text-sm font-extrabold text-primary-700">Review Summary</p>
-              <ul className="mt-3 space-y-2 text-sm text-gray-700">
-                <li>? Reviews are submitted only after successful payment.</li>
-                <li>? Product quality, packaging, and customization feedback appear here.</li>
-                <li>? New reviews update this product automatically.</li>
-              </ul>
+          <div className="rounded-2xl bg-gray-50 p-5">
+            <p className="text-lg font-bold text-gray-900">Customer Reviews</p>
+            <div className="mt-3 flex items-center gap-3">
+              <span className="text-3xl font-extrabold text-gray-950">{reviewCount ? roundedRating.toFixed(1) : '0.0'}</span>
+              <div><div className="flex gap-1 text-accent-500">{[1, 2, 3, 4, 5].map((star) => <FiStar key={star} className={star <= Math.round(averageRating) ? 'fill-accent-500 stroke-accent-500' : 'stroke-gray-300'} />)}</div><p className="mt-1 text-xs text-gray-500">{reviewCount} verified review{reviewCount === 1 ? '' : 's'}</p></div>
             </div>
           </div>
           {reviews.length > 0 ? (

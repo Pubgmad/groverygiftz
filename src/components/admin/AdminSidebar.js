@@ -8,6 +8,7 @@ const navItems = [
   { href: BASE, icon: FiHome, label: 'Dashboard' },
   { href: `${BASE}/products`, icon: FiPackage, label: 'Products' },
   { href: `${BASE}/collections`, icon: FiGrid, label: 'Collections' },
+  { href: `${BASE}/shipping`, icon: FiTruck, label: 'Shipping Templates' },
   { href: `${BASE}/orders`, icon: FiShoppingCart, label: 'Orders' },
   { href: `${BASE}/customers`, icon: FiUsers, label: 'Customers' },
   { href: `${BASE}/banners`, icon: FiImage, label: 'Banners' },
@@ -17,7 +18,6 @@ const navItems = [
   { href: `${BASE}/messages`, icon: FiMessageSquare, label: 'Messages' },
   { href: `${BASE}/settings`, icon: FiSettings, label: 'Settings' },
 ];
-
 export default function AdminSidebar({ mobileOpen = false, onClose = () => {} }) {
   const pathname = usePathname();
 
