@@ -75,11 +75,11 @@ export default function AdminProductForm({ params }) {
     }
   };
 
-  const addVariant = () => setForm(p => ({ ...p, variants: [...p.variants, { name: '', type: 'size', options: [{ label: '', priceAdjustment: 0, useOwnPrice: false, regularPrice: '', salePrice: '', stateOverrides: [], shippingTemplate: '', requiresImageUpload: false, inStock: true }] }] }));
+  const addVariant = () => setForm(p => ({ ...p, variants: [...p.variants, { name: '', type: 'size', options: [{ label: '', priceAdjustment: 0, useOwnPrice: false, regularPrice: '', salePrice: '', stateOverrides: [], shippingTemplate: '', requiresImageUpload: false, previewWidth: '', previewHeight: '', previewUnit: 'inch', previewFrameImage: '', previewInstructions: '', inStock: true }] }] }));
   const removeVariant = (idx) => setForm(p => ({ ...p, variants: p.variants.filter((_, i) => i !== idx) }));
   const addVariantOption = (vIdx) => {
     const variants = [...form.variants];
-    variants[vIdx].options.push({ label: '', priceAdjustment: 0, useOwnPrice: false, regularPrice: '', salePrice: '', stateOverrides: [], shippingTemplate: '', requiresImageUpload: false, inStock: true });
+    variants[vIdx].options.push({ label: '', priceAdjustment: 0, useOwnPrice: false, regularPrice: '', salePrice: '', stateOverrides: [], shippingTemplate: '', requiresImageUpload: false, previewWidth: '', previewHeight: '', previewUnit: 'inch', previewFrameImage: '', previewInstructions: '', inStock: true });
     setForm(p => ({ ...p, variants }));
   };
 
@@ -416,6 +416,27 @@ export default function AdminProductForm({ params }) {
                       onChange={e => updateVariantOption(vIdx, oIdx, { requiresImageUpload: e.target.checked })} />
                     Require customer image upload and preview for this option label
                   </label>
+                  {opt.requiresImageUpload && (
+                    <div className="mt-3 rounded-lg border border-primary-100 bg-white p-3">
+                      <p className="text-xs font-bold text-gray-800">Variant Preview Size</p>
+                      <p className="mt-1 text-[11px] text-gray-500">Set the exact frame size customers should see for this option. This works like the normal product preview.</p>
+                      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_100px]">
+                        <input type="number" min="0" placeholder="Width" value={opt.previewWidth ?? ''}
+                          onChange={e => updateVariantOption(vIdx, oIdx, { previewWidth: e.target.value })}
+                          className="border rounded-lg px-3 py-2 text-xs" />
+                        <input type="number" min="0" placeholder="Height" value={opt.previewHeight ?? ''}
+                          onChange={e => updateVariantOption(vIdx, oIdx, { previewHeight: e.target.value })}
+                          className="border rounded-lg px-3 py-2 text-xs" />
+                        <select value={opt.previewUnit || 'inch'} onChange={e => updateVariantOption(vIdx, oIdx, { previewUnit: e.target.value })} className="border rounded-lg px-3 py-2 text-xs">
+                          <option value="inch">inch</option><option value="cm">cm</option><option value="px">px</option>
+                        </select>
+                      </div>
+                      <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[220px_1fr]">
+                        <ImageUploader value={opt.previewFrameImage || ''} onChange={(url) => updateVariantOption(vIdx, oIdx, { previewFrameImage: url })} label="Frame overlay image" />
+                        <textarea rows={3} value={opt.previewInstructions || ''} onChange={e => updateVariantOption(vIdx, oIdx, { previewInstructions: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-xs" placeholder="Instructions for this variant preview" />
+                      </div>
+                    </div>
+                  )}
                   <div className="mt-3 rounded-lg border bg-white p-3 space-y-2">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div><p className="text-xs font-bold text-gray-800">Variant State Delivery Charges</p><p className="text-[11px] text-gray-500">Optional. These override product delivery charges only when this option is selected.</p></div>

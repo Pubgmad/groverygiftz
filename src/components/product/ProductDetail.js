@@ -115,6 +115,11 @@ export default function ProductDetail({ product }) {
         salePrice: option.salePrice,
         stateOverrides: option.stateOverrides || [],
         requiresImageUpload: !!option.requiresImageUpload,
+        previewWidth: option.previewWidth,
+        previewHeight: option.previewHeight,
+        previewUnit: option.previewUnit || 'inch',
+        previewFrameImage: option.previewFrameImage || '',
+        previewInstructions: option.previewInstructions || '',
       },
     });
   }, [product._id, product.variants]);
@@ -190,8 +195,8 @@ export default function ProductDetail({ product }) {
     const displayWidth = 360;
     return { displayWidth, displayHeight: displayWidth * (height / width) };
   };
-  const renderFinalPreviewImage = async (area, idx) => {
-    const photo = customerPhotos[idx];
+  const renderFinalPreviewImage = async (area, idx, sourceUrl = '') => {
+    const photo = sourceUrl ? { url: sourceUrl } : customerPhotos[idx];
     if (!photo?.url) return '';
     try {
       const adjustments = getAreaAdjustments(idx);
@@ -696,7 +701,7 @@ const handleCustomerPhotoUpload = async (files) => {
                   <button key={oIdx}
                     type="button"
                     disabled={optionSoldOut}
-                    onClick={() => setSelectedVariants(prev => { const selectedNow = prev[variant.name]?.label === opt.label; if (selectedNow) return {}; return { [variant.name]: { label: opt.label, extra, useOwnPrice: !!opt.useOwnPrice, regularPrice: opt.regularPrice, salePrice: opt.salePrice, stateOverrides: opt.stateOverrides || [], requiresImageUpload: !!opt.requiresImageUpload } }; })}
+                    onClick={() => setSelectedVariants(prev => { const selectedNow = prev[variant.name]?.label === opt.label; if (selectedNow) return {}; return { [variant.name]: { label: opt.label, extra, useOwnPrice: !!opt.useOwnPrice, regularPrice: opt.regularPrice, salePrice: opt.salePrice, stateOverrides: opt.stateOverrides || [], requiresImageUpload: !!opt.requiresImageUpload, previewWidth: opt.previewWidth, previewHeight: opt.previewHeight, previewUnit: opt.previewUnit || 'inch', previewFrameImage: opt.previewFrameImage || '', previewInstructions: opt.previewInstructions || '' } }; })}
                     className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
                       selected
                         ? 'border-primary-600 bg-primary-50 text-primary-600'
@@ -776,7 +781,40 @@ const handleCustomerPhotoUpload = async (files) => {
                     <input type="file" accept="image/*,.heic,.heif" className="sr-only" disabled={isUploading} onChange={e => handleVariantLabelUpload(selected.label, e.target.files?.[0])} />
                     {isUploading && <span className="absolute inset-0 flex items-center justify-center rounded-xl bg-white/75 text-xs font-bold text-primary-700">Uploading...</span>}
                   </label>
-                  {upload?.url && <div className="mt-3 grid gap-3 sm:grid-cols-[96px_1fr] sm:items-center"><img src={upload.url} alt={selected.label} className="h-24 w-24 rounded-xl border object-contain bg-white" /><div><p className="text-xs font-semibold text-gray-700">Preview for {selected.label}</p><a href={upload.url} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-primary-600">Open original uploaded image</a></div></div>}
+                  {upload?.url && (() => {
+                    const previewKey = `variant-${selected.label}`;
+                    const area = { label: selected.label, width: selected.previewWidth || 1, height: selected.previewHeight || 1, unit: selected.previewUnit || 'inch', frameImage: selected.previewFrameImage || '', instructions: selected.previewInstructions || '' };
+                    const adjustments = getAreaAdjustments(previewKey);
+                    return (
+                      <div className="mt-3 grid gap-4 md:grid-cols-2 md:items-start">
+                        <div className="rounded-2xl bg-gray-50 p-3">
+                          <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                            <div><p className="text-xs font-bold text-gray-800">Preview for {selected.label}</p><p className="text-[11px] text-gray-500">Size: {area.width || '-'} x {area.height || '-'} {area.unit}</p></div>
+                            {area.instructions && <p className="max-w-xs text-[11px] text-primary-700 sm:text-right">{area.instructions}</p>}
+                          </div>
+                          <div
+                            ref={(node) => { if (node) previewFrameRefs.current[previewKey] = node; }}
+                            className="relative mx-auto w-full max-w-xs overflow-hidden rounded-lg border-2 border-gray-950 bg-white"
+                            style={{ aspectRatio: getAreaAspectRatio(area, adjustments.orientation), touchAction: 'none' }}
+                            onPointerDown={(e) => !savedPreviewAreas[previewKey] && startPreviewDrag(previewKey, e)} onPointerMove={movePreviewDrag} onPointerUp={stopPreviewDrag} onPointerCancel={stopPreviewDrag}
+                          >
+                            <img src={upload.url} alt={`${selected.label} preview`} className="absolute inset-0 h-full w-full object-contain" style={{ transform: `translate(${adjustments.x}px, ${adjustments.y}px) scale(${adjustments.zoom})`, transformOrigin: 'center' }} />
+                            {area.frameImage && <img src={area.frameImage} alt="Preview frame" className="absolute inset-0 h-full w-full object-contain pointer-events-none" />}
+                            <div className="pointer-events-none absolute inset-0 border-2 border-gray-950" />
+                            {savedPreviewAreas[previewKey] && <div className="absolute right-2 top-2 rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-bold text-white">Saved</div>}
+                          </div>
+                        </div>
+                        <div className="space-y-3">
+                          <a href={upload.url} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-primary-600">Open original uploaded image</a>
+                          <div><label className="block text-xs font-bold text-gray-600 mb-1">Frame direction</label><div className="grid grid-cols-3 gap-2">{[['auto', 'Admin size'], ['portrait', 'Portrait'], ['landscape', 'Landscape']].map(([value, label]) => (<button key={value} type="button" onClick={() => updateAreaAdjustment(previewKey, 'orientation', value)} className={`rounded-lg border px-2 py-2 text-xs font-bold ${adjustments.orientation === value ? 'border-primary-600 bg-primary-50 text-primary-700' : 'border-gray-200 bg-white text-gray-600'}`}>{label}</button>))}</div></div>
+                          <div><label className="block text-xs font-bold text-gray-600 mb-1">Zoom</label><input type="range" min="1" max="3" step="0.05" value={adjustments.zoom} onChange={e => updateAreaAdjustment(previewKey, 'zoom', Number(e.target.value))} className="w-full" /></div>
+                          <div><label className="block text-xs font-bold text-gray-600 mb-1">Move left / right</label><input type="range" min="-160" max="160" value={adjustments.x} onChange={e => updateAreaAdjustment(previewKey, 'x', Number(e.target.value))} className="w-full" /></div>
+                          <div><label className="block text-xs font-bold text-gray-600 mb-1">Move up / down</label><input type="range" min="-160" max="160" value={adjustments.y} onChange={e => updateAreaAdjustment(previewKey, 'y', Number(e.target.value))} className="w-full" /></div>
+                          <div className="flex flex-wrap gap-2"><button type="button" onClick={() => savePreviewArea(previewKey)} className="rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white">Save Preview</button><button type="button" onClick={() => editPreviewArea(previewKey)} className="rounded-lg border px-3 py-2 text-sm font-semibold text-gray-700 hover:border-primary-200 hover:text-primary-700">Edit Again</button><button type="button" onClick={() => resetPreviewArea(previewKey)} className="rounded-lg border px-3 py-2 text-sm font-semibold text-gray-700 hover:border-primary-200 hover:text-primary-700">Reset alignment</button></div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}
