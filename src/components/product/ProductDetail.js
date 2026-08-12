@@ -168,7 +168,7 @@ export default function ProductDetail({ product }) {
   const googleReviewsList = Array.isArray(googleReviews?.reviews) ? googleReviews.reviews : [];
   const googleReviewCount = Number(googleReviews?.reviewCount || googleReviewsList.length || 0);
   const googleRating = Number(googleReviews?.rating || 0);
-  const visibleGoogleReviews = googleReviews?.enabled ? googleReviewsList.slice(0, 3) : [];
+  const visibleGoogleReviews = googleReviews?.enabled ? googleReviewsList.slice(0, 10) : [];
   const googleReviewImages = visibleGoogleReviews.flatMap((review) => Array.isArray(review?.images) ? review.images : []).slice(0, 8);
   const googleReviewTopics = Array.isArray(googleReviews?.topics) ? googleReviews.topics.filter((topic) => topic?.keyword).slice(0, 3) : [];
   const googleBusinessName = googleReviews?.title || 'Grovery giftz - Customized Photo Frames';
@@ -1086,19 +1086,25 @@ const handleCustomerPhotoUpload = async (files) => {
                     </ul>
                   </div>
                 )}
-                {visibleGoogleReviews.map((review) => (
-                  <div key={review.id} className="rounded-3xl bg-gray-50 p-5 shadow-sm">
-                    <div className="flex items-start gap-3">
-                      {review.avatar ? <img src={review.avatar} alt={review.name} className="h-11 w-11 rounded-full object-cover" /> : <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary-100 text-sm font-bold text-primary-700">{String(review.name || 'G').slice(0, 1)}</div>}
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2"><p className="font-bold text-gray-900">{review.name}</p><span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-600">Google</span></div>
-                        {review.date && <p className="text-xs text-gray-400">{review.date}</p>}
-                        <div className="mt-2 flex gap-0.5 text-yellow-400">{[1, 2, 3, 4, 5].map((star) => <FiStar key={star} size={15} className={star <= Number(review.rating || 0) ? 'fill-yellow-400 stroke-yellow-400' : 'stroke-gray-300'} />)}</div>
-                        {review.text && <p className="mt-2 text-sm leading-6 text-gray-700">{review.text}</p>}
-                      </div>
+                {visibleGoogleReviews.length > 0 && (
+                  <div className="-mx-1 overflow-x-auto pb-3">
+                    <div className="flex snap-x snap-mandatory gap-4 px-1">
+                      {visibleGoogleReviews.map((review) => (
+                        <div key={review.id} className="min-h-[210px] w-[82vw] max-w-[360px] shrink-0 snap-start rounded-3xl bg-gray-50 p-5 shadow-sm sm:w-[320px]">
+                          <div className="flex items-start gap-3">
+                            {review.avatar ? <img src={review.avatar} alt={review.name} className="h-11 w-11 rounded-full object-cover" /> : <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary-100 text-sm font-bold text-primary-700">{String(review.name || 'G').slice(0, 1)}</div>}
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2"><p className="font-bold text-gray-900">{review.name}</p><span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-600">Google</span></div>
+                              {review.date && <p className="text-xs text-gray-400">{review.date}</p>}
+                              <div className="mt-2 flex gap-0.5 text-yellow-400">{[1, 2, 3, 4, 5].map((star) => <FiStar key={star} size={15} className={star <= Number(review.rating || 0) ? 'fill-yellow-400 stroke-yellow-400' : 'stroke-gray-300'} />)}</div>
+                              {review.text && <p className="mt-2 line-clamp-5 text-sm leading-6 text-gray-700">{review.text}</p>}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                ))}
+                )}
                 {googleReviewImages.length > 0 && <div className="flex snap-x gap-3 overflow-x-auto pb-2">{googleReviewImages.map((image, idx) => <img key={image + idx} src={image} alt="Google review image" className="h-28 w-28 shrink-0 snap-start rounded-xl border object-cover" />)}</div>}
               </div>
             )}
