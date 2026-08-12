@@ -1,7 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { FiSearch, FiUser, FiShoppingBag, FiMenu, FiX, FiChevronDown, FiHeart, FiGift } from 'react-icons/fi';
 import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
@@ -41,9 +40,10 @@ export default function Header() {
   const tabletLogoSrc = settings?.tabletLogo || logoSrc;
   const mobileLogoSrc = settings?.mobileLogo || tabletLogoSrc;
   const siteName = settings?.siteName || 'GroveryGiftz';
+  const settingsLoaded = settings !== null;
 
   useEffect(() => {
-    fetch('/api/settings').then((r) => r.json()).then(setSettings).catch(() => {});
+    fetch('/api/settings').then((r) => r.json()).then(setSettings).catch(() => setSettings({}));
     fetch('/api/collections')
       .then((r) => r.json())
       .then((data) => {
@@ -103,20 +103,19 @@ export default function Header() {
           </button>
 
           <Link href="/" className="group flex min-w-0 items-center justify-center gap-1.5 sm:gap-2.5 md:justify-start md:flex-shrink-0">
-            {logoSrc ? (
+            {!settingsLoaded ? (
+              <span className="block h-12 w-[180px] sm:h-14 md:h-16 md:w-[240px]" aria-hidden="true" />
+            ) : logoSrc ? (
               <picture>
                 <source media="(max-width: 639px)" srcSet={mobileLogoSrc} />
                 <source media="(max-width: 1023px)" srcSet={tabletLogoSrc} />
                 <img src={logoSrc} alt={siteName} className="h-12 max-w-[210px] shrink-0 object-contain transition-transform duration-200 group-hover:scale-105 sm:h-14 md:h-16 md:max-w-[280px]" />
               </picture>
             ) : (
-              <>
-                <Image src="/logo.svg" alt="GroveryGiftz Logo" width={34} height={42} className="h-10 w-auto shrink-0 transition-transform duration-200 group-hover:scale-105 sm:h-[46px]" priority />
-                <div className="min-w-0 leading-none">
-                  <span className="text-[17px] sm:text-xl md:text-2xl font-display font-bold text-primary-600 tracking-tight">Grovery</span>
-                  <span className="text-[17px] sm:text-xl md:text-2xl font-display font-bold text-accent-500 tracking-tight">Giftz</span>
-                </div>
-              </>
+              <div className="min-w-0 leading-none">
+                <span className="text-[17px] sm:text-xl md:text-2xl font-display font-bold text-primary-600 tracking-tight">Grovery</span>
+                <span className="text-[17px] sm:text-xl md:text-2xl font-display font-bold text-accent-500 tracking-tight">Giftz</span>
+              </div>
             )}
           </Link>
 

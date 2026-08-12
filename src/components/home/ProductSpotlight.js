@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useCart } from '@/context/CartContext';
-import { formatPrice, calcSavings, getEffectivePrice, isOfferActive } from '@/lib/utils';
+import { formatPrice, calcSavings, getDisplayPrice, getDisplayRegularPrice, getVariantEffectivePrice, getVariantRegularPrice, isOfferActive } from '@/lib/utils';
 import { FiShoppingCart, FiZap, FiStar, FiTruck, FiShield, FiGift, FiPlus, FiMinus } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
@@ -13,14 +13,18 @@ export default function ProductSpotlight({ product }) {
 
   if (!product) return null;
 
-  const offerActive = isOfferActive(product);
-  const savings = offerActive ? calcSavings(product.regularPrice, product.salePrice) : 0;
-  const price = getEffectivePrice(product);
+  const selectedOwnPriceOption = Object.values(selectedVariants).find((v) => v?.useOwnPrice && getVariantRegularPrice(v) > 0);
+  const displayRegularPrice = selectedOwnPriceOption ? getVariantRegularPrice(selectedOwnPriceOption) : getDisplayRegularPrice(product);
+  const displayPrice = selectedOwnPriceOption ? getVariantEffectivePrice(selectedOwnPriceOption, product) : getDisplayPrice(product);
+  const offerActive = displayPrice < displayRegularPrice && (!product.offerStartsAt && !product.offerEndsAt
+    ? true
+    : isOfferActive({ ...product, regularPrice: displayRegularPrice, salePrice: displayPrice }));
+  const savings = offerActive ? calcSavings(displayRegularPrice, displayPrice) : 0;
   const isSoldOut = Number(product.stock) <= 0;
   const hasCustomization = product.customFields?.length > 0;
 
-  const getSelectedExtra = () => Object.values(selectedVariants).reduce((s, v) => s + (v?.extra || 0), 0);
-  const finalPrice = price + getSelectedExtra();
+  const getSelectedExtra = () => Object.values(selectedVariants).reduce((s, v) => s + (!v?.useOwnPrice ? (v?.extra || 0) : 0), 0);
+  const finalPrice = displayPrice + getSelectedExtra();
 
   const handleAdd = () => {
     if (isSoldOut) return toast.error('This product is sold out');
@@ -87,7 +91,7 @@ export default function ProductSpotlight({ product }) {
 
             <div className="flex flex-wrap items-center gap-3">
               <span className="text-3xl font-extrabold text-primary-700">{formatPrice(finalPrice)}</span>
-              {savings > 0 && <span className="text-lg text-gray-400 line-through">{formatPrice(product.regularPrice)}</span>}
+              {savings > 0 && <span className="text-lg text-gray-400 line-through">{formatPrice(displayRegularPrice)}</span>}
               {offerActive && product.offerEndsAt && <span className="text-sm font-bold text-accent-600">Ends {new Date(product.offerEndsAt).toLocaleDateString('en-IN')}</span>}
             </div>
 
@@ -98,14 +102,18 @@ export default function ProductSpotlight({ product }) {
                   {variant.options?.map((opt, oIdx) => {
                     const extra = Number(opt?.priceAdjustment ?? opt?.price ?? 0);
                     const selected = selectedVariants[variant.name]?.label === opt.label;
+                    const optionRegularPrice = getVariantRegularPrice(opt);
+                    const optionPrice = getVariantEffectivePrice(opt, product);
+                    const optionUsesOwnPrice = !!opt.useOwnPrice && optionRegularPrice > 0;
+                    const optionLabel = optionUsesOwnPrice ? `${opt.label} (${formatPrice(optionPrice)})` : `${opt.label}${extra > 0 ? ` (+${formatPrice(extra)})` : ''}`;
                     return (
                       <button
                         key={oIdx}
                         type="button"
-                        onClick={() => setSelectedVariants((prev) => ({ ...prev, [variant.name]: { label: opt.label, extra } }))}
+                        onClick={() => setSelectedVariants((prev) => ({ ...prev, [variant.name]: { label: opt.label, extra, useOwnPrice: optionUsesOwnPrice, regularPrice: opt.regularPrice, salePrice: opt.salePrice } }))}
                         className={`rounded-lg border px-3 py-1.5 text-sm font-semibold transition-colors ${selected ? 'border-primary-600 bg-primary-50 text-primary-700' : 'border-gray-300 hover:border-gray-500'}`}
                       >
-                        {opt.label}{extra > 0 && ` (+${formatPrice(extra)})`}
+                        {optionLabel}
                       </button>
                     );
                   })}
