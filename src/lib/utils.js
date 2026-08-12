@@ -1,4 +1,9 @@
-export { getOfferStatus, isOfferActive } from './offers';
+import { getOfferStatus, isOfferActive as checkOfferActive } from './offers';
+export { getOfferStatus };
+
+export function isOfferActive(product, now = Date.now()) {
+  return checkOfferActive(product, now);
+}
 
 export function formatPrice(price) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(Number(price) || 0);
@@ -16,10 +21,12 @@ export function getVariantSalePrice(option) {
   return Number(option?.salePrice || 0);
 }
 
-export function getVariantEffectivePrice(option) {
+export function getVariantEffectivePrice(option, product = null, now = Date.now()) {
   const regular = getVariantRegularPrice(option);
   const sale = getVariantSalePrice(option);
-  return sale > 0 && sale < regular ? sale : regular;
+  if (!(sale > 0 && sale < regular)) return regular;
+  const hasOfferWindow = !!(product?.offerStartsAt || product?.offerEndsAt);
+  return !hasOfferWindow || isOfferActive({ ...product, regularPrice: regular, salePrice: sale }, now) ? sale : regular;
 }
 
 export function getFirstPricedVariantOption(product) {
@@ -30,7 +37,7 @@ export function getFirstPricedVariantOption(product) {
 
 export function getDisplayPrice(product, now = Date.now()) {
   const variantOption = getFirstPricedVariantOption(product);
-  return variantOption ? getVariantEffectivePrice(variantOption) : getEffectivePrice(product, now);
+  return variantOption ? getVariantEffectivePrice(variantOption, product, now) : getEffectivePrice(product, now);
 }
 
 export function getDisplayRegularPrice(product) {

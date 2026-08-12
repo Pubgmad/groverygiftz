@@ -20,8 +20,10 @@ export default function ProductCard({ product }) {
   const displayPrice = getDisplayPrice(product);
   const displayRegularPrice = getDisplayRegularPrice(product);
   const savings = displayRegularPrice > displayPrice ? calcSavings(displayRegularPrice, displayPrice) : 0;
-  const baseOfferActive = isOfferActive(product);
   const hasVariants = product.variants?.length > 0;
+  const displayedOfferActive = savings > 0 && (!product.offerStartsAt && !product.offerEndsAt
+    ? true
+    : isOfferActive({ ...product, regularPrice: displayRegularPrice, salePrice: displayPrice }));
   const hasCustomization = product.customFields?.length > 0;
   const canGiftWrap = product.giftWrap?.enabled || product.giftMessage;
   const isSoldOut = Number(product.stock) <= 0;
@@ -87,7 +89,7 @@ export default function ProductCard({ product }) {
         </div>
 
         <div className="mt-1 min-h-[24px]">
-          {baseOfferActive && savings > 0 && product.offerEndsAt && (
+          {displayedOfferActive && product.offerEndsAt && (
             <p className="flex items-center gap-1 text-[11px] font-bold text-accent-700 sm:text-xs">
               <FiClock size={12} /> Offer ends {new Date(product.offerEndsAt).toLocaleDateString('en-IN')}
             </p>
