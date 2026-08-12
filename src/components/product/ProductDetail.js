@@ -35,6 +35,7 @@ export default function ProductDetail({ product }) {
   const [previewAdjustments, setPreviewAdjustments] = useState({});
   const [savedPreviewAreas, setSavedPreviewAreas] = useState({});
   const [reviews, setReviews] = useState([]);
+  const [googleReviews, setGoogleReviews] = useState({ enabled: false, reviews: [], topics: [] });
   const [giftWrap, setGiftWrap] = useState(false);
   const [giftMessage, setGiftMessage] = useState('');
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -164,6 +165,11 @@ export default function ProductDetail({ product }) {
   const reviewCount = reviews.length;
   const averageRating = reviewCount ? reviews.reduce((sum, review) => sum + Number(review.rating || 0), 0) / reviewCount : 0;
   const roundedRating = Math.round(averageRating * 10) / 10;
+  const googleReviewsList = Array.isArray(googleReviews?.reviews) ? googleReviews.reviews : [];
+  const googleReviewCount = Number(googleReviews?.reviewCount || googleReviewsList.length || 0);
+  const googleRating = Number(googleReviews?.rating || 0);
+  const visibleGoogleReviews = googleReviews?.enabled ? googleReviewsList.slice(0, 3) : [];
+  const googleReviewImages = visibleGoogleReviews.flatMap((review) => Array.isArray(review?.images) ? review.images : []).slice(0, 8);
   const getAreaAspectRatio = (area, orientation = 'auto') => {
     const rawWidth = Math.max(1, Number(area?.width || 1));
     const rawHeight = Math.max(1, Number(area?.height || 1));
@@ -321,8 +327,12 @@ export default function ProductDetail({ product }) {
   useEffect(() => {
     fetch(`/api/products/${product.slug || product._id}/reviews`)
       .then((r) => r.json())
-      .then((d) => setReviews(d.reviews || []))
+      .then((d) => setReviews(Array.isArray(d.reviews) ? d.reviews : []))
       .catch(() => setReviews([]));
+    fetch('/api/google-reviews')
+      .then((r) => r.json())
+      .then((d) => setGoogleReviews(d || { enabled: false, reviews: [], topics: [] }))
+      .catch(() => setGoogleReviews({ enabled: false, reviews: [], topics: [] }));
   }, [product.slug, product._id]);
 
   const trackCustomTextInput = (fieldLabel, value) => {
