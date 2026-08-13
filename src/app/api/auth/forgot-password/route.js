@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import dbConnect from '@/lib/db';
 import Customer from '@/models/Customer';
+import { sendPasswordResetEmail } from '@/lib/email';
 
 const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
 
@@ -20,10 +21,16 @@ export async function POST(req) {
 
       const baseUrl = process.env.NEXTAUTH_URL || new URL(req.url).origin;
       const resetLink = `${baseUrl}/auth/reset-password?token=${token}`;
-      console.log(`Password reset link for ${normalizedEmail}: ${resetLink}`);
 
       if (process.env.PASSWORD_RESET_SHOW_LINK === 'true') {
         return NextResponse.json({ message: 'Password reset link generated.', resetLink });
+      }
+
+      try {
+        await sendPasswordResetEmail({ to: normalizedEmail, resetLink });
+      } catch (error) {
+        console.error('Password reset email failed:', error);
+        return NextResponse.json({ error: 'Unable to send reset email right now. Please try again later.' }, { status: 500 });
       }
     }
   }
