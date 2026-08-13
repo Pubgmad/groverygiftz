@@ -36,8 +36,8 @@ async function getData() {
     Banner.find({ isActive: true }).sort({ order: 1 }).lean(),
     Collection.aggregate([{ $match: { isFeatured: true, isActive: true } }, { $sample: { size: 4 } }]),
     Product.find({ isFeatured: true, isActive: true }).sort({ createdAt: -1 }).limit(12).lean(),
-    Product.find(activeOfferMatch(now, { includeActive: true })).sort({ createdAt: -1 }).limit(12).lean(),
-    Product.find({ isBestSeller: true, isActive: true }).sort({ createdAt: -1 }).limit(12).lean(),
+    Product.aggregate([{ $match: activeOfferMatch(now, { includeActive: true }) }, { $sample: { size: 12 } }]),
+    Product.aggregate([{ $match: { isBestSeller: true, isActive: true } }, { $sample: { size: 12 } }]),
     Product.aggregate([{ $match: { isActive: true } }, { $sample: { size: 4 } }]),
     showcaseCollection
       ? Product.find({ collections: showcaseCollection._id, isActive: true }).sort({ createdAt: -1 }).limit(12).lean()
@@ -139,4 +139,5 @@ export default async function HomePage() {
     </>
   );
 }
+
 
