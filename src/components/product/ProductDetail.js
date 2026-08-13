@@ -634,13 +634,13 @@ const handleCustomerPhotoUpload = async (files) => {
     <div className="product-mobile-safe grid max-w-full grid-cols-1 gap-8 md:grid-cols-2 md:gap-12">
       {/* Product Media Gallery */}
       <div>
-        <div className="relative aspect-square rounded-2xl overflow-hidden bg-gray-100 mb-4 cursor-pointer" onClick={() => currentMedia?.type === 'image' && setLightboxOpen(true)} onTouchStart={handleGalleryTouchStart} onTouchMove={handleGalleryTouchMove} onTouchEnd={handleGalleryTouchEnd}>
+        <div className="relative rounded-2xl overflow-hidden bg-white mb-4 cursor-pointer" onClick={() => currentMedia?.type === 'image' && setLightboxOpen(true)} onTouchStart={handleGalleryTouchStart} onTouchMove={handleGalleryTouchMove} onTouchEnd={handleGalleryTouchEnd}>
           {currentMedia?.type === 'video' ? (
-            <video src={currentMedia.url} controls className="w-full h-full object-contain bg-black" />
+            <video src={currentMedia.url} controls className="w-full max-h-[70vh] object-contain bg-black" />
           ) : currentMedia?.url ? (
-            <img src={currentMedia.url} alt={product.title} className="w-full h-full object-contain bg-white" onError={(e) => { e.currentTarget.src = '/placeholder.svg'; }} />
+            <img src={currentMedia.url} alt={product.title} className="block h-auto w-full object-contain bg-white" onError={(e) => { e.currentTarget.src = '/placeholder.svg'; }} />
           ) : (
-            <div className="w-full h-full flex items-center justify-center text-gray-400">No media</div>
+            <div className="flex min-h-[320px] w-full items-center justify-center text-gray-400">No media</div>
           )}
           {mediaItems.length > 1 && (
             <>
@@ -660,7 +660,7 @@ const handleCustomerPhotoUpload = async (files) => {
                 {media.type === 'video' ? (
                   <div className="w-full h-full flex items-center justify-center bg-gray-900 text-white text-xs font-bold">Video</div>
                 ) : (
-                  <img src={media.url} alt="" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.src = '/placeholder.svg'; }} />
+                  <img src={media.url} alt="" className="h-full w-full object-contain bg-white" onError={(e) => { e.currentTarget.src = '/placeholder.svg'; }} />
                 )}
               </button>
             ))}
@@ -1237,3 +1237,4 @@ const handleCustomerPhotoUpload = async (files) => {
     </div>
   );
 }
+

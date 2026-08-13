@@ -208,13 +208,9 @@ export default function AdminProductForm({ params }) {
         <div className="bg-white p-4 sm:p-6 rounded-xl border space-y-4">
           <div>
             <h2 className="font-bold text-lg">Product Images</h2>
-            <p className="mt-1 text-sm text-gray-500">Upload device-specific product images so banners/gallery previews fit correctly on every screen.</p>
+            <p className="mt-1 text-sm text-gray-500">Upload portrait product images. Product listings and galleries preserve the full image without cropping or stretching.</p>
           </div>
-          <div className="grid gap-4 lg:grid-cols-3">
-            <div className="rounded-xl border bg-primary-50/40 p-3"><p className="text-sm font-semibold">Desktop Images</p><p className="mb-2 text-xs text-gray-500">Recommended: 5 x 4 inches landscape/square</p><ImageUploader images={form.responsiveImages?.desktop?.length ? form.responsiveImages.desktop : form.images} onChange={images => setForm(p => ({ ...p, images, responsiveImages: { ...(p.responsiveImages || {}), desktop: images } }))} /></div>
-            <div className="rounded-xl border bg-primary-50/40 p-3"><p className="text-sm font-semibold">Tablet Images</p><p className="mb-2 text-xs text-gray-500">Recommended: 4 x 4 inches square</p><ImageUploader images={form.responsiveImages?.tablet || []} onChange={images => setForm(p => ({ ...p, responsiveImages: { ...(p.responsiveImages || {}), tablet: images } }))} /></div>
-            <div className="rounded-xl border bg-primary-50/40 p-3"><p className="text-sm font-semibold">Mobile Images</p><p className="mb-2 text-xs text-gray-500">Recommended: 3 x 4 inches portrait</p><ImageUploader images={form.responsiveImages?.mobile || []} onChange={images => setForm(p => ({ ...p, responsiveImages: { ...(p.responsiveImages || {}), mobile: images } }))} /></div>
-          </div>
+          <div className="rounded-xl border bg-primary-50/40 p-3"><p className="text-sm font-semibold">Product Images</p><p className="mb-2 text-xs text-gray-500">Portrait images recommended. The storefront adapts to each uploaded image ratio and shows the complete image.</p><ImageUploader images={form.images?.length ? form.images : form.responsiveImages?.desktop?.length ? form.responsiveImages.desktop : form.responsiveImages?.tablet?.length ? form.responsiveImages.tablet : form.responsiveImages?.mobile || []} onChange={images => setForm(p => ({ ...p, images, responsiveImages: { ...(p.responsiveImages || {}), desktop: images, tablet: images, mobile: images } }))} /></div>
         </div>
 
         {/* Product Video */}
@@ -605,3 +601,6 @@ export default function AdminProductForm({ params }) {
     </div>
   );
 }
+
+
+

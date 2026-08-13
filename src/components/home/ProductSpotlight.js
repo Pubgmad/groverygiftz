@@ -54,11 +54,11 @@ export default function ProductSpotlight({ product }) {
         </div>
 
         <div className="grid overflow-hidden rounded-2xl bg-white text-gray-900 shadow-2xl sm:rounded-3xl md:grid-cols-2">
-          <Link href={`/products/${product.slug}`} className="group relative block min-h-[360px] overflow-hidden bg-gray-100 md:min-h-[560px]">
+          <Link href={`/products/${product.slug}`} className="group relative block overflow-hidden bg-white">
             {product.images?.[0] ? (
-              <img src={product.images[0]} alt={product.title} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" />
+              <img src={product.images[0]} alt={product.title} className="block h-auto w-full object-contain transition-transform duration-700 group-hover:scale-105" />
             ) : (
-              <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary-100 to-accent-100 text-primary-700">
+              <div className="flex min-h-[360px] w-full items-center justify-center bg-gradient-to-br from-primary-100 to-accent-100 text-primary-700 md:min-h-[560px]">
                 <FiGift size={72} />
               </div>
             )}
@@ -144,3 +144,4 @@ export default function ProductSpotlight({ product }) {
     </section>
   );
 }
+

@@ -9,7 +9,7 @@ export default function HotspotBanner({ image, products = [], title }) {
       {title && <h2 className="section-title text-center mb-8">{title}</h2>}
       <div className="relative rounded-2xl overflow-hidden">
         {image ? (
-          <img src={image} alt={title || 'Featured gift banner'} className="w-full aspect-[2/1] object-cover" />
+          <img src={image} alt={title || 'Featured gift banner'} className="block h-auto w-full object-contain bg-white" />
         ) : (
           <div className="w-full aspect-[2/1] relative overflow-hidden flex items-center justify-center"
             style={{ background: 'linear-gradient(135deg, #F47920 0%, #F27A1A 50%, #D96212 100%)' }}>
@@ -32,3 +32,4 @@ export default function HotspotBanner({ image, products = [], title }) {
     </section>
   );
 }
+

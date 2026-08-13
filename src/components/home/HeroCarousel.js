@@ -7,11 +7,23 @@ import { trackMetaCustomEvent } from '@/lib/metaPixel';
 
 const TRUST_ICONS = [FiTruck, FiGift, FiShield, FiStar];
 
+function bannerImage(slide = {}) {
+  return slide.desktopImage || slide.image || slide.tabletImage || slide.mobileImage || '';
+}
+
+function tabletBannerImage(slide = {}) {
+  return slide.tabletImage || bannerImage(slide);
+}
+
+function mobileBannerImage(slide = {}) {
+  return slide.mobileImage || tabletBannerImage(slide);
+}
+
 export default function HeroCarousel({ banners = [], settings }) {
   const [current, setCurrent] = useState(0);
   const [key, setKey] = useState(0);
   const router = useRouter();
-  const slides = banners.filter((banner) => banner?.title || banner?.image);
+  const slides = banners.filter((banner) => banner?.title || banner?.image || banner?.desktopImage || banner?.tabletImage || banner?.mobileImage);
   const trustBadges = (settings?.heroTrustBadges || []).map((badge) => badge?.trim()).filter(Boolean);
   const fallbackTitle = settings?.heroFallbackTitle || 'Personalized Gifts Made With Love';
   const fallbackSubtitle = settings?.heroFallbackSubtitle || 'Create memorable photo frames, LED lamps, engravings and custom gifts for every occasion.';
@@ -28,8 +40,10 @@ export default function HeroCarousel({ banners = [], settings }) {
     touchEndX.current = null;
   };
 
-
   if (slides.length === 0) return null;
+
+  const activeSlide = slides[current] || slides[0];
+  const activeImage = bannerImage(activeSlide);
 
   const goTo = (idx) => {
     setCurrent(idx);
@@ -50,69 +64,66 @@ export default function HeroCarousel({ banners = [], settings }) {
   };
 
   return (
-    <section className="relative min-h-[520px] overflow-hidden sm:min-h-[560px] md:min-h-[620px] lg:min-h-[650px]">
-      {slides.map((slide, idx) => (
-        <div
-          key={slide._id || idx}
-          className={`absolute inset-0 cursor-pointer transition-opacity duration-700 ${idx === current ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
-          role="link"
-          tabIndex={idx === current ? 0 : -1}
-          onClick={(event) => openBanner(slide, event)}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-          onKeyDown={(event) => { if (event.key === 'Enter') openBanner(slide, event); }}
-        >
-          {(slide.mobileImage || slide.tabletImage || slide.desktopImage || slide.image) ? (
-            <picture className="block h-full w-full">
-              <source media="(max-width: 639px)" srcSet={slide.mobileImage || slide.tabletImage || slide.desktopImage || slide.image} />
-              <source media="(max-width: 1023px)" srcSet={slide.tabletImage || slide.desktopImage || slide.image || slide.mobileImage} />
-              <img src={slide.desktopImage || slide.image || slide.tabletImage || slide.mobileImage} alt={slide.title || ''} className="h-full w-full bg-white object-contain" />
-            </picture>
-          ) : (
-            <div className="h-full w-full bg-gradient-to-br from-primary-800 via-primary-600 to-accent-500" />
-          )}
-          <div className="absolute inset-0 bg-gradient-to-b from-black/38 via-black/18 to-black/10 sm:bg-gradient-to-r sm:from-black/46 sm:via-black/20 sm:to-black/5" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-black/5" />
-          <div className="relative z-10 mx-auto flex min-h-[520px] max-w-7xl items-center px-4 pb-28 pt-12 sm:min-h-[560px] sm:pt-20 md:min-h-[640px] md:px-6 lg:min-h-[690px]">
-            <div key={key} className={`max-w-3xl ${idx === current ? 'hero-text-in' : ''}`}>
-              {settings?.heroEyebrow && (
-                <p className="mb-4 inline-flex rounded-full border border-white/20 bg-white/12 px-4 py-2 text-xs font-bold uppercase tracking-[0.2em] text-accent-200 backdrop-blur-sm">
-                  {settings.heroEyebrow}
-                </p>
-              )}
-              {(slide.title || fallbackTitle) && (
-                <h1 className="text-3xl font-display font-extrabold leading-tight text-white drop-shadow-2xl sm:text-4xl md:text-6xl lg:text-7xl">
-                  {slide.title || fallbackTitle}
-                </h1>
-              )}
-              {(slide.subtitle || fallbackSubtitle) && (
-                <p className="mt-4 max-w-2xl text-sm leading-7 text-white/88 drop-shadow sm:text-base md:text-xl md:leading-8">
-                  {slide.subtitle || fallbackSubtitle}
-                </p>
-              )}
-              <div className="mt-7 flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-                {(slide.buttonText || fallbackButtonText) && (
-                  <Link
-                    href={slide.link || '/shop'}
-                    onClick={() => trackBannerClick(slide)}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-accent-500 px-5 py-3.5 text-sm font-extrabold text-white shadow-orange transition-all duration-200 hover:-translate-y-1 hover:bg-accent-600 sm:w-auto sm:px-8 sm:py-4 sm:text-base md:px-10"
-                  >
-                    <FiShoppingBag size={18} />
-                    {slide.buttonText || fallbackButtonText}
-                  </Link>
-                )}
+    <section className="relative overflow-hidden bg-white">
+      <div
+        className="relative cursor-pointer"
+        role="link"
+        tabIndex={0}
+        onClick={(event) => openBanner(activeSlide, event)}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onKeyDown={(event) => { if (event.key === 'Enter') openBanner(activeSlide, event); }}
+      >
+        {activeImage ? (
+          <picture className="block w-full">
+            <source media="(max-width: 639px)" srcSet={mobileBannerImage(activeSlide)} />
+            <source media="(max-width: 1023px)" srcSet={tabletBannerImage(activeSlide)} />
+            <img src={activeImage} alt={activeSlide.title || ''} className="block h-auto w-full bg-white object-contain" />
+          </picture>
+        ) : (
+          <div className="min-h-[420px] w-full bg-gradient-to-br from-primary-800 via-primary-600 to-accent-500 sm:min-h-[520px]" />
+        )}
+        <div className="absolute inset-0 bg-gradient-to-b from-black/38 via-black/18 to-black/10 sm:bg-gradient-to-r sm:from-black/46 sm:via-black/20 sm:to-black/5" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-black/5" />
+        <div className="absolute inset-0 z-10 mx-auto flex max-w-7xl items-center px-4 pb-20 pt-10 sm:pt-16 md:px-6">
+          <div key={key} className="hero-text-in max-w-3xl">
+            {settings?.heroEyebrow && (
+              <p className="mb-4 inline-flex rounded-full border border-white/20 bg-white/12 px-4 py-2 text-xs font-bold uppercase tracking-[0.2em] text-accent-200 backdrop-blur-sm">
+                {settings.heroEyebrow}
+              </p>
+            )}
+            {(activeSlide.title || fallbackTitle) && (
+              <h1 className="text-3xl font-display font-extrabold leading-tight text-white drop-shadow-2xl sm:text-4xl md:text-6xl lg:text-7xl">
+                {activeSlide.title || fallbackTitle}
+              </h1>
+            )}
+            {(activeSlide.subtitle || fallbackSubtitle) && (
+              <p className="mt-4 max-w-2xl text-sm leading-7 text-white/88 drop-shadow sm:text-base md:text-xl md:leading-8">
+                {activeSlide.subtitle || fallbackSubtitle}
+              </p>
+            )}
+            <div className="mt-7 flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+              {(activeSlide.buttonText || fallbackButtonText) && (
                 <Link
-                  href="/shop"
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-white/35 bg-white/12 px-5 py-3.5 text-sm font-bold text-white backdrop-blur-sm transition-all duration-200 hover:bg-white hover:text-primary-700 sm:w-auto sm:px-6 sm:py-4 sm:text-base"
+                  href={activeSlide.link || '/shop'}
+                  onClick={() => trackBannerClick(activeSlide)}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-accent-500 px-5 py-3.5 text-sm font-extrabold text-white shadow-orange transition-all duration-200 hover:-translate-y-1 hover:bg-accent-600 sm:w-auto sm:px-8 sm:py-4 sm:text-base md:px-10"
                 >
-                  Explore gifts
+                  <FiShoppingBag size={18} />
+                  {activeSlide.buttonText || fallbackButtonText}
                 </Link>
-              </div>
+              )}
+              <Link
+                href="/shop"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-white/35 bg-white/12 px-5 py-3.5 text-sm font-bold text-white backdrop-blur-sm transition-all duration-200 hover:bg-white hover:text-primary-700 sm:w-auto sm:px-6 sm:py-4 sm:text-base"
+              >
+                Explore gifts
+              </Link>
             </div>
           </div>
         </div>
-      ))}
+      </div>
 
       {slides.length > 1 && (
         <>

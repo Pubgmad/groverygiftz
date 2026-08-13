@@ -313,11 +313,7 @@ export default function AdminSettingsPage() {
         <div className="bg-white p-6 rounded-xl border space-y-4">
           <h2 className="font-bold text-lg">Promo Image Banner</h2>
           <p className="text-sm text-gray-500">Full-width banner shown between sections on the homepage. If no image is set, a gradient is shown.</p>
-          <div className="grid gap-4 lg:grid-cols-3">
-            <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3"><label className="mb-1 block text-sm font-semibold">Desktop Promo Banner</label><p className="mb-2 text-xs text-gray-500">Recommended: 1920 x 560 px</p><ImageUploader replaceOnUpload images={(form.promoBannerDesktopImage || form.promoBannerImage) ? [form.promoBannerDesktopImage || form.promoBannerImage] : []} onChange={imgs => setForm(p => ({ ...p, promoBannerDesktopImage: imgs[0] || '', promoBannerImage: imgs[0] || '' }))} /></div>
-            <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3"><label className="mb-1 block text-sm font-semibold">Tablet Promo Banner</label><p className="mb-2 text-xs text-gray-500">Recommended: 1200 x 600 px</p><ImageUploader replaceOnUpload images={form.promoBannerTabletImage ? [form.promoBannerTabletImage] : []} onChange={imgs => setForm(p => ({ ...p, promoBannerTabletImage: imgs[0] || '' }))} /></div>
-            <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3"><label className="mb-1 block text-sm font-semibold">Mobile Promo Banner</label><p className="mb-2 text-xs text-gray-500">Recommended: 900 x 900 px</p><ImageUploader replaceOnUpload images={form.promoBannerMobileImage ? [form.promoBannerMobileImage] : []} onChange={imgs => setForm(p => ({ ...p, promoBannerMobileImage: imgs[0] || '' }))} /></div>
-          </div>
+          <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3"><label className="mb-1 block text-sm font-semibold">Landscape Promo Banner</label><p className="mb-2 text-xs text-gray-500">Upload one landscape banner. The website preserves the full image ratio across mobile, tablet, and desktop.</p><ImageUploader replaceOnUpload images={(form.promoBannerDesktopImage || form.promoBannerImage || form.promoBannerTabletImage || form.promoBannerMobileImage) ? [form.promoBannerDesktopImage || form.promoBannerImage || form.promoBannerTabletImage || form.promoBannerMobileImage] : []} onChange={imgs => setForm(p => ({ ...p, promoBannerDesktopImage: imgs[0] || '', promoBannerImage: imgs[0] || '', promoBannerTabletImage: imgs[0] || '', promoBannerMobileImage: imgs[0] || '' }))} /></div>
           <div className="grid md:grid-cols-2 gap-4">
             <div><label className="block text-sm font-medium mb-1">Title</label><input value={form.promoBannerTitle} onChange={e => setForm(p => ({ ...p, promoBannerTitle: e.target.value }))} className="w-full border rounded-lg px-4 py-2" /></div>
             <div><label className="block text-sm font-medium mb-1">Subtitle</label><input value={form.promoBannerSubtitle} onChange={e => setForm(p => ({ ...p, promoBannerSubtitle: e.target.value }))} className="w-full border rounded-lg px-4 py-2" /></div>
@@ -335,3 +331,5 @@ export default function AdminSettingsPage() {
     </div>
   );
 }
+
+

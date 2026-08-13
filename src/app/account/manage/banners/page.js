@@ -57,14 +57,7 @@ export default function AdminBannersPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <input required placeholder="Title" value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} className="w-full border rounded-lg px-4 py-2" />
             <input placeholder="Subtitle" value={form.subtitle} onChange={e => setForm(p => ({ ...p, subtitle: e.target.value }))} className="w-full border rounded-lg px-4 py-2" />
-            <div className="grid gap-4 lg:grid-cols-3">
-              <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3"><label className="mb-1 block text-sm font-semibold">Desktop Banner</label><p className="mb-2 text-xs text-gray-500">Recommended: 1920 x 900 px</p><ImageUploader replaceOnUpload deleteOnRemove confirmRemove images={(form.desktopImage || form.image) ? [form.desktopImage || form.image] : []} onChange={imgs => setForm(p => ({ ...p, desktopImage: imgs[0] || '', image: imgs[0] || '' }))} /></div>
-              <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3"><label className="mb-1 block text-sm font-semibold">Tablet Banner</label><p className="mb-2 text-xs text-gray-500">Recommended: 1200 x 900 px</p><ImageUploader replaceOnUpload deleteOnRemove confirmRemove images={form.tabletImage ? [form.tabletImage] : []} onChange={imgs => setForm(p => ({ ...p, tabletImage: imgs[0] || '' }))} /></div>
-              <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3"><label className="mb-1 block text-sm font-semibold">Mobile Banner</label><p className="mb-2 text-xs text-gray-500">Recommended: 900 x 1400 px</p><ImageUploader replaceOnUpload deleteOnRemove confirmRemove images={form.mobileImage ? [form.mobileImage] : []} onChange={imgs => setForm(p => ({ ...p, mobileImage: imgs[0] || '' }))} /></div>
-            </div>
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              Upload separate artwork for each device to avoid unwanted cropping. Keep text inside the safe center area for every version.
-            </div>
+            <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3"><label className="mb-1 block text-sm font-semibold">Landscape Banner Image</label><p className="mb-2 text-xs text-gray-500">Upload one landscape banner. The storefront keeps the complete image visible without cropping or stretching.</p><ImageUploader replaceOnUpload deleteOnRemove confirmRemove images={(form.desktopImage || form.image || form.tabletImage || form.mobileImage) ? [form.desktopImage || form.image || form.tabletImage || form.mobileImage] : []} onChange={imgs => setForm(p => ({ ...p, image: imgs[0] || '', desktopImage: imgs[0] || '', tabletImage: imgs[0] || '', mobileImage: imgs[0] || '' }))} /></div><div className="rounded-xl border border-primary-100 bg-primary-50 px-4 py-3 text-sm text-primary-900">The uploaded image decides the displayed banner ratio on mobile, tablet, and desktop.</div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div className="sm:col-span-1"><input placeholder="/products/product-slug or /collections/collection-slug" value={form.link} onChange={e => setForm(p => ({ ...p, link: e.target.value }))} className="w-full border rounded-lg px-4 py-2" /><p className="mt-1 text-xs text-gray-500">Copy the exact public link from Products or Collections and paste it here.</p></div>
               <input placeholder="Button Text" value={form.buttonText} onChange={e => setForm(p => ({ ...p, buttonText: e.target.value }))} className="border rounded-lg px-4 py-2" />
@@ -79,7 +72,7 @@ export default function AdminBannersPage() {
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
         {banners.map(b => (
           <div key={b._id} className="bg-white rounded-xl border overflow-hidden">
-            <div className="aspect-[2/1] bg-gray-100">{(b.desktopImage || b.image) && <img src={b.desktopImage || b.image} alt={b.title} className="w-full h-full object-contain bg-white" />}</div>
+            <div className="bg-white">{(b.desktopImage || b.image || b.tabletImage || b.mobileImage) && <img src={b.desktopImage || b.image || b.tabletImage || b.mobileImage} alt={b.title} className="block h-auto w-full object-contain bg-white" />}</div>
             <div className="p-4">
               <h3 className="font-bold">{b.title}</h3>
               <p className="text-sm text-gray-500">{b.subtitle}</p><p className="mt-2 break-all rounded-lg bg-gray-50 px-2 py-1 text-xs font-mono text-gray-500">{b.link || '/shop'}</p>
@@ -95,3 +88,5 @@ export default function AdminBannersPage() {
     </div>
   );
 }
+
+

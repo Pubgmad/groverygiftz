@@ -31,7 +31,7 @@ export default function FeaturedProducts({ products, eyebrow, title, subtitle, b
             <div className="pointer-events-none absolute inset-y-0 right-0 hidden w-[46%] items-center justify-end gap-3 pr-5 opacity-20 md:flex lg:opacity-25">
               {previewProducts.map((product, idx) => (
                 <div key={product._id || idx} className="h-24 w-20 overflow-hidden rounded-xl bg-gray-100 shadow-md lg:h-28 lg:w-24" style={{ transform: `translateY(${idx % 2 ? 12 : -10}px)` }}>
-                  <img src={previewImage(product)} alt="" className="h-full w-full object-cover" />
+                  <img src={previewImage(product)} alt="" className="h-full w-full object-contain bg-white" />
                 </div>
               ))}
               <div className="absolute inset-0 bg-gradient-to-r from-white via-white/80 to-white/20" />
@@ -41,7 +41,7 @@ export default function FeaturedProducts({ products, eyebrow, title, subtitle, b
             <div className="pointer-events-none absolute inset-x-4 bottom-0 flex translate-y-1/2 justify-end gap-2 opacity-15 md:hidden">
               {previewProducts.map((product, idx) => (
                 <div key={product._id || idx} className="h-14 w-14 overflow-hidden rounded-lg bg-gray-100 shadow-sm">
-                  <img src={previewImage(product)} alt="" className="h-full w-full object-cover" />
+                  <img src={previewImage(product)} alt="" className="h-full w-full object-contain bg-white" />
                 </div>
               ))}
             </div>
