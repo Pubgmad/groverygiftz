@@ -851,7 +851,9 @@ const handleCustomerPhotoUpload = async (files) => {
                             style={{ aspectRatio: getAreaAspectRatio(area, adjustments.orientation), touchAction: 'none' }}
                             onPointerDown={(e) => !savedPreviewAreas[previewKey] && startPreviewDrag(previewKey, e)} onPointerMove={movePreviewDrag} onPointerUp={stopPreviewDrag} onPointerCancel={stopPreviewDrag}
                           >
-                            <img src={upload.url} alt={`${selected.label} preview`} className="absolute inset-0 h-full w-full object-contain" style={{ transform: `translate(${adjustments.x}px, ${adjustments.y}px) scale(${adjustments.zoom})`, transformOrigin: 'center' }} />
+                            <div className="absolute inset-0 flex items-center justify-center overflow-hidden bg-white">
+                              <img src={upload.url} alt={`${selected.label} preview`} className="max-h-full max-w-full object-contain" style={{ transform: `translate(${adjustments.x}px, ${adjustments.y}px) scale(${adjustments.zoom})`, transformOrigin: 'center' }} />
+                            </div>
                             {area.frameImage && <img src={area.frameImage} alt="Preview frame" className="absolute inset-0 h-full w-full object-contain pointer-events-none" />}
                             <div className="pointer-events-none absolute inset-0 border-2 border-gray-950" />
                             {savedPreviewAreas[previewKey] && <div className="absolute right-2 top-2 rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-bold text-white">Saved</div>}
@@ -990,12 +992,14 @@ const handleCustomerPhotoUpload = async (files) => {
                             className="relative mx-auto w-full max-w-sm overflow-hidden rounded-lg border-2 border-gray-950 bg-white"
                             style={{ aspectRatio: getAreaAspectRatio(area, adjustments.orientation), touchAction: 'none' }} onPointerDown={(e) => !savedPreviewAreas[idx] && startPreviewDrag(idx, e)} onPointerMove={movePreviewDrag} onPointerUp={stopPreviewDrag} onPointerCancel={stopPreviewDrag}
                           >
-                            <img
-                              src={photo.url}
-                              alt={`${areaLabel} preview`}
-                              className="absolute inset-0 h-full w-full object-contain"
-                              style={{ transform: `translate(${adjustments.x}px, ${adjustments.y}px) scale(${adjustments.zoom})`, transformOrigin: 'center' }}
-                            />
+                            <div className="absolute inset-0 flex items-center justify-center overflow-hidden bg-white">
+                              <img
+                                src={photo.url}
+                                alt={`${areaLabel} preview`}
+                                className="max-h-full max-w-full object-contain"
+                                style={{ transform: `translate(${adjustments.x}px, ${adjustments.y}px) scale(${adjustments.zoom})`, transformOrigin: 'center' }}
+                              />
+                            </div>
                             {area.frameImage && <img src={area.frameImage} alt="Preview frame" className="absolute inset-0 h-full w-full object-contain pointer-events-none" />}
                             <div className="pointer-events-none absolute inset-0 border-2 border-gray-950" />
                             {savedPreviewAreas[idx] && <div className="absolute right-2 top-2 rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-bold text-white">Saved</div>}

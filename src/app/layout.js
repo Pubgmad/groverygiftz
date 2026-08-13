@@ -19,14 +19,13 @@ export async function generateMetadata() {
   } catch (error) {}
 
   const siteName = settings?.siteName || 'GroveryGiftz';
-  const uploadedLogo = settings?.mobileLogo || settings?.tabletLogo || settings?.desktopLogo || settings?.logo || '';
   return {
     metadataBase: new URL(process.env.NEXTAUTH_URL || 'https://groverygiftz.in'),
     title: `${siteName} - Perfect Gifts for Your Loved Ones`,
     description: 'Discover unique personalized gifts for every occasion. Customized frames, bottles, hampers, keychains and more.',
     keywords: ['GroveryGiftz', 'personalized gifts India', 'custom photo frames', 'gifts Coimbatore', 'customized gifts Tamil Nadu'],
     alternates: { canonical: '/' },
-    ...(uploadedLogo ? { icons: { icon: uploadedLogo, shortcut: uploadedLogo, apple: uploadedLogo } } : {}),
+    icons: { icon: '/api/site-icon', shortcut: '/api/site-icon', apple: '/api/site-icon' },
   };
 }
 
@@ -36,6 +35,9 @@ export default function RootLayout({ children }) {
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link rel="icon" href="/api/site-icon" />
+        <link rel="shortcut icon" href="/api/site-icon" />
+        <link rel="apple-touch-icon" href="/api/site-icon" />
       </head>
       <body>
         <Providers>
