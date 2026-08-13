@@ -55,13 +55,10 @@ export default function AdminBannersPage() {
         <div className="bg-white rounded-xl border p-4 sm:p-6 mb-6">
           <div className="flex justify-between items-center mb-4"><h2 className="font-bold text-lg">{editing ? 'Edit' : 'New'} Banner</h2><button onClick={resetForm}><FiX /></button></div>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <input required placeholder="Title" value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} className="w-full border rounded-lg px-4 py-2" />
-            <input placeholder="Subtitle" value={form.subtitle} onChange={e => setForm(p => ({ ...p, subtitle: e.target.value }))} className="w-full border rounded-lg px-4 py-2" />
             <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3"><label className="mb-1 block text-sm font-semibold">Landscape Banner Image</label><p className="mb-2 text-xs text-gray-500">Upload one landscape banner. The storefront keeps the complete image visible without cropping or stretching.</p><ImageUploader replaceOnUpload deleteOnRemove confirmRemove images={(form.desktopImage || form.image || form.tabletImage || form.mobileImage) ? [form.desktopImage || form.image || form.tabletImage || form.mobileImage] : []} onChange={imgs => setForm(p => ({ ...p, image: imgs[0] || '', desktopImage: imgs[0] || '', tabletImage: imgs[0] || '', mobileImage: imgs[0] || '' }))} /></div><div className="rounded-xl border border-primary-100 bg-primary-50 px-4 py-3 text-sm text-primary-900">The uploaded image decides the displayed banner ratio on mobile, tablet, and desktop.</div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <div className="sm:col-span-1"><input placeholder="/products/product-slug or /collections/collection-slug" value={form.link} onChange={e => setForm(p => ({ ...p, link: e.target.value }))} className="w-full border rounded-lg px-4 py-2" /><p className="mt-1 text-xs text-gray-500">Copy the exact public link from Products or Collections and paste it here.</p></div>
-              <input placeholder="Button Text" value={form.buttonText} onChange={e => setForm(p => ({ ...p, buttonText: e.target.value }))} className="border rounded-lg px-4 py-2" />
-              <input type="number" placeholder="Order" value={form.order ?? ''} onChange={e => setForm(p => ({ ...p, order: e.target.value }))} className="border rounded-lg px-4 py-2" />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="sm:col-span-1"><label className="mb-1 block text-sm font-semibold">Banner Link / Slug</label><input placeholder="/products/product-slug or /collections/collection-slug" value={form.link} onChange={e => setForm(p => ({ ...p, link: e.target.value }))} className="w-full border rounded-lg px-4 py-2" /><p className="mt-1 text-xs text-gray-500">Copy the exact public link from Products or Collections and paste it here.</p></div>
+              <div><label className="mb-1 block text-sm font-semibold">Order</label><input type="number" placeholder="Order" value={form.order ?? ''} onChange={e => setForm(p => ({ ...p, order: e.target.value }))} className="w-full border rounded-lg px-4 py-2" /></div>
             </div>
             <label className="flex items-center gap-2"><input type="checkbox" checked={form.isActive} onChange={e => setForm(p => ({ ...p, isActive: e.target.checked }))} /> Active</label>
             <button type="submit" className="w-full sm:w-auto bg-primary-600 text-white px-6 py-2 rounded-lg hover:bg-primary-700">{editing ? 'Update' : 'Create'}</button>
@@ -74,8 +71,8 @@ export default function AdminBannersPage() {
           <div key={b._id} className="bg-white rounded-xl border overflow-hidden">
             <div className="bg-white">{(b.desktopImage || b.image || b.tabletImage || b.mobileImage) && <img src={b.desktopImage || b.image || b.tabletImage || b.mobileImage} alt={b.title} className="block h-auto w-full object-contain bg-white" />}</div>
             <div className="p-4">
-              <h3 className="font-bold">{b.title}</h3>
-              <p className="text-sm text-gray-500">{b.subtitle}</p><p className="mt-2 break-all rounded-lg bg-gray-50 px-2 py-1 text-xs font-mono text-gray-500">{b.link || '/shop'}</p>
+              <h3 className="font-bold">Banner</h3>
+              <p className="mt-2 break-all rounded-lg bg-gray-50 px-2 py-1 text-xs font-mono text-gray-500">{b.link || '/shop'}</p>
               <div className="flex gap-2 mt-3">
                 <button onClick={() => startEdit(b)} className="text-blue-600 text-sm"><FiEdit /></button>
                 <button onClick={() => handleDelete(b._id)} className="text-red-600 text-sm"><FiTrash2 /></button>
@@ -88,5 +85,7 @@ export default function AdminBannersPage() {
     </div>
   );
 }
+
+
 
 
