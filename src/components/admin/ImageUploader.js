@@ -14,7 +14,7 @@ export default function ImageUploader({ images, value = '', onChange, label = 'U
   const inputRef = useRef(null);
 
   const deleteUploadedFile = async (url) => {
-    if (!deleteOnRemove || !url?.startsWith('/uploads/')) return;
+    if (!deleteOnRemove || !(url?.startsWith('/uploads/') || url?.startsWith('/media/uploads/'))) return;
     try {
       const res = await fetch('/api/upload', {
         method: 'DELETE',

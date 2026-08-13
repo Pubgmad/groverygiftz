@@ -8,7 +8,7 @@ import { resolveGiftFinderForUi, defaultTickerMessages, defaultHotspotSpots } fr
 
 export default function AdminSettingsPage() {
   const [form, setForm] = useState({
-    siteName: '', tagline: '', logo: '', desktopLogo: '', tabletLogo: '', mobileLogo: '', announcementText: '',
+    siteName: '', tagline: '', logo: '', desktopLogo: '', tabletLogo: '', mobileLogo: '', favicon: '', announcementText: '',
     phone: '', email: '', whatsapp: '', address: '', timings: '',
     socialLinks: { instagram: '', youtube: '' },
     freeShippingThreshold: 499, shippingCost: 40, tamilNaduShippingCost: 0, otherStateShippingCost: 120, tamilNaduDeliveryEstimate: 'Within 8 days', otherStateDeliveryEstimate: '10-15 days',
@@ -69,7 +69,7 @@ export default function AdminSettingsPage() {
     fetch('/api/settings').then(r => r.json()).then((d) => {
       const gf = resolveGiftFinderForUi(d);
       setForm({
-        siteName: d.siteName || '', tagline: d.tagline || '', logo: d.logo || '', desktopLogo: d.desktopLogo || d.logo || '', tabletLogo: d.tabletLogo || '', mobileLogo: d.mobileLogo || '',
+        siteName: d.siteName || '', tagline: d.tagline || '', logo: d.logo || '', desktopLogo: d.desktopLogo || d.logo || '', tabletLogo: d.tabletLogo || '', mobileLogo: d.mobileLogo || '', favicon: d.favicon || '',
         announcementText: d.announcementText || '', phone: d.phone || '', email: d.email || '',
         whatsapp: d.whatsapp || '', address: d.address || '', timings: d.timings || '',
         socialLinks: { instagram: d.socialLinks?.instagram || '', youtube: d.socialLinks?.youtube || '' },
@@ -186,11 +186,12 @@ export default function AdminSettingsPage() {
           </div>
           <div className="space-y-3">
             <label className="block text-sm font-medium">Website Logo Assets</label>
-            <p className="text-xs text-gray-500">Use the remove button on a saved logo to delete it permanently. Desktop is used as the fallback when tablet or mobile logos are empty.</p>
-            <div className="grid gap-4 lg:grid-cols-3">
+            <p className="text-xs text-gray-500">Use the remove button on a saved logo to delete it permanently. Desktop is used as the fallback when tablet or mobile logos are empty. Favicon is used for the browser tab icon.</p>
+            <div className="grid gap-4 lg:grid-cols-4">
               <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3"><p className="mb-1 text-sm font-semibold">Desktop Logo</p><p className="mb-2 text-xs text-gray-500">Recommended: 420 x 120 px transparent PNG/WebP</p><ImageUploader replaceOnUpload deleteOnRemove confirmRemove images={(form.desktopLogo || form.logo) ? [form.desktopLogo || form.logo] : []} onChange={imgs => setForm(p => ({ ...p, desktopLogo: imgs[0] || '', logo: imgs[0] || '' }))} /></div>
               <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3"><p className="mb-1 text-sm font-semibold">Tablet Logo</p><p className="mb-2 text-xs text-gray-500">Recommended: 360 x 110 px</p><ImageUploader replaceOnUpload deleteOnRemove confirmRemove images={form.tabletLogo ? [form.tabletLogo] : []} onChange={imgs => setForm(p => ({ ...p, tabletLogo: imgs[0] || '' }))} /></div>
               <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3"><p className="mb-1 text-sm font-semibold">Mobile Logo</p><p className="mb-2 text-xs text-gray-500">Recommended: 300 x 90 px</p><ImageUploader replaceOnUpload deleteOnRemove confirmRemove images={form.mobileLogo ? [form.mobileLogo] : []} onChange={imgs => setForm(p => ({ ...p, mobileLogo: imgs[0] || '' }))} /></div>
+              <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3"><p className="mb-1 text-sm font-semibold">Favicon / Browser Tab Icon</p><p className="mb-2 text-xs text-gray-500">Recommended: square 512 x 512 PNG/WebP</p><ImageUploader replaceOnUpload deleteOnRemove confirmRemove images={form.favicon ? [form.favicon] : []} onChange={imgs => setForm(p => ({ ...p, favicon: imgs[0] || '' }))} /></div>
             </div>
           </div>
           <div><label className="block text-sm font-medium mb-1">Announcement Bar Text</label><input value={form.announcementText} onChange={e => setForm(p => ({ ...p, announcementText: e.target.value }))} className="w-full border rounded-lg px-4 py-2" /></div>

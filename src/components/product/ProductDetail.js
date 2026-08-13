@@ -26,6 +26,11 @@ function UploadSpinner({ label = 'Uploading...' }) {
     </span>
   );
 }
+const attachLocalPreview = (upload, file) => ({
+  ...upload,
+  previewUrl: file?.type?.startsWith('image/') ? URL.createObjectURL(file) : upload?.url,
+});
+const displayUploadUrl = (upload) => upload?.previewUrl || upload?.url || '';
 const getDefaultPreviewAdjustments = () => ({ zoom: 1, x: 0, y: 0, orientation: 'auto' });
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -214,7 +219,8 @@ export default function ProductDetail({ product }) {
   };
   const renderFinalPreviewImage = async (area, idx, sourceUrl = '') => {
     const photo = sourceUrl ? { url: sourceUrl } : customerPhotos[idx];
-    if (!photo?.url) return '';
+    const photoUrl = displayUploadUrl(photo);
+    if (!photoUrl) return '';
     try {
       const adjustments = getAreaAdjustments(idx);
       const { displayWidth, displayHeight } = getPreviewDimensions(area, adjustments.orientation, idx);
@@ -226,7 +232,7 @@ export default function ProductDetail({ product }) {
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      const uploadedImage = await loadPreviewImage(photo.url);
+      const uploadedImage = await loadPreviewImage(photoUrl);
       const imageRect = getContainedDrawRect(
         uploadedImage.naturalWidth || uploadedImage.width,
         uploadedImage.naturalHeight || uploadedImage.height,
@@ -314,7 +320,7 @@ export default function ProductDetail({ product }) {
         instructions: selected.previewInstructions || '',
       };
       const areaLabel = `Variant: ${selected.label}`;
-      const finalPreviewDataUrl = await renderFinalPreviewImage(area, previewKey, uploadedFile.url);
+      const finalPreviewDataUrl = await renderFinalPreviewImage(area, previewKey, displayUploadUrl(uploadedFile));
       const finalPreviewImage = await uploadRenderedPreviewImage(finalPreviewDataUrl, areaLabel, previews.length);
       previews.push({
         areaLabel,
@@ -458,7 +464,7 @@ export default function ProductDetail({ product }) {
       const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Upload failed');
-      setCustomFieldValues((prev) => ({ ...prev, [fieldLabel]: data }));
+      setCustomFieldValues((prev) => ({ ...prev, [fieldLabel]: attachLocalPreview(data, file) }));
       toast.success('Customization file uploaded');
       trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'file_upload', field_label: fieldLabel, file_type: data.type || file.type || '' }));
     } catch (error) {
@@ -490,7 +496,7 @@ const handleCustomerPhotoUpload = async (files) => {
         const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || `Failed to upload ${file.name}`);
-        uploaded.push(data);
+        uploaded.push(attachLocalPreview(data, file));
       }
       setCustomerPhotos((prev) => [...prev, ...uploaded]);
       toast.success(`${uploaded.length} photo${uploaded.length === 1 ? '' : 's'} uploaded`);
@@ -512,7 +518,7 @@ const handleCustomerPhotoUpload = async (files) => {
       const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Upload failed');
-      setVariantLabelUploads((prev) => ({ ...prev, [label]: { ...data, label } }));
+      setVariantLabelUploads((prev) => ({ ...prev, [label]: { ...attachLocalPreview(data, file), label } }));
       toast.success(`${label} image uploaded`);
       trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'variant_label_upload', field_label: label, file_type: data.type || file.type || '' }));
     } catch (error) {
@@ -547,7 +553,7 @@ const handleCustomerPhotoUpload = async (files) => {
         const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || `Failed to upload ${file.name}`);
-        uploaded.push(data);
+        uploaded.push(attachLocalPreview(data, file));
       }
       setCollageUploads((prev) => ({ ...prev, [label]: [...(prev[label] || []), ...uploaded] }));
       toast.success(`${label}: ${uploaded.length} image${uploaded.length === 1 ? '' : 's'} uploaded`);
@@ -800,7 +806,7 @@ const handleCustomerPhotoUpload = async (files) => {
                     <FiImage size={18} className="text-accent-500 shrink-0" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold text-gray-800">{customFieldValues[field.label].name}</p>
-                      <a href={customFieldValues[field.label].url} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-primary-600 hover:text-primary-700">Preview uploaded file</a>
+                      <a href={displayUploadUrl(customFieldValues[field.label])} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-primary-600 hover:text-primary-700">Preview uploaded file</a>
                     </div>
                   </div>
                 )}
@@ -852,7 +858,7 @@ const handleCustomerPhotoUpload = async (files) => {
                             onPointerDown={(e) => !savedPreviewAreas[previewKey] && startPreviewDrag(previewKey, e)} onPointerMove={movePreviewDrag} onPointerUp={stopPreviewDrag} onPointerCancel={stopPreviewDrag}
                           >
                             <div className="absolute inset-0 flex items-center justify-center overflow-hidden bg-white">
-                              <img src={upload.url} alt={`${selected.label} preview`} className="max-h-full max-w-full object-contain" style={{ transform: `translate(${adjustments.x}px, ${adjustments.y}px) scale(${adjustments.zoom})`, transformOrigin: 'center' }} />
+                              <img src={displayUploadUrl(upload)} alt={`${selected.label} preview`} className="max-h-full max-w-full object-contain" style={{ transform: `translate(${adjustments.x}px, ${adjustments.y}px) scale(${adjustments.zoom})`, transformOrigin: 'center' }} />
                             </div>
                             {area.frameImage && <img src={area.frameImage} alt="Preview frame" className="absolute inset-0 h-full w-full object-contain pointer-events-none" />}
                             <div className="pointer-events-none absolute inset-0 border-2 border-gray-950" />
@@ -860,7 +866,7 @@ const handleCustomerPhotoUpload = async (files) => {
                           </div>
                         </div>
                         <div className="space-y-3">
-                          <a href={upload.url} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-primary-600">Open original uploaded image</a>
+                          <a href={displayUploadUrl(upload)} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-primary-600">Open original uploaded image</a>
                           <div><label className="block text-xs font-bold text-gray-600 mb-1">Frame direction</label><div className="grid grid-cols-3 gap-2">{[['auto', 'Admin size'], ['portrait', 'Portrait'], ['landscape', 'Landscape']].map(([value, label]) => (<button key={value} type="button" onClick={() => updateAreaAdjustment(previewKey, 'orientation', value)} className={`rounded-lg border px-2 py-2 text-xs font-bold ${adjustments.orientation === value ? 'border-primary-600 bg-primary-50 text-primary-700' : 'border-gray-200 bg-white text-gray-600'}`}>{label}</button>))}</div></div>
                           <div><label className="block text-xs font-bold text-gray-600 mb-1">Zoom</label><input type="range" min="1" max="3" step="0.05" value={adjustments.zoom} onChange={e => updateAreaAdjustment(previewKey, 'zoom', Number(e.target.value))} className="w-full" /></div>
                           <div><label className="block text-xs font-bold text-gray-600 mb-1">Move left / right</label><input type="range" min="-160" max="160" value={adjustments.x} onChange={e => updateAreaAdjustment(previewKey, 'x', Number(e.target.value))} className="w-full" /></div>
@@ -902,7 +908,7 @@ const handleCustomerPhotoUpload = async (files) => {
               <div className="mt-4 grid grid-cols-3 sm:grid-cols-4 gap-2">
                 {customerPhotos.map((photo, idx) => (
                   <div key={photo.url || idx} className="relative overflow-hidden rounded-xl border bg-white aspect-square">
-                    <img src={photo.url} alt={`Uploaded photo ${idx + 1}`} className="h-full w-full object-cover" />
+                    <img src={displayUploadUrl(photo)} alt={`Uploaded photo ${idx + 1}`} className="h-full w-full object-cover" />
                     <button type="button" onClick={() => setCustomerPhotos(prev => prev.filter((_, i) => i !== idx))} className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-white/95 text-red-500 shadow-sm" aria-label="Remove uploaded photo">
                       <FiX size={14} />
                     </button>
@@ -946,7 +952,7 @@ const handleCustomerPhotoUpload = async (files) => {
                     <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
                       {photos.map((photo, idx) => (
                         <div key={photo.url || idx} className="relative aspect-square overflow-hidden rounded-xl border bg-gray-50">
-                          <img src={photo.url} alt={`${label} ${idx + 1}`} className="h-full w-full object-cover" />
+                          <img src={displayUploadUrl(photo)} alt={`${label} ${idx + 1}`} className="h-full w-full object-cover" />
                           <span className="absolute left-1 top-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[10px] font-bold text-white">{idx + 1}</span>
                           <button type="button" onClick={() => removeCollagePhoto(label, idx)} className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-white/95 text-red-500 shadow-sm" aria-label="Remove collage photo"><FiX size={14} /></button>
                         </div>
@@ -994,7 +1000,7 @@ const handleCustomerPhotoUpload = async (files) => {
                           >
                             <div className="absolute inset-0 flex items-center justify-center overflow-hidden bg-white">
                               <img
-                                src={photo.url}
+                                src={displayUploadUrl(photo)}
                                 alt={`${areaLabel} preview`}
                                 className="max-h-full max-w-full object-contain"
                                 style={{ transform: `translate(${adjustments.x}px, ${adjustments.y}px) scale(${adjustments.zoom})`, transformOrigin: 'center' }}

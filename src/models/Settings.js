@@ -26,6 +26,7 @@ const SettingsSchema = new mongoose.Schema({
   desktopLogo: { type: String, default: '' },
   tabletLogo: { type: String, default: '' },
   mobileLogo: { type: String, default: '' },
+  favicon: { type: String, default: '' },
   announcementText: { type: String, default: 'Free shipping on orders above INR 499' },
   phone: { type: String, default: '+91 99945 49781' },
   email: { type: String, default: 'Groverygiftz@gmail.com' },
