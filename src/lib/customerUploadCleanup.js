@@ -2,50 +2,75 @@ import { readdir, stat, unlink } from 'fs/promises';
 import path from 'path';
 import dbConnect from './db';
 import Order from '../models/Order';
+import { storagePath } from './uploadStorage';
 
-const CUSTOMIZATION_PREFIX = '/customizations/';
+const CUSTOMIZATION_DIR = 'customizations';
+const LEGACY_CUSTOMIZATION_PREFIX = '/customizations/';
+const ORIGINAL_FILE_PREFIX = '/api/customization-upload/original-file/';
 const DEFAULT_RETENTION_DAYS = 30;
+const CUSTOMER_UPLOAD_KEYS = new Set(['url', 'originalUrl', 'storagePath']);
 
 function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function isCustomerUploadUrl(value) {
-  return typeof value === 'string' && value.startsWith(CUSTOMIZATION_PREFIX);
+function cleanCustomizationPath(value = '') {
+  const normalized = String(value || '').replace(/\\/g, '/').replace(/^\/+/, '').split('?')[0];
+  if (!normalized.startsWith(`${CUSTOMIZATION_DIR}/`)) return null;
+  const parts = normalized.split('/').filter(Boolean);
+  if (parts.length < 2 || parts[0] !== CUSTOMIZATION_DIR) return null;
+  return parts.map((part) => part.replace(/[^a-zA-Z0-9._-]/g, '_')).join('/');
 }
 
-function urlToFilePath(url) {
-  if (!isCustomerUploadUrl(url)) return null;
-  const filename = path.basename(url.slice(CUSTOMIZATION_PREFIX.length));
-  if (!filename || filename === '.' || filename === '..') return null;
-  return path.join(process.cwd(), 'public', 'customizations', filename);
-}
+function customerUploadPath(value) {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  let pathname = value.trim();
 
-function filePathToUrl(filename) {
-  return `${CUSTOMIZATION_PREFIX}${filename}`;
-}
+  try {
+    if (/^https?:\/\//i.test(pathname)) pathname = new URL(pathname).pathname;
+  } catch (error) {}
 
-function extractCustomizationUrls(value, urls = new Set()) {
-  if (Array.isArray(value)) {
-    value.forEach((item) => extractCustomizationUrls(item, urls));
-    return urls;
+  pathname = pathname.split('?')[0];
+
+  if (pathname.startsWith(ORIGINAL_FILE_PREFIX)) {
+    return cleanCustomizationPath(pathname.slice(ORIGINAL_FILE_PREFIX.length));
   }
 
-  if (!isPlainObject(value)) return urls;
+  if (pathname.startsWith(LEGACY_CUSTOMIZATION_PREFIX)) {
+    return cleanCustomizationPath(`${CUSTOMIZATION_DIR}/${pathname.slice(LEGACY_CUSTOMIZATION_PREFIX.length)}`);
+  }
 
-  Object.values(value).forEach((entry) => {
-    if (isCustomerUploadUrl(entry)) urls.add(entry);
-    else extractCustomizationUrls(entry, urls);
-  });
-
-  return urls;
+  return cleanCustomizationPath(pathname);
 }
 
-function redactCustomizationUrls(value, deletedAt, redactedUrls) {
+function customerUploadUrl(relativePath) {
+  const cleanPath = cleanCustomizationPath(relativePath);
+  return cleanPath ? `/${cleanPath}` : '';
+}
+
+function extractCustomizationPaths(value, paths = new Set()) {
+  if (typeof value === 'string') {
+    const uploadPath = customerUploadPath(value);
+    if (uploadPath) paths.add(uploadPath);
+    return paths;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((item) => extractCustomizationPaths(item, paths));
+    return paths;
+  }
+
+  if (!isPlainObject(value)) return paths;
+
+  Object.values(value).forEach((entry) => extractCustomizationPaths(entry, paths));
+  return paths;
+}
+
+function redactCustomizationPaths(value, deletedAt, redactedPaths) {
   if (Array.isArray(value)) {
     let changed = false;
     const next = value.map((item) => {
-      const result = redactCustomizationUrls(item, deletedAt, redactedUrls);
+      const result = redactCustomizationPaths(item, deletedAt, redactedPaths);
       if (result.changed) changed = true;
       return result.value;
     });
@@ -55,23 +80,24 @@ function redactCustomizationUrls(value, deletedAt, redactedUrls) {
   if (!isPlainObject(value)) return { value, changed: false };
 
   let changed = false;
-  let removedOwnUrl = false;
+  let removedOwnUpload = false;
   const next = {};
 
   Object.entries(value).forEach(([key, entry]) => {
-    if (key === 'url' && isCustomerUploadUrl(entry)) {
-      redactedUrls.push(entry);
+    const uploadPath = CUSTOMER_UPLOAD_KEYS.has(key) ? customerUploadPath(entry) : null;
+    if (uploadPath) {
+      redactedPaths.push(uploadPath);
       changed = true;
-      removedOwnUrl = true;
+      removedOwnUpload = true;
       return;
     }
 
-    const result = redactCustomizationUrls(entry, deletedAt, redactedUrls);
+    const result = redactCustomizationPaths(entry, deletedAt, redactedPaths);
     next[key] = result.value;
     if (result.changed) changed = true;
   });
 
-  if (removedOwnUrl) {
+  if (removedOwnUpload) {
     next.deleted = true;
     next.deletedAt = deletedAt;
   }
@@ -79,24 +105,24 @@ function redactCustomizationUrls(value, deletedAt, redactedUrls) {
   return { value: changed ? next : value, changed };
 }
 
-async function collectProtectedUrls(cutoff) {
-  const protectedUrls = new Set();
+async function collectProtectedPaths(cutoff) {
+  const protectedPaths = new Set();
   const cursor = Order.find({ createdAt: { $gt: cutoff } }).select('items').lean().cursor();
 
   for await (const order of cursor) {
     for (const item of order.items || []) {
-      extractCustomizationUrls(item.customFields, protectedUrls);
-      extractCustomizationUrls(item.customizationPreview, protectedUrls);
-      extractCustomizationUrls(item.collageUploads, protectedUrls);
+      extractCustomizationPaths(item.customFields, protectedPaths);
+      extractCustomizationPaths(item.customizationPreview, protectedPaths);
+      extractCustomizationPaths(item.collageUploads, protectedPaths);
     }
   }
 
-  return protectedUrls;
+  return protectedPaths;
 }
 
 async function redactOldOrderReferences(cutoff, dryRun) {
   const deletedAt = new Date().toISOString();
-  const targetUrls = new Set();
+  const targetPaths = new Set();
   let ordersScanned = 0;
   let ordersUpdated = 0;
   let referencesRedacted = 0;
@@ -106,11 +132,11 @@ async function redactOldOrderReferences(cutoff, dryRun) {
   for await (const order of cursor) {
     ordersScanned += 1;
     let orderChanged = false;
-    const orderRedactedUrls = [];
+    const orderRedactedPaths = [];
     const nextItems = (order.items || []).map((item) => {
-      const customFields = redactCustomizationUrls(item.customFields, deletedAt, orderRedactedUrls);
-      const customizationPreview = redactCustomizationUrls(item.customizationPreview, deletedAt, orderRedactedUrls);
-      const collageUploads = redactCustomizationUrls(item.collageUploads, deletedAt, orderRedactedUrls);
+      const customFields = redactCustomizationPaths(item.customFields, deletedAt, orderRedactedPaths);
+      const customizationPreview = redactCustomizationPaths(item.customizationPreview, deletedAt, orderRedactedPaths);
+      const collageUploads = redactCustomizationPaths(item.collageUploads, deletedAt, orderRedactedPaths);
       if (!customFields.changed && !customizationPreview.changed && !collageUploads.changed) return item;
       orderChanged = true;
       return {
@@ -123,8 +149,8 @@ async function redactOldOrderReferences(cutoff, dryRun) {
 
     if (!orderChanged) continue;
 
-    orderRedactedUrls.forEach((url) => targetUrls.add(url));
-    referencesRedacted += orderRedactedUrls.length;
+    orderRedactedPaths.forEach((uploadPath) => targetPaths.add(uploadPath));
+    referencesRedacted += orderRedactedPaths.length;
     ordersUpdated += 1;
 
     if (!dryRun) {
@@ -132,7 +158,7 @@ async function redactOldOrderReferences(cutoff, dryRun) {
     }
   }
 
-  return { ordersScanned, ordersUpdated, referencesRedacted, targetUrls };
+  return { ordersScanned, ordersUpdated, referencesRedacted, targetPaths };
 }
 
 async function deleteFile(filePath, dryRun) {
@@ -146,19 +172,19 @@ async function deleteFile(filePath, dryRun) {
   }
 }
 
-async function deleteCollectedFiles(targetUrls, protectedUrls, dryRun) {
+async function deleteCollectedFiles(targetPaths, protectedPaths, dryRun) {
   let filesDeleted = 0;
   let filesMissing = 0;
   let protectedFilesSkipped = 0;
   const handledPaths = new Set();
 
-  for (const url of targetUrls) {
-    if (protectedUrls.has(url)) {
+  for (const uploadPath of targetPaths) {
+    if (protectedPaths.has(uploadPath)) {
       protectedFilesSkipped += 1;
       continue;
     }
 
-    const filePath = urlToFilePath(url);
+    const filePath = storagePath(uploadPath);
     if (!filePath || handledPaths.has(filePath)) continue;
     handledPaths.add(filePath);
 
@@ -170,8 +196,8 @@ async function deleteCollectedFiles(targetUrls, protectedUrls, dryRun) {
   return { filesDeleted, filesMissing, protectedFilesSkipped, handledPaths };
 }
 
-async function deleteOrphanedFiles(cutoff, protectedUrls, handledPaths, dryRun) {
-  const uploadDir = path.join(process.cwd(), 'public', 'customizations');
+async function deleteOrphanedFiles(cutoff, protectedPaths, handledPaths, dryRun) {
+  const uploadDir = storagePath(CUSTOMIZATION_DIR);
   let orphanFilesDeleted = 0;
   let orphanFilesMissing = 0;
   let recentFilesSkipped = 0;
@@ -190,8 +216,9 @@ async function deleteOrphanedFiles(cutoff, protectedUrls, handledPaths, dryRun) 
   for (const entry of entries) {
     if (!entry.isFile()) continue;
 
-    const filePath = path.join(uploadDir, entry.name);
-    if (handledPaths.has(filePath)) continue;
+    const uploadPath = `${CUSTOMIZATION_DIR}/${entry.name}`;
+    const filePath = storagePath(uploadPath);
+    if (!filePath || handledPaths.has(filePath)) continue;
 
     const fileStat = await stat(filePath);
     if (fileStat.mtime > cutoff) {
@@ -199,7 +226,7 @@ async function deleteOrphanedFiles(cutoff, protectedUrls, handledPaths, dryRun) 
       continue;
     }
 
-    if (protectedUrls.has(filePathToUrl(entry.name))) {
+    if (protectedPaths.has(uploadPath) || protectedPaths.has(customerUploadUrl(uploadPath))) {
       protectedFilesSkipped += 1;
       continue;
     }
@@ -219,15 +246,16 @@ export async function cleanupCustomerUploads(options = {}) {
 
   await dbConnect();
 
-  const protectedUrls = await collectProtectedUrls(cutoff);
+  const protectedPaths = await collectProtectedPaths(cutoff);
   const orderResult = await redactOldOrderReferences(cutoff, dryRun);
-  const fileResult = await deleteCollectedFiles(orderResult.targetUrls, protectedUrls, dryRun);
-  const orphanResult = await deleteOrphanedFiles(cutoff, protectedUrls, fileResult.handledPaths, dryRun);
+  const fileResult = await deleteCollectedFiles(orderResult.targetPaths, protectedPaths, dryRun);
+  const orphanResult = await deleteOrphanedFiles(cutoff, protectedPaths, fileResult.handledPaths, dryRun);
 
   return {
     dryRun,
     retentionDays,
     cutoff: cutoff.toISOString(),
+    target: `${CUSTOMIZATION_DIR}/`,
     ordersScanned: orderResult.ordersScanned,
     ordersUpdated: orderResult.ordersUpdated,
     referencesRedacted: orderResult.referencesRedacted,
