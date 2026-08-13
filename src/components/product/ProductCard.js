@@ -36,7 +36,7 @@ export default function ProductCard({ product }) {
       href={`/products/${product.slug}`}
       className="group product-card flex h-full flex-col rounded-2xl border border-gray-100 bg-white p-2.5 shadow-sm product-lift transition-all duration-300 hover:-translate-y-1 sm:p-3"
     >
-      <div className="relative overflow-hidden rounded-xl bg-white image-sheen">
+      <div className="relative flex min-h-[180px] items-center justify-center overflow-hidden rounded-xl bg-white image-sheen sm:min-h-[220px]">
         <div className="absolute left-2 top-2 z-10 flex max-w-[74%] flex-col items-start gap-1.5 sm:left-2.5 sm:top-2.5 sm:max-w-[72%]">
           {savings > 0 && <div className="badge-save w-fit">Save {formatPrice(savings)}</div>}
           {product.isBestSeller && <div className="w-fit rounded-md bg-primary-700 px-2.5 py-1 text-[10px] font-extrabold uppercase leading-none text-white shadow-sm sm:text-[11px]">Best Seller</div>}
@@ -66,7 +66,7 @@ export default function ProductCard({ product }) {
           </div>
         )}
 
-        <img src={img1} alt={product.title} onError={(e) => { e.currentTarget.src = '/placeholder.svg'; }} className="block h-auto w-full object-contain transition-transform duration-700 group-hover:scale-105" />
+        <img src={img1} alt={product.title} onError={(e) => { e.currentTarget.src = '/placeholder.svg'; }} className="mx-auto block h-auto max-h-[320px] max-w-full object-contain transition-transform duration-700 group-hover:scale-105 sm:max-h-[380px]" />
         {img2 !== img1 && <img src={img2} alt={product.title} onError={(e) => { e.currentTarget.src = '/placeholder.svg'; }} className="product-img-hover absolute inset-0 h-full w-full object-contain bg-white" />}
       </div>
 
@@ -106,5 +106,6 @@ export default function ProductCard({ product }) {
     </Link>
   );
 }
+
 
 

@@ -14,9 +14,9 @@ export default function PromoBannerImage({ settings }) {
   const mobileImage = settings?.promoBannerMobileImage || tabletImage;
 
   return (
-    <section className={`relative overflow-hidden ${image ? 'bg-white' : 'flex min-h-[320px] items-center md:min-h-[420px]'}`}>
+    <section className={`relative grid overflow-hidden ${image ? 'bg-white' : 'min-h-[320px] md:min-h-[420px]'}`}>
       {image ? (
-        <picture className="block w-full">
+        <picture className="col-start-1 row-start-1 block w-full">
           <source media="(max-width: 639px)" srcSet={mobileImage} />
           <source media="(max-width: 1023px)" srcSet={tabletImage} />
           <img
@@ -26,10 +26,10 @@ export default function PromoBannerImage({ settings }) {
           />
         </picture>
       ) : (
-        <div className="absolute inset-0" style={{ background: 'linear-gradient(90deg, #F47920 0%, #F27A1A 55%, #D96212 100%)' }} />
+        <div className="col-start-1 row-start-1" style={{ background: 'linear-gradient(90deg, #F47920 0%, #F27A1A 55%, #D96212 100%)' }} />
       )}
 
-      {image && <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/35 to-transparent" />}
+      {image && <div className="pointer-events-none col-start-1 row-start-1 bg-gradient-to-r from-black/60 via-black/35 to-transparent" />}
 
       {!image && (
         <>
@@ -38,7 +38,7 @@ export default function PromoBannerImage({ settings }) {
         </>
       )}
 
-      <div className={`${image ? 'absolute inset-0' : 'relative'} z-10 flex items-center`}>
+      <div className="relative z-10 col-start-1 row-start-1 flex items-center">
         <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 md:py-16">
           <div className="max-w-xl">
             {subtitle && (
@@ -65,3 +65,4 @@ export default function PromoBannerImage({ settings }) {
     </section>
   );
 }
+

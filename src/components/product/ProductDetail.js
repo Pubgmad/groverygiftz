@@ -638,7 +638,7 @@ const handleCustomerPhotoUpload = async (files) => {
           {currentMedia?.type === 'video' ? (
             <video src={currentMedia.url} controls className="w-full max-h-[70vh] object-contain bg-black" />
           ) : currentMedia?.url ? (
-            <img src={currentMedia.url} alt={product.title} className="block h-auto w-full object-contain bg-white" onError={(e) => { e.currentTarget.src = '/placeholder.svg'; }} />
+            <img src={currentMedia.url} alt={product.title} className="mx-auto block h-auto max-h-[78vh] max-w-full object-contain bg-white" onError={(e) => { e.currentTarget.src = '/placeholder.svg'; }} />
           ) : (
             <div className="flex min-h-[320px] w-full items-center justify-center text-gray-400">No media</div>
           )}
@@ -1237,4 +1237,5 @@ const handleCustomerPhotoUpload = async (files) => {
     </div>
   );
 }
+
 

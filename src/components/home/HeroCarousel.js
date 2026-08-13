@@ -66,7 +66,7 @@ export default function HeroCarousel({ banners = [], settings }) {
   return (
     <section className="relative overflow-hidden bg-white">
       <div
-        className="relative cursor-pointer"
+        className="relative grid cursor-pointer"
         role="link"
         tabIndex={0}
         onClick={(event) => openBanner(activeSlide, event)}
@@ -76,17 +76,17 @@ export default function HeroCarousel({ banners = [], settings }) {
         onKeyDown={(event) => { if (event.key === 'Enter') openBanner(activeSlide, event); }}
       >
         {activeImage ? (
-          <picture className="block w-full">
+          <picture className="col-start-1 row-start-1 block w-full">
             <source media="(max-width: 639px)" srcSet={mobileBannerImage(activeSlide)} />
             <source media="(max-width: 1023px)" srcSet={tabletBannerImage(activeSlide)} />
             <img src={activeImage} alt={activeSlide.title || ''} className="block h-auto w-full bg-white object-contain" />
           </picture>
         ) : (
-          <div className="min-h-[420px] w-full bg-gradient-to-br from-primary-800 via-primary-600 to-accent-500 sm:min-h-[520px]" />
+          <div className="col-start-1 row-start-1 min-h-[420px] w-full bg-gradient-to-br from-primary-800 via-primary-600 to-accent-500 sm:min-h-[520px]" />
         )}
-        <div className="absolute inset-0 bg-gradient-to-b from-black/38 via-black/18 to-black/10 sm:bg-gradient-to-r sm:from-black/46 sm:via-black/20 sm:to-black/5" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-black/5" />
-        <div className="absolute inset-0 z-10 mx-auto flex max-w-7xl items-center px-4 pb-20 pt-10 sm:pt-16 md:px-6">
+        <div className="pointer-events-none col-start-1 row-start-1 bg-gradient-to-b from-black/38 via-black/18 to-black/10 sm:bg-gradient-to-r sm:from-black/46 sm:via-black/20 sm:to-black/5" />
+        <div className="pointer-events-none col-start-1 row-start-1 bg-gradient-to-t from-black/30 via-transparent to-black/5" />
+        <div className="relative z-10 col-start-1 row-start-1 mx-auto flex w-full max-w-7xl items-center px-4 py-10 sm:py-16 md:px-6">
           <div key={key} className="hero-text-in max-w-3xl">
             {settings?.heroEyebrow && (
               <p className="mb-4 inline-flex rounded-full border border-white/20 bg-white/12 px-4 py-2 text-xs font-bold uppercase tracking-[0.2em] text-accent-200 backdrop-blur-sm">
@@ -174,3 +174,4 @@ export default function HeroCarousel({ banners = [], settings }) {
     </section>
   );
 }
+
