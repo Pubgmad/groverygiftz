@@ -97,19 +97,19 @@ export default function Header() {
       <div className="h-[3px] w-full" style={{ background: 'linear-gradient(90deg, #2456D8 0%, #F47920 40%, #2456D8 70%, #F47920 100%)' }} />
 
       <div className="max-w-7xl mx-auto px-2.5 sm:px-4">
-        <div className="grid h-16 grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-1 sm:gap-3 md:flex md:h-20 md:justify-between">
+        <div className="grid h-16 grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-1 sm:grid-cols-[40px_minmax(0,1fr)_auto] sm:gap-3 md:flex md:h-20 md:justify-between">
           <button className="md:hidden flex h-10 w-10 items-center justify-center text-gray-600 hover:text-primary-600 transition-colors" onClick={() => setMobileOpen(!mobileOpen)} aria-label="Toggle menu">
             {mobileOpen ? <FiX size={24} /> : <FiMenu size={24} />}
           </button>
 
           <Link href="/" className="group flex min-w-0 items-center justify-center gap-1.5 sm:gap-2.5 md:justify-start md:flex-shrink-0">
             {!settingsLoaded ? (
-              <span className="block h-12 w-[180px] sm:h-14 md:h-16 md:w-[240px]" aria-hidden="true" />
+              <span className="block h-11 w-[140px] sm:h-14 sm:w-[180px] md:h-16 md:w-[240px]" aria-hidden="true" />
             ) : logoSrc ? (
               <picture>
                 <source media="(max-width: 639px)" srcSet={mobileLogoSrc} />
                 <source media="(max-width: 1023px)" srcSet={tabletLogoSrc} />
-                <img src={logoSrc} alt={siteName} className="h-12 max-w-[210px] shrink-0 object-contain transition-transform duration-200 group-hover:scale-105 sm:h-14 md:h-16 md:max-w-[280px]" />
+                <img src={logoSrc} alt={siteName} className="h-11 max-w-[140px] object-contain transition-transform duration-200 group-hover:scale-105 sm:h-14 sm:max-w-[190px] md:h-16 md:max-w-[280px]" />
               </picture>
             ) : (
               <div className="min-w-0 leading-none">
@@ -151,13 +151,13 @@ export default function Header() {
           </nav>
 
           <div className="flex items-center justify-end gap-0 sm:gap-1">
-            <button onClick={() => setSearchOpen(!searchOpen)} className="flex h-9 w-9 items-center justify-center rounded-xl text-gray-600 transition-all hover:bg-primary-50 hover:text-primary-600 sm:h-10 sm:w-10" aria-label="Search"><FiSearch size={20} /></button>
-            <Link href={accountHref} className="flex h-9 w-9 items-center justify-center rounded-xl text-gray-600 transition-all hover:bg-primary-50 hover:text-primary-600 sm:h-10 sm:w-10" aria-label="Account"><FiUser size={20} /></Link>
-            <Link href="/wishlist" className="relative flex h-9 w-9 items-center justify-center rounded-xl text-gray-600 transition-all hover:bg-accent-50 hover:text-accent-500 sm:h-10 sm:w-10" aria-label="Wishlist">
+            <button onClick={() => setSearchOpen(!searchOpen)} className="flex h-8 w-8 items-center justify-center rounded-xl text-gray-600 transition-all hover:bg-primary-50 hover:text-primary-600 sm:h-10 sm:w-10" aria-label="Search"><FiSearch size={20} /></button>
+            <Link href={accountHref} className="flex h-8 w-8 items-center justify-center rounded-xl text-gray-600 transition-all hover:bg-primary-50 hover:text-primary-600 sm:h-10 sm:w-10" aria-label="Account"><FiUser size={20} /></Link>
+            <Link href="/wishlist" className="relative flex h-8 w-8 items-center justify-center rounded-xl text-gray-600 transition-all hover:bg-accent-50 hover:text-accent-500 sm:h-10 sm:w-10" aria-label="Wishlist">
               <FiHeart size={20} />
               {wishlistCount > 0 && <span className="absolute -top-0.5 -right-0.5 bg-accent-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold shadow-orange">{wishlistCount}</span>}
             </Link>
-            <button onClick={() => setIsCartOpen(true)} className="relative flex h-9 w-9 items-center justify-center rounded-xl text-gray-600 transition-all hover:bg-primary-50 hover:text-primary-600 sm:h-10 sm:w-10" aria-label="Cart">
+            <button onClick={() => setIsCartOpen(true)} className="relative flex h-8 w-8 items-center justify-center rounded-xl text-gray-600 transition-all hover:bg-primary-50 hover:text-primary-600 sm:h-10 sm:w-10" aria-label="Cart">
               <FiShoppingBag size={20} />
               {cartCount > 0 && <span className="absolute -top-0.5 -right-0.5 bg-accent-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold shadow-orange">{cartCount}</span>}
             </button>

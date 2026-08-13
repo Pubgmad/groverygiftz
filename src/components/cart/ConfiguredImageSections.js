@@ -14,9 +14,9 @@ export default function ConfiguredImageSections({ item, compact = false, include
     <div className={compact ? 'mt-2 space-y-2' : 'mt-3 space-y-3'}>
       {sections.map((section, sectionIndex) => (
         <div key={`${section.label}-${sectionIndex}`} className="rounded-lg border border-gray-100 bg-white/80 p-2">
-          <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-gray-600">
+          <div className="mb-1.5 flex min-w-0 items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-gray-600">
             <FiImage size={12} className="text-primary-600" />
-            <span>{section.label}</span>
+            <span className="min-w-0 break-words">{section.label}</span>
           </div>
           <div className={gridClass}>
             {section.items.map((asset, assetIndex) => (
@@ -33,7 +33,7 @@ export default function ConfiguredImageSections({ item, compact = false, include
             ))}
           </div>
           {section.items.length > 0 && (
-            <p className="mt-1 text-[11px] text-gray-500">
+            <p className="mt-1 break-words text-[11px] text-gray-500">
               {section.items.map((asset) => asset.caption || asset.name).filter(Boolean).join(', ')}
             </p>
           )}

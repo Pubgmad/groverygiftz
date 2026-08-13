@@ -31,7 +31,7 @@ export default function CartDrawer() {
   return (
     <div className="fixed inset-0 z-[100]">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsCartOpen(false)} />
-      <div className="absolute right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl flex flex-col">
+      <div className="absolute right-0 top-0 flex h-full w-full max-w-md flex-col bg-white shadow-2xl">
         <div className="h-1 bg-gradient-to-r from-primary-600 via-accent-500 to-primary-600" />
         <div className="flex items-center justify-between px-6 py-4 border-b">
           <div className="flex items-center gap-2"><FiShoppingBag size={20} className="text-primary-600" /><h2 className="text-xl font-display font-bold">My Cart</h2>{cartCount > 0 && <span className="bg-accent-500 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">{cartCount}</span>}</div>
@@ -56,7 +56,7 @@ export default function CartDrawer() {
           ) : (
             <div className="space-y-3">
               {cart.map((item, idx) => (
-                <div key={idx} className="flex gap-3 bg-gray-50 p-3 rounded-xl border border-gray-100">
+                <div key={idx} className="flex gap-3 rounded-xl border border-gray-100 bg-gray-50 p-3">
                   {item.image ? <img src={item.image} alt={item.title} className="w-20 h-20 object-cover rounded-lg flex-shrink-0 shadow-sm" /> : <div className="w-20 h-20 rounded-lg flex-shrink-0 bg-primary-100 flex items-center justify-center text-primary-600"><FiGift size={24} /></div>}
                   <div className="flex-1 min-w-0">
                     <h4 className="font-semibold text-sm leading-snug line-clamp-2">{item.title}</h4>
@@ -65,7 +65,7 @@ export default function CartDrawer() {
                     {item.deliveryState && <p className="text-xs text-gray-500 mt-0.5">State: {item.deliveryState}</p>}
                     <ConfiguredImageSections item={item} compact />
                     <p className="font-bold text-primary-600 mt-1">{formatPrice(item.price * item.quantity)}</p>
-                    <div className="flex items-center gap-2 mt-2">
+                    <div className="mt-2 flex min-w-0 items-center gap-2">
                       <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden"><button onClick={() => updateQuantity(item.productId, item.variant, item.quantity - 1, item.cartItemId)} className="w-7 h-7 flex items-center justify-center hover:bg-gray-200 transition-colors text-gray-600"><FiMinus size={12} /></button><span className="w-8 text-center text-sm font-semibold">{item.quantity}</span><button onClick={() => updateQuantity(item.productId, item.variant, item.quantity + 1, item.cartItemId)} className="w-7 h-7 flex items-center justify-center hover:bg-gray-200 transition-colors text-gray-600"><FiPlus size={12} /></button></div>
                       <button onClick={() => removeFromCart(item.productId, item.variant, item.cartItemId)} className="ml-auto w-7 h-7 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><FiTrash2 size={14} /></button>
                     </div>

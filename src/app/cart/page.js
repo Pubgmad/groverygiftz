@@ -31,8 +31,8 @@ export default function CartPage() {
       <div className="grid lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-4">
           {cart.map((item, idx) => (
-            <div key={idx} className="bg-white rounded-2xl border border-gray-100 shadow-sm flex gap-4 p-4">
-              {item.image ? <img src={item.image} alt={item.title} className="w-24 h-24 object-contain bg-white rounded-xl flex-shrink-0" /> : <div className="w-24 h-24 rounded-xl bg-primary-50 flex items-center justify-center text-primary-600 flex-shrink-0"><FiGift size={30} /></div>}
+            <div key={idx} className="bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-4 p-4 sm:flex-row">
+              {item.image ? <img src={item.image} alt={item.title} className="h-24 w-24 flex-shrink-0 rounded-xl bg-white object-contain" /> : <div className="w-24 h-24 rounded-xl bg-primary-50 flex items-center justify-center text-primary-600 flex-shrink-0"><FiGift size={30} /></div>}
               <div className="flex-1 min-w-0">
                 <h3 className="font-semibold text-sm leading-snug line-clamp-2 mb-0.5">{item.title}</h3>
                 {item.variant && <p className="text-xs text-gray-400 mb-1">{item.variant}</p>}
@@ -41,8 +41,8 @@ export default function CartPage() {
                 <ConfiguredImageSections item={item} />
                 <p className="font-bold text-primary-600">{formatPrice(item.price)}</p>
               </div>
-              <div className="flex flex-col items-end justify-between gap-2">
-                <p className="font-bold text-gray-800">{formatPrice(item.price * item.quantity)}</p>
+              <div className="flex flex-row items-center justify-between gap-2 sm:flex-col sm:items-end">
+                <p className="font-bold text-gray-800 whitespace-nowrap">{formatPrice(item.price * item.quantity)}</p>
                 <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
                   <button type="button" onClick={() => updateQuantity(item.productId, item.variant, item.quantity - 1, item.cartItemId)} className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 text-gray-600"><FiMinus size={13} /></button>
                   <span className="w-9 text-center text-sm font-bold">{item.quantity}</span>
