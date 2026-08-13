@@ -8,15 +8,27 @@ import ChromeVisibility from '@/components/layout/ChromeVisibility';
 import Providers from '@/components/Providers';
 import MetaPixel from '@/components/meta/MetaPixel';
 import { Toaster } from 'react-hot-toast';
+import dbConnect from '@/lib/db';
+import Settings from '@/models/Settings';
 
-export const metadata = {
-  metadataBase: new URL(process.env.NEXTAUTH_URL || 'https://groverygiftz.in'),
-  title: 'GroveryGiftz - Perfect Gifts for Your Loved Ones',
-  description: 'Discover unique personalized gifts for every occasion. Customized frames, bottles, hampers, keychains and more.',
-  keywords: ['GroveryGiftz', 'personalized gifts India', 'custom photo frames', 'gifts Coimbatore', 'customized gifts Tamil Nadu'],
-  alternates: { canonical: '/' },
-  icons: { icon: '/logo.svg', shortcut: '/logo.svg', apple: '/logo.svg' },
-};
+export async function generateMetadata() {
+  let settings = null;
+  try {
+    await dbConnect();
+    settings = await Settings.findOne().select('siteName logo desktopLogo tabletLogo mobileLogo').lean();
+  } catch (error) {}
+
+  const siteName = settings?.siteName || 'GroveryGiftz';
+  const uploadedLogo = settings?.mobileLogo || settings?.tabletLogo || settings?.desktopLogo || settings?.logo || '';
+  return {
+    metadataBase: new URL(process.env.NEXTAUTH_URL || 'https://groverygiftz.in'),
+    title: `${siteName} - Perfect Gifts for Your Loved Ones`,
+    description: 'Discover unique personalized gifts for every occasion. Customized frames, bottles, hampers, keychains and more.',
+    keywords: ['GroveryGiftz', 'personalized gifts India', 'custom photo frames', 'gifts Coimbatore', 'customized gifts Tamil Nadu'],
+    alternates: { canonical: '/' },
+    ...(uploadedLogo ? { icons: { icon: uploadedLogo, shortcut: uploadedLogo, apple: uploadedLogo } } : {}),
+  };
+}
 
 export default function RootLayout({ children }) {
   return (

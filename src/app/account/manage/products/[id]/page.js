@@ -330,9 +330,6 @@ export default function AdminProductForm({ params }) {
             <input type="checkbox" checked={form.delivery?.useCustomDelivery || false} onChange={e => setForm(p => ({ ...p, delivery: { ...defaultDelivery(), ...p.delivery, useCustomDelivery: e.target.checked } }))} />
             Use custom delivery pricing for this product
           </label>
-          {form.delivery?.useCustomDelivery && shippingTemplates.length > 0 && (
-            <div><label className="block text-sm font-medium mb-1">Apply Shipping Template</label><select value={form.delivery?.shippingTemplate || ''} onChange={e => applyProductShippingTemplate(e.target.value)} className="w-full border rounded-lg px-4 py-2"><option value="">Select template</option>{shippingTemplates.map(template => <option key={template._id} value={template._id}>{template.name}</option>)}</select><p className="mt-1 text-xs text-gray-500">Selecting a template copies all state-wise prices and estimates below.</p></div>
-          )}
           {form.delivery?.useCustomDelivery && (
             <div className="space-y-4">
               <div className="grid md:grid-cols-2 gap-4">
