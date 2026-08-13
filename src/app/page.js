@@ -34,7 +34,7 @@ async function getData() {
   latestSince.setMonth(latestSince.getMonth() - 3);
   const [banners, collections, featured, offerProducts, bestSellers, allProductPreviews, showcaseProducts] = await Promise.all([
     Banner.find({ isActive: true }).sort({ order: 1 }).lean(),
-    Collection.find({ isFeatured: true, isActive: true, createdAt: { $gte: latestSince } }).sort({ createdAt: -1, order: 1 }).limit(4).lean(),
+    Collection.aggregate([{ $match: { isFeatured: true, isActive: true } }, { $sample: { size: 4 } }]),
     Product.find({ isFeatured: true, isActive: true }).sort({ createdAt: -1 }).limit(12).lean(),
     Product.find(activeOfferMatch(now, { includeActive: true })).sort({ createdAt: -1 }).limit(12).lean(),
     Product.find({ isBestSeller: true, isActive: true }).sort({ createdAt: -1 }).limit(12).lean(),
@@ -139,3 +139,4 @@ export default async function HomePage() {
     </>
   );
 }
+

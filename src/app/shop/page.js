@@ -4,7 +4,7 @@ import Product from '@/models/Product';
 import Collection from '@/models/Collection';
 import ProductCard from '@/components/product/ProductCard';
 import Link from 'next/link';
-import { activeOfferMatch, effectivePriceExpression } from '@/lib/offers';
+import { activeOfferMatch, variantAwareEffectivePriceExpression } from '@/lib/offers';
 
 const VALID_VIEWS = ['collections', 'offers', 'latest', 'best-sellers'];
 
@@ -34,7 +34,7 @@ export default async function ShopPage({ searchParams }) {
     isCollectionsView ? Collection.find({ isActive: true }).sort({ order: 1 }).lean() : Promise.resolve([]),
     Product.aggregate([
       { $match: match },
-      { $addFields: { effectivePrice: effectivePriceExpression(now) } },
+      { $addFields: { effectivePrice: variantAwareEffectivePriceExpression(now) } },
       { $sort: sort },
       { $skip: skip },
       { $limit: limit },
@@ -141,3 +141,4 @@ export default async function ShopPage({ searchParams }) {
     </div>
   );
 }
+

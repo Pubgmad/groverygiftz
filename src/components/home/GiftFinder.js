@@ -60,7 +60,7 @@ export default function GiftFinder({ intro, occasions, types, quickPicks }) {
             <span className="hidden sm:inline text-white/30 text-2xl font-light">|</span>
             <span className="text-accent-200 font-semibold text-sm md:text-base uppercase tracking-[0.25em]">{intro.tryLine}</span>
           </div>
-          <p className="text-white/78 text-sm md:text-base max-w-lg mx-auto mb-6 leading-relaxed">{intro.description}</p>
+          <p className="text-primary-50 text-sm font-semibold md:text-base max-w-lg mx-auto mb-6 leading-relaxed">{intro.description}</p>
           <div className="flex flex-wrap justify-center gap-2 mb-2">
             {picks.map((pick) => (
               <button key={pick.label} type="button" onClick={() => applyQuickPick(pick)} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold bg-white/12 text-white border border-white/25 hover:bg-white/20 hover:border-accent-300/60 transition-all duration-200 backdrop-blur-sm">
@@ -106,4 +106,5 @@ export default function GiftFinder({ intro, occasions, types, quickPicks }) {
     </section>
   );
 }
+
 

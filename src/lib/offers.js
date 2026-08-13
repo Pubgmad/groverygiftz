@@ -54,3 +54,86 @@ export function effectivePriceExpression(now = new Date()) {
     ],
   };
 }
+
+export function productPriceCandidatesExpression(now = new Date()) {
+  const basePrice = effectivePriceExpression(now);
+  const offerWindowActive = [
+    { $or: [{ $eq: [{ $ifNull: ['$offerStartsAt', null] }, null] }, { $lte: ['$offerStartsAt', now] }] },
+    { $or: [{ $eq: [{ $ifNull: ['$offerEndsAt', null] }, null] }, { $gte: ['$offerEndsAt', now] }] },
+  ];
+  const variantOptions = {
+    $filter: {
+      input: {
+        $reduce: {
+          input: { $ifNull: ['$variants', []] },
+          initialValue: [],
+          in: { $concatArrays: ['$$value', { $ifNull: ['$$this.options', []] }] },
+        },
+      },
+      as: 'option',
+      cond: {
+        $and: [
+          { $ne: ['$$option.inStock', false] },
+          { $or: [{ $eq: [{ $ifNull: ['$$option.stock', null] }, null] }, { $gt: ['$$option.stock', 0] }] },
+        ],
+      },
+    },
+  };
+  const variantPrices = {
+    $map: {
+      input: variantOptions,
+      as: 'option',
+      in: {
+        $cond: [
+          { $and: [{ $eq: ['$$option.useOwnPrice', true] }, { $gt: ['$$option.regularPrice', 0] }] },
+          {
+            $cond: [
+              {
+                $and: [
+                  { $gt: ['$$option.salePrice', 0] },
+                  { $lt: ['$$option.salePrice', '$$option.regularPrice'] },
+                  ...offerWindowActive,
+                ],
+              },
+              '$$option.salePrice',
+              '$$option.regularPrice',
+            ],
+          },
+          { $add: [basePrice, { $ifNull: ['$$option.priceAdjustment', { $ifNull: ['$$option.price', 0] }] }] },
+        ],
+      },
+    },
+  };
+
+  return {
+    $cond: [
+      { $gt: [{ $size: variantPrices }, 0] },
+      variantPrices,
+      [basePrice],
+    ],
+  };
+}
+
+export function variantAwareEffectivePriceExpression(now = new Date()) {
+  return { $min: productPriceCandidatesExpression(now) };
+}
+
+export function priceRangeMatchExpression(range, now = new Date()) {
+  const checks = [{ $gte: ['$$candidatePrice', Number(range.min || 0)] }];
+  if (range.max !== null && range.max !== undefined) checks.push({ $lte: ['$$candidatePrice', Number(range.max)] });
+  return {
+    $gt: [
+      {
+        $size: {
+          $filter: {
+            input: productPriceCandidatesExpression(now),
+            as: 'candidatePrice',
+            cond: { $and: checks },
+          },
+        },
+      },
+      0,
+    ],
+  };
+}
+

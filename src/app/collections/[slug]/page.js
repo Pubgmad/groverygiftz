@@ -5,7 +5,7 @@ import Product from '@/models/Product';
 import ProductCard from '@/components/product/ProductCard';
 import Breadcrumbs from '@/components/ui/Breadcrumbs';
 import { notFound } from 'next/navigation';
-import { effectivePriceExpression } from '@/lib/offers';
+import { priceRangeMatchExpression, variantAwareEffectivePriceExpression } from '@/lib/offers';
 
 const PRICE_RANGES = [
   { label: 'Under INR 299', min: 0, max: 299 },
@@ -28,7 +28,7 @@ export default async function CollectionPage({ params, searchParams }) {
   const priceRangeIdx = PRICE_RANGES.findIndex((_, i) => `r${i}` === priceKey);
   const currentRange = priceRangeIdx >= 0 ? PRICE_RANGES[priceRangeIdx] : null;
   const now = new Date();
-  const effectivePrice = effectivePriceExpression(now);
+  const effectivePrice = variantAwareEffectivePriceExpression(now);
   const sort =
     currentSort === 'price-asc' ? { effectivePrice: 1, createdAt: -1 } :
     currentSort === 'price-desc' ? { effectivePrice: -1, createdAt: -1 } :
@@ -36,9 +36,7 @@ export default async function CollectionPage({ params, searchParams }) {
 
   const productFilter = { collections: collection._id, isActive: true };
   if (currentRange) {
-    const rangeChecks = [{ $gte: [effectivePrice, currentRange.min] }];
-    if (currentRange.max !== null) rangeChecks.push({ $lte: [effectivePrice, currentRange.max] });
-    productFilter.$expr = { $and: rangeChecks };
+    productFilter.$expr = priceRangeMatchExpression(currentRange, now);
   }
 
   const [products, total] = await Promise.all([
@@ -146,3 +144,4 @@ export default async function CollectionPage({ params, searchParams }) {
     </div>
   );
 }
+

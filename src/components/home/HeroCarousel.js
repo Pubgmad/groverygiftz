@@ -1,5 +1,5 @@
 'use client';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import { trackMetaCustomEvent } from '@/lib/metaPixel';
@@ -31,6 +31,14 @@ export default function HeroCarousel({ banners = [] }) {
     touchStartX.current = null;
     touchEndX.current = null;
   };
+
+  useEffect(() => {
+    if (slides.length <= 1) return undefined;
+    const timer = setInterval(() => {
+      setCurrent((idx) => (idx + 1) % slides.length);
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [slides.length]);
 
   if (slides.length === 0) return null;
 
@@ -102,3 +110,4 @@ export default function HeroCarousel({ banners = [] }) {
     </section>
   );
 }
+
