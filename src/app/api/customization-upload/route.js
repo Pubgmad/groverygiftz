@@ -26,7 +26,7 @@ export async function POST(req) {
     await mkdir(uploadDir, { recursive: true });
     await writeFile(path.join(uploadDir, filename), buffer);
 
-    return NextResponse.json({ name: file.name, type: file.type, size: file.size, url: `/customizations/${filename}` }, { status: 201 });
+    return NextResponse.json({ name: file.name, type: file.type, size: file.size, url: `/customizations/${filename}`, originalUrl: `/api/customization-upload/original/${encodeURIComponent(filename)}?name=${encodeURIComponent(file.name)}` }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to upload customization file' }, { status: 500 });
   }

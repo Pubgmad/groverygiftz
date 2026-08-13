@@ -61,6 +61,14 @@ const fileSizeLabel = (file) => {
   const size = formatFileSize(file?.size);
   return size ? ` (${size})` : '';
 };
+const originalDownloadHref = (file) => {
+  if (!file?.url) return '';
+  if (file.originalUrl) return file.originalUrl;
+  if (!String(file.url).startsWith('/customizations/')) return file.url;
+  const filename = String(file.url).split('/').pop();
+  const name = file.name || filename || 'original-upload';
+  return `/api/customization-upload/original/${encodeURIComponent(filename)}?name=${encodeURIComponent(name)}`;
+};
 const getFileExtension = (file = {}) => {
   const fromName = String(file.name || '').split('.').pop();
   if (fromName && fromName !== file.name) return fromName.toLowerCase();
@@ -91,13 +99,13 @@ function CustomValue({ value }) {
     return (
       <span className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
         {value.map((file, idx) => isUploadedFile(file) ? (
-          <DownloadButton key={file.url || idx} href={file.url} filename={buildDownloadName('original-upload', file.name || 'custom-file', idx, file)}>Download original {idx + 1}{file.name ? ` (${file.name})` : ''}</DownloadButton>
+          <DownloadButton key={file.url || idx} href={originalDownloadHref(file)} filename={buildDownloadName('original-upload', file.name || 'custom-file', idx, file)}>Download original {idx + 1}{file.name ? ` (${file.name})` : ''}</DownloadButton>
         ) : <span key={idx}>{String(file || '-')}</span>)}
       </span>
     );
   }
   if (isUploadedFile(value)) {
-    return <DownloadButton href={value.url} filename={buildDownloadName('original-upload', value.name || 'custom-file', 0, value)}>Download original{value.name ? ` (${value.name})` : ''}</DownloadButton>;
+    return <DownloadButton href={originalDownloadHref(value)} filename={buildDownloadName('original-upload', value.name || 'custom-file', 0, value)}>Download original{value.name ? ` (${value.name})` : ''}</DownloadButton>;
   }
   if (value && typeof value === 'object') {
     return (
@@ -132,7 +140,7 @@ function CollageUploadDetails({ groups }) {
                   <img src={image.url} alt={`${group.label} ${index + 1}`} className="h-full w-full object-cover" />
                   <span className="absolute left-1 top-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[10px] font-bold text-white">{index + 1}</span>
                 </a>
-                <DownloadButton href={image.url} filename={buildDownloadName('collage-original', group.label, index, image)}>Original {index + 1}{fileSizeLabel(image)}</DownloadButton>
+                <DownloadButton href={originalDownloadHref(image)} filename={buildDownloadName('collage-original', group.label, index, image)}>Original {index + 1}{fileSizeLabel(image)}</DownloadButton>
               </div>
             ))}
           </div>
@@ -162,7 +170,7 @@ function PreviewDetails({ preview }) {
                 </a>
               )}
               <div className="grid gap-2 sm:grid-cols-2">
-                <DownloadButton href={entry.uploadedFile?.url} filename={buildDownloadName('original-upload', entry.areaLabel, index, entry.uploadedFile)}>Download original image{fileSizeLabel(entry.uploadedFile)}</DownloadButton>
+                <DownloadButton href={originalDownloadHref(entry.uploadedFile)} filename={buildDownloadName('original-upload', entry.areaLabel, index, entry.uploadedFile)}>Download original image{fileSizeLabel(entry.uploadedFile)}</DownloadButton>
                 <DownloadButton href={finalPreviewUrl} filename={buildDownloadName('customized-preview', entry.areaLabel, index, entry.finalPreviewImage || { url: finalPreviewUrl, type: 'image/jpeg' })} tone="accent">Download final preview</DownloadButton>
               </div>
               {entry.instructions && <p><span className="font-medium">Instructions:</span> {entry.instructions}</p>}
@@ -178,7 +186,7 @@ function PreviewDetails({ preview }) {
       <div className="rounded-md bg-primary-50 border border-primary-100 p-2 space-y-1 text-xs text-gray-700">
         <p className="font-semibold text-primary-800">Saved preview / crop instructions</p>
         <div className="grid gap-2 sm:grid-cols-2">
-          <DownloadButton href={preview.uploadedFile.url} filename={buildDownloadName('original-upload', preview.sourceField || 'preview', 0, preview.uploadedFile)}>Download original image{fileSizeLabel(preview.uploadedFile)}</DownloadButton>
+          <DownloadButton href={originalDownloadHref(preview.uploadedFile)} filename={buildDownloadName('original-upload', preview.sourceField || 'preview', 0, preview.uploadedFile)}>Download original image{fileSizeLabel(preview.uploadedFile)}</DownloadButton>
           <DownloadButton href={preview.finalPreviewImage?.url || preview.finalPreviewDataUrl || preview.uploadedFile.url} filename={buildDownloadName('customized-preview', preview.sourceField || 'preview', 0, preview.finalPreviewImage || preview.uploadedFile)} tone="accent">Download final preview</DownloadButton>
         </div>
         <p><span className="font-medium">Source field:</span> {preview.sourceField || '-'}</p>
