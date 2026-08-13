@@ -107,6 +107,16 @@ export default function ProductDetail({ product }) {
   const getOptionRegularPrice = getVariantRegularPrice;
   const getOptionSalePrice = getVariantSalePrice;
   const getOptionEffectivePrice = getVariantEffectivePrice;
+  const getOptionDisplayPrice = (opt, extra = getOptionExtraPrice(opt)) => {
+    const ownRegularPrice = getOptionRegularPrice(opt);
+    if (opt?.useOwnPrice && ownRegularPrice > 0) return getOptionEffectivePrice(opt, product);
+    return baseDisplayPrice + extra;
+  };
+  const getOptionComparePrice = (opt, extra = getOptionExtraPrice(opt)) => {
+    const ownRegularPrice = getOptionRegularPrice(opt);
+    if (opt?.useOwnPrice && ownRegularPrice > 0) return ownRegularPrice;
+    return baseRegularPrice + extra;
+  };
   useEffect(() => {
     const firstVariantWithOption = (product.variants || [])
       .map((variant) => ({
@@ -738,47 +748,51 @@ const handleCustomerPhotoUpload = async (files) => {
 
         {/* Variants */}
         {product.variants?.map((variant, vIdx) => (
-          <div key={vIdx} className="mb-4">
-            <div className="flex items-center gap-3 mb-2">
-              <label className="font-semibold text-sm">
-                {variant.name} {selectedVariants[variant.name]?.label && `(${selectedVariants[variant.name].label})`}
-              </label>
+          <div key={vIdx} className="mb-6">
+            <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+              <div>
+                <p className="text-base font-extrabold text-gray-950">Select {variant.name}</p>
+                {selectedVariants[variant.name]?.label && <p className="mt-0.5 text-xs font-semibold text-gray-500">Selected: {selectedVariants[variant.name].label}</p>}
+              </div>
               {variant.name.toLowerCase() === 'size' && (
-                <button onClick={() => setSizeChartOpen(true)} className="text-xs text-primary-600 underline hover:text-primary-700">
+                <button type="button" onClick={() => setSizeChartOpen(true)} className="rounded-full border border-primary-200 px-3 py-1 text-xs font-bold text-primary-700 hover:bg-primary-50">
                   Size Chart
                 </button>
               )}
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
               {variant.options?.map((opt, oIdx) => {
                 const extra = getOptionExtraPrice(opt);
                 const optionSoldOut = opt.inStock === false || (typeof opt.stock === 'number' && opt.stock <= 0);
-                const optionRegularPrice = getOptionRegularPrice(opt);
-                const optionEffectivePrice = getOptionEffectivePrice(opt);
+                const displayOptionPrice = getOptionDisplayPrice(opt, extra);
+                const compareOptionPrice = getOptionComparePrice(opt, extra);
                 const selected = selectedVariants[variant.name]?.label === opt.label;
                 return (
                   <button key={oIdx}
                     type="button"
                     disabled={optionSoldOut}
                     onClick={() => setSelectedVariants(prev => { const selectedNow = prev[variant.name]?.label === opt.label; if (selectedNow) return {}; return { [variant.name]: { label: opt.label, extra, useOwnPrice: !!opt.useOwnPrice, regularPrice: opt.regularPrice, salePrice: opt.salePrice, stateOverrides: opt.stateOverrides || [], requiresImageUpload: !!opt.requiresImageUpload, previewWidth: opt.previewWidth, previewHeight: opt.previewHeight, previewUnit: opt.previewUnit || 'inch', previewFrameImage: opt.previewFrameImage || '', previewInstructions: opt.previewInstructions || '' } }; })}
-                    className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                    className={`group relative flex min-h-[118px] flex-col items-center justify-center rounded-2xl border-2 bg-white px-2.5 py-4 text-center shadow-sm transition-all duration-200 sm:min-h-[132px] sm:px-3 ${
                       selected
-                        ? 'border-primary-600 bg-primary-50 text-primary-600'
+                        ? 'border-accent-600 bg-accent-50/30 shadow-orange'
                         : optionSoldOut
-                          ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
-                          : 'border-gray-300 hover:border-gray-400'
+                          ? 'cursor-not-allowed border-gray-200 bg-gray-50 opacity-60'
+                          : 'border-primary-100 hover:-translate-y-0.5 hover:border-accent-300 hover:shadow-md'
                     }`}
                   >
-                    {opt.label}
-                    {opt.useOwnPrice && optionRegularPrice > 0 ? ` ${formatPrice(optionEffectivePrice)}` : extra > 0 && ` (+${formatPrice(extra)})`}
-                    {optionSoldOut && ' (Sold out)'}
+                    <span className={`mb-2 inline-flex max-w-full items-center justify-center rounded-lg px-2.5 py-1 text-lg font-extrabold leading-none sm:text-xl ${selected ? 'bg-white text-accent-700' : 'bg-accent-50 text-accent-800'}`}>
+                      {formatPrice(displayOptionPrice)}
+                    </span>
+                    {compareOptionPrice > displayOptionPrice && <span className="mb-1 text-[11px] font-semibold text-gray-400 line-through">{formatPrice(compareOptionPrice)}</span>}
+                    <span className={`text-[12px] font-extrabold uppercase leading-snug sm:text-sm ${selected ? 'text-gray-950' : 'text-gray-800'}`}>{opt.label}</span>
+                    {optionSoldOut && <span className="mt-2 rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-bold uppercase text-gray-600">Sold out</span>}
+                    {selected && <span className="absolute right-2 top-2 h-3 w-3 rounded-full bg-accent-600 ring-4 ring-accent-100" />}
                   </button>
                 );
               })}
             </div>
           </div>
         ))}
-
         {/* Custom Fields */}
         {product.customFields?.map((field, fIdx) => (
           <div key={fIdx} className="mb-4">
@@ -1237,5 +1251,8 @@ const handleCustomerPhotoUpload = async (files) => {
     </div>
   );
 }
+
+
+
 
 
