@@ -332,6 +332,20 @@ export default function AdminProductForm({ params }) {
           </label>
           {form.delivery?.useCustomDelivery && (
             <div className="space-y-4">
+              {shippingTemplates.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium mb-1">Apply Shipping Template</label>
+                  <select
+                    value={form.delivery?.shippingTemplate || ''}
+                    onChange={e => applyProductShippingTemplate(e.target.value)}
+                    className="w-full rounded-lg border px-4 py-2 bg-white"
+                  >
+                    <option value="">Use default product delivery pricing</option>
+                    {shippingTemplates.map(template => <option key={template._id} value={template._id}>{template.name}</option>)}
+                  </select>
+                  <p className="mt-1 text-xs text-gray-500">Optional. Selecting a template copies its state-wise prices and estimates below.</p>
+                </div>
+              )}
               <div className="grid md:grid-cols-2 gap-4">
                 <div><label className="block text-sm font-medium mb-1">Tamil Nadu Delivery Charge (INR)</label><input type="number" min="0" value={form.delivery?.tamilNaduShippingCost ?? ''} onChange={e => setForm(p => ({ ...p, delivery: { ...p.delivery, tamilNaduShippingCost: e.target.value } }))} className="w-full border rounded-lg px-4 py-2" /></div>
                 <div><label className="block text-sm font-medium mb-1">Other States Default Charge (INR)</label><input type="number" min="0" value={form.delivery?.otherStateShippingCost ?? ''} onChange={e => setForm(p => ({ ...p, delivery: { ...p.delivery, otherStateShippingCost: e.target.value } }))} className="w-full border rounded-lg px-4 py-2" /></div>
