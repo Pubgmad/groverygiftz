@@ -333,8 +333,8 @@ export default function AdminProductForm({ params }) {
           {form.delivery?.useCustomDelivery && (
             <div className="space-y-4">
               <div className="grid md:grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium mb-1">Tamil Nadu Delivery Charge (INR)</label><input type="number" min="0" value={form.delivery?.tamilNaduShippingCost ?? 0} onChange={e => setForm(p => ({ ...p, delivery: { ...p.delivery, tamilNaduShippingCost: Number(e.target.value || 0) } }))} className="w-full border rounded-lg px-4 py-2" /></div>
-                <div><label className="block text-sm font-medium mb-1">Other States Default Charge (INR)</label><input type="number" min="0" value={form.delivery?.otherStateShippingCost ?? 0} onChange={e => setForm(p => ({ ...p, delivery: { ...p.delivery, otherStateShippingCost: Number(e.target.value || 0) } }))} className="w-full border rounded-lg px-4 py-2" /></div>
+                <div><label className="block text-sm font-medium mb-1">Tamil Nadu Delivery Charge (INR)</label><input type="number" min="0" value={form.delivery?.tamilNaduShippingCost ?? ''} onChange={e => setForm(p => ({ ...p, delivery: { ...p.delivery, tamilNaduShippingCost: e.target.value } }))} className="w-full border rounded-lg px-4 py-2" /></div>
+                <div><label className="block text-sm font-medium mb-1">Other States Default Charge (INR)</label><input type="number" min="0" value={form.delivery?.otherStateShippingCost ?? ''} onChange={e => setForm(p => ({ ...p, delivery: { ...p.delivery, otherStateShippingCost: e.target.value } }))} className="w-full border rounded-lg px-4 py-2" /></div>
                 <div><label className="block text-sm font-medium mb-1">Tamil Nadu Delivery Estimate</label><input value={form.delivery?.tamilNaduDeliveryEstimate || ''} onChange={e => setForm(p => ({ ...p, delivery: { ...p.delivery, tamilNaduDeliveryEstimate: e.target.value } }))} className="w-full border rounded-lg px-4 py-2" placeholder="Within 8 days" /></div>
                 <div><label className="block text-sm font-medium mb-1">Other States Default Estimate</label><input value={form.delivery?.otherStateDeliveryEstimate || ''} onChange={e => setForm(p => ({ ...p, delivery: { ...p.delivery, otherStateDeliveryEstimate: e.target.value } }))} className="w-full border rounded-lg px-4 py-2" placeholder="10-15 days" /></div>
               </div>
@@ -346,7 +346,7 @@ export default function AdminProductForm({ params }) {
                 {(form.delivery?.stateOverrides || []).map((row, idx) => (
                   <div key={idx} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_120px_1fr_auto] sm:items-center">
                     <select value={row.state || ''} onChange={e => updateStateOverride(idx, 'state', e.target.value)} className="border rounded-lg px-3 py-2 text-sm"><option value="">Select state</option>{INDIAN_STATES.map(state => <option key={state} value={state}>{state}</option>)}</select>
-                    <input type="number" min="0" value={row.shippingCost ?? 0} onChange={e => updateStateOverride(idx, 'shippingCost', Number(e.target.value || 0))} className="border rounded-lg px-3 py-2 text-sm" placeholder="Cost" />
+                    <input type="number" min="0" value={row.shippingCost ?? ''} onChange={e => updateStateOverride(idx, 'shippingCost', e.target.value)} className="border rounded-lg px-3 py-2 text-sm" placeholder="Cost" />
                     <input value={row.deliveryEstimate || ''} onChange={e => updateStateOverride(idx, 'deliveryEstimate', e.target.value)} className="border rounded-lg px-3 py-2 text-sm" placeholder="Estimate" />
                     <button type="button" onClick={() => removeStateOverride(idx)} className="text-red-500"><FiX /></button>
                   </div>
@@ -417,7 +417,7 @@ export default function AdminProductForm({ params }) {
                         className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary-500 bg-white" /></div>
                     </div>
                   ) : (
-                    <div className="mt-3"><label className="block text-xs font-medium text-gray-600 mb-1">Extra Price Added To Product</label><input type="number" placeholder="Extra price" value={opt.priceAdjustment ?? opt.price ?? 0}
+                    <div className="mt-3"><label className="block text-xs font-medium text-gray-600 mb-1">Extra Price Added To Product</label><input type="number" placeholder="Extra price" value={opt.priceAdjustment ?? opt.price ?? ''}
                       onChange={e => updateVariantOption(vIdx, oIdx, { priceAdjustment: e.target.value })}
                       className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary-500 bg-white sm:w-40" /></div>
                   )}
@@ -461,7 +461,7 @@ export default function AdminProductForm({ params }) {
                     {(opt.stateOverrides || []).map((row, rowIdx) => (
                       <div key={rowIdx} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_110px_1fr_auto] sm:items-center">
                         <select value={row.state || ''} onChange={e => updateVariantStateOverride(vIdx, oIdx, rowIdx, 'state', e.target.value)} className="border rounded-lg px-3 py-2 text-xs"><option value="">Select state</option>{INDIAN_STATES.map(state => <option key={state} value={state}>{state}</option>)}</select>
-                        <input type="number" min="0" value={row.shippingCost ?? 0} onChange={e => updateVariantStateOverride(vIdx, oIdx, rowIdx, 'shippingCost', Number(e.target.value || 0))} className="border rounded-lg px-3 py-2 text-xs" placeholder="Cost" />
+                        <input type="number" min="0" value={row.shippingCost ?? ''} onChange={e => updateVariantStateOverride(vIdx, oIdx, rowIdx, 'shippingCost', e.target.value)} className="border rounded-lg px-3 py-2 text-xs" placeholder="Cost" />
                         <input value={row.deliveryEstimate || ''} onChange={e => updateVariantStateOverride(vIdx, oIdx, rowIdx, 'deliveryEstimate', e.target.value)} className="border rounded-lg px-3 py-2 text-xs" placeholder="Estimate" />
                         <button type="button" onClick={() => removeVariantStateOverride(vIdx, oIdx, rowIdx)} className="text-red-500"><FiX size={14} /></button>
                       </div>
@@ -495,8 +495,8 @@ export default function AdminProductForm({ params }) {
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div><label className="block text-xs font-medium mb-1">Label</label><input value={template.label || ''} onChange={e => updateCollageTemplate(idx, { label: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" placeholder="Example: 20 Photos" /></div>
-                <div><label className="block text-xs font-medium mb-1">Minimum Images</label><input type="number" min="1" value={template.minImages ?? 1} onChange={e => updateCollageTemplate(idx, { minImages: Number(e.target.value || 1) })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" /></div>
-                <div><label className="block text-xs font-medium mb-1">Maximum Images</label><input type="number" min="1" value={template.maxImages ?? 1} onChange={e => updateCollageTemplate(idx, { maxImages: Number(e.target.value || 1) })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" /></div>
+                <div><label className="block text-xs font-medium mb-1">Minimum Images</label><input type="number" min="1" value={template.minImages ?? ''} onChange={e => updateCollageTemplate(idx, { minImages: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" /></div>
+                <div><label className="block text-xs font-medium mb-1">Maximum Images</label><input type="number" min="1" value={template.maxImages ?? ''} onChange={e => updateCollageTemplate(idx, { maxImages: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" /></div>
               </div>
               <div><label className="block text-xs font-medium mb-1">Customer Instructions</label><input value={template.instructions || ''} onChange={e => updateCollageTemplate(idx, { instructions: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" placeholder="Upload photos in the order you want them used" /></div>
               <label className="flex items-center gap-2 text-xs text-gray-700"><input type="checkbox" checked={template.isActive !== false} onChange={e => updateCollageTemplate(idx, { isActive: e.target.checked })} /> Active for customers</label>

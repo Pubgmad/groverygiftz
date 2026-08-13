@@ -107,7 +107,7 @@ export default function ShippingTemplatesPage() {
                   <tr key={row.state} className="border-t">
                     <td className="p-3 text-gray-500">{idx + 1}</td>
                     <td className="p-3 font-semibold text-gray-900">{row.state}</td>
-                    <td className="p-3"><input type="number" min="0" value={row.shippingCost ?? 0} onChange={e => updateRate(idx, { shippingCost: Number(e.target.value || 0) })} className="w-28 rounded-lg border px-3 py-2" /></td>
+                    <td className="p-3"><input type="number" min="0" value={row.shippingCost ?? ''} onChange={e => updateRate(idx, { shippingCost: e.target.value })} className="w-28 rounded-lg border px-3 py-2" /></td>
                     <td className="p-3"><input value={row.deliveryEstimate || ''} onChange={e => updateRate(idx, { deliveryEstimate: e.target.value })} className="w-full rounded-lg border px-3 py-2" placeholder="Within 8 working days" /></td>
                   </tr>
                 ))}

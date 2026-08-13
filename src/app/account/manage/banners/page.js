@@ -24,7 +24,7 @@ export default function AdminBannersPage() {
     e.preventDefault();
     const url = editing ? `/api/banners/${editing}` : '/api/banners';
     const method = editing ? 'PUT' : 'POST';
-    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
+    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form, order: Number(form.order || 0) }) });
     if (res.ok) { toast.success(editing ? 'Updated!' : 'Created!'); resetForm(); fetchData(); }
     else toast.error('Failed');
   };
@@ -68,7 +68,7 @@ export default function AdminBannersPage() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div className="sm:col-span-1"><input placeholder="/products/product-slug or /collections/collection-slug" value={form.link} onChange={e => setForm(p => ({ ...p, link: e.target.value }))} className="w-full border rounded-lg px-4 py-2" /><p className="mt-1 text-xs text-gray-500">Copy the exact public link from Products or Collections and paste it here.</p></div>
               <input placeholder="Button Text" value={form.buttonText} onChange={e => setForm(p => ({ ...p, buttonText: e.target.value }))} className="border rounded-lg px-4 py-2" />
-              <input type="number" placeholder="Order" value={form.order} onChange={e => setForm(p => ({ ...p, order: parseInt(e.target.value) || 0 }))} className="border rounded-lg px-4 py-2" />
+              <input type="number" placeholder="Order" value={form.order ?? ''} onChange={e => setForm(p => ({ ...p, order: e.target.value }))} className="border rounded-lg px-4 py-2" />
             </div>
             <label className="flex items-center gap-2"><input type="checkbox" checked={form.isActive} onChange={e => setForm(p => ({ ...p, isActive: e.target.checked }))} /> Active</label>
             <button type="submit" className="w-full sm:w-auto bg-primary-600 text-white px-6 py-2 rounded-lg hover:bg-primary-700">{editing ? 'Update' : 'Create'}</button>

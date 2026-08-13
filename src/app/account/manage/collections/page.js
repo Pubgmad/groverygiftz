@@ -30,7 +30,7 @@ export default function AdminCollectionsPage() {
     e.preventDefault();
     const url = editing ? `/api/collections/${editing}` : '/api/collections';
     const method = editing ? 'PUT' : 'POST';
-    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
+    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form, order: Number(form.order || 0) }) });
     if (res.ok) {
       toast.success(editing ? 'Updated!' : 'Created!');
       resetForm();
@@ -79,7 +79,7 @@ export default function AdminCollectionsPage() {
               className="w-full border rounded-lg px-4 py-2 focus:outline-none focus:border-primary-500" rows={3} />
             <ImageUploader images={form.image ? [form.image] : []} onChange={imgs => setForm(p => ({ ...p, image: imgs[0] || '' }))} />
             <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
-              <input type="number" placeholder="Display order" value={form.order} onChange={e => setForm(p => ({ ...p, order: parseInt(e.target.value) || 0 }))}
+              <input type="number" placeholder="Display order" value={form.order ?? ''} onChange={e => setForm(p => ({ ...p, order: e.target.value }))}
                 className="w-full border rounded-lg px-4 py-2 focus:outline-none focus:border-primary-500 sm:w-32" />
               <label className="flex items-center gap-2"><input type="checkbox" checked={form.isFeatured} onChange={e => setForm(p => ({ ...p, isFeatured: e.target.checked }))} /> Featured</label>
               <label className="flex items-center gap-2"><input type="checkbox" checked={form.isActive} onChange={e => setForm(p => ({ ...p, isActive: e.target.checked }))} /> Active</label>
