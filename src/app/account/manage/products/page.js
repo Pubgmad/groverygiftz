@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { formatPrice } from '@/lib/utils';
+import { formatPrice, getDisplayPrice } from '@/lib/utils';
 import { getProductAvailableStock, hasVariantManagedStock, isProductSoldOut, isVariantOptionSoldOut } from '@/lib/stock';
 import { FiPlus, FiEdit, FiTrash2, FiSearch, FiCopy } from 'react-icons/fi';
 import toast from 'react-hot-toast';
@@ -71,7 +71,7 @@ export default function AdminProductsPage() {
                     </div>
                   </td>
                   <td className="p-4 max-w-[260px]"><p className="truncate font-medium">{p.title}</p><button type="button" onClick={() => copyPublicLink(p.slug)} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-primary-600 hover:text-primary-700"><FiCopy size={12} /> /products/{p.slug}</button></td>
-                  <td className="p-4">{formatPrice(p.salePrice || p.regularPrice)}</td>
+                  <td className="p-4">{formatPrice(getDisplayPrice(p))}</td>
                   <td className="p-4">
                     <div className="font-semibold">{hasVariantManagedStock(p) ? getProductAvailableStock(p) : p.stock}</div>
                     {hasVariantManagedStock(p) && <div className="mt-1 text-xs text-gray-500">Across variants</div>}
