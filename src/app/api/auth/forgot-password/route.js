@@ -10,6 +10,22 @@ function envFlagEnabled(value) {
   return ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().replace(/^['\"]|['\"]$/g, '').toLowerCase());
 }
 
+function passwordResetEmailError(error) {
+  if (error?.message === 'SMTP email is not configured') {
+    return 'Password reset email is not configured. Please check SMTP environment variables in Hostinger.';
+  }
+
+  if (['EAUTH', 'EENVELOPE'].includes(error?.code) || /auth|login|credential|password/i.test(error?.message || '')) {
+    return 'Password reset email login failed. Please check SMTP_USER and SMTP_PASS in Hostinger.';
+  }
+
+  if (['ECONNECTION', 'ESOCKET', 'ETIMEDOUT', 'ECONNREFUSED'].includes(error?.code) || /connect|timeout|socket/i.test(error?.message || '')) {
+    return 'Password reset email server could not be reached. Please check SMTP_HOST and SMTP_PORT in Hostinger.';
+  }
+
+  return 'Unable to send reset email right now. Please try again later.';
+}
+
 export async function POST(req) {
   await dbConnect();
   const { email } = await req.json();
@@ -34,7 +50,7 @@ export async function POST(req) {
         await sendPasswordResetEmail({ to: normalizedEmail, resetLink });
       } catch (error) {
         console.error('Password reset email failed:', error);
-        return NextResponse.json({ error: 'Unable to send reset email right now. Please try again later.' }, { status: 500 });
+        return NextResponse.json({ error: passwordResetEmailError(error) }, { status: 500 });
       }
     }
   }
