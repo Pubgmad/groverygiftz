@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useCart } from '@/context/CartContext';
 import { formatPrice, calcSavings, getEffectivePrice, isOfferActive, getVariantRegularPrice, getVariantSalePrice, getVariantEffectivePrice } from '@/lib/utils';
+import { getProductAvailableStock, getSelectedAvailableStock, hasVariantManagedStock, isProductSoldOut, isVariantOptionSoldOut } from '@/lib/stock';
 import { buildDeliveryEstimateText } from '@/lib/deliveryDate';
 import { buildProductMetaPayload, trackMetaCustomEvent, trackMetaEvent } from '@/lib/metaPixel';
 import { FiMinus, FiPlus, FiX, FiTruck, FiShield, FiClock, FiShoppingCart, FiZap, FiUpload, FiImage, FiChevronLeft, FiChevronRight, FiStar, FiLoader } from 'react-icons/fi';
@@ -66,7 +67,7 @@ export default function ProductDetail({ product }) {
   const [selectedDeliveryState, setSelectedDeliveryState] = useState('Tamil Nadu');
 
   const offerActive = isOfferActive(product);
-  const isSoldOut = Number(product.stock) <= 0;
+  const isSoldOut = isProductSoldOut(product);
   const mediaItems = [
     ...(product.images || []).map((url) => ({ type: 'image', url })),
     ...(product.productVideo?.url ? [{ type: 'video', url: product.productVideo.url, name: product.productVideo.name || 'Product video' }] : []),
@@ -121,7 +122,7 @@ export default function ProductDetail({ product }) {
     const firstVariantWithOption = (product.variants || [])
       .map((variant) => ({
         variant,
-        option: (variant.options || []).find((opt) => opt?.label && opt.inStock !== false && !(typeof opt.stock === 'number' && opt.stock <= 0)),
+        option: (variant.options || []).find((opt) => opt?.label && !isVariantOptionSoldOut(product, opt)),
       }))
       .find((entry) => entry.variant?.name && entry.option);
 
@@ -145,10 +146,15 @@ export default function ProductDetail({ product }) {
         previewUnit: option.previewUnit || 'inch',
         previewFrameImage: option.previewFrameImage || '',
         previewInstructions: option.previewInstructions || '',
+        stock: option.stock,
       },
     });
   }, [product._id, product.variants]);
   const selectedVariantOptions = Object.values(selectedVariants).filter(Boolean);
+  const variantManagedStock = hasVariantManagedStock(product);
+  const availableStock = getProductAvailableStock(product);
+  const selectedAvailableStock = getSelectedAvailableStock(product, selectedVariantOptions);
+  const purchaseLimit = Math.max(0, selectedAvailableStock);
   const selectedVariantUploadOptions = selectedVariantOptions.filter((selected) => selected?.requiresImageUpload && selected?.label);
   const selectedOwnPriceOption = selectedVariantOptions.find((selected) => selected?.useOwnPrice && getOptionRegularPrice(selected) > 0);
   const baseRegularPrice = selectedOwnPriceOption ? getOptionRegularPrice(selectedOwnPriceOption) : Number(product.regularPrice || 0);
@@ -408,6 +414,14 @@ export default function ProductDetail({ product }) {
       toast.error('Please select one variant option');
       return false;
     }
+    if (!product.isQuoteOnly && selectedAvailableStock <= 0) {
+      toast.error('Selected option is sold out');
+      return false;
+    }
+    if (!product.isQuoteOnly && quantity > selectedAvailableStock) {
+      toast.error(`Only ${selectedAvailableStock} item${selectedAvailableStock === 1 ? '' : 's'} available`);
+      return false;
+    }
     for (const field of product.customFields || []) {
       if (field.required && !customFieldValues[field.label]) {
         toast.error(`Please fill required field: ${field.label}`);
@@ -612,6 +626,7 @@ const handleCustomerPhotoUpload = async (files) => {
       images: product.images || [],
       price: finalUnitPrice,
       quantity,
+      availableStock: selectedAvailableStock,
       variant: variantStr,
       customFields: allCustomFields,
       collageUploads: collageGroups,
@@ -730,6 +745,8 @@ const handleCustomerPhotoUpload = async (files) => {
           </div>
           {isSoldOut ? (
             <p className="text-red-600 font-semibold text-sm">Out of stock</p>
+          ) : variantManagedStock ? (
+            <p className="text-gray-600 text-sm">{availableStock} in stock across variants</p>
           ) : Number(product.stock) > 0 && Number(product.stock) <= 15 ? (
             <p className="text-amber-800 font-semibold text-sm flex items-center gap-2 flex-wrap">
               <span className="inline-flex items-center rounded-md bg-amber-100 px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-amber-900">
@@ -738,7 +755,7 @@ const handleCustomerPhotoUpload = async (files) => {
               Only {product.stock} in stock - order soon!
             </p>
           ) : Number(product.stock) > 0 && Number(product.stock) <= 40 ? (
-            <p className="text-accent-700 font-semibold text-sm">
+            <p className="text-amber-700 text-sm font-medium">
               {product.stock} in stock - selling fast
             </p>
           ) : Number(product.stock) > 0 ? (
@@ -763,7 +780,7 @@ const handleCustomerPhotoUpload = async (files) => {
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
               {variant.options?.map((opt, oIdx) => {
                 const extra = getOptionExtraPrice(opt);
-                const optionSoldOut = opt.inStock === false || (typeof opt.stock === 'number' && opt.stock <= 0);
+                const optionSoldOut = isVariantOptionSoldOut(product, opt);
                 const displayOptionPrice = getOptionDisplayPrice(opt, extra);
                 const compareOptionPrice = getOptionComparePrice(opt, extra);
                 const selected = selectedVariants[variant.name]?.label === opt.label;
@@ -771,7 +788,7 @@ const handleCustomerPhotoUpload = async (files) => {
                   <button key={oIdx}
                     type="button"
                     disabled={optionSoldOut}
-                    onClick={() => setSelectedVariants(prev => { const selectedNow = prev[variant.name]?.label === opt.label; if (selectedNow) return {}; return { [variant.name]: { label: opt.label, extra, useOwnPrice: !!opt.useOwnPrice, regularPrice: opt.regularPrice, salePrice: opt.salePrice, stateOverrides: opt.stateOverrides || [], requiresImageUpload: !!opt.requiresImageUpload, previewWidth: opt.previewWidth, previewHeight: opt.previewHeight, previewUnit: opt.previewUnit || 'inch', previewFrameImage: opt.previewFrameImage || '', previewInstructions: opt.previewInstructions || '' } }; })}
+                    onClick={() => setSelectedVariants(prev => { const selectedNow = prev[variant.name]?.label === opt.label; if (selectedNow) return {}; return { [variant.name]: { label: opt.label, extra, useOwnPrice: !!opt.useOwnPrice, regularPrice: opt.regularPrice, salePrice: opt.salePrice, stateOverrides: opt.stateOverrides || [], requiresImageUpload: !!opt.requiresImageUpload, previewWidth: opt.previewWidth, previewHeight: opt.previewHeight, previewUnit: opt.previewUnit || 'inch', previewFrameImage: opt.previewFrameImage || '', previewInstructions: opt.previewInstructions || '', stock: opt.stock } }; })}
                     className={`group relative flex min-h-[118px] flex-col items-center justify-center rounded-2xl border-2 bg-white px-2.5 py-4 text-center shadow-sm transition-all duration-200 sm:min-h-[132px] sm:px-3 ${
                       selected
                         ? 'border-accent-600 bg-accent-50/30 shadow-orange'
@@ -1079,7 +1096,8 @@ const handleCustomerPhotoUpload = async (files) => {
             </button>
             <span className="w-12 text-center font-bold text-lg">{quantity}</span>
             <button
-              onClick={() => setQuantity(q => Math.min(product.stock || q + 1, q + 1))}
+              onClick={() => setQuantity(q => Math.min(purchaseLimit || q + 1, q + 1))}
+              disabled={!product.isQuoteOnly && (isSoldOut || quantity >= purchaseLimit)}
               className="w-10 h-10 flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-600">
               <FiPlus size={16} />
             </button>

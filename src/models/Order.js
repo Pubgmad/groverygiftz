@@ -41,6 +41,8 @@ const OrderSchema = new mongoose.Schema({
   cashfreeCfOrderId: String,
   cashfreePaymentSessionId: String,
   cashfreePaymentId: String,
+  inventoryDeductedAt: Date,
+  inventoryDeductionStartedAt: Date,
   trackingNumber: String,
   notes: String,
 }, { timestamps: true });

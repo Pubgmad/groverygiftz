@@ -6,6 +6,7 @@ import Product from '@/models/Product';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { buildDeliveryEstimateText } from '@/lib/deliveryDate';
+import { assertStockAvailable, getGroupedStockRequests } from '@/lib/inventory';
 
 const CASHFREE_VERSION = '2025-01-01';
 const endpointFor = (environment) => environment === 'production'
@@ -91,8 +92,9 @@ export async function POST(req) {
 
     const orderItems = items.map((item) => ({ ...item, product: item.product || item.productId || undefined, productId: item.productId || item.product || '' }));
     const productIds = [...new Set(orderItems.map((item) => item.productId).filter(Boolean))];
-    const products = await Product.find({ _id: { $in: productIds } }).select('delivery').lean();
+    const products = await Product.find({ _id: { $in: productIds } }).select('title stock variants delivery isActive').lean();
     const productsById = Object.fromEntries(products.map((product) => [String(product._id), product]));
+    assertStockAvailable(getGroupedStockRequests(orderItems, productsById));
     const subtotal = orderItems.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 1), 0);
     const shipping = calculateShipping(orderItems, productsById, shippingAddress.state, settings);
     const shippingCost = shipping.cost;
@@ -162,6 +164,9 @@ export async function POST(req) {
       mode: settings.cashfreeEnvironment === 'production' ? 'production' : 'sandbox',
     }, { status: 201 });
   } catch (error) {
+    if (error?.name === 'InventoryError') {
+      return NextResponse.json({ error: error.message }, { status: error.status || 409 });
+    }
     console.error('Cashfree create order error:', error);
     return NextResponse.json({ error: 'Failed to create Cashfree order' }, { status: 500 });
   }

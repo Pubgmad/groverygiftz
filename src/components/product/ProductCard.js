@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { FiHeart, FiGift, FiShoppingBag, FiChevronRight, FiClock } from 'react-icons/fi';
 import { formatPrice, calcSavings, getDisplayPrice, getDisplayRegularPrice, isOfferActive } from '@/lib/utils';
+import { getProductAvailableStock, isProductSoldOut } from '@/lib/stock';
 import { useWishlist } from '@/context/WishlistContext';
 
 function firstProductImage(product, index = 0) {
@@ -26,8 +27,9 @@ export default function ProductCard({ product }) {
     : isOfferActive({ ...product, regularPrice: displayRegularPrice, salePrice: displayPrice }));
   const hasCustomization = product.customFields?.length > 0;
   const canGiftWrap = product.giftWrap?.enabled || product.giftMessage;
-  const isSoldOut = Number(product.stock) <= 0;
-  const lowStock = !isSoldOut && Number(product.stock) > 0 && Number(product.stock) <= 10;
+  const availableStock = getProductAvailableStock(product);
+  const isSoldOut = isProductSoldOut(product);
+  const lowStock = !isSoldOut && availableStock > 0 && availableStock <= 10;
   const img1 = firstProductImage(product, 0);
   const img2 = firstProductImage(product, 1);
 
@@ -62,7 +64,7 @@ export default function ProductCard({ product }) {
 
         {lowStock && (
           <div className="absolute bottom-2 left-2 z-10 rounded-md bg-amber-500 px-2.5 py-1 text-[10px] font-bold text-white shadow-sm sm:text-xs">
-            Only {product.stock} left
+            Only {availableStock} left
           </div>
         )}
 

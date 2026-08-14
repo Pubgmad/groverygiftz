@@ -30,6 +30,7 @@ export function sanitizeProductPayload(payload = {}) {
             nextOption.priceAdjustment = toNumber(nextOption.priceAdjustment ?? nextOption.price, 0);
             nextOption.regularPrice = toNumber(nextOption.regularPrice, 0);
             nextOption.salePrice = toNumber(nextOption.salePrice, 0);
+            if (nextOption.stock !== undefined) nextOption.stock = toNumber(nextOption.stock, 0);
             nextOption.previewWidth = toNumber(nextOption.previewWidth, 0);
             nextOption.previewHeight = toNumber(nextOption.previewHeight, 0);
             nextOption.stateOverrides = normalizeOverrides(nextOption.stateOverrides);

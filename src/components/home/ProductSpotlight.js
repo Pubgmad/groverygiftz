@@ -3,6 +3,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useCart } from '@/context/CartContext';
 import { formatPrice, calcSavings, getDisplayPrice, getDisplayRegularPrice, getVariantEffectivePrice, getVariantRegularPrice, isOfferActive } from '@/lib/utils';
+import { getProductAvailableStock, getSelectedAvailableStock, isProductSoldOut, isVariantOptionSoldOut } from '@/lib/stock';
 import { FiShoppingCart, FiZap, FiStar, FiTruck, FiShield, FiGift, FiPlus, FiMinus } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
@@ -20,7 +21,10 @@ export default function ProductSpotlight({ product }) {
     ? true
     : isOfferActive({ ...product, regularPrice: displayRegularPrice, salePrice: displayPrice }));
   const savings = offerActive ? calcSavings(displayRegularPrice, displayPrice) : 0;
-  const isSoldOut = Number(product.stock) <= 0;
+  const selectedVariantOptions = Object.values(selectedVariants).filter(Boolean);
+  const availableStock = getProductAvailableStock(product);
+  const selectedAvailableStock = getSelectedAvailableStock(product, selectedVariantOptions);
+  const isSoldOut = isProductSoldOut(product);
   const hasCustomization = product.customFields?.length > 0;
 
   const getSelectedExtra = () => Object.values(selectedVariants).reduce((s, v) => s + (!v?.useOwnPrice ? (v?.extra || 0) : 0), 0);
@@ -28,6 +32,8 @@ export default function ProductSpotlight({ product }) {
 
   const handleAdd = () => {
     if (isSoldOut) return toast.error('This product is sold out');
+    if (selectedAvailableStock <= 0) return toast.error('Selected option is sold out');
+    if (qty > selectedAvailableStock) return toast.error(`Only ${selectedAvailableStock} available`);
     const variantStr = Object.entries(selectedVariants).map(([k, v]) => `${k}: ${v.label}`).join(', ');
     addToCart({
       productId: product._id,
@@ -35,6 +41,7 @@ export default function ProductSpotlight({ product }) {
       image: product.images?.[0] || '',
       price: finalPrice,
       quantity: qty,
+      availableStock: selectedAvailableStock,
       variant: variantStr,
     });
     toast.success('Added to cart!');
@@ -102,6 +109,7 @@ export default function ProductSpotlight({ product }) {
                   {variant.options?.map((opt, oIdx) => {
                     const extra = Number(opt?.priceAdjustment ?? opt?.price ?? 0);
                     const selected = selectedVariants[variant.name]?.label === opt.label;
+                    const optionSoldOut = isVariantOptionSoldOut(product, opt);
                     const optionRegularPrice = getVariantRegularPrice(opt);
                     const optionPrice = getVariantEffectivePrice(opt, product);
                     const optionUsesOwnPrice = !!opt.useOwnPrice && optionRegularPrice > 0;
@@ -110,8 +118,9 @@ export default function ProductSpotlight({ product }) {
                       <button
                         key={oIdx}
                         type="button"
-                        onClick={() => setSelectedVariants((prev) => ({ ...prev, [variant.name]: { label: opt.label, extra, useOwnPrice: optionUsesOwnPrice, regularPrice: opt.regularPrice, salePrice: opt.salePrice } }))}
-                        className={`rounded-lg border px-3 py-1.5 text-sm font-semibold transition-colors ${selected ? 'border-primary-600 bg-primary-50 text-primary-700' : 'border-gray-300 hover:border-gray-500'}`}
+                        disabled={optionSoldOut}
+                        onClick={() => setSelectedVariants((prev) => ({ ...prev, [variant.name]: { label: opt.label, extra, useOwnPrice: optionUsesOwnPrice, regularPrice: opt.regularPrice, salePrice: opt.salePrice, stock: opt.stock } }))}
+                        className={`rounded-lg border px-3 py-1.5 text-sm font-semibold transition-colors ${selected ? 'border-primary-600 bg-primary-50 text-primary-700' : optionSoldOut ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400' : 'border-gray-300 hover:border-gray-500'}`}
                       >
                         {optionLabel}
                       </button>
@@ -125,9 +134,9 @@ export default function ProductSpotlight({ product }) {
               <div className="flex items-center overflow-hidden rounded-xl border-2 border-gray-200">
                 <button onClick={() => setQty((q) => Math.max(1, q - 1))} className="flex h-11 w-11 items-center justify-center text-gray-600 transition-colors hover:bg-gray-100" aria-label="Decrease quantity"><FiMinus size={16} /></button>
                 <span className="w-11 text-center font-extrabold">{qty}</span>
-                <button onClick={() => setQty((q) => q + 1)} className="flex h-11 w-11 items-center justify-center text-gray-600 transition-colors hover:bg-gray-100" aria-label="Increase quantity"><FiPlus size={16} /></button>
+                <button onClick={() => setQty((q) => Math.min(selectedAvailableStock || q + 1, q + 1))} disabled={isSoldOut || qty >= selectedAvailableStock} className="flex h-11 w-11 items-center justify-center text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Increase quantity"><FiPlus size={16} /></button>
               </div>
-              {!isSoldOut && product.stock > 0 && product.stock < 50 && <span className="text-xs font-bold text-accent-600">Only {product.stock} left</span>}
+              {!isSoldOut && availableStock > 0 && availableStock < 50 && <span className="text-xs font-bold text-accent-600">Only {availableStock} left</span>}
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row">

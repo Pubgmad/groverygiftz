@@ -3,6 +3,7 @@ import dbConnect from '@/lib/db';
 import Settings from '@/models/Settings';
 import Order from '@/models/Order';
 import { getNextPaidOrderNumber, isFinalOrderNumber } from '@/lib/orderNumbers';
+import { deductOrderInventory } from '@/lib/inventory';
 
 const CASHFREE_VERSION = '2025-01-01';
 const endpointFor = (environment, orderId) => environment === 'production'
@@ -35,14 +36,84 @@ export async function POST(req) {
     const order = await Order.findOne({ cashfreeOrderId: orderId });
     if (!order) return NextResponse.json({ error: 'Store order not found' }, { status: 404 });
 
-    order.paymentStatus = paid ? 'paid' : 'pending';
-    order.status = paid ? 'ordered' : 'pending';
-    if (paid && !order.paidAt) order.paidAt = new Date();
     order.cashfreeCfOrderId = String(data.cf_order_id || '');
-    if (paid && !isFinalOrderNumber(order.orderNumber)) {
-      order.orderNumber = await getNextPaidOrderNumber();
+
+    if (!paid) {
+      order.paymentStatus = 'pending';
+      order.status = 'pending';
+      await order.save();
+      return NextResponse.json({
+        success: false,
+        paymentStatus: order.paymentStatus,
+        orderNumber: order.orderNumber,
+        deliveryEstimate: order.deliveryEstimate,
+        shippingCost: order.shippingCost,
+        total: order.total,
+      });
     }
-    await order.save();
+
+    if (!order.inventoryDeductedAt) {
+      const staleProcessingDate = new Date(Date.now() - 10 * 60 * 1000);
+      const claimed = await Order.findOneAndUpdate(
+        {
+          _id: order._id,
+          inventoryDeductedAt: { $exists: false },
+          $or: [
+            { inventoryDeductionStartedAt: { $exists: false } },
+            { inventoryDeductionStartedAt: { $lt: staleProcessingDate } },
+          ],
+        },
+        { $set: { inventoryDeductionStartedAt: new Date(), cashfreeCfOrderId: String(data.cf_order_id || '') } },
+        { new: true }
+      );
+
+      if (!claimed) {
+        const currentOrder = await Order.findById(order._id);
+        if (!currentOrder?.inventoryDeductedAt) {
+          return NextResponse.json({ error: 'Payment confirmation is already being processed. Please try again.' }, { status: 409 });
+        }
+        order.inventoryDeductedAt = currentOrder.inventoryDeductedAt;
+        order.paymentStatus = currentOrder.paymentStatus;
+        order.status = currentOrder.status;
+        order.paidAt = currentOrder.paidAt;
+        order.orderNumber = currentOrder.orderNumber;
+      } else {
+        try {
+          await deductOrderInventory(claimed.items || []);
+          claimed.paymentStatus = 'paid';
+          claimed.status = 'ordered';
+          if (!claimed.paidAt) claimed.paidAt = new Date();
+          if (!isFinalOrderNumber(claimed.orderNumber)) {
+            claimed.orderNumber = await getNextPaidOrderNumber();
+          }
+          claimed.inventoryDeductedAt = new Date();
+          claimed.inventoryDeductionStartedAt = undefined;
+          await claimed.save();
+          order.paymentStatus = claimed.paymentStatus;
+          order.status = claimed.status;
+          order.paidAt = claimed.paidAt;
+          order.orderNumber = claimed.orderNumber;
+          order.inventoryDeductedAt = claimed.inventoryDeductedAt;
+        } catch (inventoryError) {
+          await Order.updateOne(
+            { _id: order._id },
+            { $unset: { inventoryDeductionStartedAt: '' }, $set: { cashfreeCfOrderId: String(data.cf_order_id || '') } }
+          );
+          if (inventoryError?.name === 'InventoryError') {
+            return NextResponse.json({ error: inventoryError.message }, { status: inventoryError.status || 409 });
+          }
+          throw inventoryError;
+        }
+      }
+    } else {
+      order.paymentStatus = 'paid';
+      order.status = 'ordered';
+      if (!order.paidAt) order.paidAt = new Date();
+      if (!isFinalOrderNumber(order.orderNumber)) {
+        order.orderNumber = await getNextPaidOrderNumber();
+      }
+      await order.save();
+    }
 
     return NextResponse.json({
       success: paid,

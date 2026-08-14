@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { formatPrice } from '@/lib/utils';
+import { getProductAvailableStock, hasVariantManagedStock, isProductSoldOut, isVariantOptionSoldOut } from '@/lib/stock';
 import { FiPlus, FiEdit, FiTrash2, FiSearch, FiCopy } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
@@ -36,6 +37,10 @@ export default function AdminProductsPage() {
     fetchProducts();
   };
 
+  const soldOutVariantCount = (product) => (product.variants || []).reduce((count, variant) => (
+    count + (variant.options || []).filter((option) => isVariantOptionSoldOut(product, option)).length
+  ), 0);
+
   return (
     <div>
       <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mb-6">
@@ -67,11 +72,18 @@ export default function AdminProductsPage() {
                   </td>
                   <td className="p-4 max-w-[260px]"><p className="truncate font-medium">{p.title}</p><button type="button" onClick={() => copyPublicLink(p.slug)} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-primary-600 hover:text-primary-700"><FiCopy size={12} /> /products/{p.slug}</button></td>
                   <td className="p-4">{formatPrice(p.salePrice || p.regularPrice)}</td>
-                  <td className="p-4">{p.stock}</td>
                   <td className="p-4">
-                    <span className={`px-2 py-1 rounded-full text-xs ${p.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                      {p.isActive ? 'Active' : 'Inactive'}
-                    </span>
+                    <div className="font-semibold">{hasVariantManagedStock(p) ? getProductAvailableStock(p) : p.stock}</div>
+                    {hasVariantManagedStock(p) && <div className="mt-1 text-xs text-gray-500">Across variants</div>}
+                    {soldOutVariantCount(p) > 0 && <div className="mt-1 text-xs font-semibold text-red-600">{soldOutVariantCount(p)} variant{soldOutVariantCount(p) === 1 ? '' : 's'} sold out</div>}
+                  </td>
+                  <td className="p-4">
+                    <div className="flex flex-wrap gap-1.5">
+                      <span className={`px-2 py-1 rounded-full text-xs ${p.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                        {p.isActive ? 'Active' : 'Inactive'}
+                      </span>
+                      {isProductSoldOut(p) && <span className="px-2 py-1 rounded-full bg-red-100 text-xs font-semibold text-red-800">Sold Out</span>}
+                    </div>
                   </td>
                   <td className="p-4">
                     <div className="flex gap-2">
