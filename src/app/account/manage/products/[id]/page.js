@@ -47,7 +47,7 @@ export default function AdminProductForm({ params }) {
     title: '', description: '', images: [], responsiveImages: { desktop: [], tablet: [], mobile: [] }, productVideo: { url: '', name: '', poster: '' }, customizationPreview: { enabled: false, title: 'Preview your personalized gift', frameImage: '', aspectRatio: '1:1', shape: 'rectangle', instructions: '', requiredImageCount: 0, maxImageCount: 0, areas: [] }, delivery: defaultDelivery(), regularPrice: '', salePrice: '', offerStartsAt: '', offerEndsAt: '',
     stock: 100, collections: [], variants: [], customFields: [], collageEnabled: false, collageTemplates: [],
     giftWrap: { enabled: false, price: 0 }, giftMessage: false,
-    isQuoteOnly: false, isFeatured: false, isBestSeller: false, isActive: true,
+    isQuoteOnly: false, isOffer: false, isFeatured: false, isBestSeller: false, isActive: true,
     seoTitle: '', seoDescription: '',
   });
 
@@ -67,7 +67,7 @@ export default function AdminProductForm({ params }) {
           stock: d.stock ?? 100, collections: d.collections?.map(c => c._id || c) || [],
           variants: d.variants || [], customFields: d.customFields || [], collageEnabled: !!d.collageEnabled, collageTemplates: d.collageTemplates || [],
           giftWrap: d.giftWrap || { enabled: false, price: 0 }, giftMessage: d.giftMessage || false,
-          isQuoteOnly: d.isQuoteOnly || false, isFeatured: d.isFeatured || false, isBestSeller: d.isBestSeller || false,
+          isQuoteOnly: d.isQuoteOnly || false, isOffer: d.isOffer || false, isFeatured: d.isFeatured || false, isBestSeller: d.isBestSeller || false,
           isActive: d.isActive ?? true, seoTitle: d.seoTitle || d.metaTitle || '', seoDescription: d.seoDescription || d.metaDescription || '',
         });
       });
@@ -563,6 +563,11 @@ export default function AdminProductForm({ params }) {
               <input type="checkbox" checked={form.isQuoteOnly}
                 onChange={e => setForm(p => ({ ...p, isQuoteOnly: e.target.checked }))} />
               <span className="text-sm">Quote Only (Contact for Price)</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={form.isOffer}
+                onChange={e => setForm(p => ({ ...p, isOffer: e.target.checked }))} />
+              <span className="text-sm">Offer</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" checked={form.isFeatured}

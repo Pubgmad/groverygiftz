@@ -100,6 +100,7 @@ const ProductSchema = new mongoose.Schema({
   giftWrap: { enabled: { type: Boolean, default: false }, price: { type: Number, default: 20 } },
   giftMessage: { type: Boolean, default: false },
   isQuoteOnly: { type: Boolean, default: false },
+  isOffer: { type: Boolean, default: false },
   isFeatured: { type: Boolean, default: false },
   isBestSeller: { type: Boolean, default: false },
   isActive: { type: Boolean, default: true },

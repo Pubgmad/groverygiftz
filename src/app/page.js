@@ -15,12 +15,12 @@ import Collection from '@/models/Collection';
 import Banner from '@/models/Banner';
 import Settings from '@/models/Settings';
 import { resolveGiftFinderForUi, resolveTickerMessages } from '@/lib/giftFinderResolve';
-import { activeOfferMatch } from '@/lib/offers';
 
 export const dynamic = 'force-dynamic';
 
 const homepageActiveOfferMatch = (now) => ({
-  ...activeOfferMatch(now, { includeActive: true }),
+  isActive: true,
+  isOffer: true,
   offerStartsAt: { $exists: true, $ne: null, $lte: now },
   offerEndsAt: { $exists: true, $ne: null, $gte: now },
 });
