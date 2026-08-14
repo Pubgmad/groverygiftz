@@ -15,15 +15,10 @@ import Collection from '@/models/Collection';
 import Banner from '@/models/Banner';
 import Settings from '@/models/Settings';
 import { resolveGiftFinderForUi, resolveTickerMessages } from '@/lib/giftFinderResolve';
+import { activeAdminOfferMatch } from '@/lib/offers';
 
 export const dynamic = 'force-dynamic';
 
-const homepageActiveOfferMatch = (now) => ({
-  isActive: true,
-  isOffer: true,
-  offerStartsAt: { $exists: true, $ne: null, $lte: now },
-  offerEndsAt: { $exists: true, $ne: null, $gte: now },
-});
 
 async function getData() {
   await dbConnect();
@@ -42,7 +37,7 @@ async function getData() {
     Banner.find({ isActive: true }).sort({ order: 1 }).lean(),
     Collection.aggregate([{ $match: { isFeatured: true, isActive: true } }, { $sample: { size: 4 } }]),
     Product.find({ isFeatured: true, isActive: true }).sort({ createdAt: -1 }).limit(12).lean(),
-    Product.aggregate([{ $match: homepageActiveOfferMatch(now) }, { $sample: { size: 4 } }]),
+    Product.aggregate([{ $match: activeAdminOfferMatch(now, { includeActive: true }) }, { $sample: { size: 4 } }]),
     Product.aggregate([{ $match: { isBestSeller: true, isActive: true } }, { $sample: { size: 4 } }]),
     Product.aggregate([{ $match: { isActive: true } }, { $sample: { size: 4 } }]),
     showcaseCollection

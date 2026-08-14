@@ -34,6 +34,15 @@ export function activeOfferMatch(now = new Date(), { includeActive = false } = {
   };
 }
 
+export function activeAdminOfferMatch(now = new Date(), { includeActive = false } = {}) {
+  return {
+    ...(includeActive ? { isActive: true } : {}),
+    isOffer: true,
+    offerStartsAt: { $exists: true, $ne: null, $lte: now },
+    offerEndsAt: { $exists: true, $ne: null, $gte: now },
+  };
+}
+
 export function activeOfferExpression(now = new Date()) {
   return {
     $and: [

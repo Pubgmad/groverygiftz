@@ -4,7 +4,7 @@ import Product from '@/models/Product';
 import Collection from '@/models/Collection';
 import ProductCard from '@/components/product/ProductCard';
 import Link from 'next/link';
-import { activeOfferMatch, variantAwareEffectivePriceExpression } from '@/lib/offers';
+import { activeAdminOfferMatch, variantAwareEffectivePriceExpression } from '@/lib/offers';
 
 const VALID_VIEWS = ['collections', 'offers', 'latest', 'best-sellers'];
 
@@ -26,7 +26,7 @@ export default async function ShopPage({ searchParams }) {
     currentSort === 'price-desc' ? { effectivePrice: -1, createdAt: -1 } :
     { createdAt: -1 };
   const match = { isActive: true };
-  if (currentView === 'offers') Object.assign(match, activeOfferMatch(now));
+  if (currentView === 'offers') Object.assign(match, activeAdminOfferMatch(now));
   if (currentView === 'latest') match.createdAt = { $gte: latestSince };
   if (currentView === 'best-sellers') match.isBestSeller = true;
 

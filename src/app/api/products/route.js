@@ -7,7 +7,7 @@ import Collection from '@/models/Collection';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import slugify from 'slugify';
-import { activeOfferMatch } from '@/lib/offers';
+import { activeAdminOfferMatch } from '@/lib/offers';
 import { sanitizeProductPayload } from '@/lib/productPayload';
 
 export async function GET(req) {
@@ -29,7 +29,7 @@ export async function GET(req) {
   if (collection) filter.collections = collection;
   if (featured === 'true') filter.isFeatured = true;
   if (bestSeller === 'true') filter.isBestSeller = true;
-  if (offer === 'true') Object.assign(filter, activeOfferMatch(new Date()));
+  if (offer === 'true') Object.assign(filter, activeAdminOfferMatch(new Date()));
   if (latest === 'true') {
     const latestSince = new Date();
     latestSince.setMonth(latestSince.getMonth() - 3);
