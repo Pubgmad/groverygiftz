@@ -6,6 +6,10 @@ import { sendPasswordResetEmail } from '@/lib/email';
 
 const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
 
+function envFlagEnabled(value) {
+  return ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().replace(/^['\"]|['\"]$/g, '').toLowerCase());
+}
+
 export async function POST(req) {
   await dbConnect();
   const { email } = await req.json();
@@ -22,7 +26,7 @@ export async function POST(req) {
       const baseUrl = process.env.NEXTAUTH_URL || new URL(req.url).origin;
       const resetLink = `${baseUrl}/auth/reset-password?token=${token}`;
 
-      if (process.env.PASSWORD_RESET_SHOW_LINK === 'true') {
+      if (envFlagEnabled(process.env.PASSWORD_RESET_SHOW_LINK)) {
         return NextResponse.json({ message: 'Password reset link generated.', resetLink });
       }
 
