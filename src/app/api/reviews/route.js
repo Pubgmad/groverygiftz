@@ -8,6 +8,21 @@ import Review from '@/models/Review';
 
 const normalizeId = (value) => String(value?._id || value || '');
 
+export async function GET() {
+  const session = await getServerSession(authOptions);
+  if (!session || session.user.type !== 'admin') {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  await dbConnect();
+  const reviews = await Review.find()
+    .sort({ createdAt: -1 })
+    .populate('customer', 'name email mobile phone')
+    .lean();
+
+  return NextResponse.json({ reviews });
+}
+
 export async function POST(req) {
   const session = await getServerSession(authOptions);
   if (!session || session.user.type !== 'customer') {
