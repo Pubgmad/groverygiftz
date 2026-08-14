@@ -1,7 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { signIn } from 'next-auth/react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { trackMetaEvent } from '@/lib/metaPixel';
@@ -16,17 +15,11 @@ export default function RegisterPage() {
   const passwordCheck = validateStrongPassword(formData.password);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('googleAccountMissing') === '1') toast.error('No account exists for that Google email. Please create an account first.');
     setFormData({ name: '', email: '', password: '', phone: '' });
     const timer = setTimeout(() => setInputReady(true), 300);
     return () => clearTimeout(timer);
   }, []);
 
-  const handleGoogleSignUp = () => {
-    document.cookie = 'google_auth_intent=signup; path=/; max-age=600; SameSite=Lax';
-    signIn('google', { callbackUrl: '/account' }, { prompt: 'select_account' });
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -85,8 +78,6 @@ export default function RegisterPage() {
         </div>
         <button disabled={loading || !passwordCheck.valid} className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60">{loading ? 'Creating...' : 'Create Account'}</button>
       </form>
-      <div className="my-5 flex items-center gap-3 text-xs font-semibold uppercase tracking-widest text-gray-400"><span className="h-px flex-1 bg-gray-200" />or<span className="h-px flex-1 bg-gray-200" /></div>
-      <button type="button" onClick={handleGoogleSignUp} className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 transition hover:border-primary-200 hover:bg-primary-50">Continue with Google</button>
       <p className="mt-6 text-center text-sm text-gray-500">
         Already have an account? <Link href="/auth/login" className="text-primary-600 hover:underline">Sign In</Link>
       </p>

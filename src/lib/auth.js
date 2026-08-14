@@ -4,16 +4,6 @@ import bcrypt from 'bcryptjs';
 import dbConnect from './db';
 import Admin from '@/models/Admin';
 import Customer from '@/models/Customer';
-import { cookies } from 'next/headers';
-
-function clearGoogleAuthIntent() {
-  try {
-    cookies().set('google_auth_intent', '', { path: '/', maxAge: 0, sameSite: 'lax' });
-  } catch (error) {
-    // Cookie cleanup is best-effort; auth rules still depend on the current callback intent.
-  }
-}
-
 export const authOptions = {
   providers: [
     CredentialsProvider({
@@ -58,34 +48,20 @@ export const authOptions = {
       await dbConnect();
       const email = user.email?.trim().toLowerCase();
       if (!email) {
-        clearGoogleAuthIntent();
         return '/auth/login?googleError=missing-email';
       }
 
-      const intent = cookies().get('google_auth_intent')?.value || 'signin';
-      let customer = await Customer.findOne({ email });
-
-      if (!customer && intent !== 'signup') {
-        clearGoogleAuthIntent();
-        return '/auth/register?googleAccountMissing=1';
-      }
-
+      const customer = await Customer.findOne({ email });
       if (!customer) {
-        customer = await Customer.create({
-          name: user.name || email.split('@')[0],
-          email,
-          googleId: account.providerAccountId,
-          image: user.image || '',
-        });
-      } else {
-        customer.googleId = customer.googleId || account.providerAccountId;
-        customer.image = user.image || customer.image || '';
-        await customer.save();
+        return '/auth/login?googleAccountMissing=1';
       }
+
+      customer.googleId = customer.googleId || account.providerAccountId;
+      customer.image = user.image || customer.image || '';
+      await customer.save();
 
       user.id = customer._id.toString();
       user.type = 'customer';
-      clearGoogleAuthIntent();
       return true;
     },
     async jwt({ token, user }) {

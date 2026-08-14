@@ -22,6 +22,7 @@ export default function LoginPage() {
     setEmail('');
     setPassword('');
     if (params.get('googleError') === 'missing-email') toast.error('Google did not return an email address. Please use email/password login.');
+    if (params.get('googleAccountMissing') === '1') toast.error('No account exists for that Google email. Please register first.');
     const timer = setTimeout(() => setInputReady(true), 300);
     return () => clearTimeout(timer);
   }, []);
