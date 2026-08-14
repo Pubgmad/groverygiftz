@@ -5,6 +5,7 @@ import dbConnect from '@/lib/db';
 import Settings from '@/models/Settings';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { getCashfreeConfig } from '@/lib/cashfreeConfig';
 
 const GOOGLE_REVIEW_SETTING_KEYS = [
   'googleReviewsEnabled',
@@ -17,6 +18,9 @@ const GOOGLE_REVIEW_SETTING_KEYS = [
 
 function sanitizePublicSettings(settings) {
   const publicSettings = { ...settings };
+  const cashfree = getCashfreeConfig(settings);
+  publicSettings.cashfreeEnabled = cashfree.enabled;
+  publicSettings.cashfreeEnvironment = cashfree.environment;
   publicSettings.cashfreeSecretKey = '';
   publicSettings.metaPixelTestEventCode = '';
   publicSettings.googleReviewsSerpApiKey = '';

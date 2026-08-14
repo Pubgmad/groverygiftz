@@ -4,6 +4,7 @@ import Settings from '@/models/Settings';
 import Order from '@/models/Order';
 import { getNextPaidOrderNumber, isFinalOrderNumber } from '@/lib/orderNumbers';
 import { deductOrderInventory } from '@/lib/inventory';
+import { getCashfreeConfig } from '@/lib/cashfreeConfig';
 
 const CASHFREE_VERSION = '2025-01-01';
 const endpointFor = (environment, orderId) => environment === 'production'
@@ -14,17 +15,18 @@ export async function POST(req) {
   try {
     await dbConnect();
     const settings = await Settings.findOne().lean();
+    const cashfree = getCashfreeConfig(settings);
     const { orderId } = await req.json();
     if (!orderId) return NextResponse.json({ error: 'Missing Cashfree order ID' }, { status: 400 });
-    if (!settings?.cashfreeAppId || !settings?.cashfreeSecretKey) {
+    if (!cashfree.appId || !cashfree.secretKey) {
       return NextResponse.json({ error: 'Cashfree payment is not configured yet' }, { status: 503 });
     }
 
-    const cashfreeRes = await fetch(endpointFor(settings.cashfreeEnvironment, orderId), {
+    const cashfreeRes = await fetch(endpointFor(cashfree.environment, orderId), {
       headers: {
         'x-api-version': CASHFREE_VERSION,
-        'x-client-id': settings.cashfreeAppId,
-        'x-client-secret': settings.cashfreeSecretKey,
+        'x-client-id': cashfree.appId,
+        'x-client-secret': cashfree.secretKey,
       },
     });
     const data = await cashfreeRes.json();

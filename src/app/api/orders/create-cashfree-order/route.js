@@ -7,6 +7,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { buildDeliveryEstimateText } from '@/lib/deliveryDate';
 import { assertStockAvailable, getGroupedStockRequests } from '@/lib/inventory';
+import { getCashfreeConfig } from '@/lib/cashfreeConfig';
 
 const CASHFREE_VERSION = '2025-01-01';
 const endpointFor = (environment) => environment === 'production'
@@ -80,7 +81,8 @@ export async function POST(req) {
     }
 
     const settings = await Settings.findOne().lean();
-    if (!settings?.cashfreeEnabled || !settings?.cashfreeAppId || !settings?.cashfreeSecretKey) {
+    const cashfree = getCashfreeConfig(settings);
+    if (!cashfree.enabled || !cashfree.appId || !cashfree.secretKey) {
       return NextResponse.json({ error: 'Cashfree payment is not configured yet' }, { status: 503 });
     }
 
@@ -103,13 +105,13 @@ export async function POST(req) {
     const pendingOrderNumber = 'PENDING-' + Date.now().toString(36).toUpperCase();
     const origin = req.headers.get('origin') || process.env.NEXTAUTH_URL || 'http://localhost:3000';
 
-    const cashfreeRes = await fetch(endpointFor(settings.cashfreeEnvironment), {
+    const cashfreeRes = await fetch(endpointFor(cashfree.environment), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-api-version': CASHFREE_VERSION,
-        'x-client-id': settings.cashfreeAppId,
-        'x-client-secret': settings.cashfreeSecretKey,
+        'x-client-id': cashfree.appId,
+        'x-client-secret': cashfree.secretKey,
         'x-idempotency-key': pendingOrderNumber,
       },
       body: JSON.stringify({
@@ -161,7 +163,7 @@ export async function POST(req) {
       shippingCost,
       total,
       deliveryEstimate: order.deliveryEstimate,
-      mode: settings.cashfreeEnvironment === 'production' ? 'production' : 'sandbox',
+      mode: cashfree.environment === 'production' ? 'production' : 'sandbox',
     }, { status: 201 });
   } catch (error) {
     if (error?.name === 'InventoryError') {
