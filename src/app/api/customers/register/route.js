@@ -8,6 +8,7 @@ export async function POST(req) {
   await dbConnect();
   const { name, email, password, phone } = await req.json();
   const normalizedEmail = email?.trim().toLowerCase();
+  const normalizedPhone = String(phone || '').trim();
 
   if (!name || !normalizedEmail || !password) {
     return NextResponse.json({ error: 'Name, email, and password are required' }, { status: 400 });
