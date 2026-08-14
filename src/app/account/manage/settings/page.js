@@ -187,9 +187,9 @@ export default function AdminSettingsPage() {
       <form onSubmit={handleSubmit} className="space-y-6 max-w-4xl">
         <div className="bg-white p-6 rounded-xl border space-y-4">
           <h2 className="font-bold text-lg">General</h2>
-          <div className="grid md:grid-cols-2 gap-4">
-            <div><label className="block text-sm font-medium mb-1">Site Name</label><input value={form.siteName} onChange={e => setForm(p => ({ ...p, siteName: e.target.value }))} className="w-full border rounded-lg px-4 py-2" /></div>
-            <div><label className="block text-sm font-medium mb-1">Tagline</label><input value={form.tagline} onChange={e => setForm(p => ({ ...p, tagline: e.target.value }))} className="w-full border rounded-lg px-4 py-2" /></div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Site Name</label>
+            <input value={form.siteName} onChange={e => setForm(p => ({ ...p, siteName: e.target.value }))} className="w-full border rounded-lg px-4 py-2" />
           </div>
           <div className="space-y-3">
             <label className="block text-sm font-medium">Website Logo Assets</label>
@@ -201,7 +201,6 @@ export default function AdminSettingsPage() {
               <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3"><p className="mb-1 text-sm font-semibold">Favicon / Browser Tab Icon</p><p className="mb-2 text-xs text-gray-500">Recommended: square 512 x 512 PNG/WebP</p><ImageUploader replaceOnUpload deleteOnRemove confirmRemove images={form.favicon ? [form.favicon] : []} onChange={imgs => setForm(p => ({ ...p, favicon: imgs[0] || '' }))} /></div>
             </div>
           </div>
-          <div><label className="block text-sm font-medium mb-1">Announcement Bar Text</label><input value={form.announcementText} onChange={e => setForm(p => ({ ...p, announcementText: e.target.value }))} className="w-full border rounded-lg px-4 py-2" /></div>
         </div>
 
         <div className="bg-white p-6 rounded-xl border space-y-4">
