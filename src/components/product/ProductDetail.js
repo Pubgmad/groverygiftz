@@ -27,9 +27,15 @@ function UploadSpinner({ label = 'Uploading...' }) {
     </span>
   );
 }
-const attachLocalPreview = (upload, file) => ({
+const fileToDataUrl = (file) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(reader.result || '');
+  reader.onerror = reject;
+  reader.readAsDataURL(file);
+});
+const attachLocalPreview = async (upload, file) => ({
   ...upload,
-  previewUrl: file?.type?.startsWith('image/') ? URL.createObjectURL(file) : upload?.url,
+  previewUrl: file?.type?.startsWith('image/') ? await fileToDataUrl(file) : upload?.url,
 });
 const displayUploadUrl = (upload) => upload?.previewUrl || upload?.url || '';
 const getDefaultPreviewAdjustments = () => ({ zoom: 1, x: 0, y: 0, orientation: 'auto' });
@@ -287,14 +293,13 @@ export default function ProductDetail({ product }) {
     if (!dataUrl) return null;
     try {
       const blob = await (await fetch(dataUrl)).blob();
-      const previewUrl = URL.createObjectURL(blob);
       const safeLabel = String(label || `photo-${idx + 1}`).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `photo-${idx + 1}`;
       const formData = new FormData();
       formData.append('file', new File([blob], `${safeLabel}-final-preview.jpg`, { type: 'image/jpeg' }));
       const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Preview upload failed');
-      return { ...data, previewUrl };
+      return { ...data, previewUrl: dataUrl };
     } catch (error) {
       return null;
     }
@@ -493,7 +498,8 @@ export default function ProductDetail({ product }) {
       const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Upload failed');
-      setCustomFieldValues((prev) => ({ ...prev, [fieldLabel]: attachLocalPreview(data, file) }));
+      const uploadedFile = await attachLocalPreview(data, file);
+      setCustomFieldValues((prev) => ({ ...prev, [fieldLabel]: uploadedFile }));
       toast.success('Customization file uploaded');
       trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'file_upload', field_label: fieldLabel, file_type: data.type || file.type || '' }));
     } catch (error) {
@@ -525,7 +531,7 @@ const handleCustomerPhotoUpload = async (files) => {
         const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || `Failed to upload ${file.name}`);
-        uploaded.push(attachLocalPreview(data, file));
+        uploaded.push(await attachLocalPreview(data, file));
       }
       setCustomerPhotos((prev) => [...prev, ...uploaded]);
       toast.success(`${uploaded.length} photo${uploaded.length === 1 ? '' : 's'} uploaded`);
@@ -547,7 +553,8 @@ const handleCustomerPhotoUpload = async (files) => {
       const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Upload failed');
-      setVariantLabelUploads((prev) => ({ ...prev, [label]: { ...attachLocalPreview(data, file), label } }));
+      const uploadedFile = await attachLocalPreview(data, file);
+      setVariantLabelUploads((prev) => ({ ...prev, [label]: { ...uploadedFile, label } }));
       toast.success(`${label} image uploaded`);
       trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'variant_label_upload', field_label: label, file_type: data.type || file.type || '' }));
     } catch (error) {
@@ -582,7 +589,7 @@ const handleCustomerPhotoUpload = async (files) => {
         const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || `Failed to upload ${file.name}`);
-        uploaded.push(attachLocalPreview(data, file));
+        uploaded.push(await attachLocalPreview(data, file));
       }
       setCollageUploads((prev) => ({ ...prev, [label]: [...(prev[label] || []), ...uploaded] }));
       toast.success(`${label}: ${uploaded.length} image${uploaded.length === 1 ? '' : 's'} uploaded`);
