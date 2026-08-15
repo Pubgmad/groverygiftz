@@ -376,7 +376,10 @@ export default function ProductDetail({ product }) {
     });
   };
   const stopPreviewDrag = () => { dragStateRef.current = null; };
-  const savePreviewArea = (idx) => setSavedPreviewAreas((prev) => ({ ...prev, [idx]: true }));
+  const savePreviewArea = (idx) => {
+    setSavedPreviewAreas((prev) => ({ ...prev, [idx]: true }));
+    toast.success('Preview saved');
+  };
   const editPreviewArea = (idx) => setSavedPreviewAreas((prev) => ({ ...prev, [idx]: false }));
   const resetPreviewArea = (idx) => { setSavedPreviewAreas((prev) => ({ ...prev, [idx]: false })); setPreviewAdjustments((prev) => ({ ...prev, [idx]: getDefaultPreviewAdjustments() })); };
   const getProductPixelPayload = (extra = {}) => buildProductMetaPayload(product, {
