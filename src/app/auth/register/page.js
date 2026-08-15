@@ -12,9 +12,14 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [inputReady, setInputReady] = useState(false);
   const router = useRouter();
+  const [callbackUrl, setCallbackUrl] = useState('/account');
   const passwordCheck = validateStrongPassword(formData.password);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const requestedCallback = params.get('callbackUrl') || '/account';
+    const customerCallback = requestedCallback.startsWith('/account/manage') || requestedCallback.startsWith('/admin') || !requestedCallback.startsWith('/') ? '/account' : requestedCallback;
+    setCallbackUrl(customerCallback);
     setFormData({ name: '', email: '', password: '', phone: '' });
     const timer = setTimeout(() => setInputReady(true), 300);
     return () => clearTimeout(timer);
@@ -45,7 +50,7 @@ export default function RegisterPage() {
       if (res.ok) {
         toast.success('Account created! Please log in.');
         trackMetaEvent('CompleteRegistration', { status: true, registration_method: 'email' });
-        router.push('/auth/login');
+        router.push(`/auth/login?callbackUrl=${encodeURIComponent(callbackUrl || '/account')}`);
       } else {
         toast.error(data.error || 'Registration failed');
       }
@@ -79,7 +84,7 @@ export default function RegisterPage() {
         <button disabled={loading || !passwordCheck.valid} className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60">{loading ? 'Creating...' : 'Create Account'}</button>
       </form>
       <p className="mt-6 text-center text-sm text-gray-500">
-        Already have an account? <Link href="/auth/login" className="text-primary-600 hover:underline">Sign In</Link>
+        Already have an account? <Link href={`/auth/login?callbackUrl=${encodeURIComponent(callbackUrl || '/account')}`} className="text-primary-600 hover:underline">Sign In</Link>
       </p>
     </div>
   );

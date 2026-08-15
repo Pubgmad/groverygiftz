@@ -59,7 +59,7 @@ export default function LoginPage() {
       <div className="my-5 flex items-center gap-3 text-xs font-semibold uppercase tracking-widest text-gray-400"><span className="h-px flex-1 bg-gray-200" />or<span className="h-px flex-1 bg-gray-200" /></div>
       <button type="button" onClick={handleGoogleSignIn} className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 transition hover:border-primary-200 hover:bg-primary-50">Continue with Google</button>
       <p className="text-center mt-6 text-sm text-gray-500">
-        Don&apos;t have an account? <Link href="/auth/register" className="text-primary-600 hover:underline">Create Account</Link>
+        Don&apos;t have an account? <Link href={`/auth/register?callbackUrl=${encodeURIComponent(callbackUrl || '/account')}`} className="text-primary-600 hover:underline">Create Account</Link>
       </p>
     </div>
   );
