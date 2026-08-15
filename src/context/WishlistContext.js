@@ -19,6 +19,7 @@ export function WishlistProvider({ children }) {
   const localLoadedRef = useRef(false);
   const syncingRef = useRef(false);
   const syncedCustomerRef = useRef('');
+  const activeCustomerRef = useRef('');
 
   useEffect(() => {
     try {
@@ -49,18 +50,39 @@ export function WishlistProvider({ children }) {
           return merged;
         });
         syncedCustomerRef.current = session.user.id;
+        activeCustomerRef.current = session.user.id;
+        localStorage.removeItem('groverygiftz-wishlist');
       })
       .catch(() => {})
       .finally(() => { syncingRef.current = false; });
   }, [status, session?.user?.id, session?.user?.type]);
 
   useEffect(() => {
-    if (!localLoadedRef.current) return;
-    try {
-      localStorage.setItem('groverygiftz-wishlist', JSON.stringify(wishlist));
-    } catch {}
+    const activeCustomerId = status === 'authenticated' && session?.user?.type === 'customer' ? session.user.id : '';
+    if (activeCustomerId) {
+      activeCustomerRef.current = activeCustomerId;
+      return;
+    }
+    if (status !== 'loading' && activeCustomerRef.current) {
+      activeCustomerRef.current = '';
+      syncedCustomerRef.current = '';
+      syncingRef.current = false;
+      localStorage.removeItem('groverygiftz-wishlist');
+      setWishlist([]);
+    }
+  }, [status, session?.user?.id, session?.user?.type]);
 
-    if (status !== 'authenticated' || session?.user?.type !== 'customer' || !session.user.id || syncingRef.current || syncedCustomerRef.current !== session.user.id) return;
+  useEffect(() => {
+    if (!localLoadedRef.current) return;
+    const isCustomer = status === 'authenticated' && session?.user?.type === 'customer' && session.user.id;
+    if (!isCustomer) {
+      try {
+        localStorage.setItem('groverygiftz-wishlist', JSON.stringify(wishlist));
+      } catch {}
+      return;
+    }
+
+    if (syncingRef.current || syncedCustomerRef.current !== session.user.id) return;
     const timer = setTimeout(() => {
       fetch('/api/customers/saved-lists', {
         method: 'PUT',

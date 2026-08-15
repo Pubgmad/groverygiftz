@@ -51,6 +51,7 @@ export function CartProvider({ children }) {
   const localLoadedRef = useRef(false);
   const syncingRef = useRef(false);
   const syncedCustomerRef = useRef('');
+  const activeCustomerRef = useRef('');
 
   useEffect(() => {
     try {
@@ -81,18 +82,39 @@ export function CartProvider({ children }) {
           return merged;
         });
         syncedCustomerRef.current = session.user.id;
+        activeCustomerRef.current = session.user.id;
+        localStorage.removeItem('groverygiftz-cart');
       })
       .catch(() => {})
       .finally(() => { syncingRef.current = false; });
   }, [status, session?.user?.id, session?.user?.type]);
 
   useEffect(() => {
-    if (!localLoadedRef.current) return;
-    try {
-      localStorage.setItem('groverygiftz-cart', JSON.stringify(stripDisplayOnlyPreviewData(cart)));
-    } catch {}
+    const activeCustomerId = status === 'authenticated' && session?.user?.type === 'customer' ? session.user.id : '';
+    if (activeCustomerId) {
+      activeCustomerRef.current = activeCustomerId;
+      return;
+    }
+    if (status !== 'loading' && activeCustomerRef.current) {
+      activeCustomerRef.current = '';
+      syncedCustomerRef.current = '';
+      syncingRef.current = false;
+      localStorage.removeItem('groverygiftz-cart');
+      setCart([]);
+    }
+  }, [status, session?.user?.id, session?.user?.type]);
 
-    if (status !== 'authenticated' || session?.user?.type !== 'customer' || !session.user.id || syncingRef.current || syncedCustomerRef.current !== session.user.id) return;
+  useEffect(() => {
+    if (!localLoadedRef.current) return;
+    const isCustomer = status === 'authenticated' && session?.user?.type === 'customer' && session.user.id;
+    if (!isCustomer) {
+      try {
+        localStorage.setItem('groverygiftz-cart', JSON.stringify(stripDisplayOnlyPreviewData(cart)));
+      } catch {}
+      return;
+    }
+
+    if (syncingRef.current || syncedCustomerRef.current !== session.user.id) return;
     const timer = setTimeout(() => {
       fetch('/api/customers/saved-lists', {
         method: 'PUT',
