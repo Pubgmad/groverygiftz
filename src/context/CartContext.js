@@ -45,8 +45,12 @@ const stripDisplayOnlyPreviewData = (value) => {
 };
 
 export function CartProvider({ children }) {
+  const { data: session, status } = useSession();
   const [cart, setCart] = useState([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const localLoadedRef = useRef(false);
+  const syncingRef = useRef(false);
+  const syncedCustomerRef = useRef('');
 
   useEffect(() => {
     try {
