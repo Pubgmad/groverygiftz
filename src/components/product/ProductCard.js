@@ -92,7 +92,7 @@ export default function ProductCard({ product }) {
         <div className="mt-2 flex min-h-[28px] flex-wrap items-center gap-1.5 text-[11px] font-semibold text-gray-500">
           {hasVariants && <span className="rounded-full border border-primary-200 bg-white px-3 py-1 text-primary-700">Options</span>}
           {canGiftWrap && <span className="rounded-full bg-accent-50 px-2.5 py-1 text-accent-700">Gift ready</span>}
-          {product.isQuoteOnly && <span className="rounded-full bg-gray-100 px-2.5 py-1 text-gray-700">Contact for price</span>}
+          {product.isQuoteOnly && !showContactOnlyPrice && <span className="rounded-full bg-gray-100 px-2.5 py-1 text-gray-700">Contact for price</span>}
         </div>
 
         <div className="mt-1 min-h-[24px]">
