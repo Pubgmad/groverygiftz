@@ -22,6 +22,7 @@ export default function ProductCard({ product }) {
   const displayRegularPrice = getDisplayRegularPrice(product);
   const savings = displayRegularPrice > displayPrice ? calcSavings(displayRegularPrice, displayPrice) : 0;
   const hasVariants = product.variants?.length > 0;
+  const showContactOnlyPrice = product.isQuoteOnly && !(displayPrice > 0);
   const displayedOfferActive = savings > 0 && (!product.offerStartsAt && !product.offerEndsAt
     ? true
     : isOfferActive({ ...product, regularPrice: displayRegularPrice, salePrice: displayPrice }));
@@ -78,10 +79,14 @@ export default function ProductCard({ product }) {
         </h3>
 
         <div className="mt-2 flex min-h-[30px] flex-wrap items-baseline gap-x-2 gap-y-1">
-          <span className="text-lg font-extrabold leading-none text-primary-700 sm:text-xl">
-            {hasVariants ? 'From ' : ''}{formatPrice(displayPrice)}
-          </span>
-          {savings > 0 && <span className="text-xs font-semibold text-gray-400 line-through sm:text-sm">{formatPrice(displayRegularPrice)}</span>}
+          {showContactOnlyPrice ? (
+            <span className="text-base font-extrabold leading-none text-primary-700 sm:text-lg">Contact for Price</span>
+          ) : (
+            <span className="text-lg font-extrabold leading-none text-primary-700 sm:text-xl">
+              {hasVariants ? 'From ' : ''}{formatPrice(displayPrice)}
+            </span>
+          )}
+          {!showContactOnlyPrice && savings > 0 && <span className="text-xs font-semibold text-gray-400 line-through sm:text-sm">{formatPrice(displayRegularPrice)}</span>}
         </div>
 
         <div className="mt-2 flex min-h-[28px] flex-wrap items-center gap-1.5 text-[11px] font-semibold text-gray-500">

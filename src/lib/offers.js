@@ -88,7 +88,7 @@ export function productPriceCandidatesExpression(now = new Date()) {
       },
     },
   };
-  const variantPrices = {
+  const rawVariantPrices = {
     $map: {
       input: variantOptions,
       as: 'option',
@@ -113,18 +113,39 @@ export function productPriceCandidatesExpression(now = new Date()) {
       },
     },
   };
+  const variantPrices = {
+    $filter: {
+      input: rawVariantPrices,
+      as: 'candidatePrice',
+      cond: { $gt: ['$$candidatePrice', 0] },
+    },
+  };
+  const basePriceCandidates = {
+    $cond: [
+      { $and: [{ $eq: ['$isQuoteOnly', true] }, { $lte: [basePrice, 0] }] },
+      [],
+      [basePrice],
+    ],
+  };
 
   return {
     $cond: [
       { $gt: [{ $size: variantPrices }, 0] },
       variantPrices,
-      [basePrice],
+      basePriceCandidates,
     ],
   };
 }
 
 export function variantAwareEffectivePriceExpression(now = new Date()) {
-  return { $min: productPriceCandidatesExpression(now) };
+  const candidates = productPriceCandidatesExpression(now);
+  return {
+    $cond: [
+      { $gt: [{ $size: candidates }, 0] },
+      { $min: candidates },
+      999999999,
+    ],
+  };
 }
 
 export function priceRangeMatchExpression(range, now = new Date()) {

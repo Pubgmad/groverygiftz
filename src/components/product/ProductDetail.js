@@ -166,6 +166,7 @@ export default function ProductDetail({ product }) {
   const finalUnitPrice = baseDisplayPrice + selectedVariantExtra + giftWrapPrice;
   const compareAtPrice = baseRegularPrice + selectedVariantExtra + giftWrapPrice;
   const savings = compareAtPrice > finalUnitPrice ? compareAtPrice - finalUnitPrice : 0;
+  const showContactOnlyPrice = product.isQuoteOnly && !(finalUnitPrice > 0);
   const price = baseDisplayPrice;
   const productDelivery = product.delivery || {};
   const usesProductDelivery = !!productDelivery.useCustomDelivery;
@@ -698,8 +699,8 @@ const handleCustomerPhotoUpload = async (files) => {
         <h1 className="text-2xl md:text-3xl font-display font-bold mb-4">{product.title}</h1>
 
         <div className="flex flex-wrap items-center gap-3 mb-4">
-          <span className="text-3xl font-bold text-primary-600">{formatPrice(finalUnitPrice)}</span>
-          {savings > 0 && (
+          <span className="text-3xl font-bold text-primary-600">{showContactOnlyPrice ? 'Contact for Price' : formatPrice(finalUnitPrice)}</span>
+          {!showContactOnlyPrice && savings > 0 && (
             <>
               <span className="text-xl text-gray-400 line-through">{formatPrice(compareAtPrice)}</span>
               <span className="badge-save text-sm">Save {formatPrice(savings)}</span>
