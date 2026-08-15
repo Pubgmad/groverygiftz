@@ -8,7 +8,6 @@ const CUSTOMIZATION_DIR = 'customizations';
 const LEGACY_CUSTOMIZATION_PREFIX = '/customizations/';
 const ORIGINAL_FILE_PREFIX = '/api/customization-upload/original-file/';
 const DEFAULT_RETENTION_DAYS = 30;
-const DEFAULT_PENDING_RETENTION_HOURS = 48;
 const CUSTOMER_UPLOAD_KEYS = new Set(['url', 'originalUrl', 'storagePath']);
 
 function isPlainObject(value) {
@@ -106,15 +105,9 @@ function redactCustomizationPaths(value, deletedAt, redactedPaths) {
   return { value: changed ? next : value, changed };
 }
 
-async function collectProtectedPaths({ paidCutoff, pendingCutoff }) {
+async function collectProtectedPaths(cutoff) {
   const protectedPaths = new Set();
-  const cursor = Order.find({
-    $or: [
-      { paymentStatus: 'paid', createdAt: { $gt: paidCutoff } },
-      { paymentStatus: { $in: ['pending', 'failed'] }, createdAt: { $gt: pendingCutoff } },
-      { paymentStatus: { $nin: ['paid', 'pending', 'failed'] }, createdAt: { $gt: paidCutoff } },
-    ],
-  }).select('items').lean().cursor();
+  const cursor = Order.find({ createdAt: { $gt: cutoff } }).select('items').lean().cursor();
 
   for await (const order of cursor) {
     for (const item of order.items || []) {
@@ -127,35 +120,6 @@ async function collectProtectedPaths({ paidCutoff, pendingCutoff }) {
   return protectedPaths;
 }
 
-async function deleteAbandonedPendingOrders(cutoff, dryRun) {
-  const targetPaths = new Set();
-  let pendingOrdersScanned = 0;
-  let pendingOrdersDeleted = 0;
-  let pendingReferencesCollected = 0;
-  const ids = [];
-
-  const cursor = Order.find({ paymentStatus: { $in: ['pending', 'failed'] }, createdAt: { $lte: cutoff } }).select('items').lean().cursor();
-
-  for await (const order of cursor) {
-    pendingOrdersScanned += 1;
-    ids.push(order._id);
-    const orderPaths = new Set();
-    for (const item of order.items || []) {
-      extractCustomizationPaths(item.customFields, orderPaths);
-      extractCustomizationPaths(item.customizationPreview, orderPaths);
-      extractCustomizationPaths(item.collageUploads, orderPaths);
-    }
-    orderPaths.forEach((uploadPath) => targetPaths.add(uploadPath));
-    pendingReferencesCollected += orderPaths.size;
-  }
-
-  if (ids.length > 0) {
-    pendingOrdersDeleted = dryRun ? ids.length : (await Order.deleteMany({ _id: { $in: ids }, paymentStatus: { $in: ['pending', 'failed'] } })).deletedCount;
-  }
-
-  return { pendingOrdersScanned, pendingOrdersDeleted, pendingReferencesCollected, targetPaths };
-}
-
 async function redactOldOrderReferences(cutoff, dryRun) {
   const deletedAt = new Date().toISOString();
   const targetPaths = new Set();
@@ -163,7 +127,7 @@ async function redactOldOrderReferences(cutoff, dryRun) {
   let ordersUpdated = 0;
   let referencesRedacted = 0;
 
-  const cursor = Order.find({ paymentStatus: 'paid', createdAt: { $lte: cutoff } }).select('items').lean().cursor();
+  const cursor = Order.find({ createdAt: { $lte: cutoff } }).select('items').lean().cursor();
 
   for await (const order of cursor) {
     ordersScanned += 1;
@@ -277,30 +241,21 @@ async function deleteOrphanedFiles(cutoff, protectedPaths, handledPaths, dryRun)
 
 export async function cleanupCustomerUploads(options = {}) {
   const retentionDays = Number(options.retentionDays || DEFAULT_RETENTION_DAYS);
-  const pendingRetentionHours = Number(options.pendingRetentionHours || DEFAULT_PENDING_RETENTION_HOURS);
   const dryRun = Boolean(options.dryRun);
   const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
-  const pendingCutoff = new Date(Date.now() - pendingRetentionHours * 60 * 60 * 1000);
 
   await dbConnect();
 
-  const protectedPaths = await collectProtectedPaths({ paidCutoff: cutoff, pendingCutoff });
-  const pendingResult = await deleteAbandonedPendingOrders(pendingCutoff, dryRun);
+  const protectedPaths = await collectProtectedPaths(cutoff);
   const orderResult = await redactOldOrderReferences(cutoff, dryRun);
-  const combinedTargetPaths = new Set([...pendingResult.targetPaths, ...orderResult.targetPaths]);
-  const fileResult = await deleteCollectedFiles(combinedTargetPaths, protectedPaths, dryRun);
+  const fileResult = await deleteCollectedFiles(orderResult.targetPaths, protectedPaths, dryRun);
   const orphanResult = await deleteOrphanedFiles(cutoff, protectedPaths, fileResult.handledPaths, dryRun);
 
   return {
     dryRun,
     retentionDays,
-    pendingRetentionHours,
     cutoff: cutoff.toISOString(),
-    pendingCutoff: pendingCutoff.toISOString(),
     target: `${CUSTOMIZATION_DIR}/`,
-    pendingOrdersScanned: pendingResult.pendingOrdersScanned,
-    pendingOrdersDeleted: pendingResult.pendingOrdersDeleted,
-    pendingReferencesCollected: pendingResult.pendingReferencesCollected,
     ordersScanned: orderResult.ordersScanned,
     ordersUpdated: orderResult.ordersUpdated,
     referencesRedacted: orderResult.referencesRedacted,
