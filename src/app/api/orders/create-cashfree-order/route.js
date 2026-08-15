@@ -19,6 +19,17 @@ const isTamilNadu = (state) => String(state || '').trim().toLowerCase() === 'tam
 const getStateOverride = (delivery, state) => (delivery?.stateOverrides || []).find(
   (row) => String(row.state || '').trim().toLowerCase() === String(state || '').trim().toLowerCase()
 );
+const stripDisplayOnlyPreviewData = (value) => {
+  if (Array.isArray(value)) return value.map(stripDisplayOnlyPreviewData);
+  if (!value || typeof value !== 'object') return value;
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => key !== 'previewUrl' && key !== 'displayUrl')
+      .map(([key, entry]) => [key, stripDisplayOnlyPreviewData(entry)])
+  );
+};
+
 
 const resolveItemDelivery = (item, productsById, state, settings) => {
   const variantOverride = getStateOverride(item?.variantDelivery, state);
@@ -92,7 +103,10 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Missing required order fields' }, { status: 400 });
     }
 
-    const orderItems = items.map((item) => ({ ...item, product: item.product || item.productId || undefined, productId: item.productId || item.product || '' }));
+    const orderItems = items.map((item) => {
+      const sanitizedItem = stripDisplayOnlyPreviewData(item);
+      return { ...sanitizedItem, product: sanitizedItem.product || sanitizedItem.productId || undefined, productId: sanitizedItem.productId || sanitizedItem.product || '' };
+    });
     const productIds = [...new Set(orderItems.map((item) => item.productId).filter(Boolean))];
     const products = await Product.find({ _id: { $in: productIds } }).select('title stock variants delivery isActive').lean();
     const productsById = Object.fromEntries(products.map((product) => [String(product._id), product]));
