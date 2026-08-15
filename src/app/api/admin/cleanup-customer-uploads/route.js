@@ -25,7 +25,8 @@ async function handleCleanup(req) {
   const { searchParams } = new URL(req.url);
   const dryRun = searchParams.get('dryRun') === 'true';
   const retentionDays = Number(searchParams.get('retentionDays') || 30);
-  const result = await cleanupCustomerUploads({ dryRun, retentionDays });
+  const pendingRetentionHours = Number(searchParams.get('pendingRetentionHours') || 48);
+  const result = await cleanupCustomerUploads({ dryRun, retentionDays, pendingRetentionHours });
 
   return NextResponse.json(result);
 }
