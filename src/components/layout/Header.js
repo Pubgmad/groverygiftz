@@ -175,15 +175,19 @@ export default function Header() {
             {(suggestions.length > 0 || suggesting) && (
               <div className="absolute left-0 right-0 top-full mt-2 z-50 overflow-hidden rounded-2xl border bg-white shadow-brand-lg">
                 {suggesting && suggestions.length === 0 && <div className="px-4 py-3 text-sm text-gray-500">Finding matching gifts...</div>}
-                {suggestions.map((product) => (
+                {suggestions.map((product) => {
+                  const displayPrice = getDisplayPrice(product);
+                  const showContactOnlyPrice = product.isQuoteOnly && !(displayPrice > 0);
+                  return (
                   <Link key={product._id} href={`/products/${product.slug}`} onClick={closeSearch} className="flex items-center gap-3 px-4 py-3 hover:bg-primary-50 transition-colors">
                     <img src={product.images?.[0] || '/placeholder.svg'} alt="" className="h-11 w-11 rounded-lg object-cover bg-gray-100" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold text-gray-900">{product.title}</p>
-                      <p className="text-xs font-bold text-primary-600">{formatPrice(getDisplayPrice(product))}</p>
+                      <p className="text-xs font-bold text-primary-600">{showContactOnlyPrice ? 'Contact for Price' : formatPrice(displayPrice)}</p>
                     </div>
                   </Link>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
