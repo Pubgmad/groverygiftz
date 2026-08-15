@@ -44,7 +44,7 @@ export async function sendPasswordResetEmail({ to, resetLink }) {
     html: `
       <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111827">
         <div style="margin-bottom:18px">
-          <img src="https://groverygiftz.in/media/uploads/1786728758445-92madv-1001473162.png" alt="GroveryGiftz" style="display:block;max-width:180px;height:auto" />
+          <img src="https://groverygiftz.in/media/uploads/1786613102578-9xp158-Grovery.png" alt="GroveryGiftz" style="display:block;width:86px;height:auto" />
         </div>
         <h2 style="margin:0 0 12px;color:#2456D8">Reset your GroveryGiftz password</h2>
         <p>We received a request to reset your password.</p>
