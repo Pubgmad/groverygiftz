@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { signIn } from 'next-auth/react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { trackMetaEvent } from '@/lib/metaPixel';
@@ -48,9 +49,20 @@ export default function RegisterPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        toast.success('Account created! Please log in.');
         trackMetaEvent('CompleteRegistration', { status: true, registration_method: 'email' });
-        router.push(`/auth/login?callbackUrl=${encodeURIComponent(callbackUrl || '/account')}`);
+        const loginResult = await signIn('credentials', {
+          email: formData.email,
+          password: formData.password,
+          loginType: 'customer',
+          redirect: false,
+        });
+        if (loginResult?.error) {
+          toast.success('Account created. Please sign in to continue.');
+          router.push(`/auth/login?callbackUrl=${encodeURIComponent(callbackUrl || '/account')}`);
+          return;
+        }
+        toast.success('Account created!');
+        router.push(callbackUrl || '/account');
       } else {
         toast.error(data.error || 'Registration failed');
       }
