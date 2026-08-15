@@ -1,20 +1,75 @@
 'use client';
-import { createContext, useContext, useState, useEffect } from 'react';
-import { buildProductMetaPayload, trackMetaEvent } from '@/lib/metaPixel';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { useSession } from 'next-auth/react';
 
 const WishlistContext = createContext();
 
+const mergeWishlistItems = (accountWishlist = [], localWishlist = []) => {
+  const merged = [...accountWishlist];
+  localWishlist.forEach((product) => {
+    if (!product?._id) return;
+    if (!merged.some((entry) => entry?._id === product._id)) merged.push(product);
+  });
+  return merged;
+};
+
 export function WishlistProvider({ children }) {
+  const { data: session, status } = useSession();
   const [wishlist, setWishlist] = useState([]);
+  const localLoadedRef = useRef(false);
+  const syncingRef = useRef(false);
+  const syncedCustomerRef = useRef('');
 
   useEffect(() => {
-    const saved = localStorage.getItem('groverygiftz-wishlist');
-    if (saved) setWishlist(JSON.parse(saved));
+    try {
+      const saved = localStorage.getItem('groverygiftz-wishlist');
+      if (saved) setWishlist(JSON.parse(saved));
+    } catch {
+      localStorage.removeItem('groverygiftz-wishlist');
+    } finally {
+      localLoadedRef.current = true;
+    }
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('groverygiftz-wishlist', JSON.stringify(wishlist));
-  }, [wishlist]);
+    if (status !== 'authenticated' || session?.user?.type !== 'customer' || !session.user.id || !localLoadedRef.current) return;
+    if (syncedCustomerRef.current === session.user.id) return;
+
+    syncingRef.current = true;
+    fetch('/api/customers/saved-lists')
+      .then((res) => res.ok ? res.json() : Promise.reject())
+      .then((data) => {
+        setWishlist((current) => {
+          const merged = mergeWishlistItems(data.wishlist || [], current || []);
+          fetch('/api/customers/saved-lists', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ wishlist: merged }),
+          }).catch(() => {});
+          return merged;
+        });
+        syncedCustomerRef.current = session.user.id;
+      })
+      .catch(() => {})
+      .finally(() => { syncingRef.current = false; });
+  }, [status, session?.user?.id, session?.user?.type]);
+
+  useEffect(() => {
+    if (!localLoadedRef.current) return;
+    try {
+      localStorage.setItem('groverygiftz-wishlist', JSON.stringify(wishlist));
+    } catch {}
+
+    if (status !== 'authenticated' || session?.user?.type !== 'customer' || !session.user.id || syncingRef.current || syncedCustomerRef.current !== session.user.id) return;
+    const timer = setTimeout(() => {
+      fetch('/api/customers/saved-lists', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wishlist }),
+      }).catch(() => {});
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [wishlist, status, session?.user?.id, session?.user?.type]);
 
   const toggleWishlist = (product) => {
     setWishlist(prev => {
@@ -28,6 +83,8 @@ export function WishlistProvider({ children }) {
         regularPrice: product.regularPrice,
         salePrice: product.salePrice,
         stock: product.stock,
+        isQuoteOnly: product.isQuoteOnly,
+        variants: product.variants,
       }];
     });
   };

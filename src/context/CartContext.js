@@ -1,5 +1,6 @@
 'use client';
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { useSession } from 'next-auth/react';
 
 const CartContext = createContext();
 
@@ -16,6 +17,22 @@ const normalizeStockLimit = (value) => {
 const capQuantity = (quantity, availableStock) => {
   const limit = normalizeStockLimit(availableStock);
   return limit === null ? quantity : Math.min(quantity, limit);
+};
+const mergeCartItems = (accountCart = [], localCart = []) => {
+  const merged = [...accountCart];
+  localCart.forEach((item) => {
+    const existingIndex = !item.cartItemId ? merged.findIndex((entry) => isSameCartLine(entry, item.productId, item.variant)) : -1;
+    if (existingIndex >= 0) {
+      const existing = merged[existingIndex];
+      merged[existingIndex] = {
+        ...existing,
+        quantity: capQuantity(Number(existing.quantity || 0) + Number(item.quantity || 1), existing.availableStock ?? item.availableStock),
+      };
+      return;
+    }
+    merged.push({ ...item, quantity: capQuantity(Number(item.quantity || 1), item.availableStock) });
+  });
+  return merged;
 };
 const stripDisplayOnlyPreviewData = (value) => {
   if (Array.isArray(value)) return value.map(stripDisplayOnlyPreviewData);
@@ -37,14 +54,50 @@ export function CartProvider({ children }) {
       if (saved) setCart(JSON.parse(saved));
     } catch {
       localStorage.removeItem('groverygiftz-cart');
+    } finally {
+      localLoadedRef.current = true;
     }
   }, []);
 
   useEffect(() => {
+    if (status !== 'authenticated' || session?.user?.type !== 'customer' || !session.user.id || !localLoadedRef.current) return;
+    if (syncedCustomerRef.current === session.user.id) return;
+
+    syncingRef.current = true;
+    fetch('/api/customers/saved-lists')
+      .then((res) => res.ok ? res.json() : Promise.reject())
+      .then((data) => {
+        setCart((current) => {
+          const merged = mergeCartItems(data.cart || [], current || []);
+          fetch('/api/customers/saved-lists', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cart: stripDisplayOnlyPreviewData(merged) }),
+          }).catch(() => {});
+          return merged;
+        });
+        syncedCustomerRef.current = session.user.id;
+      })
+      .catch(() => {})
+      .finally(() => { syncingRef.current = false; });
+  }, [status, session?.user?.id, session?.user?.type]);
+
+  useEffect(() => {
+    if (!localLoadedRef.current) return;
     try {
       localStorage.setItem('groverygiftz-cart', JSON.stringify(stripDisplayOnlyPreviewData(cart)));
     } catch {}
-  }, [cart]);
+
+    if (status !== 'authenticated' || session?.user?.type !== 'customer' || !session.user.id || syncingRef.current || syncedCustomerRef.current !== session.user.id) return;
+    const timer = setTimeout(() => {
+      fetch('/api/customers/saved-lists', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cart: stripDisplayOnlyPreviewData(cart) }),
+      }).catch(() => {});
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [cart, status, session?.user?.id, session?.user?.type]);
 
   const addToCart = (item, options = {}) => {
     setCart(prev => {

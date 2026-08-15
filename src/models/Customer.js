@@ -9,6 +9,8 @@ const CustomerSchema = new mongoose.Schema({
   resetPasswordToken: { type: String, default: '' },
   resetPasswordExpires: Date,
   phone: String,
+  cart: { type: [mongoose.Schema.Types.Mixed], default: [] },
+  wishlist: { type: [mongoose.Schema.Types.Mixed], default: [] },
   addresses: [{
     fullName: String,
     phone: String,
