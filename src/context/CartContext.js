@@ -17,18 +17,33 @@ const capQuantity = (quantity, availableStock) => {
   const limit = normalizeStockLimit(availableStock);
   return limit === null ? quantity : Math.min(quantity, limit);
 };
+const stripDisplayOnlyPreviewData = (value) => {
+  if (Array.isArray(value)) return value.map(stripDisplayOnlyPreviewData);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => key !== 'previewUrl' && key !== 'displayUrl')
+      .map(([key, entry]) => [key, stripDisplayOnlyPreviewData(entry)])
+  );
+};
 
 export function CartProvider({ children }) {
   const [cart, setCart] = useState([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem('groverygiftz-cart');
-    if (saved) setCart(JSON.parse(saved));
+    try {
+      const saved = localStorage.getItem('groverygiftz-cart');
+      if (saved) setCart(JSON.parse(saved));
+    } catch {
+      localStorage.removeItem('groverygiftz-cart');
+    }
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('groverygiftz-cart', JSON.stringify(cart));
+    try {
+      localStorage.setItem('groverygiftz-cart', JSON.stringify(stripDisplayOnlyPreviewData(cart)));
+    } catch {}
   }, [cart]);
 
   const addToCart = (item, options = {}) => {
