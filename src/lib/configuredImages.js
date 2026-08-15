@@ -1,10 +1,11 @@
 const hasUrl = (value) => value && typeof value === 'object' && typeof value.url === 'string' && value.url.trim();
+const displayUrlFor = (asset) => asset?.previewUrl || asset?.displayUrl || asset?.url;
 
 export const isConfiguredImageAsset = (value) => hasUrl(value);
 
 export const isImageAsset = (asset) => {
   const type = String(asset?.type || '').toLowerCase();
-  const url = String(asset?.url || '').toLowerCase();
+  const url = String(displayUrlFor(asset) || '').toLowerCase();
   return type.startsWith('image/') || /\.(png|jpe?g|webp|gif|avif|svg)(\?|#|$)/.test(url) || url.startsWith('data:image/');
 };
 
@@ -15,7 +16,8 @@ const normalizeAsset = (asset, caption) => {
   }
   if (!hasUrl(asset)) return null;
   return {
-    url: asset.url,
+    url: displayUrlFor(asset),
+    originalUrl: asset.url,
     name: asset.name || caption,
     type: asset.type || '',
     caption,

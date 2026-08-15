@@ -287,13 +287,14 @@ export default function ProductDetail({ product }) {
     if (!dataUrl) return null;
     try {
       const blob = await (await fetch(dataUrl)).blob();
+      const previewUrl = URL.createObjectURL(blob);
       const safeLabel = String(label || `photo-${idx + 1}`).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `photo-${idx + 1}`;
       const formData = new FormData();
       formData.append('file', new File([blob], `${safeLabel}-final-preview.jpg`, { type: 'image/jpeg' }));
       const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Preview upload failed');
-      return data;
+      return { ...data, previewUrl };
     } catch (error) {
       return null;
     }
