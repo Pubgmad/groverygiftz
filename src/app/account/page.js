@@ -145,7 +145,8 @@ export default function AccountPage() {
   }, [session]);
 
   const totalSpent = useMemo(() => orders.reduce((sum, order) => sum + Number(order.paymentStatus === 'paid' ? order.total || 0 : 0), 0), [orders]);
-  const activeOrders = orders.filter((order) => normalizeStatus(order.status) !== 'cancelled').length;
+  const confirmedOrders = orders.filter((order) => normalizeStatus(order.status) !== 'cancelled').length;
+  const scrollToOrderHistory = () => document.getElementById('order-history')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   if (status === 'loading') return <div className="py-16 text-center text-gray-500">Loading...</div>;
   if (!session) return null;
@@ -173,15 +174,16 @@ export default function AccountPage() {
               </button>
             </div>
             <div className="mt-6 grid gap-3 sm:grid-cols-3">
-              <div className="rounded-2xl bg-primary-50 p-4">
+              <button type="button" onClick={scrollToOrderHistory} className="rounded-2xl bg-primary-50 p-4 text-left transition hover:bg-primary-100 focus:outline-none focus:ring-2 focus:ring-primary-500">
                 <FiShoppingBag className="mb-2 text-primary-600" />
                 <p className="text-2xl font-extrabold text-gray-950">{orders.length}</p>
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Total orders</p>
-              </div>
+                <p className="mt-1 text-xs font-bold text-primary-700">View order history</p>
+              </button>
               <div className="rounded-2xl bg-orange-50 p-4">
                 <FiPackage className="mb-2 text-accent-600" />
-                <p className="text-2xl font-extrabold text-gray-950">{activeOrders}</p>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Active orders</p>
+                <p className="text-2xl font-extrabold text-gray-950">{confirmedOrders}</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Confirmed orders</p>
               </div>
               <div className="rounded-2xl bg-rose-50 p-4">
                 <FiHeart className="mb-2 text-rose-500" />
@@ -192,7 +194,7 @@ export default function AccountPage() {
           </div>
         </section>
 
-        <section className="mt-8">
+        <section id="order-history" className="mt-8 scroll-mt-24">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="section-eyebrow text-primary-600">Orders</p>
