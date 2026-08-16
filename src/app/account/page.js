@@ -146,7 +146,6 @@ export default function AccountPage() {
 
   const totalSpent = useMemo(() => orders.reduce((sum, order) => sum + Number(order.paymentStatus === 'paid' ? order.total || 0 : 0), 0), [orders]);
   const confirmedOrders = orders.filter((order) => normalizeStatus(order.status) !== 'cancelled').length;
-  const scrollToOrderHistory = () => document.getElementById('order-history')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   if (status === 'loading') return <div className="py-16 text-center text-gray-500">Loading...</div>;
   if (!session) return null;
@@ -174,17 +173,18 @@ export default function AccountPage() {
               </button>
             </div>
             <div className="mt-6 grid gap-3 sm:grid-cols-3">
-              <button type="button" onClick={scrollToOrderHistory} className="rounded-2xl bg-primary-50 p-4 text-left transition hover:bg-primary-100 focus:outline-none focus:ring-2 focus:ring-primary-500">
+              <Link href="/account/orders" className="rounded-2xl bg-primary-50 p-4 text-left transition hover:bg-primary-100 focus:outline-none focus:ring-2 focus:ring-primary-500">
                 <FiShoppingBag className="mb-2 text-primary-600" />
                 <p className="text-2xl font-extrabold text-gray-950">{orders.length}</p>
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Total orders</p>
                 <p className="mt-1 text-xs font-bold text-primary-700">View order history</p>
-              </button>
-              <div className="rounded-2xl bg-orange-50 p-4">
+              </Link>
+              <Link href="/account/orders?filter=confirmed" className="rounded-2xl bg-orange-50 p-4 text-left transition hover:bg-orange-100 focus:outline-none focus:ring-2 focus:ring-accent-500">
                 <FiPackage className="mb-2 text-accent-600" />
                 <p className="text-2xl font-extrabold text-gray-950">{confirmedOrders}</p>
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Confirmed orders</p>
-              </div>
+                <p className="mt-1 text-xs font-bold text-accent-700">View confirmed orders</p>
+              </Link>
               <div className="rounded-2xl bg-rose-50 p-4">
                 <FiHeart className="mb-2 text-rose-500" />
                 <p className="text-2xl font-extrabold text-gray-950">{formatPrice(totalSpent)}</p>
