@@ -36,6 +36,7 @@ export default function CheckoutPage() {
   });
   const [orderResult, setOrderResult] = useState(null);
   const checkoutTrackedRef = useRef(false);
+  const returnVerifyRef = useRef('');
 
   const hasSelectedState = Boolean(address.state);
   const outOfTamilNadu = hasSelectedState && !isTamilNadu(address.state);
@@ -47,7 +48,9 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     if (status === 'unauthenticated') {
-      router.replace('/auth/login?callbackUrl=/checkout');
+      const returnedOrderId = new URLSearchParams(window.location.search).get('cashfree_order_id');
+      const callbackUrl = returnedOrderId ? `/checkout?cashfree_order_id=${encodeURIComponent(returnedOrderId)}` : '/checkout';
+      router.replace(`/auth/login?callbackUrl=${encodeURIComponent(callbackUrl)}`);
     }
   }, [status, router]);
 
@@ -80,8 +83,24 @@ export default function CheckoutPage() {
   }, []);
 
   useEffect(() => {
+    const returnedOrderId = new URLSearchParams(window.location.search).get('cashfree_order_id');
+    if (returnedOrderId) return;
     if (cart.length === 0 && step !== 3 && status === 'authenticated' && session?.user?.type === 'customer') router.replace('/cart');
   }, [cart, step, router, status, session]);
+  useEffect(() => {
+    const returnedOrderId = new URLSearchParams(window.location.search).get('cashfree_order_id');
+    if (!returnedOrderId || status !== 'authenticated' || session?.user?.type !== 'customer') return;
+    if (returnVerifyRef.current === returnedOrderId) return;
+    returnVerifyRef.current = returnedOrderId;
+    setLoading(true);
+    setStep(2);
+    verifyCashfreeOrder(returnedOrderId)
+      .then((success) => {
+        if (success) router.replace('/checkout', { scroll: false });
+      })
+      .finally(() => setLoading(false));
+  }, [status, session, router]);
+
   useEffect(() => {
     if (checkoutTrackedRef.current || status !== 'authenticated' || session?.user?.type !== 'customer' || cart.length === 0 || step === 3) return;
     checkoutTrackedRef.current = true;
@@ -98,6 +117,39 @@ export default function CheckoutPage() {
     if (!city.trim()) return 'City is required';
     if (!state) return 'State is required';
     return null;
+  };
+
+  const showSuccessfulOrder = (verifyData, fallbackItems = cart, fallbackTotals = {}) => {
+    const placedItems = verifyData.items?.length ? verifyData.items : fallbackItems.map((item) => ({ ...item }));
+    const paidTotal = verifyData.total ?? fallbackTotals.total ?? grandTotal;
+    trackMetaEvent('Purchase', getCartPixelPayload(placedItems, paidTotal, { order_id: verifyData.orderNumber }));
+    clearCart();
+    setOrderResult({
+      orderNumber: verifyData.orderNumber,
+      paymentMethod: 'Cashfree',
+      items: placedItems,
+      subtotal: verifyData.subtotal ?? fallbackTotals.subtotal ?? cartTotal,
+      shippingCost: verifyData.shippingCost ?? fallbackTotals.shippingCost ?? shippingCost,
+      total: paidTotal,
+      deliveryEstimate: verifyData.deliveryEstimate || fallbackTotals.deliveryEstimate || deliveryEstimate,
+    });
+    setStep(3);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const verifyCashfreeOrder = async (orderId, fallbackItems = cart, fallbackTotals = {}) => {
+    const verifyRes = await fetch('/api/orders/verify-cashfree-payment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId }),
+    });
+    const verifyData = await verifyRes.json();
+    if (verifyRes.ok && verifyData.success) {
+      showSuccessfulOrder(verifyData, fallbackItems, fallbackTotals);
+      return true;
+    }
+    toast.error(verifyData.error || 'Payment is pending. Please contact support if amount was debited.');
+    return false;
   };
 
   const handleAddressNext = () => {
@@ -137,37 +189,19 @@ export default function CheckoutPage() {
       trackMetaEvent('AddPaymentInfo', getCartPixelPayload(cart, createData.total ?? grandTotal, { payment_method: 'Cashfree' }));
 
       const cashfree = window.Cashfree({ mode: createData.mode || 'sandbox' });
-      const result = await cashfree.checkout({ paymentSessionId: createData.paymentSessionId, redirectTarget: '_modal' });
+      const result = await cashfree.checkout({ paymentSessionId: createData.paymentSessionId, redirectTarget: '_self' });
       if (result?.error) {
         toast.error(result.error.message || 'Payment was not completed');
         setLoading(false);
         return;
       }
 
-      const verifyRes = await fetch('/api/orders/verify-cashfree-payment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: createData.cashfreeOrderId }),
+      await verifyCashfreeOrder(createData.cashfreeOrderId, placedItems, {
+        total: createData.total ?? grandTotal,
+        shippingCost: createData.shippingCost ?? shippingCost,
+        subtotal: cartTotal,
+        deliveryEstimate: createData.deliveryEstimate || deliveryEstimate,
       });
-      const verifyData = await verifyRes.json();
-      if (verifyRes.ok && verifyData.success) {
-        const paidTotal = verifyData.total ?? createData.total ?? grandTotal;
-        trackMetaEvent('Purchase', getCartPixelPayload(placedItems, paidTotal, { order_id: verifyData.orderNumber }));
-        clearCart();
-        setOrderResult({
-          orderNumber: verifyData.orderNumber,
-          paymentMethod: 'Cashfree',
-          items: placedItems,
-          subtotal: cartTotal,
-          shippingCost: verifyData.shippingCost ?? createData.shippingCost ?? shippingCost,
-          total: paidTotal,
-          deliveryEstimate: verifyData.deliveryEstimate || createData.deliveryEstimate || deliveryEstimate,
-        });
-        setStep(3);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      } else {
-        toast.error(verifyData.error || 'Payment is pending. Please contact support if amount was debited.');
-      }
     } catch (err) {
       console.error(err);
       toast.error('Payment error. Please try again.');

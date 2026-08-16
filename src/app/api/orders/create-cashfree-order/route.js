@@ -141,6 +141,7 @@ export async function POST(req) {
         },
         order_meta: {
           return_url: `${origin}/checkout?cashfree_order_id={order_id}`,
+          notify_url: `${origin}/api/orders/cashfree-webhook`,
         },
       }),
     });
