@@ -4,13 +4,24 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { FiArrowLeft, FiShoppingBag } from 'react-icons/fi';
+import { FiArrowLeft, FiBox, FiCheck, FiShoppingBag, FiTruck } from 'react-icons/fi';
+import CourierTrackingIdDisplay from '@/components/orders/CourierTrackingIdDisplay';
 import { formatPrice } from '@/lib/utils';
 
 const normalizeStatus = (status) => {
+  if (status === 'processing') return 'on_process';
+  if (status === 'shipped' || status === 'delivered') return 'dispatched';
   if (status === 'pending') return 'ordered';
   return status || 'ordered';
 };
+
+const timelineSteps = [
+  { key: 'ordered', title: 'Order Confirmed', text: 'Your order has been confirmed.', icon: FiCheck },
+  { key: 'on_process', title: 'Preparing Your Order', text: 'Your personalized gift is being prepared.', icon: FiBox },
+  { key: 'dispatched', title: 'Out for Delivery', text: 'Your order has been dispatched.', icon: FiTruck },
+];
+
+const statusIndex = (status) => Math.max(0, timelineSteps.findIndex((step) => step.key === normalizeStatus(status)));
 
 const orderItemCount = (order) => (order.items || []).reduce((sum, item) => sum + Number(item.quantity || 1), 0);
 const addressLine = (address = {}) => [address.line1, address.line2, address.city, address.state, address.pincode].filter(Boolean).join(', ');
@@ -20,6 +31,41 @@ const customEntries = (item) => Object.entries(item?.customFields || {}).filter(
   if (Array.isArray(value)) return value.length > 0;
   return typeof value !== 'object';
 });
+
+function OrderTimeline({ order }) {
+  const normalized = normalizeStatus(order.status);
+  if (normalized === 'cancelled') {
+    return <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">This order has been cancelled.</p>;
+  }
+
+  const current = statusIndex(order.status);
+  return (
+    <div className="rounded-2xl border bg-white p-4">
+      <h2 className="mb-4 font-extrabold text-gray-950">Order Timeline</h2>
+      <div className="relative space-y-5">
+        <div className="absolute bottom-5 left-5 top-5 w-px bg-gray-200" />
+        {timelineSteps.map((step, idx) => {
+          const Icon = step.icon;
+          const active = idx <= current;
+          return (
+            <div key={step.key} className="relative flex gap-3">
+              <div className={`relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
+                {active ? <FiCheck size={18} /> : <Icon size={18} />}
+              </div>
+              <div className="min-w-0 flex-1 pb-1">
+                <p className="font-bold text-gray-900">{step.title}</p>
+                <p className="mt-0.5 text-sm text-gray-500">{step.text}</p>
+                <p className={`mt-1 text-xs font-semibold ${active ? 'text-green-700' : 'text-gray-400'}`}>{active ? 'Completed' : 'Pending'}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {normalized === 'dispatched' && order.trackingNumber && <div className="mt-4"><CourierTrackingIdDisplay trackingNumber={order.trackingNumber} /></div>}
+      {normalized === 'dispatched' && !order.trackingNumber && <p className="mt-4 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">Your parcel is dispatched. ST Couriers tracking ID will appear here after our team saves it.</p>}
+    </div>
+  );
+}
 
 function OrdersContent() {
   const { data: session, status } = useSession();
@@ -122,19 +168,22 @@ function OrdersContent() {
                       </div>
                     </div>
 
-                    <div className="min-w-0 rounded-2xl border bg-gray-50 p-4 text-sm">
-                      <h2 className="mb-3 font-extrabold text-gray-950">Delivery Address</h2>
-                      {order.shippingAddress ? (
-                        <div className="space-y-1 text-gray-600">
-                          <p className="break-words font-bold text-gray-950">{order.shippingAddress.fullName}</p>
-                          <p className="break-words">{addressLine(order.shippingAddress)}</p>
-                          <p className="break-words">Mobile: {order.shippingAddress.phone}</p>
-                          {order.shippingAddress.whatsappNumber && <p className="break-words">WhatsApp: {order.shippingAddress.whatsappNumber}</p>}
-                          <p className="break-words">{order.shippingAddress.email || order.guestEmail}</p>
-                        </div>
-                      ) : (
-                        <p className="text-gray-500">No address available for this order.</p>
-                      )}
+                    <div className="min-w-0 space-y-4">
+                      <div className="rounded-2xl border bg-gray-50 p-4 text-sm">
+                        <h2 className="mb-3 font-extrabold text-gray-950">Delivery Address</h2>
+                        {order.shippingAddress ? (
+                          <div className="space-y-1 text-gray-600">
+                            <p className="break-words font-bold text-gray-950">{order.shippingAddress.fullName}</p>
+                            <p className="break-words">{addressLine(order.shippingAddress)}</p>
+                            <p className="break-words">Mobile: {order.shippingAddress.phone}</p>
+                            {order.shippingAddress.whatsappNumber && <p className="break-words">WhatsApp: {order.shippingAddress.whatsappNumber}</p>}
+                            <p className="break-words">{order.shippingAddress.email || order.guestEmail}</p>
+                          </div>
+                        ) : (
+                          <p className="text-gray-500">No address available for this order.</p>
+                        )}
+                      </div>
+                      <OrderTimeline order={order} />
                     </div>
                   </div>
                 </div>
