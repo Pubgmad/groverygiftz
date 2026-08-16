@@ -25,7 +25,7 @@ const stripDisplayOnlyPreviewData = (value) => {
 
   return Object.fromEntries(
     Object.entries(value)
-      .filter(([key]) => key !== 'previewUrl' && key !== 'displayUrl')
+      .filter(([key]) => key !== 'previewUrl')
       .map(([key, entry]) => [key, stripDisplayOnlyPreviewData(entry)])
   );
 };

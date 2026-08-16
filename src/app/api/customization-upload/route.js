@@ -15,7 +15,8 @@ export async function POST(req) {
     const stored = await saveUploadFile(file, 'customizations');
     const encodedPath = stored.relativePath.split('/').map(encodeURIComponent).join('/');
     const originalUrl = `/api/customization-upload/original-file/${encodedPath}?name=${encodeURIComponent(file.name)}`;
-    return NextResponse.json({ name: file.name, type: file.type, size: file.size, url: originalUrl, originalUrl, storagePath: stored.relativePath }, { status: 201 });
+    const displayUrl = `/api/customization-upload/customer-file/${encodedPath}`;
+    return NextResponse.json({ name: file.name, type: file.type, size: file.size, url: originalUrl, originalUrl, displayUrl, storagePath: stored.relativePath }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to upload customization file' }, { status: 500 });
   }

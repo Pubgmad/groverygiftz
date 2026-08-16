@@ -1,5 +1,14 @@
 const hasUrl = (value) => value && typeof value === 'object' && typeof value.url === 'string' && value.url.trim();
-const displayUrlFor = (asset) => asset?.previewUrl || asset?.displayUrl || asset?.url;
+const customerFileUrlFromOriginal = (url = '') => {
+  const raw = String(url || '');
+  const marker = '/api/customization-upload/original-file/';
+  const index = raw.indexOf(marker);
+  if (index === -1) return '';
+  const encodedPath = raw.slice(index + marker.length).split('?')[0];
+  return encodedPath ? `/api/customization-upload/customer-file/${encodedPath}` : '';
+};
+const displayUrlFor = (asset) => asset?.previewUrl || asset?.displayUrl || customerFileUrlFromOriginal(asset?.url) || asset?.url;
+const linkUrlFor = (asset) => asset?.originalUrl || asset?.url || asset?.displayUrl || asset?.previewUrl;
 
 export const isConfiguredImageAsset = (value) => hasUrl(value);
 
@@ -17,7 +26,7 @@ const normalizeAsset = (asset, caption) => {
   if (!hasUrl(asset)) return null;
   return {
     url: displayUrlFor(asset),
-    originalUrl: asset.url,
+    originalUrl: linkUrlFor(asset),
     name: asset.name || caption,
     type: asset.type || '',
     caption,

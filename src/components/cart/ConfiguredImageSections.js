@@ -3,6 +3,12 @@
 import { FiFile, FiImage } from 'react-icons/fi';
 import { getConfiguredImageSections, isImageAsset } from '@/lib/configuredImages';
 
+const linkUrlFor = (asset) => {
+  const originalUrl = String(asset?.originalUrl || '');
+  if (originalUrl.includes('/api/customization-upload/original-file/')) return asset.url;
+  return originalUrl || asset.url;
+};
+
 export default function ConfiguredImageSections({ item, compact = false, includeCollage = false }) {
   const sections = getConfiguredImageSections(item, { includeCollage, includeProductImages: true });
   if (sections.length === 0) return null;
@@ -20,9 +26,9 @@ export default function ConfiguredImageSections({ item, compact = false, include
           </div>
           <div className={gridClass}>
             {section.items.map((asset, assetIndex) => (
-              <a key={`${asset.url}-${assetIndex}`} href={asset.url} target="_blank" rel="noopener noreferrer" className={`group block shrink-0 overflow-hidden rounded-md border border-gray-200 bg-gray-50 ${tileSize}`}>
+              <a key={`${asset.url}-${assetIndex}`} href={linkUrlFor(asset)} target="_blank" rel="noopener noreferrer" className={`group block shrink-0 overflow-hidden rounded-md border border-gray-200 bg-gray-50 ${tileSize}`}>
                 {isImageAsset(asset) ? (
-                  <img src={asset.url} alt={asset.caption || section.label} className="h-full w-full object-contain" onError={(e) => { e.currentTarget.src = '/placeholder.svg'; }} />
+                  <img src={asset.url} alt={asset.caption || section.label} className="h-full w-full object-contain" />
                 ) : (
                   <span className="flex h-full w-full flex-col items-center justify-center gap-1 px-1 text-center text-[10px] font-semibold text-gray-500">
                     <FiFile size={16} />
