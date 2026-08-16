@@ -23,6 +23,15 @@ const timelineSteps = [
 
 const statusIndex = (status) => Math.max(0, timelineSteps.findIndex((step) => step.key === normalizeStatus(status)));
 const itemProductId = (item) => String(item?.productId || item?.product?._id || item?.product || '');
+const orderItemCount = (order) => (order.items || []).reduce((sum, item) => sum + Number(item.quantity || 1), 0);
+const addressLine = (address = {}) => [address.line1, address.line2, address.city, address.state, address.pincode].filter(Boolean).join(', ');
+const orderDate = (order) => new Date(order.paidAt || order.createdAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const orderDiscount = (order) => Math.max(0, Number(order.discount || order.discountAmount || order.couponDiscount || 0));
+const customEntries = (item) => Object.entries(item?.customFields || {}).filter(([, value]) => {
+  if (value == null || value === '') return false;
+  if (Array.isArray(value)) return value.length > 0;
+  return typeof value !== 'object';
+});
 
 function OrderTimeline({ order }) {
   const current = statusIndex(order.status);
@@ -203,47 +212,97 @@ export default function AccountPage() {
             </div>
           ) : (
             <div className="space-y-5">
-              {orders.map(order => (
-                <div key={order._id} className="overflow-hidden rounded-3xl border bg-white shadow-sm">
-                  <div className="border-b bg-gray-50/70 p-4 sm:p-5">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
-                        <p className="text-xs font-bold uppercase tracking-wider text-primary-600">Order #{order.orderNumber}</p>
-                        <p className="mt-1 text-sm text-gray-500">Order date: {new Date(order.paidAt || order.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+              {orders.map(order => {
+                const itemCount = orderItemCount(order);
+                const discount = orderDiscount(order);
+                return (
+                  <div key={order._id} className="overflow-hidden rounded-3xl border bg-white shadow-sm">
+                    <div className="border-b bg-gray-50/70 p-4 sm:p-5">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <p className="break-words text-xs font-bold uppercase tracking-wider text-primary-600">Order #{order.orderNumber}</p>
+                          <p className="mt-1 text-sm text-gray-500">Order date: {orderDate(order)}</p>
+                          <p className="mt-1 text-xs font-semibold text-gray-500">{itemCount} item{itemCount === 1 ? '' : 's'} - {order.paymentMethod || 'Cashfree'} {order.paymentStatus}</p>
+                        </div>
+                        <span className="self-start rounded-full bg-primary-600 px-3 py-1 text-xs font-bold capitalize text-white">{normalizeStatus(order.status).replace('_', ' ')}</span>
                       </div>
-                      <span className="self-start rounded-full bg-primary-600 px-3 py-1 text-xs font-bold capitalize text-white">{normalizeStatus(order.status).replace('_', ' ')}</span>
+                    </div>
+
+                    <div className="grid gap-5 p-4 sm:p-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]">
+                      <div className="min-w-0 space-y-4">
+                        <div>
+                          <h3 className="mb-3 text-sm font-extrabold uppercase tracking-wide text-gray-500">Items</h3>
+                          <div className="space-y-3">
+                            {order.items?.map((item, idx) => {
+                              const lineTotal = Number(item.price || 0) * Number(item.quantity || 1);
+                              const entries = customEntries(item);
+                              return (
+                                <div key={idx} className="rounded-2xl bg-gray-50 p-3 sm:p-4">
+                                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                    <div className="min-w-0">
+                                      <p className="break-words font-bold text-gray-950">{item.title}</p>
+                                      {item.variant && <p className="mt-1 break-words text-xs font-semibold text-primary-700">Selected: {item.variant}</p>}
+                                      <p className="mt-1 text-xs text-gray-500">Quantity {item.quantity || 1} - {formatPrice(item.price || 0)} each</p>
+                                    </div>
+                                    <span className="shrink-0 font-bold text-primary-700">{formatPrice(lineTotal)}</span>
+                                  </div>
+                                  {(entries.length > 0 || item.giftWrap || item.giftMessage) && (
+                                    <div className="mt-3 rounded-xl border bg-white p-3 text-xs text-gray-600">
+                                      <p className="mb-1 font-bold text-gray-800">Selections</p>
+                                      {entries.map(([label, value]) => <p key={label} className="break-words"><span className="font-semibold">{label}:</span> {String(value)}</p>)}
+                                      {item.giftWrap && <p>Gift wrap selected</p>}
+                                      {item.giftMessage && <p className="break-words"><span className="font-semibold">Gift message:</span> {item.giftMessage}</p>}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {order.deliveryEstimate && <p className="rounded-xl bg-primary-50 px-3 py-2 text-xs text-gray-700">Estimated delivery: <span className="font-semibold text-gray-900">{order.deliveryEstimate}</span></p>}
+                        <OrderTimeline order={order} />
+
+                        {order.paymentStatus === 'paid' && order.items?.some(itemProductId) && (
+                          <div className="rounded-2xl border border-primary-100 bg-primary-50/40 p-4">
+                            <h3 className="mb-2 font-bold text-gray-900">Share your product review</h3>
+                            <p className="mb-3 text-xs text-gray-500">Reviews are available only after successful payment.</p>
+                            <div className="space-y-2">
+                              {order.items.map((item, idx) => <OrderReviewForm key={String(order._id) + '-' + idx} order={order} item={item} customerName={session.user.name} />)}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="min-w-0 rounded-2xl border bg-gray-50 p-4 text-sm">
+                        <h3 className="mb-3 font-extrabold text-gray-950">Order Summary</h3>
+                        <div className="space-y-2 text-gray-600">
+                          <div className="flex justify-between gap-3"><span>Order ID</span><span className="break-words text-right font-bold text-gray-950">{order.orderNumber}</span></div>
+                          <div className="flex justify-between gap-3"><span>Items</span><span className="font-semibold text-gray-900">{itemCount}</span></div>
+                          <div className="flex justify-between gap-3"><span>Payment</span><span className="text-right font-semibold capitalize text-gray-900">{order.paymentMethod || 'Cashfree'} {order.paymentStatus}</span></div>
+                          <div className="flex justify-between gap-3"><span>Status</span><span className="text-right font-semibold capitalize text-gray-900">{normalizeStatus(order.status).replace('_', ' ')}</span></div>
+                          <div className="border-t border-dashed pt-2" />
+                          <div className="flex justify-between gap-3"><span>Product subtotal</span><span className="font-semibold text-gray-900">{formatPrice(order.subtotal || 0)}</span></div>
+                          <div className="flex justify-between gap-3"><span>Delivery fee</span><span className="font-semibold text-gray-900">{Number(order.shippingCost || 0) === 0 ? 'FREE' : formatPrice(order.shippingCost)}</span></div>
+                          {discount > 0 && <div className="flex justify-between gap-3 text-green-700"><span>Discount</span><span className="font-semibold">-{formatPrice(discount)}</span></div>}
+                          <div className="border-t border-dashed pt-2" />
+                          <div className="flex justify-between gap-3 text-base font-extrabold text-gray-950"><span>Total paid</span><span>{formatPrice(order.total)}</span></div>
+                        </div>
+                        {order.shippingAddress && (
+                          <div className="mt-4 border-t pt-4">
+                            <p className="mb-1 text-xs font-bold uppercase tracking-wide text-gray-500">Delivery Address</p>
+                            <p className="break-words font-bold text-gray-950">{order.shippingAddress.fullName}</p>
+                            <p className="break-words text-gray-600">{addressLine(order.shippingAddress)}</p>
+                            <p className="break-words text-gray-600">Mobile: {order.shippingAddress.phone}</p>
+                            {order.shippingAddress.whatsappNumber && <p className="break-words text-gray-600">WhatsApp: {order.shippingAddress.whatsappNumber}</p>}
+                            <p className="break-words text-gray-600">{order.shippingAddress.email || order.guestEmail}</p>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
-
-                  <div className="p-4 sm:p-5">
-                    <div className="space-y-2 text-sm">
-                      {order.items?.map((item, idx) => (
-                        <div key={idx} className="flex items-start justify-between gap-3 rounded-2xl bg-gray-50 px-3 py-3">
-                          <span className="min-w-0 break-words font-semibold text-gray-900">{item.title} x{item.quantity}</span>
-                          <span className="shrink-0 font-bold text-primary-700">{formatPrice(item.price * item.quantity)}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    {order.deliveryEstimate && <p className="my-4 rounded-xl bg-primary-50 px-3 py-2 text-xs text-gray-700">Estimated delivery: <span className="font-semibold text-gray-900">{order.deliveryEstimate}</span></p>}
-                    <OrderTimeline order={order} />
-
-                    {order.paymentStatus === 'paid' && order.items?.some(itemProductId) && (
-                      <div className="mt-4 rounded-2xl border border-primary-100 bg-primary-50/40 p-4">
-                        <h3 className="mb-2 font-bold text-gray-900">Share your product review</h3>
-                        <p className="mb-3 text-xs text-gray-500">Reviews are available only after successful payment.</p>
-                        <div className="space-y-2">
-                          {order.items.map((item, idx) => <OrderReviewForm key={`${order._id}-${idx}`} order={order} item={item} customerName={session.user.name} />)}
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="mt-4 flex justify-between border-t pt-4 font-bold">
-                      <span>Total</span><span>{formatPrice(order.total)}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>

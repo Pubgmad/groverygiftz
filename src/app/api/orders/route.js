@@ -24,7 +24,14 @@ export async function GET(req) {
   if (session.user.type === 'admin') {
     if (customerId) filter.customer = customerId;
   } else {
-    filter.customer = session.user.id;
+    const email = String(session.user.email || '').trim().toLowerCase();
+    filter.$or = [
+      { customer: session.user.id },
+      ...(email ? [
+        { guestEmail: email },
+        { 'shippingAddress.email': email },
+      ] : []),
+    ];
   }
   if (status) filter.status = status;
   if (dateFrom || dateTo) {
