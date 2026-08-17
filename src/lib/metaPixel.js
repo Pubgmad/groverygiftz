@@ -29,9 +29,14 @@ export function trackMetaEvent(eventName, params = {}, options = {}) {
   if (!config.enabled || !config.pixelId || config.blocked) return;
 
   const payload = { ...params };
+  const eventID = String(payload.event_id || payload.eventID || (eventName === 'Purchase' && payload.order_id ? `purchase-${payload.order_id}` : '')).trim();
+  delete payload.event_id;
+  delete payload.eventID;
   if (config.testEventCode) payload.test_event_code = config.testEventCode;
 
-  window.fbq(options.custom ? 'trackCustom' : 'track', eventName, payload);
+  const args = [options.custom ? 'trackCustom' : 'track', eventName, payload];
+  if (eventID) args.push({ eventID });
+  window.fbq(...args);
 }
 
 export function trackMetaCustomEvent(eventName, params = {}) {

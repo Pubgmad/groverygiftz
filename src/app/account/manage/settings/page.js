@@ -17,7 +17,7 @@ export default function AdminSettingsPage() {
     spotlightProductSlug: '',
     promoBannerImage: '', promoBannerDesktopImage: '', promoBannerTabletImage: '', promoBannerMobileImage: '', promoBannerTitle: '', promoBannerSubtitle: '', promoBannerButtonText: '', promoBannerButtonLink: '',
     cashfreeEnabled: false, cashfreeAppId: '', cashfreeSecretKey: '', cashfreeEnvironment: 'sandbox',
-    metaPixelEnabled: false, metaPixelId: '', metaPixelTestEventCode: '',
+    metaPixelEnabled: false, metaPixelId: '', metaPixelTestEventCode: '', metaConversionApiEnabled: false, metaConversionApiAccessToken: '',
     googleReviewsEnabled: false, googleReviewsSerpApiKey: '', googleReviewsPlaceId: '', googleReviewsDataId: '', googleReviewsSortBy: 'newestFirst', googleReviewsCacheHours: 12,
     heroEyebrow: '',
     heroTrustBadgesText: '',
@@ -98,6 +98,8 @@ export default function AdminSettingsPage() {
         metaPixelEnabled: d.metaPixelEnabled ?? false,
         metaPixelId: d.metaPixelId || '',
         metaPixelTestEventCode: d.metaPixelTestEventCode || '',
+        metaConversionApiEnabled: d.metaConversionApiEnabled ?? false,
+        metaConversionApiAccessToken: d.metaConversionApiAccessToken || '',
         googleReviewsEnabled: d.googleReviewsEnabled ?? false,
         googleReviewsSerpApiKey: d.googleReviewsSerpApiKey || '',
         googleReviewsPlaceId: d.googleReviewsPlaceId || '',
@@ -277,7 +279,7 @@ export default function AdminSettingsPage() {
         </div>
         <div className="bg-white p-6 rounded-xl border space-y-4">
           <h2 className="font-bold text-lg">Marketing Tracking</h2>
-          <p className="text-sm text-gray-500">Add your Meta Pixel ID here. Tracking runs only on customer-facing pages and is skipped on admin pages.</p>
+          <p className="text-sm text-gray-500">Add your Meta Pixel and Conversion API details here. Browser tracking runs only on customer-facing pages, and server purchase tracking runs only after successful paid orders.</p>
           <label className="flex items-center gap-2 cursor-pointer text-sm font-medium">
             <input type="checkbox" checked={form.metaPixelEnabled} onChange={e => setForm(p => ({ ...p, metaPixelEnabled: e.target.checked }))} />
             Enable Meta Pixel
@@ -286,8 +288,21 @@ export default function AdminSettingsPage() {
             <div><label className="block text-sm font-medium mb-1">Meta Pixel ID</label><input value={form.metaPixelId} onChange={e => setForm(p => ({ ...p, metaPixelId: e.target.value.replace(/\D/g, '') }))} className="w-full border rounded-lg px-4 py-2 font-mono text-sm" placeholder="Paste only the number from fbq('init', '...')" /></div>
             <div><label className="block text-sm font-medium mb-1">Test Event Code <span className="text-gray-400">(optional)</span></label><input value={form.metaPixelTestEventCode} onChange={e => setForm(p => ({ ...p, metaPixelTestEventCode: e.target.value }))} className="w-full border rounded-lg px-4 py-2 font-mono text-sm" placeholder="TEST12345" /></div>
           </div>
+          <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-4 space-y-4">
+            <label className="flex items-center gap-2 cursor-pointer text-sm font-medium">
+              <input type="checkbox" checked={form.metaConversionApiEnabled} onChange={e => setForm(p => ({ ...p, metaConversionApiEnabled: e.target.checked }))} />
+              Enable Meta Conversion API for paid purchases
+            </label>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div><label className="block text-sm font-medium mb-1">Conversion API Access Token <span className="text-red-400">(keep secret!)</span></label><PasswordInput value={form.metaConversionApiAccessToken} onChange={e => setForm(p => ({ ...p, metaConversionApiAccessToken: e.target.value }))} inputClassName="w-full border rounded-lg px-4 py-2 font-mono text-sm focus:outline-none focus:border-primary-500" placeholder="EAAB..." /></div>
+              <div className="rounded-lg bg-white px-3 py-2 text-xs leading-relaxed text-gray-600">Use the same Meta Pixel ID above. Server-side Purchase events are sent only after Cashfree confirms payment, with duplicate protection.</div>
+            </div>
+          </div>
           {form.metaPixelEnabled && !form.metaPixelId && (
             <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">Meta Pixel is enabled but Pixel ID is empty. Paste your Pixel ID before testing.</p>
+          )}
+          {form.metaConversionApiEnabled && (!form.metaPixelId || !form.metaConversionApiAccessToken) && (
+            <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">Conversion API needs both Meta Pixel ID and Access Token before server-side purchase tracking can work.</p>
           )}
         </div>
 

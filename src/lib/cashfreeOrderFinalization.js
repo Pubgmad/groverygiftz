@@ -4,6 +4,7 @@ import Order from '@/models/Order';
 import { getNextPaidOrderNumber, isFinalOrderNumber } from '@/lib/orderNumbers';
 import { deductOrderInventory } from '@/lib/inventory';
 import { getCashfreeConfig } from '@/lib/cashfreeConfig';
+import { sendMetaPurchaseEvent } from '@/lib/metaConversionApi';
 
 export const CASHFREE_VERSION = '2025-01-01';
 
@@ -136,6 +137,12 @@ export async function finalizeCashfreeOrder(orderId) {
       order.orderNumber = await getNextPaidOrderNumber();
     }
     await order.save();
+  }
+
+  try {
+    await sendMetaPurchaseEvent(order._id);
+  } catch (metaError) {
+    console.error('Meta Conversion API finalization hook error:', metaError);
   }
 
   return responseForOrder(order, true);

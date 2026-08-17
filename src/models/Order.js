@@ -44,6 +44,10 @@ const OrderSchema = new mongoose.Schema({
   inventoryDeductedAt: Date,
   inventoryDeductionStartedAt: Date,
   trackingNumber: String,
+  metaConversionPurchaseEventId: String,
+  metaConversionPurchaseSentAt: Date,
+  metaConversionPurchaseStartedAt: Date,
+  metaConversionPurchaseError: String,
   notes: String,
 }, { timestamps: true });
 

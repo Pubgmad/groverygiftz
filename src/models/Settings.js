@@ -68,6 +68,8 @@ const SettingsSchema = new mongoose.Schema({
   metaPixelEnabled: { type: Boolean, default: false },
   metaPixelId: { type: String, default: '' },
   metaPixelTestEventCode: { type: String, default: '' },
+  metaConversionApiEnabled: { type: Boolean, default: false },
+  metaConversionApiAccessToken: { type: String, default: '' },
   googleReviewsEnabled: { type: Boolean, default: false },
   googleReviewsSerpApiKey: { type: String, default: '' },
   googleReviewsPlaceId: { type: String, default: '' },

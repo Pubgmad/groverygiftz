@@ -23,6 +23,7 @@ function sanitizePublicSettings(settings) {
   publicSettings.cashfreeEnvironment = cashfree.environment;
   publicSettings.cashfreeSecretKey = '';
   publicSettings.metaPixelTestEventCode = '';
+  publicSettings.metaConversionApiAccessToken = '';
   publicSettings.googleReviewsSerpApiKey = '';
   return publicSettings;
 }
@@ -59,6 +60,8 @@ export async function GET() {
       metaPixelEnabled: false,
       metaPixelId: '',
       metaPixelTestEventCode: '',
+      metaConversionApiEnabled: false,
+      metaConversionApiAccessToken: '',
       googleReviewsEnabled: false,
       googleReviewsSerpApiKey: '',
       googleReviewsPlaceId: '',
