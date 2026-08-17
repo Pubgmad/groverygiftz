@@ -102,16 +102,18 @@ function OrdersContent() {
   return (
     <div className="bg-gradient-to-b from-orange-50/70 via-white to-primary-50/40">
       <div className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
-        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div className="min-w-0">
-            <Link href="/account" className="mb-3 inline-flex items-center gap-2 text-sm font-bold text-primary-700"><FiArrowLeft /> Back to account</Link>
-            <p className="section-eyebrow text-primary-600">Customer Orders</p>
-            <h1 className="font-display text-3xl font-extrabold text-gray-950 sm:text-4xl">{confirmedOnly ? 'Confirmed Orders' : 'Order History'}</h1>
-            <p className="mt-1 text-sm text-gray-500">Product details and delivery address for your orders.</p>
-          </div>
-          <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-0">
-            <Link href="/account/orders" className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold ${confirmedOnly ? 'border border-gray-200 bg-white text-gray-700' : 'bg-primary-600 text-white'}`}>Total orders</Link>
-            <Link href="/account/orders?filter=confirmed" className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold ${confirmedOnly ? 'bg-primary-600 text-white' : 'border border-gray-200 bg-white text-gray-700'}`}>Confirmed orders</Link>
+        <div className="mb-5 space-y-4">
+          <Link href="/account" className="inline-flex items-center gap-2 text-sm font-bold text-primary-700 hover:text-primary-800"><FiArrowLeft /> Back to account</Link>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div className="min-w-0">
+              <p className="section-eyebrow text-primary-600">Customer Orders</p>
+              <h1 className="font-display text-3xl font-extrabold text-gray-950 sm:text-4xl">{confirmedOnly ? 'Confirmed Orders' : 'Order History'}</h1>
+              <p className="mt-1 text-sm text-gray-500">Product details and delivery address for your orders.</p>
+            </div>
+            <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-0">
+              <Link href="/account/orders" className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold ${confirmedOnly ? 'border border-gray-200 bg-white text-gray-700' : 'bg-primary-600 text-white'}`}>Total orders</Link>
+              <Link href="/account/orders?filter=confirmed" className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold ${confirmedOnly ? 'bg-primary-600 text-white' : 'border border-gray-200 bg-white text-gray-700'}`}>Confirmed orders</Link>
+            </div>
           </div>
         </div>
 
