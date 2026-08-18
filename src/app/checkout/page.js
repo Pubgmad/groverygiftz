@@ -20,11 +20,11 @@ const INDIAN_STATES = [
 ];
 
 export default function CheckoutPage() {
-  const { cart, cartTotal, clearCart } = useCart();
+  const { cart, cartTotal, clearCart, cartReady } = useCart();
   const { data: session, status } = useSession();
   const router = useRouter();
   const [step, setStep] = useState(1);
-  const [address, setAddress] = useState({ fullName: '', email: '', phone: '', whatsappNumber: '', line1: '', line2: '', city: '', state: '' });
+  const [address, setAddress] = useState({ fullName: '', email: '', phone: '', whatsappNumber: '', line1: '', line2: '', city: '', state: '', pincode: '' });
   const [orderNote, setOrderNote] = useState('');
   const [loading, setLoading] = useState(false);
   const [settings, setSettings] = useState({
@@ -85,8 +85,9 @@ export default function CheckoutPage() {
   useEffect(() => {
     const returnedOrderId = new URLSearchParams(window.location.search).get('cashfree_order_id');
     if (returnedOrderId) return;
+    if (!cartReady) return;
     if (cart.length === 0 && step !== 3 && status === 'authenticated' && session?.user?.type === 'customer') router.replace('/cart');
-  }, [cart, step, router, status, session]);
+  }, [cart, cartReady, step, router, status, session]);
   useEffect(() => {
     const returnedOrderId = new URLSearchParams(window.location.search).get('cashfree_order_id');
     if (!returnedOrderId || status !== 'authenticated' || session?.user?.type !== 'customer') return;
@@ -102,13 +103,13 @@ export default function CheckoutPage() {
   }, [status, session, router]);
 
   useEffect(() => {
-    if (checkoutTrackedRef.current || status !== 'authenticated' || session?.user?.type !== 'customer' || cart.length === 0 || step === 3) return;
+    if (checkoutTrackedRef.current || !cartReady || status !== 'authenticated' || session?.user?.type !== 'customer' || cart.length === 0 || step === 3) return;
     checkoutTrackedRef.current = true;
     trackMetaEvent('InitiateCheckout', getCartPixelPayload(cart, grandTotal));
-  }, [cart, grandTotal, status, step, session]);
+  }, [cart, cartReady, grandTotal, status, step, session]);
 
   const validateAddress = () => {
-    const { fullName, email, phone, whatsappNumber, line1, city, state } = address;
+    const { fullName, email, phone, whatsappNumber, line1, city, state, pincode } = address;
     if (!fullName.trim()) return 'Full name is required';
     if (!email.trim() || !/\S+@\S+\.\S+/.test(email)) return 'Valid email is required';
     if (!phone.trim() || !/^[6-9]\d{9}$/.test(phone.replace(/\s/g, ''))) return 'Valid 10-digit Indian mobile number required';
@@ -116,6 +117,8 @@ export default function CheckoutPage() {
     if (!line1.trim()) return 'Address line 1 is required';
     if (!city.trim()) return 'City is required';
     if (!state) return 'State is required';
+    if (!pincode.trim()) return 'Pincode is required';
+    if (!/^[1-9]\d{5}$/.test(pincode.trim())) return 'Enter a valid 6-digit pincode';
     return null;
   };
 
@@ -212,6 +215,10 @@ export default function CheckoutPage() {
 
   if (status === 'loading' || status === 'unauthenticated') {
     return <div className="min-h-[60vh] flex items-center justify-center text-gray-500">Opening secure sign in...</div>;
+  }
+
+  if (session?.user?.type === 'customer' && !cartReady) {
+    return <div className="min-h-[60vh] flex items-center justify-center text-gray-500">Restoring your cart...</div>;
   }
 
   if (session?.user?.type !== 'customer') {
@@ -312,7 +319,8 @@ export default function CheckoutPage() {
                 <div><label className="block text-sm font-medium mb-1.5">Address Line 2 <span className="text-gray-400">(optional)</span></label><input value={address.line2} onChange={e => setAddress(p => ({ ...p, line2: e.target.value }))} className="w-full border rounded-xl px-4 py-2.5 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 text-sm" placeholder="Area, landmark" /></div>
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div><label className="block text-sm font-medium mb-1.5">City *</label><input value={address.city} onChange={e => setAddress(p => ({ ...p, city: e.target.value }))} className="w-full border rounded-xl px-4 py-2.5 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 text-sm" placeholder="Coimbatore" /></div>
-                  <div><label className="block text-sm font-medium mb-1.5">State *</label><select value={address.state} onChange={e => setAddress(p => ({ ...p, state: e.target.value }))} className="w-full border rounded-xl px-4 py-2.5 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 text-sm bg-white"><option value="">Select state</option>{INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+                  <div><label className="block text-sm font-medium mb-1.5">Pincode *</label><input value={address.pincode} onChange={e => setAddress(p => ({ ...p, pincode: e.target.value.replace(/\D/g, '').slice(0, 6) }))} className="w-full border rounded-xl px-4 py-2.5 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 text-sm" placeholder="641001" maxLength={6} inputMode="numeric" required /></div>
+                  <div className="sm:col-span-2"><label className="block text-sm font-medium mb-1.5">State *</label><select value={address.state} onChange={e => setAddress(p => ({ ...p, state: e.target.value }))} className="w-full border rounded-xl px-4 py-2.5 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 text-sm bg-white"><option value="">Select state</option>{INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
                 </div>
                 {hasSelectedState && (
                   <div className={`rounded-xl border px-4 py-3 text-sm ${outOfTamilNadu ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-green-200 bg-green-50 text-green-700'}`}>
@@ -328,7 +336,7 @@ export default function CheckoutPage() {
           {step === 2 && (
             <>
               <div className="bg-white rounded-2xl border shadow-sm p-5 flex items-start justify-between gap-4">
-                <div><div className="flex items-center gap-2 mb-1"><FiMapPin size={14} className="text-primary-600" /><span className="font-semibold text-sm">Delivering to</span></div><p className="text-sm font-bold">{address.fullName} · {address.phone}</p><p className="text-sm text-gray-500">{address.line1}{address.line2 ? `, ${address.line2}` : ''}, {address.city}, {address.state}</p></div>
+                <div><div className="flex items-center gap-2 mb-1"><FiMapPin size={14} className="text-primary-600" /><span className="font-semibold text-sm">Delivering to</span></div><p className="text-sm font-bold">{address.fullName} · {address.phone}</p><p className="text-sm text-gray-500">{address.line1}{address.line2 ? `, ${address.line2}` : ''}, {address.city}, {address.state} - {address.pincode}</p></div>
                 <button onClick={() => setStep(1)} className="text-primary-600 hover:text-primary-700 text-sm flex items-center gap-1 font-medium flex-shrink-0"><FiEdit2 size={14} /> Edit</button>
               </div>
 

@@ -48,7 +48,7 @@ const normalizeStatus = (status) => {
 const formatDate = (date) => date ? new Date(date).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) + ' IST' : '-';
 const isUploadedFile = (value) => value && typeof value === 'object' && value.url;
 const isOutOfTamilNadu = (order) => String(order.shippingAddress?.state || '').trim().toLowerCase() !== 'tamil nadu';
-const addressLine = (address = {}) => [address.line1, address.line2, address.city, address.state].filter(Boolean).join(', ');
+const addressLine = (address = {}) => [address.line1, address.line2, address.city, address.state, address.pincode].filter(Boolean).join(', ');
 const formatFileSize = (bytes) => {
   const size = Number(bytes || 0);
   if (!size) return '';

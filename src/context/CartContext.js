@@ -50,6 +50,8 @@ export function CartProvider({ children }) {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const localLoadedRef = useRef(false);
   const syncingRef = useRef(false);
+  const [localLoaded, setLocalLoaded] = useState(false);
+  const [cartSyncing, setCartSyncing] = useState(false);
   const syncedCustomerRef = useRef('');
   const activeCustomerRef = useRef('');
 
@@ -61,14 +63,16 @@ export function CartProvider({ children }) {
       localStorage.removeItem('groverygiftz-cart');
     } finally {
       localLoadedRef.current = true;
+      setLocalLoaded(true);
     }
   }, []);
 
   useEffect(() => {
-    if (status !== 'authenticated' || session?.user?.type !== 'customer' || !session.user.id || !localLoadedRef.current) return;
+    if (status !== 'authenticated' || session?.user?.type !== 'customer' || !session.user.id || !localLoaded) return;
     if (syncedCustomerRef.current === session.user.id) return;
 
     syncingRef.current = true;
+    setCartSyncing(true);
     fetch('/api/customers/saved-lists')
       .then((res) => res.ok ? res.json() : Promise.reject())
       .then((data) => {
@@ -85,9 +89,12 @@ export function CartProvider({ children }) {
         activeCustomerRef.current = session.user.id;
         localStorage.removeItem('groverygiftz-cart');
       })
-      .catch(() => {})
-      .finally(() => { syncingRef.current = false; });
-  }, [status, session?.user?.id, session?.user?.type]);
+      .catch(() => {
+        syncedCustomerRef.current = session.user.id;
+        activeCustomerRef.current = session.user.id;
+      })
+      .finally(() => { syncingRef.current = false; setCartSyncing(false); });
+  }, [status, session?.user?.id, session?.user?.type, localLoaded]);
 
   useEffect(() => {
     const activeCustomerId = status === 'authenticated' && session?.user?.type === 'customer' ? session.user.id : '';
@@ -154,9 +161,11 @@ export function CartProvider({ children }) {
 
   const cartCount = cart.reduce((sum, i) => sum + i.quantity, 0);
   const cartTotal = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const currentCustomerId = status === 'authenticated' && session?.user?.type === 'customer' ? session.user.id : '';
+  const cartReady = localLoaded && (!currentCustomerId || (syncedCustomerRef.current === currentCustomerId && !cartSyncing));
 
   return (
-    <CartContext.Provider value={{ cart, addToCart, removeFromCart, updateQuantity, clearCart, cartCount, cartTotal, isCartOpen, setIsCartOpen }}>
+    <CartContext.Provider value={{ cart, addToCart, removeFromCart, updateQuantity, clearCart, cartCount, cartTotal, cartReady, cartSyncing, isCartOpen, setIsCartOpen }}>
       {children}
     </CartContext.Provider>
   );

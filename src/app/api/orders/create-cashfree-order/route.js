@@ -15,6 +15,7 @@ const endpointFor = (environment) => environment === 'production'
   : 'https://sandbox.cashfree.com/pg/orders';
 
 const isTamilNadu = (state) => String(state || '').trim().toLowerCase() === 'tamil nadu';
+const isValidPincode = (pincode) => /^[1-9]\d{5}$/.test(String(pincode || '').trim());
 
 const getStateOverride = (delivery, state) => (delivery?.stateOverrides || []).find(
   (row) => String(row.state || '').trim().toLowerCase() === String(state || '').trim().toLowerCase()
@@ -102,6 +103,10 @@ export async function POST(req) {
     if (!items?.length || !shippingAddress) {
       return NextResponse.json({ error: 'Missing required order fields' }, { status: 400 });
     }
+    if (!isValidPincode(shippingAddress.pincode)) {
+      return NextResponse.json({ error: 'Valid 6-digit pincode is required' }, { status: 400 });
+    }
+    shippingAddress.pincode = String(shippingAddress.pincode || '').trim();
 
     const orderItems = items.map((item) => {
       const sanitizedItem = stripDisplayOnlyPreviewData(item);
