@@ -390,7 +390,7 @@ export default function AdminOrdersPage() {
                       <p>Mobile: {selected.shippingAddress.phone}</p>{selected.shippingAddress.whatsappNumber && <p>WhatsApp: {selected.shippingAddress.whatsappNumber}</p>}
                       <p>{selected.shippingAddress.line1}</p>
                       {selected.shippingAddress.line2 && <p>{selected.shippingAddress.line2}</p>}
-                      <p>{selected.shippingAddress.city}, {selected.shippingAddress.state}</p>
+                      <p>{selected.shippingAddress.city}, {selected.shippingAddress.state}{selected.shippingAddress.pincode ? ` - ${selected.shippingAddress.pincode}` : ''}</p>
                       <p>{selected.shippingAddress.email || selected.guestEmail}</p>
                     </div>
                   </div>
