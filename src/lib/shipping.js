@@ -41,5 +41,5 @@ export function calculateCartShipping(items = [], state, settings = {}) {
 
   const uniqueEstimates = [...new Set(estimates.filter(Boolean))];
   const rawEstimate = uniqueEstimates.length > 1 ? uniqueEstimates.join(' / ') : (uniqueEstimates[0] || (isTamilNadu(state) ? 'Within 8 days' : '10-15 days'));
-  return { cost, estimate: buildDeliveryEstimateText(rawEstimate, { fallbackDays: isTamilNadu(state) ? 8 : 15 }), hasCustomDelivery };
+  return { cost, estimate: buildDeliveryEstimateText(rawEstimate, { fallbackDays: isTamilNadu(state) ? 8 : 15, holidays: settings.deliveryHolidays || [] }), hasCustomDelivery };
 }

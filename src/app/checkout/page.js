@@ -33,6 +33,7 @@ export default function CheckoutPage() {
     otherStateShippingCost: 120,
     tamilNaduDeliveryEstimate: 'Within 8 days',
     otherStateDeliveryEstimate: '10-15 days',
+    deliveryHolidays: [],
   });
   const [orderResult, setOrderResult] = useState(null);
   const checkoutTrackedRef = useRef(false);
@@ -78,6 +79,7 @@ export default function CheckoutPage() {
         otherStateShippingCost: Number(d.otherStateShippingCost ?? d.shippingCost ?? 120),
         tamilNaduDeliveryEstimate: d.tamilNaduDeliveryEstimate || 'Within 8 days',
         otherStateDeliveryEstimate: d.otherStateDeliveryEstimate || '10-15 days',
+        deliveryHolidays: Array.isArray(d.deliveryHolidays) ? d.deliveryHolidays : [],
       }))
       .catch(() => {});
   }, []);

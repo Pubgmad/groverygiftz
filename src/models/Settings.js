@@ -43,6 +43,7 @@ const SettingsSchema = new mongoose.Schema({
   otherStateShippingCost: { type: Number, default: 120 },
   tamilNaduDeliveryEstimate: { type: String, default: 'Within 8 days' },
   otherStateDeliveryEstimate: { type: String, default: '10-15 days' },
+  deliveryHolidays: [{ type: Date }],
   promoEnabled: { type: Boolean, default: true },
   promoTitle: { type: String, default: 'Limited Time Offer!' },
   promoSubtitle: { type: String, default: "Hurry! Sale ends soon. Don't miss out on amazing deals." },

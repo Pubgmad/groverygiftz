@@ -80,7 +80,7 @@ const calculateShipping = (items, productsById, state, settings) => {
   const uniqueEstimates = [...new Set(estimates.filter(Boolean))];
   return {
     cost,
-    estimate: buildDeliveryEstimateText(uniqueEstimates.length > 1 ? uniqueEstimates.join(' / ') : (uniqueEstimates[0] || (isTamilNadu(state) ? 'Within 8 days' : '10-15 days')), { fallbackDays: isTamilNadu(state) ? 8 : 15 }),
+    estimate: buildDeliveryEstimateText(uniqueEstimates.length > 1 ? uniqueEstimates.join(' / ') : (uniqueEstimates[0] || (isTamilNadu(state) ? 'Within 8 days' : '10-15 days')), { fallbackDays: isTamilNadu(state) ? 8 : 15, holidays: settings.deliveryHolidays || [] }),
   };
 };
 

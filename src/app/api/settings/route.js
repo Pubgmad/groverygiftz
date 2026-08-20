@@ -48,6 +48,7 @@ export async function GET() {
       otherStateShippingCost: 120,
       tamilNaduDeliveryEstimate: 'Within 8 days',
       otherStateDeliveryEstimate: '10-15 days',
+      deliveryHolidays: [],
       socialLinks: { instagram: 'https://www.instagram.com/groverygiftz?igsh=dGNpbHlybWI0cjNy', youtube: '' },
       promoEnabled: true,
       promoTitle: 'Limited Time Offer!',

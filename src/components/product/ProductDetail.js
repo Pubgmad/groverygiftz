@@ -61,7 +61,7 @@ export default function ProductDetail({ product }) {
   const [giftMessage, setGiftMessage] = useState('');
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [sizeChartOpen, setSizeChartOpen] = useState(false);
-  const [settings, setSettings] = useState({ freeShippingThreshold: 499, whatsapp: '919994549781', tamilNaduShippingCost: 0, otherStateShippingCost: 120, tamilNaduDeliveryEstimate: 'Within 8 days', otherStateDeliveryEstimate: '10-15 days' });
+  const [settings, setSettings] = useState({ freeShippingThreshold: 499, whatsapp: '919994549781', tamilNaduShippingCost: 0, otherStateShippingCost: 120, tamilNaduDeliveryEstimate: 'Within 8 days', otherStateDeliveryEstimate: '10-15 days', deliveryHolidays: [] });
   const { addToCart, setIsCartOpen } = useCart();
   const router = useRouter();
   const viewedProductRef = useRef('');
@@ -196,7 +196,7 @@ export default function ProductDetail({ product }) {
   };
   const selectedDelivery = getProductShippingForState(selectedDeliveryState);
   const selectedDeliveryEstimateText = selectedDeliveryState
-    ? buildDeliveryEstimateText(selectedDelivery.estimate, { fallbackDays: isTamilNadu(selectedDeliveryState) ? 8 : 15 })
+    ? buildDeliveryEstimateText(selectedDelivery.estimate, { fallbackDays: isTamilNadu(selectedDeliveryState) ? 8 : 15, holidays: settings.deliveryHolidays || [] })
     : '';
   const productPageTotal = finalUnitPrice * quantity + selectedDelivery.cost;
   const reviewCount = reviews.length;
@@ -475,6 +475,7 @@ export default function ProductDetail({ product }) {
           otherStateShippingCost: Number(d.otherStateShippingCost ?? d.shippingCost ?? 120),
           tamilNaduDeliveryEstimate: d.tamilNaduDeliveryEstimate || 'Within 8 days',
           otherStateDeliveryEstimate: d.otherStateDeliveryEstimate || '10-15 days',
+          deliveryHolidays: Array.isArray(d.deliveryHolidays) ? d.deliveryHolidays : [],
         });
       })
       .catch(() => {});
