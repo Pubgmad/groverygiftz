@@ -355,21 +355,6 @@ export default function AdminOrdersPage() {
                   </div>
                 )}
 
-                <h3 className="font-semibold mt-4">Items</h3>
-                <div className="space-y-3">
-                  {selected.items?.map((item, idx) => (
-                    <div key={idx} className="rounded-lg border bg-gray-50 p-3 space-y-2">
-                      <div className="flex justify-between gap-3"><div><p className="font-semibold text-gray-900">{item.title} x{item.quantity}</p>{item.variant && <p className="text-xs text-gray-500">Selected: {item.variant}</p>}</div><span className="font-semibold whitespace-nowrap">{formatPrice(item.price * item.quantity)}</span></div>
-                      {item.customFields && Object.keys(item.customFields).length > 0 && (
-                        <div className="rounded-md bg-white border p-2 space-y-1"><p className="text-xs font-semibold text-gray-600">Customization</p>{Object.entries(item.customFields).map(([label, value]) => (<div key={label} className="text-xs text-gray-700"><span className="font-medium">{label}: </span><CustomValue value={value} /></div>))}</div>
-                      )}
-                      {item.collageUploads && <CollageUploadDetails groups={item.collageUploads} />}
-                      {item.customizationPreview && <PreviewDetails preview={item.customizationPreview} />}
-                    </div>
-                  ))}
-                </div>
-                <div className="border-t pt-2 space-y-1"><div className="flex justify-between"><span>Subtotal</span><span>{formatPrice(selected.subtotal || 0)}</span></div><div className="flex justify-between"><span>Delivery</span><span>{selected.shippingCost === 0 ? 'FREE' : formatPrice(selected.shippingCost || 0)}</span></div><div className="flex justify-between font-bold"><span>Total</span><span>{formatPrice(selected.total)}</span></div></div>
-
                 {isOutOfTamilNadu(selected) && (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-800">
                     Outside Tamil Nadu order. Delivery charge applies and timeline is usually 10 to 15 days.
@@ -395,6 +380,22 @@ export default function AdminOrdersPage() {
                   <input value={trackingDraft} onChange={(e) => setTrackingDraft(e.target.value)} placeholder="Enter ST Couriers tracking ID" className="border rounded-lg px-3 py-2 text-sm font-mono w-full" />
                   <button type="button" onClick={() => updateTracking(selected._id, trackingDraft)} className="text-sm px-4 py-2 rounded-lg bg-primary-600 text-white font-semibold hover:bg-primary-700">Save tracking ID</button>
                 </div>
+
+                <h3 className="font-semibold mt-4">Items</h3>
+                <div className="space-y-3">
+                  {selected.items?.map((item, idx) => (
+                    <div key={idx} className="rounded-lg border bg-gray-50 p-3 space-y-2">
+                      <div className="flex justify-between gap-3"><div><p className="font-semibold text-gray-900">{item.title} x{item.quantity}</p>{item.variant && <p className="text-xs text-gray-500">Selected: {item.variant}</p>}</div><span className="font-semibold whitespace-nowrap">{formatPrice(item.price * item.quantity)}</span></div>
+                      {item.customFields && Object.keys(item.customFields).length > 0 && (
+                        <div className="rounded-md bg-white border p-2 space-y-1"><p className="text-xs font-semibold text-gray-600">Customization</p>{Object.entries(item.customFields).map(([label, value]) => (<div key={label} className="text-xs text-gray-700"><span className="font-medium">{label}: </span><CustomValue value={value} /></div>))}</div>
+                      )}
+                      {item.collageUploads && <CollageUploadDetails groups={item.collageUploads} />}
+                      {item.customizationPreview && <PreviewDetails preview={item.customizationPreview} />}
+                    </div>
+                  ))}
+                </div>
+                <div className="border-t pt-2 space-y-1"><div className="flex justify-between"><span>Subtotal</span><span>{formatPrice(selected.subtotal || 0)}</span></div><div className="flex justify-between"><span>Delivery</span><span>{selected.shippingCost === 0 ? 'FREE' : formatPrice(selected.shippingCost || 0)}</span></div><div className="flex justify-between font-bold"><span>Total</span><span>{formatPrice(selected.total)}</span></div></div>
+
 
 
               </div>
