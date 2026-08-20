@@ -74,7 +74,7 @@ export default function AdminSettingsPage() {
         announcementText: d.announcementText || '', phone: d.phone || '', email: d.email || '',
         whatsapp: d.whatsapp || '', address: d.address || '', timings: d.timings || '',
         socialLinks: { instagram: d.socialLinks?.instagram || '', youtube: d.socialLinks?.youtube || '' },
-        freeShippingThreshold: d.freeShippingThreshold ?? 499, shippingCost: d.shippingCost ?? 40, tamilNaduShippingCost: d.tamilNaduShippingCost ?? 0, otherStateShippingCost: d.otherStateShippingCost ?? 120, tamilNaduDeliveryEstimate: d.tamilNaduDeliveryEstimate || 'Within 8 days', otherStateDeliveryEstimate: d.otherStateDeliveryEstimate || '10-15 days', deliveryHolidaysText: (d.deliveryHolidays || []).map((date) => new Date(date).toISOString().slice(0, 10)).join('\\n'),
+        freeShippingThreshold: d.freeShippingThreshold ?? 499, shippingCost: d.shippingCost ?? 40, tamilNaduShippingCost: d.tamilNaduShippingCost ?? 0, otherStateShippingCost: d.otherStateShippingCost ?? 120, tamilNaduDeliveryEstimate: d.tamilNaduDeliveryEstimate || 'Within 8 days', otherStateDeliveryEstimate: d.otherStateDeliveryEstimate || '10-15 days', deliveryHolidaysText: (d.deliveryHolidays || []).map((date) => new Date(date).toISOString().slice(0, 10)).join('\n'),
         promoEnabled: d.promoEnabled ?? true,
         promoTitle: d.promoTitle || 'Limited Time Offer!',
         promoSubtitle: d.promoSubtitle || "Hurry! Sale ends soon. Don't miss out on amazing deals.",
@@ -238,7 +238,7 @@ export default function AdminSettingsPage() {
             <div><label className="block text-sm font-medium mb-1">Other States Delivery Estimate</label><input value={form.otherStateDeliveryEstimate} onChange={e => setForm(p => ({ ...p, otherStateDeliveryEstimate: e.target.value }))} className="w-full border rounded-lg px-4 py-2" placeholder="10-15 days" /></div>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Public / Government Holidays</label>
+            <label className="block text-sm font-medium mb-1">Government / Public Holidays</label>
             <textarea value={form.deliveryHolidaysText} onChange={e => setForm(p => ({ ...p, deliveryHolidaysText: e.target.value }))} className="w-full border rounded-lg px-4 py-2 font-mono text-sm" rows={4} placeholder={"2026-08-15\n2026-10-02"} />
             <p className="mt-1 text-xs text-gray-500">Enter one holiday date per line in YYYY-MM-DD format. These dates are skipped along with Sundays when calculating expected delivery.</p>
           </div>

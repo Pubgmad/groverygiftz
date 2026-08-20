@@ -43,5 +43,5 @@ export function buildDeliveryEstimateText(baseEstimate, options = {}) {
   const holidays = options.holidays || options.deliveryHolidays || [];
   const date = addWorkingDays(options.startDate || Date.now(), days, holidays);
   const label = String(baseEstimate || '').trim() || (days + ' days');
-  return label + ' - expected by ' + formatDeliveryDate(date) + ' (Sundays and holidays skipped)';
+  return label + ' - expected by ' + formatDeliveryDate(date) + ' (Sundays and configured government/public holidays skipped)';
 }
