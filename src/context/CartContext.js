@@ -44,6 +44,12 @@ const stripDisplayOnlyPreviewData = (value) => {
   );
 };
 
+const persistGuestCart = (items) => {
+  try {
+    localStorage.setItem('groverygiftz-cart', JSON.stringify(stripDisplayOnlyPreviewData(items || [])));
+  } catch {}
+};
+
 export function CartProvider({ children }) {
   const { data: session, status } = useSession();
   const [cart, setCart] = useState([]);
@@ -58,7 +64,14 @@ export function CartProvider({ children }) {
   useEffect(() => {
     try {
       const saved = localStorage.getItem('groverygiftz-cart');
-      if (saved) setCart(JSON.parse(saved));
+      if (saved) {
+        const savedCart = JSON.parse(saved);
+        if (Array.isArray(savedCart)) {
+          setCart((current) => current.length ? mergeCartItems(savedCart, current) : savedCart);
+        } else {
+          localStorage.removeItem('groverygiftz-cart');
+        }
+      }
     } catch {
       localStorage.removeItem('groverygiftz-cart');
     } finally {
@@ -115,9 +128,7 @@ export function CartProvider({ children }) {
     if (!localLoadedRef.current) return;
     const isCustomer = status === 'authenticated' && session?.user?.type === 'customer' && session.user.id;
     if (!isCustomer) {
-      try {
-        localStorage.setItem('groverygiftz-cart', JSON.stringify(stripDisplayOnlyPreviewData(cart)));
-      } catch {}
+      persistGuestCart(cart)
       return;
     }
 
@@ -132,32 +143,49 @@ export function CartProvider({ children }) {
     return () => clearTimeout(timer);
   }, [cart, status, session?.user?.id, session?.user?.type]);
 
+  const isAuthenticatedCustomer = status === 'authenticated' && session?.user?.type === 'customer' && session.user.id;
+
   const addToCart = (item, options = {}) => {
     setCart(prev => {
       const existing = !item.cartItemId && prev.find(i => isSameCartLine(i, item.productId, item.variant));
       if (existing) {
-        return prev.map(i => isSameCartLine(i, item.productId, item.variant)
+        const nextCart = prev.map(i => isSameCartLine(i, item.productId, item.variant)
           ? { ...i, quantity: capQuantity(i.quantity + item.quantity, item.availableStock ?? i.availableStock) }
           : i
         );
+        if (!isAuthenticatedCustomer) persistGuestCart(nextCart);
+        return nextCart;
       }
-      return [...prev, { ...item, quantity: capQuantity(item.quantity, item.availableStock) }];
+      const nextCart = [...prev, { ...item, quantity: capQuantity(item.quantity, item.availableStock) }];
+      if (!isAuthenticatedCustomer) persistGuestCart(nextCart);
+      return nextCart;
     });
     if (options.openDrawer !== false) setIsCartOpen(true);
   };
 
   const removeFromCart = (productId, variant, cartItemId) => {
-    setCart(prev => prev.filter(i => !isSameCartLine(i, productId, variant, cartItemId)));
+    setCart(prev => {
+      const nextCart = prev.filter(i => !isSameCartLine(i, productId, variant, cartItemId));
+      if (!isAuthenticatedCustomer) persistGuestCart(nextCart);
+      return nextCart;
+    });
   };
 
   const updateQuantity = (productId, variant, quantity, cartItemId) => {
     if (quantity <= 0) return removeFromCart(productId, variant, cartItemId);
-    setCart(prev => prev.map(i =>
-      isSameCartLine(i, productId, variant, cartItemId) ? { ...i, quantity: capQuantity(quantity, i.availableStock) } : i
-    ));
+    setCart(prev => {
+      const nextCart = prev.map(i =>
+        isSameCartLine(i, productId, variant, cartItemId) ? { ...i, quantity: capQuantity(quantity, i.availableStock) } : i
+      );
+      if (!isAuthenticatedCustomer) persistGuestCart(nextCart);
+      return nextCart;
+    });
   };
 
-  const clearCart = () => setCart([]);
+  const clearCart = () => setCart(() => {
+    if (!isAuthenticatedCustomer) persistGuestCart([]);
+    return [];
+  });
 
   const cartCount = cart.reduce((sum, i) => sum + i.quantity, 0);
   const cartTotal = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);

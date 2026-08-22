@@ -8,7 +8,17 @@ const statusOptions = [
   { value: 'on_process', label: 'On Process' },
   { value: 'dispatched', label: 'Order Dispatched' },
 ];
-
+const statusFilterOptions = [
+  { value: '', label: 'All statuses' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'ordered', label: 'Confirmed / Ordered' },
+  { value: 'on_process', label: 'Processing' },
+  { value: 'processing', label: 'Processing (legacy)' },
+  { value: 'dispatched', label: 'Order Dispatched' },
+  { value: 'shipped', label: 'Order Dispatched (legacy)' },
+  { value: 'delivered', label: 'Delivered' },
+  { value: 'cancelled', label: 'Cancelled' },
+];
 const statusLabels = {
   ordered: 'Ordered',
   on_process: 'On Process',
@@ -206,6 +216,7 @@ export default function AdminOrdersPage() {
   const [trackingDraft, setTrackingDraft] = useState('');
   const [orderFilter, setOrderFilter] = useState('');
   const [mobileFilter, setMobileFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -237,14 +248,15 @@ export default function AdminOrdersPage() {
       const phone = String(order.shippingAddress?.phone || '').replace(/\D/g, '');
       const whatsapp = String(order.shippingAddress?.whatsappNumber || '').replace(/\D/g, '');
       const matchesMobile = !mobileTerm || phone.includes(mobileTerm) || whatsapp.includes(mobileTerm);
-      return matchesOrder && matchesMobile;
+      const matchesStatus = !statusFilter || String(order.status || 'ordered') === statusFilter;
+      return matchesOrder && matchesMobile && matchesStatus;
     });
-  }, [orders, orderFilter, mobileFilter]);
+  }, [orders, orderFilter, mobileFilter, statusFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredOrders.length / pageSize));
   const paginatedOrders = filteredOrders.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
-  useEffect(() => { setCurrentPage(1); }, [orderFilter, mobileFilter, dateFrom, dateTo]);
+  useEffect(() => { setCurrentPage(1); }, [orderFilter, mobileFilter, statusFilter, dateFrom, dateTo]);
   useEffect(() => { if (currentPage > totalPages) setCurrentPage(totalPages); }, [currentPage, totalPages]);
   useEffect(() => {
     if (selected?._id && !filteredOrders.some((order) => order._id === selected._id)) setSelected(null);
@@ -286,7 +298,7 @@ export default function AdminOrdersPage() {
 
       <div className={`grid gap-6 ${selected ? 'xl:grid-cols-3' : ''}`}>
         <div className={`${selected ? 'xl:col-span-2' : ''} bg-white rounded-xl border overflow-hidden`}>
-          <div className="grid sm:grid-cols-4 gap-3 border-b bg-gray-50 p-4">
+          <div className="grid gap-3 border-b bg-gray-50 p-4 sm:grid-cols-2 lg:grid-cols-5">
             <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1">Order ID</label>
               <input value={orderFilter} onChange={(e) => setOrderFilter(e.target.value)} placeholder="Search GG0001" className="w-full rounded-lg border px-3 py-2 text-sm" />
@@ -294,6 +306,12 @@ export default function AdminOrdersPage() {
             <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1">Mobile Number</label>
               <input value={mobileFilter} onChange={(e) => setMobileFilter(e.target.value)} placeholder="Search mobile" className="w-full rounded-lg border px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">Status</label>
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm">
+                {statusFilterOptions.map((status) => <option key={status.value || 'all'} value={status.value}>{status.label}</option>)}
+              </select>
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1">From Date</label>
@@ -315,7 +333,7 @@ export default function AdminOrdersPage() {
                     <th className="p-4">Order Date</th>
                     <th className="p-4">Name</th>
                     <th className="p-4">Mobile</th>
-                    <th className="p-4">Address</th>
+                    <th className="p-4">City</th>
                     <th className="p-4">Status</th>
                     <th className="p-4">Payment</th>
                     <th className="p-4 text-right">Total</th>
@@ -332,7 +350,7 @@ export default function AdminOrdersPage() {
                         <td className="p-4 text-gray-600 whitespace-nowrap">{formatDate(order.paidAt || order.createdAt)}</td>
                         <td className="p-4"><p className="font-medium text-gray-900">{order.shippingAddress?.fullName || '-'}</p><p className="text-xs text-gray-500">{order.shippingAddress?.email || order.guestEmail || '-'}</p></td>
                         <td className="p-4 font-medium whitespace-nowrap"><p>{order.shippingAddress?.phone || '-'}</p>{order.shippingAddress?.whatsappNumber && <p className="text-xs text-green-700">WA: {order.shippingAddress.whatsappNumber}</p>}</td>
-                        <td className="p-4 max-w-[250px]"><p className="line-clamp-2 text-gray-600">{addressLine(order.shippingAddress) || '-'}</p>{outOfTn && <span className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">Outside TN: charge applies</span>}</td>
+                        <td className="p-4 max-w-[160px]"><p className="font-medium text-gray-700 break-words">{order.shippingAddress?.city || '-'}</p>{outOfTn && <span className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">Outside TN</span>}</td>
                         <td className="p-4"><span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusColors[normalized] || statusColors.ordered}`}>{statusLabels[normalized] || normalized}</span></td>
                         <td className="p-4"><span className={`px-2 py-1 rounded-full text-xs font-semibold ${paymentStatusColors[order.paymentStatus] || paymentStatusColors.pending}`}>{order.paymentMethod || 'Cashfree'} {order.paymentStatus}</span></td>
                         <td className="p-4 text-right font-medium">{formatPrice(order.total)}</td>
