@@ -10,13 +10,9 @@ const statusOptions = [
 ];
 const statusFilterOptions = [
   { value: '', label: 'All statuses' },
-  { value: 'pending', label: 'Pending' },
-  { value: 'ordered', label: 'Confirmed / Ordered' },
-  { value: 'on_process', label: 'Processing' },
-  { value: 'processing', label: 'Processing (legacy)' },
+  { value: 'ordered', label: 'Ordered' },
+  { value: 'on_process', label: 'On Process' },
   { value: 'dispatched', label: 'Order Dispatched' },
-  { value: 'shipped', label: 'Order Dispatched (legacy)' },
-  { value: 'delivered', label: 'Delivered' },
   { value: 'cancelled', label: 'Cancelled' },
 ];
 const statusLabels = {
@@ -248,7 +244,7 @@ export default function AdminOrdersPage() {
       const phone = String(order.shippingAddress?.phone || '').replace(/\D/g, '');
       const whatsapp = String(order.shippingAddress?.whatsappNumber || '').replace(/\D/g, '');
       const matchesMobile = !mobileTerm || phone.includes(mobileTerm) || whatsapp.includes(mobileTerm);
-      const matchesStatus = !statusFilter || String(order.status || 'ordered') === statusFilter;
+      const matchesStatus = !statusFilter || normalizeStatus(order.status) === statusFilter;
       return matchesOrder && matchesMobile && matchesStatus;
     });
   }, [orders, orderFilter, mobileFilter, statusFilter]);
