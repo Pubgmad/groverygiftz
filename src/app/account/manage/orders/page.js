@@ -6,17 +6,17 @@ import toast from 'react-hot-toast';
 const statusOptions = [
   { value: 'ordered', label: 'Ordered' },
   { value: 'on_process', label: 'On Process' },
-  { value: 'dispatched', label: 'Dispatched' },
+  { value: 'dispatched', label: 'Order Dispatched' },
 ];
 
 const statusLabels = {
   ordered: 'Ordered',
   on_process: 'On Process',
-  dispatched: 'Dispatched',
+  dispatched: 'Order Dispatched',
   pending: 'Ordered',
   processing: 'On Process',
-  shipped: 'Dispatched',
-  delivered: 'Dispatched',
+  shipped: 'Order Dispatched',
+  delivered: 'Order Dispatched',
   cancelled: 'Cancelled',
 };
 

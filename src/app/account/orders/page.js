@@ -18,7 +18,7 @@ const normalizeStatus = (status) => {
 const timelineSteps = [
   { key: 'ordered', title: 'Order Confirmed', text: 'Your order has been confirmed.', icon: FiCheck },
   { key: 'on_process', title: 'Preparing Your Order', text: 'Your personalized gift is being prepared.', icon: FiBox },
-  { key: 'dispatched', title: 'Out for Delivery', text: 'Your order has been dispatched.', icon: FiTruck },
+  { key: 'dispatched', title: 'Order Dispatched', text: 'Your order has been dispatched.', icon: FiTruck },
 ];
 
 const statusIndex = (status) => Math.max(0, timelineSteps.findIndex((step) => step.key === normalizeStatus(status)));

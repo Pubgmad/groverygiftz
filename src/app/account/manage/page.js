@@ -63,7 +63,7 @@ export default function AdminDashboard() {
                         order.status === 'dispatched' || order.status === 'shipped' || order.status === 'delivered' ? 'bg-amber-100 text-amber-800' :
                         order.status === 'on_process' || order.status === 'processing' ? 'bg-blue-100 text-blue-800' :
                         'bg-green-100 text-green-800'
-                      }`}>{String(order.status || 'ordered').replace('on_process', 'on process').replace('processing', 'on process').replace('shipped', 'dispatched').replace('delivered', 'dispatched')}</span>
+                      }`}>{String(order.status || 'ordered').replace('on_process', 'on process').replace('processing', 'on process').replace('dispatched', 'Order Dispatched').replace('shipped', 'Order Dispatched').replace('delivered', 'Order Dispatched')}</span>
                     </td>
                     <td className="py-3 text-right font-medium">{formatPrice(order.total)}</td>
                   </tr>
