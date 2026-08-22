@@ -59,6 +59,7 @@ export default function ProductDetail({ product }) {
   const [googleReviews, setGoogleReviews] = useState({ enabled: false, reviews: [], topics: [] });
   const [giftWrap, setGiftWrap] = useState(false);
   const [giftMessage, setGiftMessage] = useState('');
+  const [customerNote, setCustomerNote] = useState('');
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [sizeChartOpen, setSizeChartOpen] = useState(false);
   const [settings, setSettings] = useState({ freeShippingThreshold: 499, whatsapp: '919994549781', tamilNaduShippingCost: 0, otherStateShippingCost: 120, tamilNaduDeliveryEstimate: 'Within 8 days', otherStateDeliveryEstimate: '10-15 days', deliveryHolidays: [] });
@@ -173,6 +174,7 @@ export default function ProductDetail({ product }) {
   const compareAtPrice = baseRegularPrice + selectedVariantExtra + giftWrapPrice;
   const savings = compareAtPrice > finalUnitPrice ? compareAtPrice - finalUnitPrice : 0;
   const showContactOnlyPrice = product.isQuoteOnly && !(finalUnitPrice > 0);
+  const customerNotesEnabled = product.customerNotesEnabled !== false;
   const price = baseDisplayPrice;
   const productDelivery = product.delivery || {};
   const usesProductDelivery = !!productDelivery.useCustomDelivery;
@@ -626,7 +628,8 @@ const handleCustomerPhotoUpload = async (files) => {
       images: collageUploads[template.label] || [],
     })).filter((group) => group.images.length > 0);
     const variantUploads = Object.fromEntries(Object.entries(variantLabelUploads).filter(([, value]) => value?.url));
-    const allCustomFields = { ...customFieldValues, ...(customerPhotos.length > 0 ? { 'Customer Photos': customerPhotos } : {}), ...(Object.keys(variantUploads).length > 0 ? { 'Variant Label Uploads': variantUploads } : {}) };
+    const productCustomerNote = customerNotesEnabled ? customerNote.trim() : '';
+    const allCustomFields = { ...customFieldValues, ...(productCustomerNote ? { 'Customer Note': productCustomerNote } : {}), ...(customerPhotos.length > 0 ? { 'Customer Photos': customerPhotos } : {}), ...(Object.keys(variantUploads).length > 0 ? { 'Variant Label Uploads': variantUploads } : {}) };
 
     const customizationPreviewPayload = await buildCustomizationPreviewPayload();
     const hasConfiguredAssets = Object.keys(allCustomFields).length > 0 || collageGroups.length > 0 || Boolean(customizationPreviewPayload) || giftWrap || Boolean(giftMessage.trim());
@@ -642,6 +645,7 @@ const handleCustomerPhotoUpload = async (files) => {
       availableStock: selectedAvailableStock,
       variant: variantStr,
       customFields: allCustomFields,
+      customerNotesEnabled,
       collageUploads: collageGroups,
       giftWrap,
       giftMessage,
@@ -861,6 +865,14 @@ const handleCustomerPhotoUpload = async (files) => {
             )}
           </div>
         ))}
+
+
+        {customerNotesEnabled && (
+          <div className="mb-5 rounded-2xl border border-primary-100 bg-white p-4">
+            <label className="block text-sm font-bold text-gray-900 mb-2">Customer Notes <span className="text-gray-400 font-medium">(optional)</span></label>
+            <textarea value={customerNote} onChange={e => setCustomerNote(e.target.value)} rows={3} className="w-full rounded-xl border px-4 py-3 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100" placeholder="Special instructions for this product..." />
+          </div>
+        )}
 
 
         {selectedVariantUploadOptions.length > 0 && (

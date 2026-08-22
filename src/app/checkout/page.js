@@ -41,6 +41,7 @@ export default function CheckoutPage() {
 
   const hasSelectedState = Boolean(address.state);
   const outOfTamilNadu = hasSelectedState && !isTamilNadu(address.state);
+  const showOrderNote = cart.some((item) => item.customerNotesEnabled !== false);
   const shippingSummary = calculateCartShipping(cart, address.state, settings);
   const shippingCost = hasSelectedState ? shippingSummary.cost : 0;
   const deliveryEstimate = shippingSummary.estimate;
@@ -175,7 +176,7 @@ export default function CheckoutPage() {
       const createRes = await fetch('/api/orders/create-cashfree-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: cart, shippingAddress: address, notes: orderNote }),
+        body: JSON.stringify({ items: cart, shippingAddress: address, notes: showOrderNote ? orderNote : '' }),
       });
       const createData = await createRes.json();
       if (!createRes.ok) {
@@ -329,7 +330,7 @@ export default function CheckoutPage() {
                     {outOfTamilNadu ? `Outside Tamil Nadu: delivery charge ${formatPrice(shippingCost)} applies. Estimated delivery ${deliveryEstimate}.` : `Tamil Nadu delivery is free. Estimated delivery ${deliveryEstimate}.`}
                   </div>
                 )}
-                <div><label className="block text-sm font-medium mb-1.5">Order Note <span className="text-gray-400">(optional)</span></label><textarea value={orderNote} onChange={e => setOrderNote(e.target.value)} rows={2} className="w-full border rounded-xl px-4 py-2.5 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 text-sm" placeholder="Special instructions for your order..." /></div>
+                {showOrderNote && <div><label className="block text-sm font-medium mb-1.5">Order Note <span className="text-gray-400">(optional)</span></label><textarea value={orderNote} onChange={e => setOrderNote(e.target.value)} rows={2} className="w-full border rounded-xl px-4 py-2.5 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 text-sm" placeholder="Special instructions for your order..." /></div>}
                 <button onClick={handleAddressNext} className="btn-primary w-full py-3.5 flex items-center justify-center gap-2 text-base font-bold">Continue to Payment <FiChevronRight size={18} /></button>
               </div>
             </div>

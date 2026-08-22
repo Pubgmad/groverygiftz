@@ -46,7 +46,7 @@ export default function AdminProductForm({ params }) {
   const [form, setForm] = useState({
     title: '', description: '', images: [], responsiveImages: { desktop: [], tablet: [], mobile: [] }, productVideo: { url: '', name: '', poster: '' }, customizationPreview: { enabled: false, title: 'Preview your personalized gift', frameImage: '', aspectRatio: '1:1', shape: 'rectangle', instructions: '', requiredImageCount: 0, maxImageCount: 0, areas: [] }, delivery: defaultDelivery(), regularPrice: '', salePrice: '', offerStartsAt: '', offerEndsAt: '',
     stock: 100, collections: [], variants: [], customFields: [], collageEnabled: false, collageTemplates: [],
-    giftWrap: { enabled: false, price: 0 }, giftMessage: false,
+    giftWrap: { enabled: false, price: 0 }, giftMessage: false, customerNotesEnabled: true,
     isQuoteOnly: false, isOffer: false, isFeatured: false, isBestSeller: false, isActive: true,
     seoTitle: '', seoDescription: '',
   });
@@ -66,7 +66,7 @@ export default function AdminProductForm({ params }) {
           offerEndsAt: toDatetimeLocalInput(d.offerEndsAt),
           stock: d.stock ?? 100, collections: d.collections?.map(c => c._id || c) || [],
           variants: d.variants || [], customFields: d.customFields || [], collageEnabled: !!d.collageEnabled, collageTemplates: d.collageTemplates || [],
-          giftWrap: d.giftWrap || { enabled: false, price: 0 }, giftMessage: d.giftMessage || false,
+          giftWrap: d.giftWrap || { enabled: false, price: 0 }, giftMessage: d.giftMessage || false, customerNotesEnabled: d.customerNotesEnabled !== false,
           isQuoteOnly: d.isQuoteOnly || false, isOffer: d.isOffer || false, isFeatured: d.isFeatured || false, isBestSeller: d.isBestSeller || false,
           isActive: d.isActive ?? true, seoTitle: d.seoTitle || d.metaTitle || '', seoDescription: d.seoDescription || d.metaDescription || '',
         });
@@ -202,6 +202,10 @@ export default function AdminProductForm({ params }) {
             <textarea value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
               className="w-full border rounded-lg px-4 py-2 focus:outline-none focus:border-primary-500" rows={6} />
           </div>
+          <label className="flex items-start gap-2 rounded-lg border bg-gray-50 p-3 text-sm font-medium text-gray-700">
+            <input type="checkbox" checked={form.customerNotesEnabled !== false} onChange={e => setForm(p => ({ ...p, customerNotesEnabled: e.target.checked }))} className="mt-1" />
+            <span><span className="block font-semibold text-gray-900">Customer Notes</span><span className="text-xs font-normal text-gray-500">Allow customers to optionally add product-specific instructions for this product.</span></span>
+          </label>
         </div>
 
         {/* Images */}

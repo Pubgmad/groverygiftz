@@ -17,6 +17,7 @@ export function sanitizeProductPayload(payload = {}) {
   body.salePrice = toNumber(body.salePrice, 0);
   body.stock = toNumber(body.stock, 0);
   if (body.giftWrap) body.giftWrap = { ...body.giftWrap, price: toNumber(body.giftWrap.price, 0) };
+  body.customerNotesEnabled = body.customerNotesEnabled !== false;
   if (Array.isArray(body.collageTemplates)) body.collageTemplates = body.collageTemplates.map((template) => ({ ...template, minImages: toNumber(template.minImages, 1), maxImages: toNumber(template.maxImages, 1) }));
   if (body.customizationPreview?.areas) body.customizationPreview = { ...body.customizationPreview, areas: body.customizationPreview.areas.map((area) => ({ ...area, width: toNumber(area.width, 0), height: toNumber(area.height, 0) })) };
 

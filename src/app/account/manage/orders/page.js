@@ -208,6 +208,8 @@ export default function AdminOrdersPage() {
   const [mobileFilter, setMobileFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
 
   const fetchOrders = async () => {
     const query = new URLSearchParams();
@@ -239,6 +241,14 @@ export default function AdminOrdersPage() {
     });
   }, [orders, orderFilter, mobileFilter]);
 
+  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / pageSize));
+  const paginatedOrders = filteredOrders.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  useEffect(() => { setCurrentPage(1); }, [orderFilter, mobileFilter, dateFrom, dateTo]);
+  useEffect(() => { if (currentPage > totalPages) setCurrentPage(totalPages); }, [currentPage, totalPages]);
+  useEffect(() => {
+    if (selected?._id && !filteredOrders.some((order) => order._id === selected._id)) setSelected(null);
+  }, [filteredOrders, selected?._id]);
   const updateStatus = async (id, status) => {
     const res = await fetch(`/api/orders/${id}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }),
@@ -274,8 +284,8 @@ export default function AdminOrdersPage() {
         </div>
       </div>
 
-      <div className="grid xl:grid-cols-3 gap-6">
-        <div className="xl:col-span-2 bg-white rounded-xl border overflow-hidden">
+      <div className={`grid gap-6 ${selected ? 'xl:grid-cols-3' : ''}`}>
+        <div className={`${selected ? 'xl:col-span-2' : ''} bg-white rounded-xl border overflow-hidden`}>
           <div className="grid sm:grid-cols-4 gap-3 border-b bg-gray-50 p-4">
             <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1">Order ID</label>
@@ -295,7 +305,7 @@ export default function AdminOrdersPage() {
             </div>
           </div>
 
-          {loading ? <p className="p-6 text-center">Loading...</p> : (
+          {loading ? <p className="p-6 text-center">Loading...</p> : (<>
             <div className="overflow-x-auto">
               <table className="w-full text-sm min-w-[1050px]">
                 <thead>
@@ -312,12 +322,12 @@ export default function AdminOrdersPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredOrders.map((order, idx) => {
+                  {paginatedOrders.map((order, idx) => {
                     const outOfTn = isOutOfTamilNadu(order);
                     const normalized = normalizeStatus(order.status);
                     return (
-                      <tr key={order._id} className={`border-t cursor-pointer hover:bg-gray-50 ${selected?._id === order._id ? 'bg-primary-50' : ''}`} onClick={() => setSelected(order)}>
-                        <td className="p-4 font-semibold text-gray-500">{idx + 1}</td>
+                      <tr key={order._id} className={`border-t cursor-pointer hover:bg-gray-50 ${selected?._id === order._id ? 'bg-primary-50' : ''}`} onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>
+                        <td className="p-4 font-semibold text-gray-500">{(currentPage - 1) * pageSize + idx + 1}</td>
                         <td className="p-4 font-bold text-primary-700">{order.orderNumber}</td>
                         <td className="p-4 text-gray-600 whitespace-nowrap">{formatDate(order.paidAt || order.createdAt)}</td>
                         <td className="p-4"><p className="font-medium text-gray-900">{order.shippingAddress?.fullName || '-'}</p><p className="text-xs text-gray-500">{order.shippingAddress?.email || order.guestEmail || '-'}</p></td>
@@ -333,11 +343,21 @@ export default function AdminOrdersPage() {
                 </tbody>
               </table>
             </div>
+          {filteredOrders.length > pageSize && (
+            <div className="flex flex-col gap-3 border-t bg-gray-50 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-gray-500">Showing {(currentPage - 1) * pageSize + 1}-{Math.min(currentPage * pageSize, filteredOrders.length)} of {filteredOrders.length} orders</p>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} disabled={currentPage === 1} className="rounded-lg border px-3 py-2 font-semibold disabled:cursor-not-allowed disabled:opacity-50">Previous</button>
+                <span className="rounded-lg bg-white px-3 py-2 font-semibold text-gray-700">Page {currentPage} of {totalPages}</span>
+                <button type="button" onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))} disabled={currentPage === totalPages} className="rounded-lg border px-3 py-2 font-semibold disabled:cursor-not-allowed disabled:opacity-50">Next</button>
+              </div>
+            </div>
           )}
+          </>)}
         </div>
 
+        {selected && (
         <div className="bg-white rounded-xl border p-5 md:p-6">
-          {selected ? (
             <div>
               <h2 className="font-bold text-lg mb-4">Order {selected.orderNumber}</h2>
               <div className="space-y-3 text-sm">
@@ -400,10 +420,8 @@ export default function AdminOrdersPage() {
 
               </div>
             </div>
-          ) : (
-            <p className="text-gray-500 text-center py-8">Select an order to view details</p>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
