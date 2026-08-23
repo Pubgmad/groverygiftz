@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { formatPrice } from '@/lib/utils';
+import { buildDeliveryEstimateText } from '@/lib/deliveryDate';
 import toast from 'react-hot-toast';
 
 const statusOptions = [
@@ -55,6 +56,16 @@ const formatDate = (date) => date ? new Date(date).toLocaleString('en-IN', { tim
 const isUploadedFile = (value) => value && typeof value === 'object' && value.url;
 const isOutOfTamilNadu = (order) => String(order.shippingAddress?.state || '').trim().toLowerCase() !== 'tamil nadu';
 const addressLine = (address = {}) => [address.line1, address.line2, address.city, address.state, address.pincode].filter(Boolean).join(', ');
+const getEstimateBaseText = (estimate = '') => String(estimate || '').split(' - expected by ')[0].trim();
+const getAdminDeliveryEstimate = (order, holidays = []) => {
+  const baseEstimate = getEstimateBaseText(order?.deliveryEstimate);
+  if (!baseEstimate) return order?.deliveryEstimate || '-';
+  return buildDeliveryEstimateText(baseEstimate, {
+    startDate: order.paidAt || order.createdAt,
+    fallbackDays: isOutOfTamilNadu(order) ? 15 : 8,
+    holidays,
+  });
+};
 const formatFileSize = (bytes) => {
   const size = Number(bytes || 0);
   if (!size) return '';
@@ -216,6 +227,7 @@ export default function AdminOrdersPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [deliveryHolidays, setDeliveryHolidays] = useState([]);
   const pageSize = 10;
 
   const fetchOrders = async () => {
@@ -231,6 +243,13 @@ export default function AdminOrdersPage() {
   };
 
   useEffect(() => { fetchOrders(); }, [dateFrom, dateTo]);
+
+  useEffect(() => {
+    fetch('/api/settings')
+      .then((res) => res.json())
+      .then((data) => setDeliveryHolidays(Array.isArray(data.deliveryHolidays) ? data.deliveryHolidays : []))
+      .catch(() => setDeliveryHolidays([]));
+  }, []);
 
   useEffect(() => {
     setTrackingDraft(selected?.trackingNumber || '');
@@ -395,7 +414,7 @@ export default function AdminOrdersPage() {
                   </div>
                 )}
                 <div><span className="text-gray-500">Order date:</span> {formatDate(selected.paidAt || selected.createdAt)}</div>
-                <div><span className="text-gray-500">Estimated delivery:</span> <span className="font-medium">{selected.deliveryEstimate || '-'}</span></div>
+                <div><span className="text-gray-500">Estimated delivery:</span> <span className="font-medium">{getAdminDeliveryEstimate(selected, deliveryHolidays)}</span></div>
                 {selected.notes && <div className="rounded-lg border bg-yellow-50 p-3"><span className="text-gray-500">Customer note:</span> <p className="font-medium text-gray-900 whitespace-pre-wrap">{selected.notes}</p></div>}
                 <div>
                   <span className="text-gray-500">Status:</span>

@@ -137,7 +137,11 @@ export default function ShippingTemplatesPage() {
           </div>
 
           <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-between">
-            <button type="button" onClick={deleteTemplate} disabled={loading || selectedId === 'new'} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 px-4 py-3 text-sm font-bold text-red-600 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"><FiTrash2 /> Delete</button>
+            {selectedId === 'new' ? (
+              <button type="button" onClick={() => setForm(emptyTemplate())} disabled={loading} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-bold text-gray-600 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto">Clear new template</button>
+            ) : (
+              <button type="button" onClick={deleteTemplate} disabled={loading} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 px-4 py-3 text-sm font-bold text-red-600 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"><FiTrash2 /> Delete</button>
+            )}
             <button disabled={loading} className="w-full rounded-xl bg-primary-600 px-5 py-3 text-sm font-bold text-white disabled:opacity-60 sm:w-auto">{loading ? 'Saving...' : 'Save Template'}</button>
           </div>
         </form>

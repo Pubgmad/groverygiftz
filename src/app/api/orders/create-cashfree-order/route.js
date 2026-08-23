@@ -20,6 +20,26 @@ const isValidPincode = (pincode) => /^[1-9]\d{5}$/.test(String(pincode || '').tr
 const getStateOverride = (delivery, state) => (delivery?.stateOverrides || []).find(
   (row) => String(row.state || '').trim().toLowerCase() === String(state || '').trim().toLowerCase()
 );
+const getSelectedVariantLabels = (variantText = '') => Object.fromEntries(
+  String(variantText || '')
+    .split(',')
+    .map((part) => part.split(':').map((value) => value.trim()))
+    .filter(([name, label]) => name && label)
+);
+
+const resolveCurrentVariantDelivery = (item, product) => {
+  if (!product?.variants?.length || !item?.variant) return null;
+  const selectedLabels = getSelectedVariantLabels(item.variant);
+  const selectedOptions = product.variants
+    .map((variant) => {
+      const selectedLabel = selectedLabels[variant.name];
+      return selectedLabel ? (variant.options || []).find((option) => option.label === selectedLabel) : null;
+    })
+    .filter(Boolean);
+  const stateOverrides = selectedOptions.flatMap((option) => option.stateOverrides || []);
+  return stateOverrides.length ? { stateOverrides } : null;
+};
+
 const stripDisplayOnlyPreviewData = (value) => {
   if (Array.isArray(value)) return value.map(stripDisplayOnlyPreviewData);
   if (!value || typeof value !== 'object') return value;
@@ -33,9 +53,10 @@ const stripDisplayOnlyPreviewData = (value) => {
 
 
 const resolveItemDelivery = (item, productsById, state, settings) => {
-  const variantOverride = getStateOverride(item?.variantDelivery, state);
-  if (variantOverride?.state) return { cost: Number(variantOverride.shippingCost || 0), estimate: variantOverride.deliveryEstimate || '' };
   const product = productsById[String(item.productId || item.product || '')];
+  const currentVariantDelivery = resolveCurrentVariantDelivery(item, product) || item?.variantDelivery;
+  const variantOverride = getStateOverride(currentVariantDelivery, state);
+  if (variantOverride?.state) return { cost: Number(variantOverride.shippingCost || 0), estimate: variantOverride.deliveryEstimate || '' };
   const delivery = product?.delivery || item.delivery || {};
   if (!delivery.useCustomDelivery) return null;
 

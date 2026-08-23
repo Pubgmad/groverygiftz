@@ -22,13 +22,14 @@ async function syncProductsUsingTemplate(template) {
   const templateId = String(template?._id || '');
   if (!templateId) return [];
   const stateOverrides = templateRatesToOverrides(template.rates);
+  const templateRefs = [template._id, templateId];
 
   await Product.updateMany(
-    { 'delivery.shippingTemplate': template._id },
+    { 'delivery.shippingTemplate': { $in: templateRefs } },
     { $set: { 'delivery.stateOverrides': stateOverrides } }
   );
 
-  const products = await Product.find({ 'variants.options.shippingTemplate': template._id });
+  const products = await Product.find({ 'variants.options.shippingTemplate': { $in: templateRefs } });
   const changedSlugs = [];
   for (const product of products) {
     let changed = false;
@@ -46,7 +47,7 @@ async function syncProductsUsingTemplate(template) {
     }
   }
 
-  const deliveryProducts = await Product.find({ 'delivery.shippingTemplate': template._id }).select('slug').lean();
+  const deliveryProducts = await Product.find({ 'delivery.shippingTemplate': { $in: templateRefs } }).select('slug').lean();
   deliveryProducts.forEach((product) => changedSlugs.push(product.slug));
   return [...new Set(changedSlugs.filter(Boolean))];
 }
