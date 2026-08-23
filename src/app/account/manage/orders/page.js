@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { formatPrice } from '@/lib/utils';
-import { getOrderDeliveryEstimate } from '@/lib/orderDeliveryEstimate';
+import { getOrderDeliveryEstimate, isOrderOutOfTamilNadu } from '@/lib/orderDeliveryEstimate';
 import toast from 'react-hot-toast';
 
 const statusOptions = [
@@ -346,7 +346,7 @@ export default function AdminOrdersPage() {
                 </thead>
                 <tbody>
                   {paginatedOrders.map((order, idx) => {
-                    const outOfTn = isOutOfTamilNadu(order);
+                    const outOfTn = isOrderOutOfTamilNadu(order);
                     const normalized = normalizeStatus(order.status);
                     return (
                       <tr key={order._id} className={`border-t cursor-pointer hover:bg-gray-50 ${selected?._id === order._id ? 'bg-primary-50' : ''}`} onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>
@@ -398,7 +398,7 @@ export default function AdminOrdersPage() {
                   </div>
                 )}
 
-                {isOutOfTamilNadu(selected) && (
+                {isOrderOutOfTamilNadu(selected) && (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-800">
                     Outside Tamil Nadu order. Delivery charge applies and timeline is usually 10 to 15 days.
                   </div>
