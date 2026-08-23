@@ -7,8 +7,18 @@ import { useRouter } from 'next/navigation';
 import ConfiguredImageSections from '@/components/cart/ConfiguredImageSections';
 
 export default function CartPage() {
-  const { cart, removeFromCart, updateQuantity, cartTotal } = useCart();
+  const { cart, removeFromCart, updateQuantity, cartTotal, cartReady } = useCart();
   const router = useRouter();
+
+  if (!cartReady) {
+    return (
+      <div className="max-w-xl mx-auto px-4 py-16 sm:py-24 text-center">
+        <FiShoppingBag size={72} className="mx-auto mb-6 text-primary-200" />
+        <h1 className="text-3xl font-display font-bold mb-3">Restoring your cart...</h1>
+        <p className="text-gray-500">Please wait while your saved cart is loaded.</p>
+      </div>
+    );
+  }
 
   if (cart.length === 0) {
     return (

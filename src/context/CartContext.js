@@ -18,6 +18,7 @@ const capQuantity = (quantity, availableStock) => {
   const limit = normalizeStockLimit(availableStock);
   return limit === null ? quantity : Math.min(quantity, limit);
 };
+
 const mergeCartItems = (accountCart = [], localCart = []) => {
   const merged = [...accountCart];
   localCart.forEach((item) => {
@@ -34,6 +35,7 @@ const mergeCartItems = (accountCart = [], localCart = []) => {
   });
   return merged;
 };
+
 const stripDisplayOnlyPreviewData = (value) => {
   if (Array.isArray(value)) return value.map(stripDisplayOnlyPreviewData);
   if (!value || typeof value !== 'object') return value;
@@ -50,9 +52,29 @@ const persistGuestCart = (items) => {
   } catch {}
 };
 
+const removeGuestCart = () => {
+  try {
+    localStorage.removeItem('groverygiftz-cart');
+  } catch {}
+};
+
+const readGuestCart = () => {
+  try {
+    const saved = localStorage.getItem('groverygiftz-cart');
+    if (!saved) return [];
+    const parsed = JSON.parse(saved);
+    if (Array.isArray(parsed)) return parsed;
+    removeGuestCart();
+  } catch {
+    removeGuestCart();
+  }
+  return [];
+};
+
 export function CartProvider({ children }) {
   const { data: session, status } = useSession();
   const [cart, setCart] = useState([]);
+  const cartRef = useRef([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const localLoadedRef = useRef(false);
   const syncingRef = useRef(false);
@@ -61,52 +83,50 @@ export function CartProvider({ children }) {
   const syncedCustomerRef = useRef('');
   const activeCustomerRef = useRef('');
 
+  const applyCart = (nextCart) => {
+    cartRef.current = nextCart;
+    setCart(nextCart);
+    return nextCart;
+  };
+
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('groverygiftz-cart');
-      if (saved) {
-        const savedCart = JSON.parse(saved);
-        if (Array.isArray(savedCart)) {
-          setCart((current) => current.length ? mergeCartItems(savedCart, current) : savedCart);
-        } else {
-          localStorage.removeItem('groverygiftz-cart');
-        }
-      }
-    } catch {
-      localStorage.removeItem('groverygiftz-cart');
-    } finally {
-      localLoadedRef.current = true;
-      setLocalLoaded(true);
-    }
+    const savedCart = readGuestCart();
+    if (savedCart.length) applyCart(savedCart);
+    localLoadedRef.current = true;
+    setLocalLoaded(true);
   }, []);
 
   useEffect(() => {
     if (status !== 'authenticated' || session?.user?.type !== 'customer' || !session.user.id || !localLoaded) return;
-    if (syncedCustomerRef.current === session.user.id) return;
+    if (syncedCustomerRef.current === session.user.id || syncingRef.current) return;
 
     syncingRef.current = true;
     setCartSyncing(true);
     fetch('/api/customers/saved-lists')
       .then((res) => res.ok ? res.json() : Promise.reject())
-      .then((data) => {
-        setCart((current) => {
-          const merged = mergeCartItems(data.cart || [], current || []);
-          fetch('/api/customers/saved-lists', {
+      .then(async (data) => {
+        const guestCart = cartRef.current || [];
+        const merged = mergeCartItems(data.cart || [], guestCart);
+        applyCart(merged);
+        try {
+          const saveRes = await fetch('/api/customers/saved-lists', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ cart: stripDisplayOnlyPreviewData(merged) }),
-          }).catch(() => {});
-          return merged;
-        });
+          });
+          if (saveRes.ok) removeGuestCart();
+        } catch {}
         syncedCustomerRef.current = session.user.id;
         activeCustomerRef.current = session.user.id;
-        localStorage.removeItem('groverygiftz-cart');
       })
       .catch(() => {
         syncedCustomerRef.current = session.user.id;
         activeCustomerRef.current = session.user.id;
       })
-      .finally(() => { syncingRef.current = false; setCartSyncing(false); });
+      .finally(() => {
+        syncingRef.current = false;
+        setCartSyncing(false);
+      });
   }, [status, session?.user?.id, session?.user?.type, localLoaded]);
 
   useEffect(() => {
@@ -119,8 +139,8 @@ export function CartProvider({ children }) {
       activeCustomerRef.current = '';
       syncedCustomerRef.current = '';
       syncingRef.current = false;
-      localStorage.removeItem('groverygiftz-cart');
-      setCart([]);
+      removeGuestCart();
+      applyCart([]);
     }
   }, [status, session?.user?.id, session?.user?.type]);
 
@@ -128,7 +148,7 @@ export function CartProvider({ children }) {
     if (!localLoadedRef.current) return;
     const isCustomer = status === 'authenticated' && session?.user?.type === 'customer' && session.user.id;
     if (!isCustomer) {
-      persistGuestCart(cart)
+      persistGuestCart(cartRef.current);
       return;
     }
 
@@ -137,7 +157,7 @@ export function CartProvider({ children }) {
       fetch('/api/customers/saved-lists', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cart: stripDisplayOnlyPreviewData(cart) }),
+        body: JSON.stringify({ cart: stripDisplayOnlyPreviewData(cartRef.current) }),
       }).catch(() => {});
     }, 350);
     return () => clearTimeout(timer);
@@ -146,49 +166,44 @@ export function CartProvider({ children }) {
   const isAuthenticatedCustomer = status === 'authenticated' && session?.user?.type === 'customer' && session.user.id;
 
   const addToCart = (item, options = {}) => {
-    setCart(prev => {
-      const existing = !item.cartItemId && prev.find(i => isSameCartLine(i, item.productId, item.variant));
-      if (existing) {
-        const nextCart = prev.map(i => isSameCartLine(i, item.productId, item.variant)
-          ? { ...i, quantity: capQuantity(i.quantity + item.quantity, item.availableStock ?? i.availableStock) }
-          : i
-        );
-        if (!isAuthenticatedCustomer) persistGuestCart(nextCart);
-        return nextCart;
-      }
-      const nextCart = [...prev, { ...item, quantity: capQuantity(item.quantity, item.availableStock) }];
-      if (!isAuthenticatedCustomer) persistGuestCart(nextCart);
-      return nextCart;
-    });
+    const prev = cartRef.current || [];
+    const existing = !item.cartItemId && prev.find((entry) => isSameCartLine(entry, item.productId, item.variant));
+    let nextCart;
+    if (existing) {
+      nextCart = prev.map((entry) => isSameCartLine(entry, item.productId, item.variant)
+        ? { ...entry, quantity: capQuantity(entry.quantity + item.quantity, item.availableStock ?? entry.availableStock) }
+        : entry
+      );
+    } else {
+      nextCart = [...prev, { ...item, quantity: capQuantity(item.quantity, item.availableStock) }];
+    }
+    applyCart(nextCart);
+    if (!isAuthenticatedCustomer) persistGuestCart(nextCart);
     if (options.openDrawer !== false) setIsCartOpen(true);
   };
 
   const removeFromCart = (productId, variant, cartItemId) => {
-    setCart(prev => {
-      const nextCart = prev.filter(i => !isSameCartLine(i, productId, variant, cartItemId));
-      if (!isAuthenticatedCustomer) persistGuestCart(nextCart);
-      return nextCart;
-    });
+    const nextCart = (cartRef.current || []).filter((item) => !isSameCartLine(item, productId, variant, cartItemId));
+    applyCart(nextCart);
+    if (!isAuthenticatedCustomer) persistGuestCart(nextCart);
   };
 
   const updateQuantity = (productId, variant, quantity, cartItemId) => {
     if (quantity <= 0) return removeFromCart(productId, variant, cartItemId);
-    setCart(prev => {
-      const nextCart = prev.map(i =>
-        isSameCartLine(i, productId, variant, cartItemId) ? { ...i, quantity: capQuantity(quantity, i.availableStock) } : i
-      );
-      if (!isAuthenticatedCustomer) persistGuestCart(nextCart);
-      return nextCart;
-    });
+    const nextCart = (cartRef.current || []).map((item) =>
+      isSameCartLine(item, productId, variant, cartItemId) ? { ...item, quantity: capQuantity(quantity, item.availableStock) } : item
+    );
+    applyCart(nextCart);
+    if (!isAuthenticatedCustomer) persistGuestCart(nextCart);
   };
 
-  const clearCart = () => setCart(() => {
+  const clearCart = () => {
+    applyCart([]);
     if (!isAuthenticatedCustomer) persistGuestCart([]);
-    return [];
-  });
+  };
 
-  const cartCount = cart.reduce((sum, i) => sum + i.quantity, 0);
-  const cartTotal = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const cartTotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const currentCustomerId = status === 'authenticated' && session?.user?.type === 'customer' ? session.user.id : '';
   const cartReady = localLoaded && (!currentCustomerId || (syncedCustomerRef.current === currentCustomerId && !cartSyncing));
 
@@ -200,4 +215,3 @@ export function CartProvider({ children }) {
 }
 
 export const useCart = () => useContext(CartContext);
-
