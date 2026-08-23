@@ -17,7 +17,7 @@ export default async function BlogDetailPage({ params }) {
           <img src={blog.featuredImage} alt={blog.title} className="w-full h-full object-cover" />
         </div>
       )}
-      <p className="text-sm text-gray-400 mb-2">{new Date(blog.createdAt).toLocaleDateString()} {blog.author && `• ${blog.author}`}</p>
+      <p className="text-sm text-gray-400 mb-2">{new Date(blog.createdAt).toLocaleDateString()} {blog.author && `- ${blog.author}`}</p>
       <h1 className="text-3xl md:text-4xl font-display font-bold mb-8">{blog.title}</h1>
       <div className="prose max-w-none overflow-x-auto prose-img:max-w-full prose-table:block prose-table:overflow-x-auto" dangerouslySetInnerHTML={{ __html: blog.content }} />
     </div>

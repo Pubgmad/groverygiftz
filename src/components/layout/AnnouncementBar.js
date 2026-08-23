@@ -32,7 +32,7 @@ export default async function AnnouncementBar() {
           items.map((text, i) => (
             <span key={`${rep}-${i}`} className="mx-5 text-xs font-semibold text-white sm:mx-10 sm:text-sm">
               {text}
-              <span className="mx-3 text-white/40 sm:mx-5">◆</span>
+              <span className="mx-3 text-white/40 sm:mx-5">|</span>
             </span>
           ))
         )}

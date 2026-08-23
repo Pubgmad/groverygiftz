@@ -48,7 +48,7 @@ export default function AdminSidebar({ mobileOpen = false, onClose = () => {} })
       </nav>
       <div className="p-4 border-t border-gray-700 mt-4">
         <Link href="/" target="_blank" className="flex items-center gap-2 text-gray-400 hover:text-white text-sm">
-          View Store →
+          View Store
         </Link>
       </div>
     </aside>

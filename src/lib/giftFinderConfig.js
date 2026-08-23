@@ -7,7 +7,7 @@ export const GIFT_FINDER_OCCASIONS = [
   { value: 'house-warming', label: '🏠 House Warming' },
   { value: 'farewell', label: '👋 Farewell' },
   { value: 'baby-shower', label: '👶 Baby Shower' },
-  { value: 'valentine', label: "❤️ Valentine's Day" },
+  { value: 'valentine', label: "Valentine's Day" },
   { value: 'womens-day', label: "🌷 Women's Day" },
   { value: 'mothers-day', label: "🌸 Mother's Day" },
   { value: 'fathers-day', label: "👔 Father's Day" },
@@ -15,7 +15,7 @@ export const GIFT_FINDER_OCCASIONS = [
   { value: 'teachers-day', label: "📚 Teacher's Day" },
   { value: 'childrens-day', label: "🎈 Children's Day" },
   { value: 'new-year', label: '🎆 New Year' },
-  { value: 'christmas', label: '🎄 Christmas' },
+  { value: 'christmas', label: 'Christmas' },
   { value: 'holi', label: '🎨 Holi' },
   { value: 'diwali', label: '🪔 Diwali' },
   { value: 'rakhi', label: '🧵 Rakhi' },
@@ -25,7 +25,7 @@ export const GIFT_FINDER_OCCASIONS = [
 export const GIFT_FINDER_TYPES = [
   { value: 'personalized', label: '🖼️ Customized Gifts' },
   { value: 'frames', label: '🪞 Frames' },
-  { value: 'unique-gifts', label: '✨ Unique Gifts' },
+  { value: 'unique-gifts', label: 'Unique Gifts' },
   { value: 'for-her', label: '💕 Gift for Her' },
   { value: 'for-him', label: '💙 Gift for Him' },
   { value: 'for-babies', label: '👶 Collections for Babies' },
@@ -33,8 +33,8 @@ export const GIFT_FINDER_TYPES = [
   { value: 'combos', label: '🎁 Combos' },
   { value: 'hampers', label: '🧺 Hampers' },
   { value: 'chocolates', label: '🍫 Chocolates' },
-  { value: 'return-gifts', label: '↩️ Return Gifts' },
-  { value: 'modern-special', label: '⭐ Modern Special' },
+  { value: 'return-gifts', label: 'Return Gifts' },
+  { value: 'modern-special', label: 'Modern Special' },
 ];
 
 export const OCCASION_KEYWORDS = {

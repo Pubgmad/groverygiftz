@@ -10,10 +10,10 @@ export default function WishlistPage() {
   if (wishlist.length === 0) {
     return (
       <div className="max-w-xl mx-auto px-4 py-16 sm:py-24 text-center">
-        <div className="text-6xl sm:text-8xl mb-5 sm:mb-6">🤍</div>
+        <div className="text-6xl sm:text-8xl mb-5 sm:mb-6">Wishlist</div>
         <h1 className="text-3xl font-display font-bold mb-3">Your Wishlist is Empty</h1>
         <p className="text-gray-500 mb-8">Save your favorite gifts here and come back to them anytime.</p>
-        <Link href="/shop" className="btn-accent inline-flex w-full justify-center px-6 py-3.5 sm:w-auto sm:px-10">Explore Gifts →</Link>
+        <Link href="/shop" className="btn-accent inline-flex w-full justify-center px-6 py-3.5 sm:w-auto sm:px-10">Explore Gifts</Link>
       </div>
     );
   }

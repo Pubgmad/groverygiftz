@@ -15,11 +15,11 @@ const DEFAULT_QUICK_PICKS = [
 ];
 
 const DEFAULT_TICKER = [
-  '🎁 Free shipping on orders above ₹{{threshold}}',
-  '✨ 100% customized & thoughtful gifts',
+  'Free shipping on orders above INR {{threshold}}',
+  '100% customized and thoughtful gifts',
   '🚚 Fast, reliable delivery pan India',
   '💝 Perfect for every occasion',
-  '⭐ Thousands of happy customers',
+  'Thousands of happy customers',
   '🎀 Handpicked quality you can trust',
 ];
 
@@ -35,7 +35,7 @@ export function resolveGiftFinderForUi(settings) {
     tryLine: settings?.giftFinderTryLine?.trim() || 'Try our Gift Recommender',
     description:
       settings?.giftFinderDescription?.trim() ||
-      'Pick an occasion and gift style — we search product titles and descriptions so shoppers find the right gift faster.',
+      'Pick an occasion and gift style - we search product titles and descriptions so shoppers find the right gift faster.',
   };
 
   let occasions = settings?.giftFinderOccasions;
@@ -82,7 +82,7 @@ export function resolveGiftFinderForUi(settings) {
   return { intro, occasions, types, quickPicks };
 }
 
-/** Keyword maps for /search — merges admin CSV with code defaults per value. */
+/** Keyword maps for /search - merges admin CSV with code defaults per value. */
 export function buildSearchKeywordMaps(settings) {
   const resolved = resolveGiftFinderForUi(settings);
   const occasionKeywords = { ...OCCASION_KEYWORDS };
