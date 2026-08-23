@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
-import { FiPlus, FiTrash2 } from 'react-icons/fi';
+import { FiEdit2, FiPlus, FiTrash2 } from 'react-icons/fi';
 
 const INDIAN_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
@@ -16,7 +16,7 @@ const emptyTemplate = () => ({ name: '', description: '', rates: blankRates(), i
 
 export default function ShippingTemplatesPage() {
   const [templates, setTemplates] = useState([]);
-  const [selectedId, setSelectedId] = useState('new');
+  const [selectedId, setSelectedId] = useState(null);
   const [form, setForm] = useState(emptyTemplate());
   const [loading, setLoading] = useState(false);
   const selected = useMemo(() => templates.find((template) => template._id === selectedId), [templates, selectedId]);
@@ -25,6 +25,7 @@ export default function ShippingTemplatesPage() {
 
   useEffect(() => { loadTemplates(); }, []);
   useEffect(() => {
+    if (!selectedId) return;
     if (selectedId === 'new') return setForm(emptyTemplate());
     if (selected) setForm({ ...emptyTemplate(), ...selected, rates: INDIAN_STATES.map((state) => ({ state, ...(selected.rates || []).find((row) => row.state === state) })) });
   }, [selectedId, selected]);
@@ -55,14 +56,14 @@ export default function ShippingTemplatesPage() {
   };
 
   const deleteTemplate = async () => {
-    if (selectedId === 'new') return;
+    if (!selectedId || selectedId === 'new') return;
     if (!window.confirm('Delete this shipping template permanently? Products using it will keep their last saved rates.')) return;
     setLoading(true);
     try {
       const res = await fetch(`/api/shipping-templates/${selectedId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Unable to delete template');
       toast.success('Shipping template deleted');
-      setSelectedId('new');
+      setSelectedId(null);
       await loadTemplates();
     } catch (error) {
       toast.error(error.message || 'Unable to delete template');
@@ -83,15 +84,32 @@ export default function ShippingTemplatesPage() {
 
       <div className="grid gap-5 lg:grid-cols-[280px_1fr]">
         <div className="rounded-2xl border bg-white p-3">
-          <button type="button" onClick={() => setSelectedId('new')} className={`mb-2 w-full rounded-xl px-3 py-3 text-left text-sm font-semibold ${selectedId === 'new' ? 'bg-primary-50 text-primary-700' : 'hover:bg-gray-50'}`}>New shipping template</button>
-          {templates.map((template) => (
-            <button key={template._id} type="button" onClick={() => setSelectedId(template._id)} className={`mb-2 w-full rounded-xl px-3 py-3 text-left text-sm font-semibold ${selectedId === template._id ? 'bg-primary-50 text-primary-700' : 'hover:bg-gray-50'}`}>
-              <span className="block truncate">{template.name}</span>
-              <span className="text-xs font-normal text-gray-500">{template.isActive ? 'Active' : 'Inactive'}</span>
+          <div className="mb-3 px-2 py-1">
+            <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Saved templates</p>
+          </div>
+          {templates.length === 0 ? (
+            <div className="rounded-xl border border-dashed bg-gray-50 px-3 py-6 text-center text-sm text-gray-500">No shipping templates yet.</div>
+          ) : templates.map((template) => (
+            <button key={template._id} type="button" onClick={() => setSelectedId(template._id)} className={`mb-2 w-full rounded-xl px-3 py-3 text-left text-sm font-semibold transition ${selectedId === template._id ? 'bg-primary-50 text-primary-700' : 'hover:bg-gray-50'}`}>
+              <span className="flex min-w-0 items-center justify-between gap-3">
+                <span className="block min-w-0 truncate">{template.name}</span>
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${template.isActive ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{template.isActive ? 'Active' : 'Inactive'}</span>
+              </span>
+              <span className="mt-1 block text-xs font-normal text-gray-500">Click to edit or check/uncheck active status</span>
             </button>
           ))}
         </div>
 
+        {!selectedId ? (
+          <div className="flex min-h-[260px] items-center justify-center rounded-2xl border border-dashed bg-white p-6 text-center sm:p-8">
+            <div className="max-w-sm">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-50 text-primary-600"><FiEdit2 size={22} /></div>
+              <h2 className="font-display text-xl font-bold text-gray-950">Select a template</h2>
+              <p className="mt-2 text-sm text-gray-500">Choose a saved shipping template to edit it, or create a new one when needed.</p>
+              <button type="button" onClick={() => setSelectedId('new')} className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-primary-600 px-4 py-3 text-sm font-bold text-white"><FiPlus /> New Template</button>
+            </div>
+          </div>
+        ) : (
         <form onSubmit={saveTemplate} className="rounded-2xl border bg-white p-4 sm:p-6">
           <div className="mb-5 grid gap-4 md:grid-cols-2">
             <div><label className="mb-1 block text-sm font-medium">Template Name</label><input required value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} className="w-full rounded-lg border px-4 py-2" placeholder="Example: 1 KG - All States" /></div>
@@ -145,6 +163,7 @@ export default function ShippingTemplatesPage() {
             <button disabled={loading} className="w-full rounded-xl bg-primary-600 px-5 py-3 text-sm font-bold text-white disabled:opacity-60 sm:w-auto">{loading ? 'Saving...' : 'Save Template'}</button>
           </div>
         </form>
+        )}
       </div>
     </div>
   );
