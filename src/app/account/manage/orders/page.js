@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { formatPrice } from '@/lib/utils';
-import { buildDeliveryEstimateText } from '@/lib/deliveryDate';
+import { getOrderDeliveryEstimate } from '@/lib/orderDeliveryEstimate';
 import toast from 'react-hot-toast';
 
 const statusOptions = [
@@ -54,18 +54,8 @@ const normalizeStatus = (status) => {
 
 const formatDate = (date) => date ? new Date(date).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) + ' IST' : '-';
 const isUploadedFile = (value) => value && typeof value === 'object' && value.url;
-const isOutOfTamilNadu = (order) => String(order.shippingAddress?.state || '').trim().toLowerCase() !== 'tamil nadu';
 const addressLine = (address = {}) => [address.line1, address.line2, address.city, address.state, address.pincode].filter(Boolean).join(', ');
-const getEstimateBaseText = (estimate = '') => String(estimate || '').split(' - expected by ')[0].trim();
-const getAdminDeliveryEstimate = (order, holidays = []) => {
-  const baseEstimate = getEstimateBaseText(order?.deliveryEstimate);
-  if (!baseEstimate) return order?.deliveryEstimate || '-';
-  return buildDeliveryEstimateText(baseEstimate, {
-    startDate: order.paidAt || order.createdAt,
-    fallbackDays: isOutOfTamilNadu(order) ? 15 : 8,
-    holidays,
-  });
-};
+
 const formatFileSize = (bytes) => {
   const size = Number(bytes || 0);
   if (!size) return '';
@@ -414,7 +404,7 @@ export default function AdminOrdersPage() {
                   </div>
                 )}
                 <div><span className="text-gray-500">Order date:</span> {formatDate(selected.paidAt || selected.createdAt)}</div>
-                <div><span className="text-gray-500">Estimated delivery:</span> <span className="font-medium">{getAdminDeliveryEstimate(selected, deliveryHolidays)}</span></div>
+                <div><span className="text-gray-500">Estimated delivery:</span> <span className="font-medium">{getOrderDeliveryEstimate(selected, deliveryHolidays) || '-'}</span></div>
                 {selected.notes && <div className="rounded-lg border bg-yellow-50 p-3"><span className="text-gray-500">Customer note:</span> <p className="font-medium text-gray-900 whitespace-pre-wrap">{selected.notes}</p></div>}
                 <div>
                   <span className="text-gray-500">Status:</span>
@@ -459,3 +449,4 @@ export default function AdminOrdersPage() {
     </div>
   );
 }
+

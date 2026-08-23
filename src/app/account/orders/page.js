@@ -25,7 +25,7 @@ const statusIndex = (status) => Math.max(0, timelineSteps.findIndex((step) => st
 
 const orderItemCount = (order) => (order.items || []).reduce((sum, item) => sum + Number(item.quantity || 1), 0);
 const addressLine = (address = {}) => [address.line1, address.line2, address.city, address.state, address.pincode].filter(Boolean).join(', ');
-const orderDate = (order) => new Date(order.paidAt || order.createdAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+const orderDate = (order) => new Date(order.paidAt || order.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric' });
 const customEntries = (item) => Object.entries(item?.customFields || {}).filter(([, value]) => {
   if (value == null || value === '') return false;
   if (Array.isArray(value)) return value.length > 0;

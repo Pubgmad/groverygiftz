@@ -2,6 +2,8 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import Order from '@/models/Order';
+import Settings from '@/models/Settings';
+import { getOrderDeliveryEstimate } from '@/lib/orderDeliveryEstimate';
 
 export async function GET(req) {
   const { searchParams } = new URL(req?.url || 'http://localhost', 'http://localhost');
@@ -22,11 +24,14 @@ export async function GET(req) {
     return NextResponse.json({ error: 'Order not found.' }, { status: 404 });
   }
 
+  const settings = await Settings.findOne().select('deliveryHolidays').lean();
+
   return NextResponse.json({
     orderNumber: order.orderNumber,
     status: order.status,
     trackingNumber: order.trackingNumber || null,
-    deliveryEstimate: order.deliveryEstimate || null,
+    deliveryEstimate: getOrderDeliveryEstimate(order, settings?.deliveryHolidays || []) || order.deliveryEstimate || null,
     createdAt: order.createdAt,
   });
 }
+

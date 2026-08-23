@@ -2,8 +2,10 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import Order from '@/models/Order';
+import Settings from '@/models/Settings';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { getOrderDeliveryEstimate } from '@/lib/orderDeliveryEstimate';
 
 export async function GET(req) {
   await dbConnect();
@@ -44,10 +46,17 @@ export async function GET(req) {
     Order.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
     Order.countDocuments(filter),
   ]);
+  const settings = await Settings.findOne().select('deliveryHolidays').lean();
+  const deliveryHolidays = settings?.deliveryHolidays || [];
+  const displayOrders = orders.map((order) => ({
+    ...order,
+    deliveryEstimate: getOrderDeliveryEstimate(order, deliveryHolidays) || order.deliveryEstimate,
+  }));
 
-  return NextResponse.json({ orders, total, pages: Math.ceil(total / limit) });
+  return NextResponse.json({ orders: displayOrders, total, pages: Math.ceil(total / limit) });
 }
 
 export async function POST() {
   return NextResponse.json({ error: 'Offline payment is disabled. Please use secure online payment.' }, { status: 405 });
 }
+

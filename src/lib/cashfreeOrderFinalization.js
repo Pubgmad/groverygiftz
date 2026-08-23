@@ -5,6 +5,7 @@ import { getNextPaidOrderNumber, isFinalOrderNumber } from '@/lib/orderNumbers';
 import { deductOrderInventory } from '@/lib/inventory';
 import { getCashfreeConfig } from '@/lib/cashfreeConfig';
 import { sendMetaPurchaseEvent } from '@/lib/metaConversionApi';
+import { getOrderDeliveryEstimate } from '@/lib/orderDeliveryEstimate';
 
 export const CASHFREE_VERSION = '2025-01-01';
 
@@ -20,11 +21,11 @@ export class CashfreeFinalizeError extends Error {
   }
 }
 
-const responseForOrder = (order, success) => ({
+const responseForOrder = (order, success, settings = {}) => ({
   success,
   paymentStatus: order.paymentStatus,
   orderNumber: order.orderNumber,
-  deliveryEstimate: order.deliveryEstimate,
+  deliveryEstimate: getOrderDeliveryEstimate(order, settings?.deliveryHolidays || []) || order.deliveryEstimate,
   shippingCost: order.shippingCost,
   subtotal: order.subtotal,
   total: order.total,
@@ -63,7 +64,7 @@ export async function finalizeCashfreeOrder(orderId) {
     order.paymentStatus = 'pending';
     order.status = 'pending';
     await order.save();
-    return responseForOrder(order, false);
+    return responseForOrder(order, false, settings);
   }
 
   if (!order.inventoryDeductedAt) {
@@ -145,5 +146,5 @@ export async function finalizeCashfreeOrder(orderId) {
     console.error('Meta Conversion API finalization hook error:', metaError);
   }
 
-  return responseForOrder(order, true);
+  return responseForOrder(order, true, settings);
 }
