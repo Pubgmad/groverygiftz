@@ -9,6 +9,7 @@ import { authOptions } from '@/lib/auth';
 import slugify from 'slugify';
 import { activeAdminOfferMatch } from '@/lib/offers';
 import { sanitizeProductPayload } from '@/lib/productPayload';
+import { hydrateProductShippingTemplates } from '@/lib/shippingTemplateHydration';
 
 export async function GET(req) {
   await dbConnect();
@@ -42,6 +43,8 @@ export async function GET(req) {
     Product.find(filter).populate('collections', 'name slug').sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
     Product.countDocuments(filter),
   ]);
+
+  await hydrateProductShippingTemplates(products);
 
   return NextResponse.json({ products, total, pages: Math.ceil(total / limit), page });
 }

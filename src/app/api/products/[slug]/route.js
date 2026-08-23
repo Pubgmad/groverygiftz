@@ -7,6 +7,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import slugify from 'slugify';
 import { sanitizeProductPayload } from '@/lib/productPayload';
+import { hydrateProductShippingTemplates } from '@/lib/shippingTemplateHydration';
 
 function productLookup(segment) {
   if (typeof segment === 'string' && /^[a-fA-F0-9]{24}$/.test(segment)) {
@@ -20,6 +21,7 @@ export async function GET(req, { params }) {
   await dbConnect();
   const product = await Product.findOne(productLookup(segment)).populate('collections').lean();
   if (!product) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  await hydrateProductShippingTemplates(product);
   return NextResponse.json(product);
 }
 
