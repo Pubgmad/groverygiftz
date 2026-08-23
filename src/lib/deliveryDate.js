@@ -27,9 +27,15 @@ const normalizeHolidayDate = (value) => {
   return toDeliveryDateKey(date);
 };
 
+const getHolidayValue = (holiday) => {
+  if (!holiday || holiday instanceof Date) return holiday;
+  if (typeof holiday === 'object') return holiday.date || holiday.value || holiday.day || '';
+  return holiday;
+};
+
 export function normalizeDeliveryHolidays(holidays = []) {
   return new Set((Array.isArray(holidays) ? holidays : [])
-    .map((holiday) => normalizeHolidayDate(typeof holiday === 'object' ? holiday.date : holiday))
+    .map((holiday) => normalizeHolidayDate(getHolidayValue(holiday)))
     .filter(Boolean));
 }
 
