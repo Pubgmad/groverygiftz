@@ -21,11 +21,13 @@ export class CashfreeFinalizeError extends Error {
   }
 }
 
+const getDisplayDeliveryEstimate = (order, settings = {}) => getOrderDeliveryEstimate(order, settings?.deliveryHolidays || []) || order.deliveryEstimate;
+
 const responseForOrder = (order, success, settings = {}) => ({
   success,
   paymentStatus: order.paymentStatus,
   orderNumber: order.orderNumber,
-  deliveryEstimate: getOrderDeliveryEstimate(order, settings?.deliveryHolidays || []) || order.deliveryEstimate,
+  deliveryEstimate: getDisplayDeliveryEstimate(order, settings),
   shippingCost: order.shippingCost,
   subtotal: order.subtotal,
   total: order.total,
@@ -63,6 +65,7 @@ export async function finalizeCashfreeOrder(orderId) {
   if (!paid) {
     order.paymentStatus = 'pending';
     order.status = 'pending';
+    order.deliveryEstimate = getDisplayDeliveryEstimate(order, settings);
     await order.save();
     return responseForOrder(order, false, settings);
   }
@@ -137,6 +140,12 @@ export async function finalizeCashfreeOrder(orderId) {
     if (!isFinalOrderNumber(order.orderNumber)) {
       order.orderNumber = await getNextPaidOrderNumber();
     }
+    await order.save();
+  }
+
+  const displayDeliveryEstimate = getDisplayDeliveryEstimate(order, settings);
+  if (displayDeliveryEstimate && order.deliveryEstimate !== displayDeliveryEstimate) {
+    order.deliveryEstimate = displayDeliveryEstimate;
     await order.save();
   }
 
