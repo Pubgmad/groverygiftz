@@ -1,10 +1,26 @@
 'use client';
+
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import PasswordInput from '@/components/common/PasswordInput';
 import ImageUploader from '@/components/admin/ImageUploader';
 import AdminHomeGiftSettings from '@/components/admin/AdminHomeGiftSettings';
 import { resolveGiftFinderForUi, defaultTickerMessages, defaultHotspotSpots } from '@/lib/giftFinderResolve';
+
+const formatAdminHolidayDate = (value) => {
+  if (!value) return '';
+  const date = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(date.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${byType.year}-${byType.month}-${byType.day}`;
+};
+
 
 export default function AdminSettingsPage() {
   const [form, setForm] = useState({
@@ -74,7 +90,7 @@ export default function AdminSettingsPage() {
         announcementText: d.announcementText || '', phone: d.phone || '', email: d.email || '',
         whatsapp: d.whatsapp || '', address: d.address || '', timings: d.timings || '',
         socialLinks: { instagram: d.socialLinks?.instagram || '', youtube: d.socialLinks?.youtube || '' },
-        freeShippingThreshold: d.freeShippingThreshold ?? 499, shippingCost: d.shippingCost ?? 40, tamilNaduShippingCost: d.tamilNaduShippingCost ?? 0, otherStateShippingCost: d.otherStateShippingCost ?? 120, tamilNaduDeliveryEstimate: d.tamilNaduDeliveryEstimate || 'Within 8 days', otherStateDeliveryEstimate: d.otherStateDeliveryEstimate || '10-15 days', deliveryHolidaysText: (d.deliveryHolidays || []).map((date) => new Date(date).toISOString().slice(0, 10)).join('\n'),
+        freeShippingThreshold: d.freeShippingThreshold ?? 499, shippingCost: d.shippingCost ?? 40, tamilNaduShippingCost: d.tamilNaduShippingCost ?? 0, otherStateShippingCost: d.otherStateShippingCost ?? 120, tamilNaduDeliveryEstimate: d.tamilNaduDeliveryEstimate || 'Within 8 days', otherStateDeliveryEstimate: d.otherStateDeliveryEstimate || '10-15 days', deliveryHolidaysText: (d.deliveryHolidays || []).map(formatAdminHolidayDate).filter(Boolean).join('\n'),
         promoEnabled: d.promoEnabled ?? true,
         promoTitle: d.promoTitle || 'Limited Time Offer!',
         promoSubtitle: d.promoSubtitle || "Hurry! Sale ends soon. Don't miss out on amazing deals.",
