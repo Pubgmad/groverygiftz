@@ -1,8 +1,30 @@
+const DELIVERY_TIME_ZONE = 'Asia/Kolkata';
+
+const getDateParts = (date) => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: DELIVERY_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  return Object.fromEntries(parts.map((part) => [part.type, part.value]));
+};
+
+const toDeliveryDateKey = (date) => {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+  const parts = getDateParts(date);
+  return `${parts.year}-${parts.month}-${parts.day}`;
+};
+
 const normalizeHolidayDate = (value) => {
   if (!value) return '';
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  }
   const date = value instanceof Date ? value : new Date(String(value));
   if (Number.isNaN(date.getTime())) return '';
-  return date.toISOString().slice(0, 10);
+  return toDeliveryDateKey(date);
 };
 
 export function normalizeDeliveryHolidays(holidays = []) {
@@ -18,8 +40,8 @@ export function addWorkingDays(startDate, days, holidays = []) {
   let added = 0;
   while (added < totalDays) {
     date.setDate(date.getDate() + 1);
-    const isSunday = date.getDay() === 0;
-    const isHoliday = holidayDates.has(normalizeHolidayDate(date));
+    const isSunday = new Intl.DateTimeFormat('en-US', { timeZone: DELIVERY_TIME_ZONE, weekday: 'short' }).format(date) === 'Sun';
+    const isHoliday = holidayDates.has(toDeliveryDateKey(date));
     if (!isSunday && !isHoliday) added += 1;
   }
   return date;
@@ -34,7 +56,7 @@ export function extractMaxDays(text, fallbackDays = 8) {
 }
 
 export function formatDeliveryDate(date) {
-  return new Intl.DateTimeFormat('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).format(date);
+  return new Intl.DateTimeFormat('en-IN', { timeZone: DELIVERY_TIME_ZONE, weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).format(date);
 }
 
 export function buildDeliveryEstimateText(baseEstimate, options = {}) {
