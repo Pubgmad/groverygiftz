@@ -307,7 +307,7 @@ export default function CheckoutPage() {
                 {item.image ? <img src={item.image} alt={item.title} className="h-16 w-16 rounded-lg object-cover" /> : <div className="h-16 w-16 rounded-lg bg-primary-100 flex items-center justify-center text-primary-700"><FiGift /></div>}
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-gray-900 line-clamp-2">{item.title}</p>
-                  <p className="text-xs text-gray-500">Qty {item.quantity}{item.variant ? ` Ãƒâ€šÃ‚Â· ${item.variant}` : ''}</p>
+                  <p className="text-xs text-gray-500">Qty {item.quantity}{item.variant ? ` ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${item.variant}` : ''}</p>
                 </div>
                 <p className="font-bold text-primary-600 shrink-0">{formatPrice(item.price * item.quantity)}</p>
               </div>
@@ -348,7 +348,7 @@ export default function CheckoutPage() {
           return (
             <div key={s} className="flex items-center gap-2">
               <div className={`flex items-center gap-2 ${active ? 'text-primary-600' : done ? 'text-green-500' : 'text-gray-400'}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 ${active ? 'border-primary-600 bg-primary-600 text-white' : done ? 'border-green-500 bg-green-500 text-white' : 'border-gray-300 bg-white'}`}>{done ? 'ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“' : num}</div>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 ${active ? 'border-primary-600 bg-primary-600 text-white' : done ? 'border-green-500 bg-green-500 text-white' : 'border-gray-300 bg-white'}`}>{done ? 'ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ' : num}</div>
                 <span className={`font-semibold text-sm hidden sm:block ${active ? 'text-primary-600' : done ? 'text-green-600' : 'text-gray-400'}`}>{s}</span>
               </div>
               {i < STEPS.length - 1 && <FiChevronRight size={16} className="text-gray-300 mx-1" />}
@@ -366,7 +366,7 @@ export default function CheckoutPage() {
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div><label className="block text-sm font-medium mb-1.5">Full Name *</label><input value={address.fullName} onChange={e => setAddress(p => ({ ...p, fullName: e.target.value }))} className="w-full border rounded-xl px-4 py-2.5 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 text-sm" placeholder="Your full name" /></div>
                   <div><label className="block text-sm font-medium mb-1.5">Phone *</label><input value={address.phone} onChange={e => setAddress(p => ({ ...p, phone: e.target.value }))} className="w-full border rounded-xl px-4 py-2.5 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 text-sm" placeholder="9876543210" maxLength={10} inputMode="numeric" /></div>
-                  <div><div className="mb-1.5 flex items-center justify-between gap-2"><label className="block text-sm font-medium">WhatsApp Number *</label><span className="rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-700">Recommended</span></div><input value={address.whatsappNumber} onChange={e => setAddress(p => ({ ...p, whatsappNumber: e.target.value }))} className="w-full border rounded-xl px-4 py-2.5 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 text-sm" placeholder="9876543210" maxLength={10} inputMode="numeric" /><p className="mt-1.5 text-xs leading-relaxed text-gray-500">The number should be the customerÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢s WhatsApp number (the person placing the order), not the parcel receiverÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢s number.</p></div>
+                  <div><div className="mb-1.5 flex items-center justify-between gap-2"><label className="block text-sm font-medium">WhatsApp Number *</label><span className="rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-700">Recommended</span></div><input value={address.whatsappNumber} onChange={e => setAddress(p => ({ ...p, whatsappNumber: e.target.value }))} className="w-full border rounded-xl px-4 py-2.5 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 text-sm" placeholder="9876543210" maxLength={10} inputMode="numeric" /><p className="mt-1.5 text-xs leading-relaxed text-gray-500">Use the customer's WhatsApp number, not the parcel receiver's number.</p></div>
                 </div>
                 <div><label className="block text-sm font-medium mb-1.5">Email *</label><input type="email" value={address.email} onChange={e => setAddress(p => ({ ...p, email: e.target.value }))} className="w-full border rounded-xl px-4 py-2.5 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 text-sm" placeholder="you@example.com" /></div>
                 <div><label className="block text-sm font-medium mb-1.5">Address Line 1 *</label><input value={address.line1} onChange={e => setAddress(p => ({ ...p, line1: e.target.value }))} className="w-full border rounded-xl px-4 py-2.5 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 text-sm" placeholder="House no., street name" /></div>
@@ -390,7 +390,7 @@ export default function CheckoutPage() {
           {step === 2 && (
             <>
               <div className="bg-white rounded-2xl border shadow-sm p-5 flex items-start justify-between gap-4">
-                <div><div className="flex items-center gap-2 mb-1"><FiMapPin size={14} className="text-primary-600" /><span className="font-semibold text-sm">Delivering to</span></div><p className="text-sm font-bold">{address.fullName} Ãƒâ€šÃ‚Â· {address.phone}</p><p className="text-sm text-gray-500">{address.line1}{address.line2 ? `, ${address.line2}` : ''}, {address.city}, {address.state} - {address.pincode}</p></div>
+                <div><div className="flex items-center gap-2 mb-1"><FiMapPin size={14} className="text-primary-600" /><span className="font-semibold text-sm">Delivering to</span></div><p className="text-sm font-bold">{address.fullName} ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· {address.phone}</p><p className="text-sm text-gray-500">{address.line1}{address.line2 ? `, ${address.line2}` : ''}, {address.city}, {address.state} - {address.pincode}</p></div>
                 <button onClick={() => setStep(1)} className="text-primary-600 hover:text-primary-700 text-sm flex items-center gap-1 font-medium flex-shrink-0"><FiEdit2 size={14} /> Edit</button>
               </div>
 
