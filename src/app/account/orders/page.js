@@ -26,11 +26,33 @@ const statusIndex = (status) => Math.max(0, timelineSteps.findIndex((step) => st
 const orderItemCount = (order) => (order.items || []).reduce((sum, item) => sum + Number(item.quantity || 1), 0);
 const addressLine = (address = {}) => [address.line1, address.line2, address.city, address.state, address.pincode].filter(Boolean).join(', ');
 const orderDate = (order) => new Date(order.paidAt || order.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric' });
-const customEntries = (item) => Object.entries(item?.customFields || {}).filter(([, value]) => {
-  if (value == null || value === '') return false;
-  if (Array.isArray(value)) return value.length > 0;
-  return typeof value !== 'object';
-});
+const isUploadLikeObject = (value) => value && typeof value === 'object' && (
+  'url' in value ||
+  'previewUrl' in value ||
+  'originalUrl' in value ||
+  'path' in value ||
+  'filename' in value ||
+  'name' in value
+);
+
+const displayCustomValue = (value) => {
+  if (value == null || value === '') return '';
+  if (Array.isArray(value)) {
+    const textValues = value.filter((entry) => typeof entry !== 'object').map((entry) => String(entry).trim()).filter(Boolean);
+    return textValues.join(', ');
+  }
+  if (typeof value === 'object') return '';
+  return String(value);
+};
+
+const customEntries = (item) => Object.entries(item?.customFields || {})
+  .map(([label, value]) => [label, value, displayCustomValue(value)])
+  .filter(([, value, displayValue]) => {
+    if (!displayValue) return false;
+    if (Array.isArray(value) && value.some(isUploadLikeObject)) return false;
+    if (isUploadLikeObject(value)) return false;
+    return true;
+  });
 
 function OrderTimeline({ order }) {
   const normalized = normalizeStatus(order.status);
@@ -159,7 +181,7 @@ function OrdersContent() {
                               {(entries.length > 0 || item.giftWrap || item.giftMessage) && (
                                 <div className="mt-3 rounded-xl border bg-white p-3 text-xs text-gray-600">
                                   <p className="mb-1 font-bold text-gray-800">Selections</p>
-                                  {entries.map(([label, value]) => <p key={label} className="break-words"><span className="font-semibold">{label}:</span> {String(value)}</p>)}
+                                  {entries.map(([label, , displayValue]) => <p key={label} className="break-words"><span className="font-semibold">{label}:</span> {displayValue}</p>)}
                                   {item.giftWrap && <p>Gift wrap selected</p>}
                                   {item.giftMessage && <p className="break-words"><span className="font-semibold">Gift message:</span> {item.giftMessage}</p>}
                                 </div>
