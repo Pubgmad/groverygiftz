@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { formatPrice } from '@/lib/utils';
 import { getOrderDeliveryEstimate, isOrderOutOfTamilNadu } from '@/lib/orderDeliveryEstimate';
 import toast from 'react-hot-toast';
@@ -217,22 +217,31 @@ export default function AdminOrdersPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalOrders, setTotalOrders] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [deliveryHolidays, setDeliveryHolidays] = useState([]);
   const pageSize = 10;
 
   const fetchOrders = async () => {
     const query = new URLSearchParams();
+    query.set('page', String(currentPage));
+    query.set('limit', String(pageSize));
+    if (orderFilter.trim()) query.set('orderId', orderFilter.trim());
+    if (mobileFilter.trim()) query.set('mobile', mobileFilter.trim());
+    if (statusFilter) query.set('status', statusFilter);
     if (dateFrom) query.set('dateFrom', dateFrom);
     if (dateTo) query.set('dateTo', dateTo);
     const res = await fetch(`/api/orders${query.toString() ? `?${query.toString()}` : ''}`);
     const data = await res.json();
     const nextOrders = data.orders || [];
     setOrders(nextOrders);
+    setTotalOrders(Number(data.total || 0));
+    setTotalPages(Math.max(1, Number(data.pages || 1)));
     setLoading(false);
     if (selected?._id) setSelected(nextOrders.find((order) => order._id === selected._id) || null);
   };
 
-  useEffect(() => { fetchOrders(); }, [dateFrom, dateTo]);
+  useEffect(() => { fetchOrders(); }, [currentPage, orderFilter, mobileFilter, statusFilter, dateFrom, dateTo]);
 
   useEffect(() => {
     fetch('/api/settings')
@@ -245,27 +254,13 @@ export default function AdminOrdersPage() {
     setTrackingDraft(selected?.trackingNumber || '');
   }, [selected?._id, selected?.trackingNumber]);
 
-  const filteredOrders = useMemo(() => {
-    const orderTerm = orderFilter.trim().toLowerCase();
-    const mobileTerm = mobileFilter.trim().replace(/\D/g, '');
-    return orders.filter((order) => {
-      const matchesOrder = !orderTerm || String(order.orderNumber || '').toLowerCase().includes(orderTerm);
-      const phone = String(order.shippingAddress?.phone || '').replace(/\D/g, '');
-      const whatsapp = String(order.shippingAddress?.whatsappNumber || '').replace(/\D/g, '');
-      const matchesMobile = !mobileTerm || phone.includes(mobileTerm) || whatsapp.includes(mobileTerm);
-      const matchesStatus = !statusFilter || normalizeStatus(order.status) === statusFilter;
-      return matchesOrder && matchesMobile && matchesStatus;
-    });
-  }, [orders, orderFilter, mobileFilter, statusFilter]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / pageSize));
-  const paginatedOrders = filteredOrders.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const paginatedOrders = orders;
 
   useEffect(() => { setCurrentPage(1); }, [orderFilter, mobileFilter, statusFilter, dateFrom, dateTo]);
   useEffect(() => { if (currentPage > totalPages) setCurrentPage(totalPages); }, [currentPage, totalPages]);
   useEffect(() => {
-    if (selected?._id && !filteredOrders.some((order) => order._id === selected._id)) setSelected(null);
-  }, [filteredOrders, selected?._id]);
+    if (selected?._id && !orders.some((order) => order._id === selected._id)) setSelected(null);
+  }, [orders, selected?._id]);
   const updateStatus = async (id, status) => {
     const res = await fetch(`/api/orders/${id}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }),
@@ -306,25 +301,25 @@ export default function AdminOrdersPage() {
           <div className="grid gap-3 border-b bg-gray-50 p-4 sm:grid-cols-2 lg:grid-cols-5">
             <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1">Order ID</label>
-              <input value={orderFilter} onChange={(e) => setOrderFilter(e.target.value)} placeholder="Search GG0001" className="w-full rounded-lg border px-3 py-2 text-sm" />
+              <input value={orderFilter} onChange={(e) => { setOrderFilter(e.target.value); setCurrentPage(1); }} placeholder="Search GG0001" className="w-full rounded-lg border px-3 py-2 text-sm" />
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1">Mobile Number</label>
-              <input value={mobileFilter} onChange={(e) => setMobileFilter(e.target.value)} placeholder="Search mobile" className="w-full rounded-lg border px-3 py-2 text-sm" />
+              <input value={mobileFilter} onChange={(e) => { setMobileFilter(e.target.value); setCurrentPage(1); }} placeholder="Search mobile" className="w-full rounded-lg border px-3 py-2 text-sm" />
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1">Status</label>
-              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm">
+              <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setCurrentPage(1); }} className="w-full rounded-lg border px-3 py-2 text-sm">
                 {statusFilterOptions.map((status) => <option key={status.value || 'all'} value={status.value}>{status.label}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1">From Date</label>
-              <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm" />
+              <input type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setCurrentPage(1); }} className="w-full rounded-lg border px-3 py-2 text-sm" />
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1">To Date</label>
-              <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm" />
+              <input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setCurrentPage(1); }} className="w-full rounded-lg border px-3 py-2 text-sm" />
             </div>
           </div>
 
@@ -362,13 +357,13 @@ export default function AdminOrdersPage() {
                       </tr>
                     );
                   })}
-                  {filteredOrders.length === 0 && <tr><td colSpan={9} className="p-6 text-center text-gray-500">No orders match your filters</td></tr>}
+                  {orders.length === 0 && <tr><td colSpan={9} className="p-6 text-center text-gray-500">No orders match your filters</td></tr>}
                 </tbody>
               </table>
             </div>
-          {filteredOrders.length > pageSize && (
+          {totalOrders > pageSize && (
             <div className="flex flex-col gap-3 border-t bg-gray-50 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-gray-500">Showing {(currentPage - 1) * pageSize + 1}-{Math.min(currentPage * pageSize, filteredOrders.length)} of {filteredOrders.length} orders</p>
+              <p className="text-gray-500">Showing {totalOrders === 0 ? 0 : (currentPage - 1) * pageSize + 1}-{Math.min(currentPage * pageSize, totalOrders)} of {totalOrders} orders</p>
               <div className="flex items-center gap-2">
                 <button type="button" onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} disabled={currentPage === 1} className="rounded-lg border px-3 py-2 font-semibold disabled:cursor-not-allowed disabled:opacity-50">Previous</button>
                 <span className="rounded-lg bg-white px-3 py-2 font-semibold text-gray-700">Page {currentPage} of {totalPages}</span>
