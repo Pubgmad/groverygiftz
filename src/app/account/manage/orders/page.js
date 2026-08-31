@@ -95,7 +95,7 @@ function DownloadButton({ href, filename, children, tone = 'primary' }) {
     ? 'border-accent-200 bg-accent-50 text-accent-700 hover:bg-accent-100'
     : 'border-primary-200 bg-primary-50 text-primary-700 hover:bg-primary-100';
   return (
-    <a href={href} download={filename} target="_blank" rel="noopener noreferrer" className={`inline-flex w-full items-center justify-center rounded-lg border px-3 py-2 text-center text-xs font-bold transition sm:w-auto ${styles}`}>
+    <a href={href} download={filename} target="_blank" rel="noopener noreferrer" className={`inline-flex min-w-0 max-w-full w-full items-center justify-center rounded-lg border px-3 py-2 text-center text-xs font-bold whitespace-normal break-words transition sm:w-auto ${styles}`}>
       {children}
     </a>
   );
@@ -104,10 +104,10 @@ function DownloadButton({ href, filename, children, tone = 'primary' }) {
 function CustomValue({ value }) {
   if (Array.isArray(value)) {
     return (
-      <span className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+      <span className="flex min-w-0 max-w-full flex-col gap-2 break-words sm:flex-row sm:flex-wrap">
         {value.map((file, idx) => isUploadedFile(file) ? (
           <DownloadButton key={file.url || idx} href={originalDownloadHref(file)} filename={buildDownloadName('original-upload', file.name || 'custom-file', idx, file)}>Download original {idx + 1}{file.name ? ` (${file.name})` : ''}</DownloadButton>
-        ) : <span key={idx}>{String(file || '-')}</span>)}
+        ) : <span key={idx} className="break-words">{String(file || '-')}</span>)}
       </span>
     );
   }
@@ -116,10 +116,10 @@ function CustomValue({ value }) {
   }
   if (value && typeof value === 'object') {
     return (
-      <span className="mt-1 flex flex-col gap-2">
+      <span className="mt-1 flex min-w-0 max-w-full flex-col gap-2 break-words">
         {Object.entries(value).map(([childLabel, childValue]) => (
-          <span key={childLabel} className="rounded-md border bg-gray-50 p-2">
-            <span className="mb-1 block font-semibold text-gray-700">{childValue?.label || childLabel}</span>
+          <span key={childLabel} className="min-w-0 max-w-full rounded-md border bg-gray-50 p-2 break-words">
+            <span className="mb-1 block font-semibold text-gray-700 break-words">{childValue?.label || childLabel}</span>
             <CustomValue value={childValue} />
           </span>
         ))}
@@ -132,17 +132,17 @@ function CollageUploadDetails({ groups }) {
   const visibleGroups = Array.isArray(groups) ? groups.filter((group) => group?.label && Array.isArray(group.images) && group.images.length > 0) : [];
   if (visibleGroups.length === 0) return null;
   return (
-    <div className="rounded-md bg-white border p-2 space-y-3">
+    <div className="min-w-0 max-w-full overflow-hidden rounded-md bg-white border p-2 space-y-3">
       <p className="text-xs font-semibold text-gray-700">Collage uploads</p>
       {visibleGroups.map((group) => (
-        <div key={group.label} className="rounded-lg border bg-gray-50 p-2">
+        <div key={group.label} className="min-w-0 max-w-full overflow-hidden rounded-lg border bg-gray-50 p-2">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs font-bold text-gray-900">{group.label}</p>
-            <span className="rounded-full bg-primary-50 px-2 py-0.5 text-[11px] font-bold text-primary-700">{group.images.length} image{group.images.length === 1 ? '' : 's'} | allowed {group.minImages || 0}-{group.maxImages || group.images.length}</span>
+            <p className="min-w-0 text-xs font-bold text-gray-900 break-words">{group.label}</p>
+            <span className="max-w-full rounded-full bg-primary-50 px-2 py-0.5 text-[11px] font-bold text-primary-700 whitespace-normal break-words">{group.images.length} image{group.images.length === 1 ? '' : 's'} | allowed {group.minImages || 0}-{group.maxImages || group.images.length}</span>
           </div>
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+          <div className="grid min-w-0 max-w-full grid-cols-3 gap-2 sm:grid-cols-5">
             {group.images.map((image, index) => (
-              <div key={image.url || index} className="space-y-1">
+              <div key={image.url || index} className="min-w-0 space-y-1">
                 <a href={image.url} target="_blank" rel="noopener noreferrer" className="relative block aspect-square overflow-hidden rounded-lg border bg-white">
                   <img src={image.url} alt={`${group.label} ${index + 1}`} className="h-full w-full object-cover" />
                   <span className="absolute left-1 top-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[10px] font-bold text-white">{index + 1}</span>
@@ -160,23 +160,23 @@ function PreviewDetails({ preview }) {
   const previews = Array.isArray(preview?.previews) ? preview.previews : [];
   if (previews.length > 0) {
     return (
-      <div className="rounded-md bg-primary-50 border border-primary-100 p-2 space-y-2 text-xs text-gray-700">
+      <div className="min-w-0 max-w-full overflow-hidden rounded-md bg-primary-50 border border-primary-100 p-2 space-y-2 text-xs text-gray-700 break-words">
         <p className="font-semibold text-primary-800">Saved preview / crop instructions</p>
         <p><span className="font-medium">Preview:</span> {preview.previewTitle || '-'}</p>
         {previews.map((entry, index) => {
           const finalPreviewUrl = entry.finalPreviewImage?.url || entry.finalPreviewDataUrl;
           return (
-            <div key={`${entry.areaLabel || 'area'}-${index}`} className="rounded-md border border-primary-100 bg-white p-2 space-y-3">
-              <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-                <p className="font-semibold text-gray-900">{entry.areaLabel || `Photo ${index + 1}`}</p>
-                <p className="text-[11px] font-semibold text-gray-500">Frame: {entry.width || '-'} x {entry.height || '-'} {entry.unit || 'inch'}</p>
+            <div key={`${entry.areaLabel || 'area'}-${index}`} className="min-w-0 max-w-full overflow-hidden rounded-md border border-primary-100 bg-white p-2 space-y-3">
+              <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                <p className="min-w-0 font-semibold text-gray-900 break-words">{entry.areaLabel || `Photo ${index + 1}`}</p>
+                <p className="text-[11px] font-semibold text-gray-500 break-words">Frame: {entry.width || '-'} x {entry.height || '-'} {entry.unit || 'inch'}</p>
               </div>
               {finalPreviewUrl && (
-                <a href={finalPreviewUrl} target="_blank" rel="noopener noreferrer" className="block overflow-hidden rounded-lg border bg-white">
-                  <img src={finalPreviewUrl} alt={`${entry.areaLabel || 'Preview'} final`} className="max-h-72 w-full object-contain" />
+                <a href={finalPreviewUrl} target="_blank" rel="noopener noreferrer" className="block max-w-full overflow-hidden rounded-lg border bg-white">
+                  <img src={finalPreviewUrl} alt={`${entry.areaLabel || 'Preview'} final`} className="max-h-72 w-full max-w-full object-contain" />
                 </a>
               )}
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid min-w-0 max-w-full gap-2 sm:grid-cols-2">
                 <DownloadButton href={originalDownloadHref(entry.uploadedFile)} filename={buildDownloadName('original-upload', entry.areaLabel, index, entry.uploadedFile)}>Download original image{fileSizeLabel(entry.uploadedFile)}</DownloadButton>
                 <DownloadButton href={finalPreviewUrl} filename={buildDownloadName('customized-preview', entry.areaLabel, index, entry.finalPreviewImage || { url: finalPreviewUrl, type: 'image/jpeg' })} tone="accent">Download final preview</DownloadButton>
               </div>
@@ -190,9 +190,9 @@ function PreviewDetails({ preview }) {
   }
   if (preview?.uploadedFile?.url) {
     return (
-      <div className="rounded-md bg-primary-50 border border-primary-100 p-2 space-y-1 text-xs text-gray-700">
+      <div className="min-w-0 max-w-full overflow-hidden rounded-md bg-primary-50 border border-primary-100 p-2 space-y-1 text-xs text-gray-700 break-words">
         <p className="font-semibold text-primary-800">Saved preview / crop instructions</p>
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid min-w-0 max-w-full gap-2 sm:grid-cols-2">
           <DownloadButton href={originalDownloadHref(preview.uploadedFile)} filename={buildDownloadName('original-upload', preview.sourceField || 'preview', 0, preview.uploadedFile)}>Download original image{fileSizeLabel(preview.uploadedFile)}</DownloadButton>
           <DownloadButton href={preview.finalPreviewImage?.url || preview.finalPreviewDataUrl || preview.uploadedFile.url} filename={buildDownloadName('customized-preview', preview.sourceField || 'preview', 0, preview.finalPreviewImage || preview.uploadedFile)} tone="accent">Download final preview</DownloadButton>
         </div>
@@ -375,14 +375,14 @@ export default function AdminOrdersPage() {
         </div>
 
         {selected && (
-        <div className="bg-white rounded-xl border p-5 md:p-6">
-            <div>
-              <h2 className="font-bold text-lg mb-4">Order {selected.orderNumber}</h2>
-              <div className="space-y-3 text-sm">
+        <div className="min-w-0 max-w-full overflow-hidden bg-white rounded-xl border p-5 md:p-6">
+            <div className="min-w-0">
+              <h2 className="font-bold text-lg mb-4 break-words">Order {selected.orderNumber}</h2>
+              <div className="min-w-0 space-y-3 text-sm break-words">
                 {selected.shippingAddress && (
                   <div className="pt-2">
                     <h3 className="font-semibold mt-4 mb-2">Shipping</h3>
-                    <div className="rounded-lg border bg-gray-50 p-3 space-y-1">
+                    <div className="min-w-0 rounded-lg border bg-gray-50 p-3 space-y-1 break-words">
                       <p className="font-semibold">{selected.shippingAddress.fullName}</p>
                       <p>Mobile: {selected.shippingAddress.phone}</p>{selected.shippingAddress.whatsappNumber && <p>WhatsApp: {selected.shippingAddress.whatsappNumber}</p>}
                       <p>{selected.shippingAddress.line1}</p>
@@ -394,13 +394,13 @@ export default function AdminOrdersPage() {
                 )}
 
                 {isOrderOutOfTamilNadu(selected) && (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-800">
+                  <div className="min-w-0 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-800 break-words">
                     Outside Tamil Nadu order. Delivery charge applies and timeline is usually 10 to 15 days.
                   </div>
                 )}
                 <div><span className="text-gray-500">Order date:</span> {formatDate(selected.paidAt || selected.createdAt)}</div>
-                <div><span className="text-gray-500">Estimated delivery:</span> <span className="font-medium">{getOrderDeliveryEstimate(selected, deliveryHolidays) || '-'}</span></div>
-                {selected.notes && <div className="rounded-lg border bg-yellow-50 p-3"><span className="text-gray-500">Customer note:</span> <p className="font-medium text-gray-900 whitespace-pre-wrap">{selected.notes}</p></div>}
+                <div className="break-words"><span className="text-gray-500">Estimated delivery:</span> <span className="font-medium">{getOrderDeliveryEstimate(selected, deliveryHolidays) || '-'}</span></div>
+                {selected.notes && <div className="min-w-0 rounded-lg border bg-yellow-50 p-3 break-words"><span className="text-gray-500">Customer note:</span> <p className="font-medium text-gray-900 whitespace-pre-wrap">{selected.notes}</p></div>}
                 <div>
                   <span className="text-gray-500">Status:</span>
                   <select value={normalizeStatus(selected.status)} onChange={e => updateStatus(selected._id, e.target.value)} className="ml-2 border rounded px-2 py-1 text-sm">
@@ -412,27 +412,27 @@ export default function AdminOrdersPage() {
                   <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${paymentStatusColors[selected.paymentStatus] || paymentStatusColors.pending}`}>{selected.paymentStatus}</span>
                   <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{selected.paymentMethod || 'Cashfree'}</span>
                 </div>
-                <div className="border rounded-lg p-3 bg-gray-50 space-y-2">
+                <div className="min-w-0 border rounded-lg p-3 bg-gray-50 space-y-2 break-words">
                   <p className="text-xs text-gray-600 leading-relaxed"><strong>ST Couriers tracking ID:</strong> after booking the parcel with ST Couriers, paste the tracking ID here. Customers can copy it and open the ST website.</p>
                   <label className="text-xs font-medium text-gray-700">Tracking ID</label>
-                  <input value={trackingDraft} onChange={(e) => setTrackingDraft(e.target.value)} placeholder="Enter ST Couriers tracking ID" className="border rounded-lg px-3 py-2 text-sm font-mono w-full" />
+                  <input value={trackingDraft} onChange={(e) => setTrackingDraft(e.target.value)} placeholder="Enter ST Couriers tracking ID" className="min-w-0 max-w-full border rounded-lg px-3 py-2 text-sm font-mono w-full" />
                   <button type="button" onClick={() => updateTracking(selected._id, trackingDraft)} className="text-sm px-4 py-2 rounded-lg bg-primary-600 text-white font-semibold hover:bg-primary-700">Save tracking ID</button>
                 </div>
 
                 <h3 className="font-semibold mt-4">Items</h3>
-                <div className="space-y-3">
+                <div className="min-w-0 space-y-3">
                   {selected.items?.map((item, idx) => (
-                    <div key={idx} className="rounded-lg border bg-gray-50 p-3 space-y-2">
-                      <div className="flex justify-between gap-3"><div><p className="font-semibold text-gray-900">{item.title} x{item.quantity}</p>{item.variant && <p className="text-xs text-gray-500">Selected: {item.variant}</p>}</div><span className="font-semibold whitespace-nowrap">{formatPrice(item.price * item.quantity)}</span></div>
+                    <div key={idx} className="min-w-0 max-w-full overflow-hidden rounded-lg border bg-gray-50 p-3 space-y-2">
+                      <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3"><div className="min-w-0"><p className="font-semibold text-gray-900 break-words">{item.title} x{item.quantity}</p>{item.variant && <p className="text-xs text-gray-500 break-words">Selected: {item.variant}</p>}</div><span className="font-semibold whitespace-nowrap sm:self-start">{formatPrice(item.price * item.quantity)}</span></div>
                       {item.customFields && Object.keys(item.customFields).length > 0 && (
-                        <div className="rounded-md bg-white border p-2 space-y-1"><p className="text-xs font-semibold text-gray-600">Customization</p>{Object.entries(item.customFields).map(([label, value]) => (<div key={label} className="text-xs text-gray-700"><span className="font-medium">{label}: </span><CustomValue value={value} /></div>))}</div>
+                        <div className="min-w-0 max-w-full overflow-hidden rounded-md bg-white border p-2 space-y-1 break-words"><p className="text-xs font-semibold text-gray-600">Customization</p>{Object.entries(item.customFields).map(([label, value]) => (<div key={label} className="min-w-0 text-xs text-gray-700 break-words"><span className="font-medium">{label}: </span><CustomValue value={value} /></div>))}</div>
                       )}
                       {item.collageUploads && <CollageUploadDetails groups={item.collageUploads} />}
                       {item.customizationPreview && <PreviewDetails preview={item.customizationPreview} />}
                     </div>
                   ))}
                 </div>
-                <div className="border-t pt-2 space-y-1"><div className="flex justify-between"><span>Subtotal</span><span>{formatPrice(selected.subtotal || 0)}</span></div><div className="flex justify-between"><span>Delivery</span><span>{selected.shippingCost === 0 ? 'FREE' : formatPrice(selected.shippingCost || 0)}</span></div><div className="flex justify-between font-bold"><span>Total</span><span>{formatPrice(selected.total)}</span></div></div>
+                <div className="min-w-0 border-t pt-2 space-y-1"><div className="flex justify-between gap-3"><span>Subtotal</span><span className="whitespace-nowrap">{formatPrice(selected.subtotal || 0)}</span></div><div className="flex justify-between gap-3"><span>Delivery</span><span className="whitespace-nowrap">{selected.shippingCost === 0 ? 'FREE' : formatPrice(selected.shippingCost || 0)}</span></div><div className="flex justify-between gap-3 font-bold"><span>Total</span><span className="whitespace-nowrap">{formatPrice(selected.total)}</span></div></div>
 
 
 
