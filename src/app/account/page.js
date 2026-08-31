@@ -18,7 +18,7 @@ export default function AccountPage() {
   const [orders, setOrders] = useState([]);
 
   useEffect(() => {
-    if (status === 'unauthenticated') router.push('/auth/login');
+    if (status === 'unauthenticated') router.push('/auth/register?callbackUrl=/account');
     if (status === 'authenticated' && session?.user?.type === 'admin') router.replace('/account/manage');
   }, [status, router, session]);
 

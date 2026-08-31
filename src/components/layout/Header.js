@@ -35,7 +35,7 @@ export default function Header() {
   const { cartCount, setIsCartOpen } = useCart();
   const { wishlistCount } = useWishlist();
   const { data: session } = useSession();
-  const accountHref = session?.user?.type === 'customer' ? '/account' : '/auth/login';
+  const accountHref = session?.user?.type === 'customer' ? '/account' : '/auth/register';
   const logoSrc = settings?.desktopLogo || settings?.logo || '';
   const tabletLogoSrc = settings?.tabletLogo || logoSrc;
   const mobileLogoSrc = settings?.mobileLogo || tabletLogoSrc;

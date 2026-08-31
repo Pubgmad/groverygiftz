@@ -79,7 +79,7 @@ export default function CheckoutPage() {
     if (status === 'unauthenticated') {
       const returnedOrderId = new URLSearchParams(window.location.search).get('cashfree_order_id');
       const callbackUrl = returnedOrderId ? `/checkout?cashfree_order_id=${encodeURIComponent(returnedOrderId)}` : '/checkout';
-      router.replace(`/auth/login?callbackUrl=${encodeURIComponent(callbackUrl)}`);
+      router.replace(`/auth/register?callbackUrl=${encodeURIComponent(callbackUrl)}`);
     }
   }, [status, router]);
 
@@ -218,7 +218,7 @@ export default function CheckoutPage() {
 
   const handleCashfreePayment = async () => {
     if (status !== 'authenticated') {
-      router.replace('/auth/login?callbackUrl=/checkout');
+      router.replace('/auth/register?callbackUrl=/checkout');
       return;
     }
     setLoading(true);
@@ -281,7 +281,7 @@ export default function CheckoutPage() {
         <div className="max-w-md rounded-2xl border bg-white p-6 text-center shadow-sm">
           <h1 className="text-2xl font-display font-bold mb-2">Customer sign in required</h1>
           <p className="text-sm text-gray-500 mb-5">You are signed in as store admin. Please sign out and sign in with a customer account to place an order.</p>
-          <button onClick={() => signOut({ callbackUrl: '/auth/login?callbackUrl=/checkout' })} className="btn-primary w-full">Sign in as customer</button>
+          <button onClick={() => signOut({ callbackUrl: '/auth/register?callbackUrl=/checkout' })} className="btn-primary w-full">Sign in as customer</button>
         </div>
       </div>
     );

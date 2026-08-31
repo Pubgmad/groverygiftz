@@ -98,7 +98,7 @@ function OrdersContent() {
   const [loadingOrders, setLoadingOrders] = useState(true);
 
   useEffect(() => {
-    if (status === 'unauthenticated') router.push('/auth/login');
+    if (status === 'unauthenticated') router.push('/auth/register?callbackUrl=/account/orders');
     if (status === 'authenticated' && session?.user?.type === 'admin') router.replace('/account/manage');
   }, [status, router, session]);
 
