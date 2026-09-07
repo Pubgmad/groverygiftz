@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import { trackMetaCustomEvent } from '@/lib/metaPixel';
+import { startNavigationFeedback } from '@/components/layout/NavigationFeedback';
 
 function bannerImage(slide = {}) {
   return slide.desktopImage || slide.image || slide.tabletImage || slide.mobileImage || '';
@@ -57,6 +58,7 @@ export default function HeroCarousel({ banners = [] }) {
   const openBanner = (slide, event) => {
     if (event?.target?.closest?.('button')) return;
     trackBannerClick(slide);
+    startNavigationFeedback();
     router.push(slide.link || '/shop');
   };
 

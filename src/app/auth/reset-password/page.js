@@ -5,6 +5,7 @@ import Link from 'next/link';
 import toast from 'react-hot-toast';
 import PasswordInput from '@/components/common/PasswordInput';
 import { PASSWORD_REQUIREMENTS, validateStrongPassword, strongPasswordMessage } from '@/lib/passwordPolicy';
+import { startNavigationFeedback } from '@/components/layout/NavigationFeedback';
 
 export default function ResetPasswordPage() {
   const params = useSearchParams();
@@ -32,6 +33,7 @@ export default function ResetPasswordPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Unable to reset password');
       toast.success('Password updated. Please sign in.');
+      startNavigationFeedback();
       router.push('/auth/login');
     } catch (error) {
       toast.error(error.message || 'Something went wrong');

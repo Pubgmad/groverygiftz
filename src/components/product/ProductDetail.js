@@ -8,6 +8,7 @@ import { buildDeliveryEstimateText } from '@/lib/deliveryDate';
 import { buildProductMetaPayload, trackMetaCustomEvent, trackMetaEvent } from '@/lib/metaPixel';
 import { FiMinus, FiPlus, FiX, FiTruck, FiShield, FiClock, FiShoppingCart, FiZap, FiUpload, FiImage, FiChevronLeft, FiChevronRight, FiStar, FiLoader } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import { startNavigationFeedback } from '@/components/layout/NavigationFeedback';
 const INDIAN_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
   'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh',
@@ -69,9 +70,11 @@ export default function ProductDetail({ product }) {
   const customTextTrackedRef = useRef({});
   const dragStateRef = useRef(null);
   const previewFrameRefs = useRef({});
+  const actionLockRef = useRef(false);
   const galleryTouchRef = useRef({ startX: 0, endX: 0 });
   const lightboxTouchRef = useRef({ startX: 0, endX: 0 });
   const [selectedDeliveryState, setSelectedDeliveryState] = useState('Tamil Nadu');
+  const [actionLoading, setActionLoading] = useState('');
 
   const offerActive = isOfferActive(product);
   const isSoldOut = isProductSoldOut(product);
@@ -662,16 +665,32 @@ const handleCustomerPhotoUpload = async (files) => {
   };
 
   const handleAddToCart = async () => {
-    if (await addConfiguredProductToCart({ openCart: true })) toast.success('Added to cart!');
+    if (actionLockRef.current) return;
+    actionLockRef.current = true;
+    setActionLoading('cart');
+    try {
+      if (await addConfiguredProductToCart({ openCart: true })) toast.success('Added to cart!');
+    } finally {
+      actionLockRef.current = false;
+      setActionLoading('');
+    }
   };
 
   const handleBuyNow = async () => {
-    if (!(await addConfiguredProductToCart({ openCart: false }))) return;
-    setIsCartOpen(false);
-    toast.success('Taking you to checkout...');
-    router.push('/checkout');
+    if (actionLockRef.current) return;
+    actionLockRef.current = true;
+    setActionLoading('buy');
+    try {
+      if (!(await addConfiguredProductToCart({ openCart: false }))) return;
+      setIsCartOpen(false);
+      toast.success('Taking you to checkout...');
+      startNavigationFeedback();
+      router.push('/checkout');
+    } finally {
+      actionLockRef.current = false;
+      setActionLoading('');
+    }
   };
-
   return (
     <div className="product-mobile-safe grid max-w-full grid-cols-1 gap-8 md:grid-cols-2 md:gap-12">
       {/* Product Media Gallery */}
@@ -1131,16 +1150,13 @@ const handleCustomerPhotoUpload = async (files) => {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3">
-          <button onClick={handleAddToCart} disabled={isSoldOut}
-            className={`btn-primary flex-1 flex items-center justify-center gap-2 text-center ${isSoldOut ? 'opacity-60 cursor-not-allowed' : ''}`}>
-            <FiShoppingCart size={18} />
-            {isSoldOut ? 'Sold Out' : product.isQuoteOnly ? 'Contact for Price' : 'Add To Cart'}
+          <button onClick={handleAddToCart} disabled={isSoldOut || Boolean(actionLoading)}
+            className={`btn-primary flex-1 flex items-center justify-center gap-2 text-center ${isSoldOut || actionLoading ? 'opacity-60 cursor-not-allowed' : ''}`}>
+            {actionLoading === 'cart' ? <><FiLoader size={18} className="animate-spin" /> Adding...</> : <><FiShoppingCart size={18} /> {isSoldOut ? 'Sold Out' : product.isQuoteOnly ? 'Contact for Price' : 'Add To Cart'}</>}
           </button>
           {!product.isQuoteOnly && !isSoldOut && (
-            <button onClick={handleBuyNow}
-              className="btn-accent flex-1 flex items-center justify-center gap-2 text-center">
-              <FiZap size={18} />
-              Buy It Now
+            <button onClick={handleBuyNow} disabled={Boolean(actionLoading)} className={`btn-accent flex-1 flex items-center justify-center gap-2 text-center ${actionLoading ? 'opacity-60 cursor-not-allowed' : ''}`}>
+              {actionLoading === 'buy' ? <><FiLoader size={18} className="animate-spin" /> Processing...</> : <><FiZap size={18} /> Buy It Now</>}
             </button>
           )}
         </div>

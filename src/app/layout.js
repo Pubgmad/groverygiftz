@@ -1,10 +1,12 @@
 import './globals.css';
+import { Suspense } from 'react';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import AnnouncementBar from '@/components/layout/AnnouncementBar';
 import WhatsAppFloat from '@/components/layout/WhatsAppFloat';
 import CartDrawer from '@/components/cart/CartDrawer';
 import ChromeVisibility from '@/components/layout/ChromeVisibility';
+import NavigationFeedback from '@/components/layout/NavigationFeedback';
 import Providers from '@/components/Providers';
 import MetaPixel from '@/components/meta/MetaPixel';
 import { Toaster } from 'react-hot-toast';
@@ -42,6 +44,9 @@ export default function RootLayout({ children }) {
       <body>
         <Providers>
           <MetaPixel />
+          <Suspense fallback={null}>
+            <NavigationFeedback />
+          </Suspense>
           <Toaster
             position="top-center"
             toastOptions={{

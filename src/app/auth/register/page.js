@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import { trackMetaEvent } from '@/lib/metaPixel';
 import PasswordInput from '@/components/common/PasswordInput';
 import { PASSWORD_REQUIREMENTS, validateStrongPassword, strongPasswordMessage } from '@/lib/passwordPolicy';
+import { startNavigationFeedback } from '@/components/layout/NavigationFeedback';
 
 export default function RegisterPage() {
   const [formData, setFormData] = useState({ name: '', email: '', password: '', phone: '' });
@@ -58,10 +59,12 @@ export default function RegisterPage() {
         });
         if (loginResult?.error) {
           toast.success('Account created. Please sign in to continue.');
+          startNavigationFeedback();
           router.push(`/auth/login?callbackUrl=${encodeURIComponent(callbackUrl || '/account')}`);
           return;
         }
         toast.success('Account created!');
+        startNavigationFeedback();
         router.push(callbackUrl || '/account');
       } else {
         toast.error(data.error || 'Registration failed');

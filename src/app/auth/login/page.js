@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import PasswordInput from '@/components/common/PasswordInput';
+import { startNavigationFeedback } from '@/components/layout/NavigationFeedback';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -29,6 +30,8 @@ export default function LoginPage() {
 
   const handleGoogleSignIn = () => {
     document.cookie = 'google_auth_intent=signin; path=/; max-age=600; SameSite=Lax';
+    setLoading(true);
+    startNavigationFeedback();
     signIn('google', { callbackUrl }, { prompt: 'select_account' });
   };
 
@@ -39,6 +42,7 @@ export default function LoginPage() {
     setLoading(false);
     if (res?.ok) {
       toast.success('Welcome back!');
+      startNavigationFeedback();
       router.push(callbackUrl || '/account');
     } else {
       toast.error('Invalid email or password');
@@ -57,7 +61,7 @@ export default function LoginPage() {
         <button disabled={loading} className="btn-primary w-full">{loading ? 'Signing in...' : 'Sign In'}</button>
       </form>
       <div className="my-5 flex items-center gap-3 text-xs font-semibold uppercase tracking-widest text-gray-400"><span className="h-px flex-1 bg-gray-200" />or<span className="h-px flex-1 bg-gray-200" /></div>
-      <button type="button" onClick={handleGoogleSignIn} className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 transition hover:border-primary-200 hover:bg-primary-50">Continue with Google</button>
+      <button type="button" onClick={handleGoogleSignIn} disabled={loading} className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 transition hover:border-primary-200 hover:bg-primary-50">Continue with Google</button>
       <p className="text-center mt-6 text-sm text-gray-500">
         Don&apos;t have an account? <Link href={`/auth/register?callbackUrl=${encodeURIComponent(callbackUrl || '/account')}`} className="text-primary-600 hover:underline">Create Account</Link>
       </p>

@@ -6,6 +6,7 @@ import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
 import { useSession } from 'next-auth/react';
 import { formatPrice, getDisplayPrice } from '@/lib/utils';
+import { startNavigationFeedback } from '@/components/layout/NavigationFeedback';
 
 const menuItems = [
   { label: 'Home', href: '/' },
@@ -80,6 +81,7 @@ export default function Header() {
     e.preventDefault();
     const query = searchQuery.trim();
     if (query) {
+      startNavigationFeedback();
       window.location.href = `/search?q=${encodeURIComponent(query)}`;
       closeSearch();
     }

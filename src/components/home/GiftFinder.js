@@ -1,7 +1,8 @@
 'use client';
 import { useState, useRef } from 'react';
-import { FiSearch, FiCalendar, FiGift, FiChevronRight, FiZap, FiStar } from 'react-icons/fi';
+import { FiSearch, FiCalendar, FiGift, FiChevronRight, FiZap, FiStar, FiLoader } from 'react-icons/fi';
 import { formatPrice } from '@/lib/utils';
+import { startNavigationFeedback } from '@/components/layout/NavigationFeedback';
 
 export default function GiftFinder({ intro, occasions, types, quickPicks }) {
   const [query, setQuery] = useState('');
@@ -29,6 +30,7 @@ export default function GiftFinder({ intro, occasions, types, quickPicks }) {
       if (query.trim()) params.set('q', query.trim());
       if (occasion) params.set('occasion', occasion);
       if (giftType) params.set('giftType', giftType);
+      startNavigationFeedback();
       window.location.href = `/search?${params.toString()}`;
     }
   };
@@ -84,7 +86,7 @@ export default function GiftFinder({ intro, occasions, types, quickPicks }) {
             <div className="flex flex-col sm:flex-row gap-3">
               <div className="flex-1 relative"><FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} /><input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="e.g. moon lamp, bottle of love, hamper" className="input-field pl-11 py-4 text-base" /></div>
               <button type="submit" className="inline-flex min-h-[52px] w-full items-center justify-center gap-2 whitespace-normal rounded-xl bg-accent-500 px-5 py-4 text-center text-sm font-bold text-white shadow-orange transition-all duration-200 hover:-translate-y-0.5 hover:bg-accent-600 sm:w-auto sm:whitespace-nowrap sm:px-8 sm:text-base">Find my recommendation <FiChevronRight size={18} /></button>
-              <button type="button" onClick={getRecommendations} disabled={recommending} className="inline-flex min-h-[52px] w-full items-center justify-center gap-2 whitespace-normal rounded-xl border border-primary-200 bg-primary-50 px-5 py-4 text-center text-sm font-bold text-primary-700 transition-all duration-200 hover:bg-primary-100 disabled:opacity-60 sm:w-auto sm:whitespace-nowrap sm:px-6 sm:text-base"><FiStar size={18} /> {recommending ? 'Finding...' : 'Recommend'}</button>
+              <button type="button" onClick={getRecommendations} disabled={recommending} className="inline-flex min-h-[52px] w-full items-center justify-center gap-2 whitespace-normal rounded-xl border border-primary-200 bg-primary-50 px-5 py-4 text-center text-sm font-bold text-primary-700 transition-all duration-200 hover:bg-primary-100 disabled:opacity-60 sm:w-auto sm:whitespace-nowrap sm:px-6 sm:text-base">{recommending ? <><FiLoader size={18} className="animate-spin" /> Finding...</> : <><FiStar size={18} /> Recommend</>}</button>
             </div>
           </form>
 

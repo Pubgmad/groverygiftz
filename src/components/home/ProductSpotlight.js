@@ -1,16 +1,18 @@
 'use client';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Link from 'next/link';
 import { useCart } from '@/context/CartContext';
 import { formatPrice, calcSavings, getDisplayPrice, getDisplayRegularPrice, getVariantEffectivePrice, getVariantRegularPrice, isOfferActive } from '@/lib/utils';
 import { getProductAvailableStock, getSelectedAvailableStock, isProductSoldOut, isVariantOptionSoldOut } from '@/lib/stock';
-import { FiShoppingCart, FiZap, FiStar, FiTruck, FiShield, FiGift, FiPlus, FiMinus } from 'react-icons/fi';
+import { FiShoppingCart, FiZap, FiStar, FiTruck, FiShield, FiGift, FiPlus, FiMinus, FiLoader } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
 export default function ProductSpotlight({ product }) {
   const { addToCart } = useCart();
   const [qty, setQty] = useState(1);
   const [selectedVariants, setSelectedVariants] = useState({});
+  const [adding, setAdding] = useState(false);
+  const addLockRef = useRef(false);
 
   if (!product) return null;
 
@@ -31,9 +33,12 @@ export default function ProductSpotlight({ product }) {
   const finalPrice = displayPrice + getSelectedExtra();
 
   const handleAdd = () => {
+    if (addLockRef.current) return;
     if (isSoldOut) return toast.error('This product is sold out');
     if (selectedAvailableStock <= 0) return toast.error('Selected option is sold out');
     if (qty > selectedAvailableStock) return toast.error(`Only ${selectedAvailableStock} available`);
+    addLockRef.current = true;
+    setAdding(true);
     const variantStr = Object.entries(selectedVariants).map(([k, v]) => `${k}: ${v.label}`).join(', ');
     addToCart({
       productId: product._id,
@@ -45,6 +50,10 @@ export default function ProductSpotlight({ product }) {
       variant: variantStr,
     });
     toast.success('Added to cart!');
+    window.setTimeout(() => {
+      addLockRef.current = false;
+      setAdding(false);
+    }, 400);
   };
 
   return (
@@ -140,8 +149,8 @@ export default function ProductSpotlight({ product }) {
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row">
-              <button onClick={handleAdd} disabled={isSoldOut} className={`btn-primary flex flex-1 items-center justify-center gap-2 ${isSoldOut ? 'cursor-not-allowed opacity-60' : ''}`}>
-                <FiShoppingCart size={17} /> {isSoldOut ? 'Sold Out' : 'Add to Cart'}
+              <button onClick={handleAdd} disabled={isSoldOut || adding} className={`btn-primary flex flex-1 items-center justify-center gap-2 ${isSoldOut || adding ? 'cursor-not-allowed opacity-60' : ''}`}>
+                {adding ? <><FiLoader size={17} className="animate-spin" /> Adding...</> : <><FiShoppingCart size={17} /> {isSoldOut ? 'Sold Out' : 'Add to Cart'}</>}
               </button>
               <Link href={`/products/${product.slug}`} className="btn-outline flex flex-1 items-center justify-center gap-2 text-center">
                 <FiZap size={17} /> Personalise / View
