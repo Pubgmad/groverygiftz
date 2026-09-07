@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { useCart } from '@/context/CartContext';
-import { FiX, FiPlus, FiMinus, FiTrash2, FiShoppingBag, FiTruck, FiGift, FiLoader } from 'react-icons/fi';
+import { FiX, FiPlus, FiMinus, FiTrash2, FiShoppingBag, FiTruck, FiGift } from 'react-icons/fi';
 import Link from 'next/link';
 import { formatPrice } from '@/lib/utils';
 import { calculateCartShipping } from '@/lib/shipping';
@@ -10,14 +10,9 @@ import ConfiguredImageSections from '@/components/cart/ConfiguredImageSections';
 export default function CartDrawer() {
   const { cart, isCartOpen, setIsCartOpen, removeFromCart, updateQuantity, cartTotal, cartCount } = useCart();
   const [settings, setSettings] = useState({ tamilNaduShippingCost: 0, otherStateShippingCost: 120, tamilNaduDeliveryEstimate: 'Within 8 days', otherStateDeliveryEstimate: '10-15 days' });
-  const [checkoutLoading, setCheckoutLoading] = useState(false);
   const selectedState = cart.find((item) => item.deliveryState)?.deliveryState || (typeof window !== 'undefined' ? window.localStorage?.getItem('groveryDeliveryState') : '') || '';
   const shippingSummary = useMemo(() => calculateCartShipping(cart, selectedState, settings), [cart, selectedState, settings]);
   const checkoutTotal = cartTotal + (selectedState ? shippingSummary.cost : 0);
-
-  useEffect(() => {
-    if (!isCartOpen) setCheckoutLoading(false);
-  }, [isCartOpen]);
 
   useEffect(() => {
     fetch('/api/settings')
@@ -89,14 +84,7 @@ export default function CartDrawer() {
               {selectedState && <div className="flex justify-between items-center border-t pt-2"><span className="text-gray-900 font-bold">Checkout total</span><span className="text-xl font-bold text-primary-700">{formatPrice(checkoutTotal)}</span></div>}
               {!selectedState && <div className="rounded-lg bg-primary-50 px-3 py-2 text-xs text-gray-600">Select state on product or checkout page to see delivery charge.</div>}
             </div>
-            <Link href="/checkout" onClick={() => { setCheckoutLoading(true); setIsCartOpen(false); }} aria-disabled={checkoutLoading} className={`flex items-center justify-center gap-2 btn-accent w-full text-center text-base font-bold py-4 ${checkoutLoading ? 'pointer-events-none opacity-70' : ''}`}>
-              {checkoutLoading ? (
-                <>
-                  <FiLoader className="animate-spin" size={18} />
-                  Opening checkout...
-                </>
-              ) : 'Checkout Now'}
-            </Link>
+            <Link href="/checkout" onClick={() => setIsCartOpen(false)} className="flex items-center justify-center gap-2 btn-accent w-full text-center text-base font-bold py-4">Checkout Now</Link>
             <Link href="/cart" onClick={() => setIsCartOpen(false)} className="block w-full text-center text-sm font-semibold text-primary-600 hover:text-primary-700 transition-colors">View cart</Link>
             <button onClick={() => setIsCartOpen(false)} className="w-full text-center text-sm text-gray-500 hover:text-primary-600 transition-colors">Continue Shopping</button>
           </div>

@@ -2,7 +2,6 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import { FiLoader } from 'react-icons/fi';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -11,7 +10,6 @@ export default function ForgotPasswordPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (loading) return;
     setLoading(true);
     setResetLink('');
     try {
@@ -37,7 +35,7 @@ export default function ForgotPasswordPage() {
       <p className="mb-8 text-center text-sm text-gray-500">Enter your registered email to receive a secure reset link.</p>
       <form onSubmit={handleSubmit} className="space-y-4">
         <input type="email" required placeholder="Registered email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full rounded-lg border px-4 py-3 focus:border-primary-500 focus:outline-none" />
-        <button disabled={loading} className="btn-primary w-full flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-70">{loading ? <><FiLoader className="animate-spin" size={18} /> Sending...</> : 'Send Reset Link'}</button>
+        <button disabled={loading} className="btn-primary w-full">{loading ? 'Sending...' : 'Send Reset Link'}</button>
       </form>
       {resetLink && <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 break-all">Testing reset link: <Link href={resetLink} className="font-bold underline">{resetLink}</Link></div>}
       <p className="mt-6 text-center text-sm text-gray-500"><Link href="/auth/login" className="text-primary-600 hover:underline">Back to sign in</Link></p>

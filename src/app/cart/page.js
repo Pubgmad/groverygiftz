@@ -1,8 +1,7 @@
 'use client';
-import { useState } from 'react';
 import { useCart } from '@/context/CartContext';
 import { formatPrice } from '@/lib/utils';
-import { FiMinus, FiPlus, FiTrash2, FiTruck, FiShoppingBag, FiGift, FiLoader } from 'react-icons/fi';
+import { FiMinus, FiPlus, FiTrash2, FiTruck, FiShoppingBag, FiGift } from 'react-icons/fi';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import ConfiguredImageSections from '@/components/cart/ConfiguredImageSections';
@@ -10,7 +9,6 @@ import ConfiguredImageSections from '@/components/cart/ConfiguredImageSections';
 export default function CartPage() {
   const { cart, removeFromCart, updateQuantity, cartTotal, cartReady } = useCart();
   const router = useRouter();
-  const [checkoutLoading, setCheckoutLoading] = useState(false);
 
   if (!cartReady) {
     return (
@@ -73,7 +71,7 @@ export default function CartPage() {
               <div className="flex justify-between text-sm text-gray-600"><span>Items ({cart.reduce((s, i) => s + i.quantity, 0)})</span><span>{formatPrice(cartTotal)}</span></div>
               <div className="rounded-xl border border-primary-100 bg-primary-50/70 px-3 py-3 text-sm text-gray-700 flex gap-2"><FiTruck size={16} className="text-primary-600 mt-0.5 shrink-0" /><span>Delivery charges are added after you select your state. Tamil Nadu delivery is free; other states may include a charge.</span></div>
               <div className="border-t border-dashed pt-3 flex justify-between font-bold text-lg"><span>Subtotal</span><span className="text-primary-600">{formatPrice(cartTotal)}</span></div>
-              <button type="button" onClick={() => { if (checkoutLoading) return; setCheckoutLoading(true); router.push('/checkout'); }} disabled={checkoutLoading} className={`btn-accent w-full py-4 text-base font-bold flex items-center justify-center gap-2 ${checkoutLoading ? 'opacity-70 cursor-not-allowed' : ''}`}>{checkoutLoading ? <><FiLoader className="animate-spin" size={18} /> Opening checkout...</> : 'Proceed to Checkout'}</button>
+              <button type="button" onClick={() => router.push('/checkout')} className="btn-accent w-full py-4 text-base font-bold flex items-center justify-center gap-2">Proceed to Checkout</button>
               <Link href="/shop" className="block text-center text-sm text-gray-400 hover:text-primary-600 transition-colors mt-1">Continue Shopping</Link>
             </div>
           </div>

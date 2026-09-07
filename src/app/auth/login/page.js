@@ -5,13 +5,11 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import PasswordInput from '@/components/common/PasswordInput';
-import { FiLoader } from 'react-icons/fi';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
   const [inputReady, setInputReady] = useState(false);
   const router = useRouter();
   const [callbackUrl, setCallbackUrl] = useState('/account');
@@ -36,7 +34,6 @@ export default function LoginPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (loading || googleLoading) return;
     setLoading(true);
     const res = await signIn('credentials', { email, password, loginType: 'customer', redirect: false });
     setLoading(false);
@@ -57,10 +54,10 @@ export default function LoginPage() {
           className="w-full border rounded-lg px-4 py-3 focus:outline-none focus:border-primary-500" />
         <PasswordInput required placeholder="Password" name="customer_login_password" autoComplete="new-password" readOnly={!inputReady} onFocus={() => setInputReady(true)} value={password} onChange={e => setPassword(e.target.value)} />
         <div className="text-right"><Link href="/auth/forgot-password" className="text-sm font-semibold text-primary-600 hover:underline">Forgot Password?</Link></div>
-        <button disabled={loading || googleLoading} className="btn-primary w-full flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-70">{loading ? <><FiLoader className="animate-spin" size={18} /> Signing in...</> : 'Sign In'}</button>
+        <button disabled={loading} className="btn-primary w-full">{loading ? 'Signing in...' : 'Sign In'}</button>
       </form>
       <div className="my-5 flex items-center gap-3 text-xs font-semibold uppercase tracking-widest text-gray-400"><span className="h-px flex-1 bg-gray-200" />or<span className="h-px flex-1 bg-gray-200" /></div>
-      <button type="button" onClick={handleGoogleSignIn} disabled={loading || googleLoading} className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 transition hover:border-primary-200 hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-70">{googleLoading ? <><FiLoader className="animate-spin" size={18} /> Opening Google...</> : 'Continue with Google'}</button>
+      <button type="button" onClick={handleGoogleSignIn} className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 transition hover:border-primary-200 hover:bg-primary-50">Continue with Google</button>
       <p className="text-center mt-6 text-sm text-gray-500">
         Don&apos;t have an account? <Link href={`/auth/register?callbackUrl=${encodeURIComponent(callbackUrl || '/account')}`} className="text-primary-600 hover:underline">Create Account</Link>
       </p>
