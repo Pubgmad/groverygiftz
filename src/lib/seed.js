@@ -51,28 +51,8 @@ async function seed() {
     console.log('Settings seeded');
   }
 
-  // 3. Seed Collections
-  const collections = [
-    { name: 'Birthday Gifts', slug: 'birthday-gifts', description: 'Make every birthday special with our curated gift selection', order: 1, isFeatured: true, isActive: true },
-    { name: 'Love Combos', slug: 'love-combos', description: 'Express your love with beautiful gift combos', order: 2, isFeatured: true, isActive: true },
-    { name: "Bottle Of Emotions", slug: 'bottle-of-emotions', description: 'Message bottles, 52 reasons jars, and keepsake emotion gifts', order: 2.5, isFeatured: true, isActive: true },
-    { name: "Valentine's Day Collection", slug: 'valentines-day-collection', description: "Romantic gifts for Valentine's Day and special dates", order: 2.7, isFeatured: true, isActive: true },
-    { name: 'Return Gifts', slug: 'return-gifts', description: 'Premium return gifts for every occasion', order: 3, isFeatured: true, isActive: true },
-    { name: 'Personalized Gifts', slug: 'personalized-gifts', description: 'Unique personalized gifts that say it all', order: 4, isFeatured: true, isActive: true },
-    { name: 'Wedding Gifts', slug: 'wedding-gifts', description: 'Celebrate the union with elegant wedding gifts', order: 5, isFeatured: false, isActive: true },
-    { name: 'Anniversary Gifts', slug: 'anniversary-gifts', description: 'Celebrate milestones with perfect anniversary gifts', order: 6, isFeatured: false, isActive: true },
-    { name: 'Festive Gifts', slug: 'festive-gifts', description: 'Spread festive joy with our seasonal collection', order: 7, isFeatured: false, isActive: true },
-    { name: 'Corporate Gifts', slug: 'corporate-gifts', description: 'Professional gift solutions for corporate needs', order: 8, isFeatured: false, isActive: true },
-  ];
-
-  for (const col of collections) {
-    await db.collection('collections').updateOne(
-      { slug: col.slug },
-      { $setOnInsert: { ...col, createdAt: new Date(), updatedAt: new Date() } },
-      { upsert: true }
-    );
-  }
-  console.log('Collections seeded');
+  // 3. Collections are managed exclusively from the Admin panel.
+  // Do not create default records here.
 
   // 4. Remove legacy sample products. Products must be created only from the Admin Panel.
   const legacySampleProductSlugs = [

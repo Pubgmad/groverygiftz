@@ -16,13 +16,6 @@ const menuItems = [
   { label: 'Blog', href: '/blogs' },
 ];
 
-const megaCollections = [
-  { label: 'Love Combos', href: '/collections/love-combos', color: 'bg-accent-50 text-accent-600' },
-  { label: 'Birthday Gifts', href: '/collections/birthday-gifts', color: 'bg-amber-50 text-amber-600' },
-  { label: 'Personalized Gifts', href: '/collections/personalized-gifts', color: 'bg-primary-50 text-primary-600' },
-  { label: 'Return Gifts', href: '/collections/return-gifts', color: 'bg-primary-100 text-primary-700' },
-];
-
 export default function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -75,7 +68,7 @@ export default function Header() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const visibleMegaCollections = menuCollections.length ? menuCollections : megaCollections;
+  const visibleMegaCollections = menuCollections;
 
   const closeSearch = () => {
     setSearchOpen(false);
