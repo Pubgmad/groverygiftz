@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import PasswordInput from '@/components/common/PasswordInput';
+import { FiLoader } from 'react-icons/fi';
 import { PASSWORD_REQUIREMENTS, validateStrongPassword, strongPasswordMessage } from '@/lib/passwordPolicy';
 
 export default function ResetPasswordPage() {
@@ -16,6 +17,7 @@ export default function ResetPasswordPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading) return;
     const check = validateStrongPassword(password);
     if (!check.valid) {
       toast.error(strongPasswordMessage());
@@ -58,7 +60,7 @@ export default function ResetPasswordPage() {
               })}
             </div>
           </div>
-          <button disabled={loading || !passwordCheck.valid} className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60">{loading ? 'Updating...' : 'Update Password'}</button>
+          <button disabled={loading || !passwordCheck.valid} className="btn-primary w-full flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-60">{loading ? <><FiLoader className="animate-spin" size={18} /> Updating...</> : 'Update Password'}</button>
         </form>
       )}
       <p className="mt-6 text-center text-sm text-gray-500"><Link href="/auth/login" className="text-primary-600 hover:underline">Back to sign in</Link></p>

@@ -61,6 +61,7 @@ export default function ProductDetail({ product }) {
   const [giftMessage, setGiftMessage] = useState('');
   const [customerNote, setCustomerNote] = useState('');
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [cartAction, setCartAction] = useState('');
   const [sizeChartOpen, setSizeChartOpen] = useState(false);
   const [settings, setSettings] = useState({ freeShippingThreshold: 499, whatsapp: '919994549781', tamilNaduShippingCost: 0, otherStateShippingCost: 120, tamilNaduDeliveryEstimate: 'Within 8 days', otherStateDeliveryEstimate: '10-15 days', deliveryHolidays: [] });
   const { addToCart, setIsCartOpen } = useCart();
@@ -662,14 +663,30 @@ const handleCustomerPhotoUpload = async (files) => {
   };
 
   const handleAddToCart = async () => {
-    if (await addConfiguredProductToCart({ openCart: true })) toast.success('Added to cart!');
+    if (cartAction) return;
+    setCartAction('add');
+    try {
+      if (await addConfiguredProductToCart({ openCart: true })) toast.success('Added to cart!');
+    } finally {
+      setCartAction('');
+    }
   };
 
   const handleBuyNow = async () => {
-    if (!(await addConfiguredProductToCart({ openCart: false }))) return;
-    setIsCartOpen(false);
-    toast.success('Taking you to checkout...');
-    router.push('/checkout');
+    if (cartAction) return;
+    setCartAction('buy');
+    try {
+      if (!(await addConfiguredProductToCart({ openCart: false }))) {
+        setCartAction('');
+        return;
+      }
+      setIsCartOpen(false);
+      toast.success('Taking you to checkout...');
+      router.push('/checkout');
+    } catch (error) {
+      setCartAction('');
+      throw error;
+    }
   };
 
   return (
@@ -1131,16 +1148,34 @@ const handleCustomerPhotoUpload = async (files) => {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3">
-          <button onClick={handleAddToCart} disabled={isSoldOut}
-            className={`btn-primary flex-1 flex items-center justify-center gap-2 text-center ${isSoldOut ? 'opacity-60 cursor-not-allowed' : ''}`}>
-            <FiShoppingCart size={18} />
-            {isSoldOut ? 'Sold Out' : product.isQuoteOnly ? 'Contact for Price' : 'Add To Cart'}
+          <button onClick={handleAddToCart} disabled={isSoldOut || !!cartAction}
+            className={`btn-primary flex-1 flex items-center justify-center gap-2 text-center ${(isSoldOut || cartAction) ? 'opacity-70 cursor-not-allowed' : ''}`}>
+            {cartAction === 'add' ? (
+              <>
+                <FiLoader size={18} className="animate-spin" />
+                Adding...
+              </>
+            ) : (
+              <>
+                <FiShoppingCart size={18} />
+                {isSoldOut ? 'Sold Out' : product.isQuoteOnly ? 'Contact for Price' : 'Add To Cart'}
+              </>
+            )}
           </button>
           {!product.isQuoteOnly && !isSoldOut && (
-            <button onClick={handleBuyNow}
-              className="btn-accent flex-1 flex items-center justify-center gap-2 text-center">
-              <FiZap size={18} />
-              Buy It Now
+            <button onClick={handleBuyNow} disabled={!!cartAction}
+              className={`btn-accent flex-1 flex items-center justify-center gap-2 text-center ${cartAction ? 'opacity-70 cursor-not-allowed' : ''}`}>
+              {cartAction === 'buy' ? (
+                <>
+                  <FiLoader size={18} className="animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <FiZap size={18} />
+                  Buy It Now
+                </>
+              )}
             </button>
           )}
         </div>

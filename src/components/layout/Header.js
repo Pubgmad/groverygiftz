@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { FiSearch, FiUser, FiShoppingBag, FiMenu, FiX, FiChevronDown, FiHeart, FiGift } from 'react-icons/fi';
+import { FiSearch, FiUser, FiShoppingBag, FiMenu, FiX, FiChevronDown, FiHeart, FiGift, FiLoader } from 'react-icons/fi';
 import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
 import { useSession } from 'next-auth/react';
@@ -27,6 +27,7 @@ export default function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchSubmitting, setSearchSubmitting] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
   const [suggesting, setSuggesting] = useState(false);
   const [megaOpen, setMegaOpen] = useState(false);
@@ -85,13 +86,14 @@ export default function Header() {
 
   const handleSearch = (e) => {
     e.preventDefault();
+    if (searchSubmitting) return;
     const query = searchQuery.trim();
     if (query) {
+      setSearchSubmitting(true);
       window.location.href = `/search?q=${encodeURIComponent(query)}`;
       closeSearch();
     }
   };
-
   return (
     <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-sm shadow-sm border-b border-gray-100">
       <div className="h-[3px] w-full" style={{ background: 'linear-gradient(90deg, #2456D8 0%, #F47920 40%, #2456D8 70%, #F47920 100%)' }} />
@@ -170,7 +172,9 @@ export default function Header() {
           <div className="relative max-w-2xl mx-auto">
             <form onSubmit={handleSearch} className="flex gap-0">
               <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search product names..." className="flex-1 border border-r-0 border-gray-200 rounded-l-xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100" autoFocus />
-              <button type="submit" className="bg-primary-600 text-white px-4 sm:px-6 py-3 rounded-r-xl hover:bg-primary-700 transition-colors font-semibold text-sm">Search</button>
+              <button type="submit" disabled={searchSubmitting} className="flex min-w-[86px] items-center justify-center rounded-r-xl bg-primary-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-70 sm:px-6">
+                {searchSubmitting ? <FiLoader className="animate-spin" size={18} /> : 'Search'}
+              </button>
             </form>
             {(suggestions.length > 0 || suggesting) && (
               <div className="absolute left-0 right-0 top-full mt-2 z-50 overflow-hidden rounded-2xl border bg-white shadow-brand-lg">

@@ -1,6 +1,7 @@
 'use client';
+import { useState } from 'react';
 import Link from 'next/link';
-import { FiHeart, FiGift, FiShoppingBag, FiChevronRight, FiClock } from 'react-icons/fi';
+import { FiHeart, FiGift, FiShoppingBag, FiChevronRight, FiClock, FiLoader } from 'react-icons/fi';
 import { formatPrice, calcSavings, getDisplayPrice, getDisplayRegularPrice, isOfferActive } from '@/lib/utils';
 import { getProductAvailableStock, isProductSoldOut } from '@/lib/stock';
 import { useWishlist } from '@/context/WishlistContext';
@@ -17,6 +18,7 @@ function firstProductImage(product, index = 0) {
 
 export default function ProductCard({ product }) {
   const { toggleWishlist, isWishlisted } = useWishlist();
+  const [wishlistBusy, setWishlistBusy] = useState(false);
   const wishlisted = isWishlisted(product._id);
   const displayPrice = getDisplayPrice(product);
   const displayRegularPrice = getDisplayRegularPrice(product);
@@ -52,15 +54,23 @@ export default function ProductCard({ product }) {
         </div>
 
         <button
-          onClick={(e) => { e.preventDefault(); toggleWishlist(product); }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (wishlistBusy) return;
+            setWishlistBusy(true);
+            toggleWishlist(product);
+            window.setTimeout(() => setWishlistBusy(false), 350);
+          }}
+          disabled={wishlistBusy}
           aria-label={wishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
           className={`absolute right-2 top-2 z-10 flex h-9 w-9 items-center justify-center rounded-full shadow-md transition-all duration-200 hover:scale-110 sm:right-2.5 sm:top-2.5 sm:h-10 sm:w-10 ${
             wishlisted
               ? 'bg-accent-500 text-white shadow-orange'
               : 'bg-white/95 text-gray-400 hover:text-accent-500 hover:shadow-orange'
-          }`}
+          } ${wishlistBusy ? 'opacity-70' : ''}`}
         >
-          <FiHeart size={16} className={wishlisted ? 'fill-white stroke-white' : ''} />
+          {wishlistBusy ? <FiLoader size={16} className="animate-spin" /> : <FiHeart size={16} className={wishlisted ? 'fill-white stroke-white' : ''} />}
         </button>
 
         {lowStock && (

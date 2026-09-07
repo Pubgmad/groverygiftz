@@ -6,6 +6,7 @@ import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { trackMetaEvent } from '@/lib/metaPixel';
 import PasswordInput from '@/components/common/PasswordInput';
+import { FiLoader } from 'react-icons/fi';
 import { PASSWORD_REQUIREMENTS, validateStrongPassword, strongPasswordMessage } from '@/lib/passwordPolicy';
 
 export default function RegisterPage() {
@@ -29,6 +30,7 @@ export default function RegisterPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading) return;
     const normalizedPhone = String(formData.phone || '').replace(/\D/g, '');
     if (normalizedPhone.length < 10 || normalizedPhone.length > 15) {
       toast.error('Please enter a valid contact number');
@@ -93,7 +95,7 @@ export default function RegisterPage() {
             })}
           </div>
         </div>
-        <button disabled={loading || !passwordCheck.valid} className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60">{loading ? 'Creating...' : 'Create Account'}</button>
+        <button disabled={loading || !passwordCheck.valid} className="btn-primary w-full flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-60">{loading ? <><FiLoader className="animate-spin" size={18} /> Creating...</> : 'Create Account'}</button>
       </form>
       <p className="mt-6 text-center text-sm text-gray-500">
         Already have an account? <Link href={`/auth/login?callbackUrl=${encodeURIComponent(callbackUrl || '/account')}`} className="text-primary-600 hover:underline">Sign In</Link>

@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { FiPhone, FiMail, FiMapPin, FiClock, FiInstagram, FiShield, FiSend } from 'react-icons/fi';
+import { FiPhone, FiMail, FiMapPin, FiClock, FiInstagram, FiShield, FiSend, FiLoader } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { trackMetaEvent } from '@/lib/metaPixel';
 
@@ -31,6 +31,7 @@ export default function ContactPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading) return;
     setLoading(true);
     try {
       const res = await fetch('/api/contact', {
@@ -128,7 +129,7 @@ export default function ContactPage() {
               <input type="email" required placeholder="Email" value={formData.email} onChange={e => setFormData(p => ({ ...p, email: e.target.value }))} className="w-full border rounded-xl px-4 py-3 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100" />
               <input placeholder="Phone Number" value={formData.phone} onChange={e => setFormData(p => ({ ...p, phone: e.target.value }))} className="w-full border rounded-xl px-4 py-3 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100" />
               <textarea required placeholder="Add a message" rows={5} value={formData.message} onChange={e => setFormData(p => ({ ...p, message: e.target.value }))} className="w-full border rounded-xl px-4 py-3 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100" />
-              <button disabled={loading} className="btn-primary w-full py-3 flex items-center justify-center gap-2">{loading ? 'Sending...' : 'Send Message'} <FiShield size={16} /></button>
+              <button disabled={loading} className="btn-primary w-full py-3 flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-70">{loading ? <><FiLoader className="animate-spin" size={18} /> Sending...</> : <><span>Send Message</span> <FiShield size={16} /></>}</button>
             </form>
           </div>
         </div>
