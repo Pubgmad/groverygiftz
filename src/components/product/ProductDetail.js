@@ -75,6 +75,12 @@ export default function ProductDetail({ product }) {
   const lightboxTouchRef = useRef({ startX: 0, endX: 0 });
   const [selectedDeliveryState, setSelectedDeliveryState] = useState('Tamil Nadu');
   const [actionLoading, setActionLoading] = useState('');
+  useEffect(() => {
+    setSelectedImage(0);
+    setLightboxOpen(false);
+    galleryTouchRef.current = { startX: 0, endX: 0 };
+    lightboxTouchRef.current = { startX: 0, endX: 0 };
+  }, [product._id, product.slug]);
 
   const offerActive = isOfferActive(product);
   const isSoldOut = isProductSoldOut(product);
@@ -699,7 +705,7 @@ const handleCustomerPhotoUpload = async (files) => {
           {currentMedia?.type === 'video' ? (
             <video src={currentMedia.url} controls className="w-full max-h-[70vh] object-contain bg-black" />
           ) : currentMedia?.url ? (
-            <img src={currentMedia.url} alt={product.title} className="mx-auto block h-auto max-h-[78vh] max-w-full object-contain bg-white" onError={(e) => { e.currentTarget.src = '/placeholder.svg'; }} />
+            <img key={currentMedia.type + ':' + currentMedia.url} src={currentMedia.url} alt={product.title} className="mx-auto block h-auto max-h-[78vh] max-w-full object-contain bg-white" onError={(e) => { e.currentTarget.src = '/placeholder.svg'; }} />
           ) : (
             <div className="flex min-h-[320px] w-full items-center justify-center text-gray-400">No media</div>
           )}
@@ -716,7 +722,7 @@ const handleCustomerPhotoUpload = async (files) => {
         {mediaItems.length > 1 && (
           <div className="flex gap-2 overflow-x-auto">
             {mediaItems.map((media, idx) => (
-              <button key={media.type + '-' + idx} onClick={() => setSelectedImage(idx)}
+              <button key={media.type + ':' + media.url + '-' + idx} onClick={() => setSelectedImage(idx)}
                 className={"relative w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 border-2 bg-gray-100 " + (idx === selectedImage ? 'border-primary-600' : 'border-transparent')}>
                 {media.type === 'video' ? (
                   <div className="w-full h-full flex items-center justify-center bg-gray-900 text-white text-xs font-bold">Video</div>
@@ -1291,15 +1297,15 @@ const handleCustomerPhotoUpload = async (files) => {
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={() => setLightboxOpen(false)}>
           <button className="absolute top-4 right-4 text-white hover:text-gray-300 z-50" onClick={() => setLightboxOpen(false)}><FiX size={28} /></button>
           <div className="max-w-4xl max-h-[90vh] relative" onClick={e => e.stopPropagation()} onTouchStart={handleLightboxTouchStart} onTouchMove={handleLightboxTouchMove} onTouchEnd={handleLightboxTouchEnd}>
-            <img src={currentMedia?.type === 'image' ? currentMedia.url : imageItems[0]?.url} alt={product.title} className="max-w-full max-h-[85vh] object-contain rounded-lg" onError={(e) => { e.currentTarget.src = '/placeholder.svg'; }} />
+            <img key={currentMedia?.type + ':' + currentMedia?.url} src={currentMedia?.type === 'image' ? currentMedia.url : imageItems[0]?.url} alt={product.title} className="max-w-full max-h-[85vh] object-contain rounded-lg" onError={(e) => { e.currentTarget.src = '/placeholder.svg'; }} />
             {mediaItems.length > 1 && <button type="button" onClick={goPrevMedia} className="absolute left-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-gray-900 shadow-lg" aria-label="Previous image"><FiChevronLeft size={24} /></button>}
             {mediaItems.length > 1 && <button type="button" onClick={goNextMedia} className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-gray-900 shadow-lg" aria-label="Next image"><FiChevronRight size={24} /></button>}
-            {product.images.length > 1 && (
+            {mediaItems.length > 1 && (
               <div className="flex justify-center gap-2 mt-4">
-                {product.images.map((img, idx) => (
-                  <button key={idx} onClick={() => setSelectedImage(idx)}
+                {mediaItems.map((media, idx) => (
+                  <button key={media.type + ':' + media.url + '-' + idx} onClick={() => setSelectedImage(idx)}
                     className={`w-16 h-16 rounded-lg overflow-hidden border-2 ${idx === selectedImage ? 'border-white' : 'border-transparent opacity-60'}`}>
-                    <img src={img} alt="" className="w-full h-full object-cover" />
+                    <img src={media.url} alt="" className="w-full h-full object-cover" />
                   </button>
                 ))}
               </div>
