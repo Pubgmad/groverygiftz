@@ -14,17 +14,31 @@ async function seed() {
     throw new Error('ADMIN_EMAIL and ADMIN_PASSWORD are required to seed the admin account.');
   }
 
-  // 1. Seed Admin
-  const adminPassword = await bcrypt.hash(adminPasswordPlain, 12);
-  await db.collection('admins').updateOne(
+  // 1. Seed Admin without changing an existing production credential.
+  const existingAdmin = await db.collection('admins').findOne(
     { email: adminEmail },
-    {
-      $set: { name: 'Admin', email: adminEmail, password: adminPassword, role: 'superadmin', updatedAt: new Date() },
-      $setOnInsert: { createdAt: new Date() },
-    },
-    { upsert: true }
+    { collation: { locale: 'en', strength: 2 } }
   );
-  console.log('Admin seeded / updated');
+
+  if (existingAdmin) {
+    console.log('Admin already exists; credentials preserved');
+  } else {
+    const adminCount = await db.collection('admins').countDocuments();
+    if (adminCount > 0) {
+      throw new Error('An admin account already exists with a different email. Refusing to create a duplicate admin.');
+    }
+
+    const adminPassword = await bcrypt.hash(adminPasswordPlain, 12);
+    await db.collection('admins').insertOne({
+      name: 'Admin',
+      email: adminEmail,
+      password: adminPassword,
+      role: 'superadmin',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    console.log('Admin created');
+  }
 
   // 2. Seed Settings
   const existingSettings = await db.collection('settings').findOne();
