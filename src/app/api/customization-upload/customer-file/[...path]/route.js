@@ -4,23 +4,10 @@ import { authOptions } from '@/lib/auth';
 import dbConnect from '@/lib/db';
 import Customer from '@/models/Customer';
 import Order from '@/models/Order';
+import { detectImageFormat } from '@/lib/imageFormat';
 import { readUploadFile } from '@/lib/uploadStorage';
 
 export const dynamic = 'force-dynamic';
-
-const imageTypes = new Map([
-  ['jpg', 'image/jpeg'],
-  ['jpeg', 'image/jpeg'],
-  ['png', 'image/png'],
-  ['webp', 'image/webp'],
-  ['gif', 'image/gif'],
-  ['svg', 'image/svg+xml'],
-]);
-
-const contentTypeFor = (relativePath) => {
-  const ext = String(relativePath || '').split('.').pop()?.toLowerCase();
-  return imageTypes.get(ext) || 'application/octet-stream';
-};
 
 const containsPath = (value, relativePath) => {
   if (!value) return false;
@@ -60,10 +47,11 @@ export async function GET(req, { params }) {
 
     const file = await readUploadFile(relativePath);
     if (!file) return NextResponse.json({ error: 'File not found' }, { status: 404 });
+    const format = detectImageFormat(file.buffer);
 
     return new NextResponse(file.buffer, {
       headers: {
-        'Content-Type': contentTypeFor(relativePath),
+        'Content-Type': format?.mime || 'application/octet-stream',
         'Content-Length': String(file.stat.size),
         'Cache-Control': 'private, max-age=300, no-transform',
         'X-Content-Type-Options': 'nosniff',

@@ -9,6 +9,7 @@ import { buildProductMetaPayload, trackMetaCustomEvent, trackMetaEvent } from '@
 import { FiMinus, FiPlus, FiX, FiTruck, FiShield, FiClock, FiShoppingCart, FiZap, FiUpload, FiImage, FiChevronLeft, FiChevronRight, FiStar, FiLoader } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { startNavigationFeedback } from '@/components/layout/NavigationFeedback';
+import { appendImageUpload, attachLocalPreview, prepareImageUpload } from '@/lib/clientImageUpload';
 const INDIAN_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
   'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh',
@@ -28,17 +29,8 @@ function UploadSpinner({ label = 'Uploading...' }) {
     </span>
   );
 }
-const fileToDataUrl = (file) => new Promise((resolve, reject) => {
-  const reader = new FileReader();
-  reader.onload = () => resolve(reader.result || '');
-  reader.onerror = reject;
-  reader.readAsDataURL(file);
-});
-const attachLocalPreview = async (upload, file) => ({
-  ...upload,
-  previewUrl: file?.type?.startsWith('image/') ? await fileToDataUrl(file) : upload?.url,
-});
-const displayUploadUrl = (upload) => upload?.previewUrl || upload?.url || '';
+
+const displayUploadUrl = (upload) => upload?.previewUrl || upload?.displayUrl || upload?.url || '';
 const getDefaultPreviewAdjustments = () => ({ zoom: 1, x: 0, y: 0, orientation: 'auto' });
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -503,14 +495,15 @@ export default function ProductDetail({ product }) {
 
   const handleCustomizationFileUpload = async (fieldLabel, file) => {
     if (!file) return;
-    const formData = new FormData();
-    formData.append('file', file);
     setUploadingFields((prev) => ({ ...prev, [fieldLabel]: true }));
     try {
+      const prepared = await prepareImageUpload(file);
+      const formData = new FormData();
+      appendImageUpload(formData, file, prepared);
       const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Upload failed');
-      const uploadedFile = await attachLocalPreview(data, file);
+      const uploadedFile = attachLocalPreview(data, prepared);
       setCustomFieldValues((prev) => ({ ...prev, [fieldLabel]: uploadedFile }));
       toast.success('Customization file uploaded');
       trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'file_upload', field_label: fieldLabel, file_type: data.type || file.type || '' }));
@@ -538,12 +531,13 @@ const handleCustomerPhotoUpload = async (files) => {
     try {
       const uploaded = [];
       for (const file of filesToUpload) {
+        const prepared = await prepareImageUpload(file);
         const formData = new FormData();
-        formData.append('file', file);
+        appendImageUpload(formData, file, prepared);
         const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || `Failed to upload ${file.name}`);
-        uploaded.push(await attachLocalPreview(data, file));
+        uploaded.push(attachLocalPreview(data, prepared));
       }
       setCustomerPhotos((prev) => [...prev, ...uploaded]);
       toast.success(`${uploaded.length} photo${uploaded.length === 1 ? '' : 's'} uploaded`);
@@ -558,14 +552,15 @@ const handleCustomerPhotoUpload = async (files) => {
 
   const handleVariantLabelUpload = async (label, file) => {
     if (!label || !file) return;
-    const formData = new FormData();
-    formData.append('file', file);
     setUploadingVariantLabels((prev) => ({ ...prev, [label]: true }));
     try {
+      const prepared = await prepareImageUpload(file);
+      const formData = new FormData();
+      appendImageUpload(formData, file, prepared);
       const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Upload failed');
-      const uploadedFile = await attachLocalPreview(data, file);
+      const uploadedFile = attachLocalPreview(data, prepared);
       setVariantLabelUploads((prev) => ({ ...prev, [label]: { ...uploadedFile, label } }));
       toast.success(`${label} image uploaded`);
       trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'variant_label_upload', field_label: label, file_type: data.type || file.type || '' }));
@@ -596,12 +591,13 @@ const handleCustomerPhotoUpload = async (files) => {
     try {
       const uploaded = [];
       for (const file of selectedFiles) {
+        const prepared = await prepareImageUpload(file);
         const formData = new FormData();
-        formData.append('file', file);
+        appendImageUpload(formData, file, prepared);
         const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || `Failed to upload ${file.name}`);
-        uploaded.push(await attachLocalPreview(data, file));
+        uploaded.push(attachLocalPreview(data, prepared));
       }
       setCollageUploads((prev) => ({ ...prev, [label]: [...(prev[label] || []), ...uploaded] }));
       toast.success(`${label}: ${uploaded.length} image${uploaded.length === 1 ? '' : 's'} uploaded`);
