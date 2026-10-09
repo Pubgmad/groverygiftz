@@ -48,6 +48,9 @@ export default function ProductDetail({ product }) {
   const [uploadingFields, setUploadingFields] = useState({});
   const [previewAdjustments, setPreviewAdjustments] = useState({});
   const [savedPreviewAreas, setSavedPreviewAreas] = useState({});
+  const savedPreviewFilesRef = useRef({});
+  const [savingPreviewAreas, setSavingPreviewAreas] = useState({});
+  const previewSaveLocksRef = useRef(new Set());
   const [reviews, setReviews] = useState([]);
   const [googleReviews, setGoogleReviews] = useState({ enabled: false, reviews: [], topics: [] });
   const [giftWrap, setGiftWrap] = useState(false);
@@ -222,9 +225,10 @@ export default function ProductDetail({ product }) {
   const getAreaAdjustments = (idx) => ({ ...getDefaultPreviewAdjustments(), ...(previewAdjustments[idx] || {}) });
   const loadPreviewImage = (src) => new Promise((resolve, reject) => {
     const image = new Image();
+    const timer = setTimeout(() => { image.onload = null; image.onerror = null; reject(new Error('Preview image loading timed out. Please try again.')); }, 30000);
     image.crossOrigin = 'anonymous';
-    image.onload = () => resolve(image);
-    image.onerror = reject;
+    image.onload = () => { clearTimeout(timer); resolve(image); };
+    image.onerror = () => { clearTimeout(timer); reject(new Error('Unable to load the image for preview. Please try uploading it again.')); };
     image.src = src;
   });
   const getContainedDrawRect = (sourceWidth, sourceHeight, boxWidth, boxHeight) => {
@@ -244,7 +248,7 @@ export default function ProductDetail({ product }) {
     return { displayWidth, displayHeight: displayWidth * (height / width) };
   };
   const renderFinalPreviewImage = async (area, idx, sourceUrl = '') => {
-    const photo = sourceUrl ? { url: sourceUrl } : customerPhotos[idx];
+    const photo = sourceUrl ? (typeof sourceUrl === 'object' ? sourceUrl : { url: sourceUrl }) : customerPhotos[idx];
     const photoUrl = displayUploadUrl(photo);
     if (!photoUrl) return '';
     try {
@@ -258,7 +262,13 @@ export default function ProductDetail({ product }) {
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      const uploadedImage = await loadPreviewImage(photoUrl);
+      let uploadedImage;
+      try {
+        uploadedImage = await loadPreviewImage(photoUrl);
+      } catch (error) {
+        if (!photo.displayUrl || photo.displayUrl === photoUrl) throw error;
+        uploadedImage = await loadPreviewImage(photo.displayUrl);
+      }
       const imageRect = getContainedDrawRect(
         uploadedImage.naturalWidth || uploadedImage.width,
         uploadedImage.naturalHeight || uploadedImage.height,
@@ -289,11 +299,11 @@ export default function ProductDetail({ product }) {
 
       return canvas.toDataURL('image/jpeg', 0.9);
     } catch (error) {
-      return '';
+      throw new Error(error.message || 'Unable to generate the customized preview. Please try again.');
     }
   };
   const uploadRenderedPreviewImage = async (dataUrl, label, idx) => {
-    if (!dataUrl) return null;
+    if (!dataUrl) throw new Error('The customized preview is empty. Please try saving it again.');
     try {
       const blob = await (await fetch(dataUrl)).blob();
       const safeLabel = String(label || `photo-${idx + 1}`).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `photo-${idx + 1}`;
@@ -304,7 +314,7 @@ export default function ProductDetail({ product }) {
       if (!res.ok) throw new Error(data.error || 'Preview upload failed');
       return { ...data, previewUrl: dataUrl };
     } catch (error) {
-      return null;
+      throw new Error(error.message || 'Unable to store the customized preview. Please try again.');
     }
   };
   const buildCustomizationPreviewPayload = async () => {
@@ -316,8 +326,10 @@ export default function ProductDetail({ product }) {
         const uploadedFile = customerPhotos[idx] || null;
         if (!uploadedFile?.url) continue;
         const areaLabel = area.label || ('Photo ' + (idx + 1));
-        const finalPreviewDataUrl = await renderFinalPreviewImage(area, idx);
-        const finalPreviewImage = await uploadRenderedPreviewImage(finalPreviewDataUrl, areaLabel, idx);
+        const saved = savedPreviewFilesRef.current[idx];
+        const cached = saved?.sourceUrl === uploadedFile.url && saved?.adjustments === JSON.stringify(getAreaAdjustments(idx)) ? saved.file : null;
+        const finalPreviewDataUrl = cached ? '' : await renderFinalPreviewImage(area, idx);
+        const finalPreviewImage = cached || await uploadRenderedPreviewImage(finalPreviewDataUrl, areaLabel, idx);
         previews.push({
           areaLabel,
           width: area.width || '',
@@ -346,8 +358,10 @@ export default function ProductDetail({ product }) {
         instructions: selected.previewInstructions || '',
       };
       const areaLabel = `Variant: ${selected.label}`;
-      const finalPreviewDataUrl = await renderFinalPreviewImage(area, previewKey, displayUploadUrl(uploadedFile));
-      const finalPreviewImage = await uploadRenderedPreviewImage(finalPreviewDataUrl, areaLabel, previews.length);
+      const saved = savedPreviewFilesRef.current[previewKey];
+      const cached = saved?.sourceUrl === uploadedFile.url && saved?.adjustments === JSON.stringify(getAreaAdjustments(previewKey)) ? saved.file : null;
+      const finalPreviewDataUrl = cached ? '' : await renderFinalPreviewImage(area, previewKey, uploadedFile);
+      const finalPreviewImage = cached || await uploadRenderedPreviewImage(finalPreviewDataUrl, areaLabel, previews.length);
       previews.push({
         areaLabel,
         width: area.width || '',
@@ -367,7 +381,7 @@ export default function ProductDetail({ product }) {
     return { previewTitle: previewConfig.title || 'Customization preview', previews };
   };
   const updateAreaAdjustments = (idx, updates) => {
-    if (savedPreviewAreas[idx]) return;
+    if (savedPreviewAreas[idx] || previewSaveLocksRef.current.has(idx)) return;
     setPreviewAdjustments((prev) => ({ ...prev, [idx]: { ...getDefaultPreviewAdjustments(), ...(prev[idx] || {}), ...updates } }));
   };
   const updateAreaAdjustment = (idx, key, value) => updateAreaAdjustments(idx, { [key]: value });
@@ -385,12 +399,30 @@ export default function ProductDetail({ product }) {
     });
   };
   const stopPreviewDrag = () => { dragStateRef.current = null; };
-  const savePreviewArea = (idx) => {
-    setSavedPreviewAreas((prev) => ({ ...prev, [idx]: true }));
-    toast.success('Preview saved');
+  const savePreviewArea = async (idx) => {
+    if (previewSaveLocksRef.current.has(idx) || actionLockRef.current) return;
+    previewSaveLocksRef.current.add(idx);
+    setSavingPreviewAreas((prev) => ({ ...prev, [idx]: true }));
+    try {
+      const variant = typeof idx === 'string' ? selectedVariantUploadOptions.find((option) => `variant-${option.label}` === idx) : null;
+      const area = variant ? { label: variant.label, width: variant.previewWidth || 1, height: variant.previewHeight || 1, unit: variant.previewUnit || 'inch', frameImage: variant.previewFrameImage || '' } : previewAreas[idx];
+      const upload = variant ? variantLabelUploads[variant.label] : customerPhotos[idx];
+      if (!area || !upload?.url) throw new Error('Please upload an image before saving its preview.');
+      const adjustments = JSON.stringify(getAreaAdjustments(idx));
+      const rendered = await renderFinalPreviewImage(area, idx, upload);
+      const file = await uploadRenderedPreviewImage(rendered, area.label, idx);
+      savedPreviewFilesRef.current[idx] = { file, sourceUrl: upload.url, adjustments };
+      setSavedPreviewAreas((prev) => ({ ...prev, [idx]: true }));
+      toast.success('Preview saved');
+    } catch (error) {
+      toast.error(error.message || 'Unable to save preview. Please try again.');
+    } finally {
+      previewSaveLocksRef.current.delete(idx);
+      setSavingPreviewAreas((prev) => ({ ...prev, [idx]: false }));
+    }
   };
-  const editPreviewArea = (idx) => setSavedPreviewAreas((prev) => ({ ...prev, [idx]: false }));
-  const resetPreviewArea = (idx) => { setSavedPreviewAreas((prev) => ({ ...prev, [idx]: false })); setPreviewAdjustments((prev) => ({ ...prev, [idx]: getDefaultPreviewAdjustments() })); };
+  const editPreviewArea = (idx) => { if (previewSaveLocksRef.current.has(idx)) return; delete savedPreviewFilesRef.current[idx]; setSavedPreviewAreas((prev) => ({ ...prev, [idx]: false })); };
+  const resetPreviewArea = (idx) => { editPreviewArea(idx); setPreviewAdjustments((prev) => ({ ...prev, [idx]: getDefaultPreviewAdjustments() })); };
   const getProductPixelPayload = (extra = {}) => buildProductMetaPayload(product, {
     price: finalUnitPrice,
     quantity,
@@ -508,7 +540,6 @@ export default function ProductDetail({ product }) {
       toast.success('Customization file uploaded');
       trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'file_upload', field_label: fieldLabel, file_type: data.type || file.type || '' }));
     } catch (error) {
-      setCustomFieldValues((prev) => ({ ...prev, [fieldLabel]: '' }));
       toast.error(error.message || 'Failed to upload file');
     } finally {
       setUploadingFields((prev) => ({ ...prev, [fieldLabel]: false }));
@@ -537,9 +568,10 @@ const handleCustomerPhotoUpload = async (files) => {
         const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || `Failed to upload ${file.name}`);
-        uploaded.push(attachLocalPreview(data, prepared));
+        const uploadedFile = attachLocalPreview(data, prepared);
+        uploaded.push(uploadedFile);
+        setCustomerPhotos((prev) => [...prev, uploadedFile]);
       }
-      setCustomerPhotos((prev) => [...prev, ...uploaded]);
       toast.success(`${uploaded.length} photo${uploaded.length === 1 ? '' : 's'} uploaded`);
       trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'customer_photos', photo_count: uploaded.length }));
     } catch (error) {
@@ -561,11 +593,11 @@ const handleCustomerPhotoUpload = async (files) => {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Upload failed');
       const uploadedFile = attachLocalPreview(data, prepared);
+      editPreviewArea(`variant-${label}`);
       setVariantLabelUploads((prev) => ({ ...prev, [label]: { ...uploadedFile, label } }));
       toast.success(`${label} image uploaded`);
       trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'variant_label_upload', field_label: label, file_type: data.type || file.type || '' }));
     } catch (error) {
-      setVariantLabelUploads((prev) => ({ ...prev, [label]: null }));
       toast.error(error.message || 'Failed to upload image');
     } finally {
       setUploadingVariantLabels((prev) => ({ ...prev, [label]: false }));
@@ -597,9 +629,10 @@ const handleCustomerPhotoUpload = async (files) => {
         const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || `Failed to upload ${file.name}`);
-        uploaded.push(attachLocalPreview(data, prepared));
+        const uploadedFile = attachLocalPreview(data, prepared);
+        uploaded.push(uploadedFile);
+        setCollageUploads((prev) => ({ ...prev, [label]: [...(prev[label] || []), uploadedFile] }));
       }
-      setCollageUploads((prev) => ({ ...prev, [label]: [...(prev[label] || []), ...uploaded] }));
       toast.success(`${label}: ${uploaded.length} image${uploaded.length === 1 ? '' : 's'} uploaded`);
       trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'collage_upload', collage_label: label, photo_count: uploaded.length }));
     } catch (error) {
@@ -614,6 +647,10 @@ const handleCustomerPhotoUpload = async (files) => {
     [label]: (prev[label] || []).filter((_, photoIdx) => photoIdx !== idx),
   }));
   const addConfiguredProductToCart = async ({ openCart = true } = {}) => {
+    if (uploadingCustomerPhotos || Object.values(uploadingFields).some(Boolean) || Object.values(uploadingVariantLabels).some(Boolean) || Object.values(uploadingCollageLabels).some(Boolean) || previewSaveLocksRef.current.size > 0) {
+      toast.error('Please wait for your images and previews to finish saving.');
+      return false;
+    }
     if (isSoldOut) {
       toast.error('This product is currently sold out');
       return false;
@@ -672,6 +709,8 @@ const handleCustomerPhotoUpload = async (files) => {
     setActionLoading('cart');
     try {
       if (await addConfiguredProductToCart({ openCart: true })) toast.success('Added to cart!');
+    } catch (error) {
+      toast.error(error.message || 'Unable to save your preview. Your uploaded images are still available.');
     } finally {
       actionLockRef.current = false;
       setActionLoading('');
@@ -688,6 +727,8 @@ const handleCustomerPhotoUpload = async (files) => {
       toast.success('Taking you to checkout...');
       startNavigationFeedback();
       router.push('/checkout');
+    } catch (error) {
+      toast.error(error.message || 'Unable to save your preview. Your uploaded images are still available.');
     } finally {
       actionLockRef.current = false;
       setActionLoading('');
@@ -867,7 +908,7 @@ const handleCustomerPhotoUpload = async (files) => {
                   <span className="text-sm font-semibold text-gray-800">{uploadingFields[field.label] ? 'Uploading file...' : 'Upload photo or artwork'}</span>
                   <span className="text-xs text-gray-500">JPG, PNG, WEBP, GIF, HEIC, HEIF or PDF up to 200 MB</span>
                   <input type="file" accept="image/*,.heic,.heif,.pdf" className="sr-only" disabled={uploadingFields[field.label]}
-                    onChange={e => handleCustomizationFileUpload(field.label, e.target.files?.[0])} />
+                    onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; handleCustomizationFileUpload(field.label, file); }} />
                 </label>
                 {uploadingFields[field.label] && <p className="mt-2 text-xs font-semibold text-primary-600">Uploading original file...</p>}
                 {customFieldValues[field.label]?.url && (
@@ -914,7 +955,7 @@ const handleCustomerPhotoUpload = async (files) => {
                   <label className={`relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-primary-100 bg-primary-50/50 px-4 py-5 text-center transition-colors hover:bg-primary-50 ${isUploading ? 'pointer-events-none opacity-80' : ''}`}>
                     {isUploading ? <FiLoader size={28} className="animate-spin text-primary-600" /> : <FiUpload size={22} className="text-primary-600" />}
                     <span className="text-sm font-semibold text-gray-800">{isUploading ? 'Uploading image...' : `Upload image for ${selected.label}`}</span>
-                    <input type="file" accept="image/*,.heic,.heif" className="sr-only" disabled={isUploading} onChange={e => handleVariantLabelUpload(selected.label, e.target.files?.[0])} />
+                    <input type="file" accept="image/*,.heic,.heif" className="sr-only" disabled={isUploading || Boolean(actionLoading) || savingPreviewAreas[`variant-${selected.label}`]} onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; handleVariantLabelUpload(selected.label, file); }} />
                     {isUploading && <UploadSpinner label="Uploading original image..." />}
                   </label>
                   {upload?.url && (() => {
@@ -948,7 +989,7 @@ const handleCustomerPhotoUpload = async (files) => {
                           <div><label className="block text-xs font-bold text-gray-600 mb-1">Zoom</label><input type="range" min="1" max="3" step="0.05" value={adjustments.zoom} onChange={e => updateAreaAdjustment(previewKey, 'zoom', Number(e.target.value))} className="w-full" /></div>
                           <div><label className="block text-xs font-bold text-gray-600 mb-1">Move left / right</label><input type="range" min="-160" max="160" value={adjustments.x} onChange={e => updateAreaAdjustment(previewKey, 'x', Number(e.target.value))} className="w-full" /></div>
                           <div><label className="block text-xs font-bold text-gray-600 mb-1">Move up / down</label><input type="range" min="-160" max="160" value={adjustments.y} onChange={e => updateAreaAdjustment(previewKey, 'y', Number(e.target.value))} className="w-full" /></div>
-                          <div className="flex flex-wrap gap-2"><button type="button" onClick={() => savePreviewArea(previewKey)} className="rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white">Save Preview</button><button type="button" onClick={() => editPreviewArea(previewKey)} className="rounded-lg border px-3 py-2 text-sm font-semibold text-gray-700 hover:border-primary-200 hover:text-primary-700">Edit Again</button><button type="button" onClick={() => resetPreviewArea(previewKey)} className="rounded-lg border px-3 py-2 text-sm font-semibold text-gray-700 hover:border-primary-200 hover:text-primary-700">Reset alignment</button></div>
+                          <div className="flex flex-wrap gap-2"><button type="button" disabled={savingPreviewAreas[previewKey]} onClick={() => savePreviewArea(previewKey)} className="rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">{savingPreviewAreas[previewKey] ? 'Saving...' : 'Save Preview'}</button><button type="button" disabled={savingPreviewAreas[previewKey]} onClick={() => editPreviewArea(previewKey)} className="rounded-lg border px-3 py-2 text-sm font-semibold text-gray-700 hover:border-primary-200 hover:text-primary-700">Edit Again</button><button type="button" disabled={savingPreviewAreas[previewKey]} onClick={() => resetPreviewArea(previewKey)} className="rounded-lg border px-3 py-2 text-sm font-semibold text-gray-700 hover:border-primary-200 hover:text-primary-700">Reset alignment</button></div>
                         </div>
                       </div>
                     );
@@ -977,7 +1018,7 @@ const handleCustomerPhotoUpload = async (files) => {
               {uploadingCustomerPhotos ? <FiLoader size={28} className="animate-spin text-accent-600" /> : <FiUpload size={24} className="text-accent-600" />}
               <span className="text-sm font-semibold text-gray-800">{uploadingCustomerPhotos ? 'Uploading photos...' : 'Upload customer photos'}</span>
               <span className="text-xs text-gray-500">Upload in the same order as the photo areas shown below</span>
-              <input type="file" multiple accept="image/*,.heic,.heif" className="sr-only" disabled={uploadingCustomerPhotos} onChange={e => handleCustomerPhotoUpload(e.target.files)} />
+              <input type="file" multiple accept="image/*,.heic,.heif" className="sr-only" disabled={uploadingCustomerPhotos || Boolean(actionLoading)} onChange={e => { const files = Array.from(e.target.files || []); e.target.value = ''; handleCustomerPhotoUpload(files); }} />
             {uploadingCustomerPhotos && <UploadSpinner label="Uploading original photos..." />}
             </label>
 
@@ -986,7 +1027,7 @@ const handleCustomerPhotoUpload = async (files) => {
                 {customerPhotos.map((photo, idx) => (
                   <div key={photo.url || idx} className="relative overflow-hidden rounded-xl border bg-white aspect-square">
                     <img src={displayUploadUrl(photo)} alt={`Uploaded photo ${idx + 1}`} className="h-full w-full object-cover" />
-                    <button type="button" onClick={() => setCustomerPhotos(prev => prev.filter((_, i) => i !== idx))} className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-white/95 text-red-500 shadow-sm" aria-label="Remove uploaded photo">
+                    <button type="button" disabled={previewSaveLocksRef.current.size > 0 || Boolean(actionLoading) || uploadingCustomerPhotos} onClick={() => { savedPreviewFilesRef.current = {}; setSavedPreviewAreas({}); setCustomerPhotos(prev => prev.filter((_, i) => i !== idx)); }} className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-white/95 text-red-500 shadow-sm disabled:opacity-50" aria-label="Remove uploaded photo">
                       <FiX size={14} />
                     </button>
                   </div>
@@ -1021,7 +1062,7 @@ const handleCustomerPhotoUpload = async (files) => {
                     {isUploading ? <FiLoader size={28} className="animate-spin text-primary-600" /> : <FiUpload size={22} className="text-primary-600" />}
                     <span className="text-sm font-semibold text-gray-800">{isUploading ? `Uploading ${label}...` : `Upload images for ${label}`}</span>
                     <span className="text-xs text-gray-500">Images stay in upload order</span>
-                    <input type="file" multiple accept="image/*,.heic,.heif" className="sr-only" disabled={isUploading} onChange={e => handleCollageUpload(label, e.target.files)} />
+                    <input type="file" multiple accept="image/*,.heic,.heif" className="sr-only" disabled={isUploading || Boolean(actionLoading)} onChange={e => { const files = Array.from(e.target.files || []); e.target.value = ''; handleCollageUpload(label, files); }} />
                   {isUploading && <UploadSpinner label="Uploading original images..." />}
                   </label>
                   {isUploading && <p className="mt-2 text-xs font-semibold text-primary-700">Uploading {label} images...</p>}
@@ -1101,7 +1142,7 @@ const handleCustomerPhotoUpload = async (files) => {
                           <div><label className="block text-xs font-bold text-gray-600 mb-1">Zoom</label><input type="range" min="1" max="3" step="0.05" value={adjustments.zoom} onChange={e => updateAreaAdjustment(idx, 'zoom', Number(e.target.value))} className="w-full" /></div>
                           <div><label className="block text-xs font-bold text-gray-600 mb-1">Move left / right</label><input type="range" min="-160" max="160" value={adjustments.x} onChange={e => updateAreaAdjustment(idx, 'x', Number(e.target.value))} className="w-full" /></div>
                           <div><label className="block text-xs font-bold text-gray-600 mb-1">Move up / down</label><input type="range" min="-160" max="160" value={adjustments.y} onChange={e => updateAreaAdjustment(idx, 'y', Number(e.target.value))} className="w-full" /></div>
-                          <div className="flex flex-wrap gap-2"><button type="button" onClick={() => savePreviewArea(idx)} className="rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white">Save Preview</button><button type="button" onClick={() => editPreviewArea(idx)} className="rounded-lg border px-3 py-2 text-sm font-semibold text-gray-700 hover:border-primary-200 hover:text-primary-700">Edit Again</button><button type="button" onClick={() => resetPreviewArea(idx)} className="rounded-lg border px-3 py-2 text-sm font-semibold text-gray-700 hover:border-primary-200 hover:text-primary-700">Reset alignment</button></div>
+                          <div className="flex flex-wrap gap-2"><button type="button" disabled={savingPreviewAreas[idx]} onClick={() => savePreviewArea(idx)} className="rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">{savingPreviewAreas[idx] ? 'Saving...' : 'Save Preview'}</button><button type="button" disabled={savingPreviewAreas[idx]} onClick={() => editPreviewArea(idx)} className="rounded-lg border px-3 py-2 text-sm font-semibold text-gray-700 hover:border-primary-200 hover:text-primary-700">Edit Again</button><button type="button" disabled={savingPreviewAreas[idx]} onClick={() => resetPreviewArea(idx)} className="rounded-lg border px-3 py-2 text-sm font-semibold text-gray-700 hover:border-primary-200 hover:text-primary-700">Reset alignment</button></div>
                         </div>
                       </div>
                     ) : (
@@ -1312,7 +1353,6 @@ const handleCustomerPhotoUpload = async (files) => {
     </div>
   );
 }
-
 
 
 

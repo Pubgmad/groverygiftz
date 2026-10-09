@@ -144,7 +144,7 @@ function CollageUploadDetails({ groups }) {
             {group.images.map((image, index) => (
               <div key={image.url || index} className="min-w-0 space-y-1">
                 <a href={image.url} target="_blank" rel="noopener noreferrer" className="relative block aspect-square overflow-hidden rounded-lg border bg-white">
-                  <img src={image.url} alt={`${group.label} ${index + 1}`} className="h-full w-full object-cover" />
+                  <img src={image.displayUrl || image.url} alt={`${group.label} ${index + 1}`} className="h-full w-full object-cover" />
                   <span className="absolute left-1 top-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[10px] font-bold text-white">{index + 1}</span>
                 </a>
                 <DownloadButton href={originalDownloadHref(image)} filename={buildDownloadName('collage-original', group.label, index, image)}>Original {index + 1}{fileSizeLabel(image)}</DownloadButton>
@@ -164,7 +164,7 @@ function PreviewDetails({ preview }) {
         <p className="font-semibold text-primary-800">Saved preview / crop instructions</p>
         <p><span className="font-medium">Preview:</span> {preview.previewTitle || '-'}</p>
         {previews.map((entry, index) => {
-          const finalPreviewUrl = entry.finalPreviewImage?.url || entry.finalPreviewDataUrl;
+          const finalPreviewUrl = entry.finalPreviewImage?.displayUrl || entry.finalPreviewImage?.url || entry.finalPreviewDataUrl;
           return (
             <div key={`${entry.areaLabel || 'area'}-${index}`} className="min-w-0 max-w-full overflow-hidden rounded-md border border-primary-100 bg-white p-2 space-y-3">
               <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
