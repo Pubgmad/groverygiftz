@@ -145,6 +145,55 @@ test('PageView, ViewContent, AddToCart, InitiateCheckout, Search and custom even
   assert.equal(events[5][0], 'trackCustom');
   assert.equal(context.buildCartMetaPayload([{ productId: 'p', price: 100, quantity: 2 }], 250).value, 250);
 });
+test('a queued Purchase that ages past the receipt window is discarded', () => {
+  const { context, events, window } = browser(new Map(), false);
+  const order = paidOrder();
+  const result = verified(context, order);
+  context.trackVerifiedMetaPurchase(result);
+  // Simulate a tab staying open with the Pixel unavailable beyond the reporting window.
+  window.__groveryGiftzMetaPurchasesPending.get(result.metaPurchase.eventId).eventTime -= 3 * 86400;
+  window.fbq = (...args) => events.push(plain(args));
+  context.flushMetaPurchases();
+  assert.equal(events.length, 0);
+  assert.equal(window.__groveryGiftzMetaPurchasesPending.size, 0);
+});
+test('server test-event code is never sent as a browser custom parameter', () => {
+  const { context, events } = browser();
+  context.configureMetaPixel({ enabled: true, pixelId: 'test-pixel', testEventCode: 'TEST-ONLY' });
+  context.trackVerifiedMetaPurchase(verified(context, paidOrder()));
+  assert.equal('test_event_code' in events[0][3], false);
+  context.trackMetaEvent('PageView');
+  assert.equal('test_event_code' in events[1][2], false);
+});
+test('cart events preserve explicit zero amounts and zero item prices', () => {
+  const { context } = browser();
+  const items = [{ productId: 'p', price: 0, regularPrice: 999, quantity: 2 }];
+  assert.equal(context.buildCartMetaPayload(items, 0).value, 0);
+  assert.equal(context.buildCartMetaPayload(items, 0).contents[0].item_price, 0);
+  assert.equal(context.buildCartMetaPayload([{ productId: 'p', price: 100, quantity: 2 }]).value, 200);
+});
+test('product and cart monetary overrides remain numeric and INR', () => {
+  const { context } = browser();
+  const product = context.buildProductMetaPayload({ _id: 'p', price: 100, quantity: 1 }, { value: '250.50', quantity: 2, currency: '' });
+  assert.equal(product.value, 250.5);
+  assert.equal(product.num_items, 2);
+  assert.equal(product.currency, 'INR');
+  const cart = context.buildCartMetaPayload([{ productId: 'p', price: 100, quantity: 2 }], 250, { value: '250.50', currency: '' });
+  assert.equal(cart.value, 250.5);
+  assert.equal(cart.currency, 'INR');
+  assert.equal('value' in context.buildCartMetaPayload([], 'invalid'), false);
+  assert.equal('value' in context.buildProductMetaPayload({ price: 100 }, { value: 'invalid' }), false);
+});
+test('invalid optional product prices cannot serialize as null contents', () => {
+  const { context } = browser();
+  const product = context.buildProductMetaPayload({ _id: 'p', price: 'invalid' });
+  assert.equal(product.contents.length, 0);
+  assert.equal('value' in product, false);
+  const cart = context.buildCartMetaPayload([{ productId: 'valid', price: 100, quantity: 1 }, { productId: 'bad', price: 'invalid', quantity: 1 }]);
+  assert.equal(cart.contents.length, 1);
+  assert.equal('value' in cart, false);
+  assert.equal(context.buildCartMetaPayload([{ productId: 'bad', price: 'invalid', quantity: 1 }], 250).value, 250);
+});
 test('Pixel initialization disables automatic setup before init and installs one SDK', () => {
   const { context, events, window } = browser();
   const scripts = new Map();

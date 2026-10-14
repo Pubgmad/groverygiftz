@@ -1,4 +1,4 @@
-import { isValidMetaPurchase, purchaseAmount } from './metaPurchase';
+import { isValidMetaPurchase, purchaseAmount, PURCHASE_CURRENCY } from './metaPurchase';
 
 const ADMIN_PATH_PREFIXES = ['/admin', '/account/manage'];
 
@@ -35,7 +35,6 @@ export function trackMetaEvent(eventName, params = {}, options = {}) {
   if (eventName === 'Purchase' && (!options.verifiedPurchase || !isValidMetaPurchase({ eventId: eventID, params: payload }))) return false;
   delete payload.event_id;
   delete payload.eventID;
-  if (config.testEventCode) payload.test_event_code = config.testEventCode;
 
   const args = eventName === 'Purchase'
     ? ['trackSingle', config.pixelId, eventName, payload]
@@ -69,6 +68,11 @@ export function flushMetaPurchases() {
   if (!pending) return;
   const sent = window.__groveryGiftzMetaPurchasesSent ||= new Set();
   for (const [id, event] of pending) {
+    const age = Date.now() / 1000 - event.eventTime;
+    if (!Number.isFinite(age) || age < -300 || age > 48 * 60 * 60) {
+      pending.delete(id);
+      continue;
+    }
     const key = `groverygiftz-meta-purchase:${config.pixelId}:${id}`;
     let previouslySent = sent.has(key);
     try { previouslySent ||= window.localStorage.getItem(key) === 'sent'; } catch {}
@@ -93,37 +97,49 @@ export function trackMetaCustomEvent(eventName, params = {}) {
 export function buildProductMetaPayload(product, overrides = {}) {
   const id = String(product?._id || product?.productId || product?.id || product?.slug || '');
   const title = product?.title || product?.name || 'Product';
-  const quantity = Number(product?.quantity || overrides.quantity || 1);
+  const quantity = Number(overrides.quantity ?? product?.quantity ?? 1);
   const unitPrice = Number(overrides.price ?? product?.price ?? product?.salePrice ?? product?.regularPrice ?? 0);
+  const validItem = id && Number.isInteger(quantity) && quantity > 0 && Number.isFinite(unitPrice) && unitPrice >= 0;
 
-  return {
+  const payload = {
     content_ids: id ? [id] : [],
     content_name: title,
     content_type: 'product',
-    contents: id ? [{ id, quantity, item_price: unitPrice }] : [],
+    contents: validItem ? [{ id, quantity, item_price: unitPrice }] : [],
     currency: 'INR',
     value: Number(overrides.value ?? unitPrice * quantity) || 0,
-    num_items: quantity,
+    num_items: Number.isInteger(quantity) && quantity > 0 ? quantity : 0,
     ...overrides,
   };
+  payload.currency = PURCHASE_CURRENCY;
+  const value = purchaseAmount(overrides.value ?? unitPrice * quantity);
+  if (value === null) delete payload.value;
+  else payload.value = value;
+  return payload;
 }
 
-export function buildCartMetaPayload(items = [], value = 0, overrides = {}) {
+export function buildCartMetaPayload(items = [], value, overrides = {}) {
   const normalizedItems = (items || []).filter(Boolean);
   const contents = normalizedItems.map((item) => ({
     id: String(item.productId || item._id || item.id || item.slug || ''),
     quantity: Number(item.quantity || 1),
-    item_price: Number(item.price || item.salePrice || item.regularPrice || 0),
-  })).filter((item) => item.id);
+    item_price: Number(item.price ?? item.salePrice ?? item.regularPrice ?? 0),
+  })).filter((item) => item.id && Number.isInteger(item.quantity) && item.quantity > 0 && Number.isFinite(item.item_price) && item.item_price >= 0);
 
-  return {
+  const payload = {
     content_ids: contents.map((item) => item.id),
     content_name: normalizedItems.map((item) => item.title || item.name).filter(Boolean).join(', '),
     content_type: 'product',
     contents,
     currency: 'INR',
-    value: Number(value) || contents.reduce((sum, item) => sum + item.item_price * item.quantity, 0),
+    value: value,
     num_items: contents.reduce((sum, item) => sum + item.quantity, 0),
     ...overrides,
   };
+  payload.currency = PURCHASE_CURRENCY;
+  const itemTotal = normalizedItems.reduce((sum, item) => sum + Number(item.price ?? item.salePrice ?? item.regularPrice ?? 0) * Number(item.quantity ?? 1), 0);
+  const amount = purchaseAmount(overrides.value ?? value ?? itemTotal);
+  if (amount === null) delete payload.value;
+  else payload.value = amount;
+  return payload;
 }
