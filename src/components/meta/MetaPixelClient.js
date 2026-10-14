@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
-import { configureMetaPixel, isMetaAdminPath, trackMetaEvent } from '@/lib/metaPixel';
+import { configureMetaPixel, flushMetaPurchases, isMetaAdminPath, trackMetaEvent } from '@/lib/metaPixel';
 
 function installMetaPixel(pixelId) {
   if (typeof window === 'undefined' || !pixelId) return;
@@ -27,6 +27,8 @@ function installMetaPixel(pixelId) {
   }
 
   if (window.__groveryGiftzMetaPixelId !== pixelId) {
+    // Manual events supply verified order values; inferred events cannot do that.
+    window.fbq('set', 'autoConfig', false, pixelId);
     window.fbq('init', pixelId);
     window.__groveryGiftzMetaPixelId = pixelId;
   }
@@ -43,6 +45,7 @@ export default function MetaPixelClient({ enabled, pixelId, testEventCode }) {
     if (!enabled || !cleanPixelId || blocked) return;
 
     installMetaPixel(cleanPixelId);
+    flushMetaPurchases();
 
     if (lastPageView.current !== pathname) {
       lastPageView.current = pathname;

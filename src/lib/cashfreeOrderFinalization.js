@@ -5,6 +5,7 @@ import { getNextPaidOrderNumber, isFinalOrderNumber } from '@/lib/orderNumbers';
 import { deductOrderInventory } from '@/lib/inventory';
 import { getCashfreeConfig } from '@/lib/cashfreeConfig';
 import { sendMetaPurchaseEvent } from '@/lib/metaConversionApi';
+import { buildMetaPurchase } from '@/lib/metaPurchase';
 import { getOrderDeliveryEstimate } from '@/lib/orderDeliveryEstimate';
 
 export const CASHFREE_VERSION = '2025-01-01';
@@ -32,6 +33,7 @@ const responseForOrder = (order, success, settings = {}) => ({
   subtotal: order.subtotal,
   total: order.total,
   items: order.items || [],
+  metaPurchase: success ? buildMetaPurchase(order) : null,
 });
 
 export async function finalizeCashfreeOrder(orderId) {

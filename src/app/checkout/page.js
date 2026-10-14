@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { useCart } from '@/context/CartContext';
 import { formatPrice } from '@/lib/utils';
-import { buildCartMetaPayload, trackMetaEvent } from '@/lib/metaPixel';
+import { buildCartMetaPayload, trackMetaEvent, trackVerifiedMetaPurchase } from '@/lib/metaPixel';
 import { FiChevronRight, FiCheckCircle, FiShield, FiTruck, FiCreditCard, FiMapPin, FiEdit2, FiGift, FiStar } from 'react-icons/fi';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -179,7 +179,7 @@ export default function CheckoutPage() {
   const showSuccessfulOrder = (verifyData, fallbackItems = cart, fallbackTotals = {}) => {
     const placedItems = verifyData.items?.length ? verifyData.items : fallbackItems.map((item) => ({ ...item }));
     const paidTotal = verifyData.total ?? fallbackTotals.total ?? grandTotal;
-    trackMetaEvent('Purchase', getCartPixelPayload(placedItems, paidTotal, { order_id: verifyData.orderNumber }));
+    trackVerifiedMetaPurchase(verifyData);
     clearCart();
     setOrderResult({
       orderNumber: verifyData.orderNumber,

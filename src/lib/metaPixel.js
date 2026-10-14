@@ -1,3 +1,5 @@
+import { isValidMetaPurchase, purchaseAmount } from './metaPurchase';
+
 const ADMIN_PATH_PREFIXES = ['/admin', '/account/manage'];
 
 function isBrowser() {
@@ -24,19 +26,64 @@ export function getMetaPixelConfig() {
 }
 
 export function trackMetaEvent(eventName, params = {}, options = {}) {
-  if (!isBrowser() || typeof window.fbq !== 'function') return;
+  if (!isBrowser() || typeof window.fbq !== 'function') return false;
   const config = getMetaPixelConfig();
-  if (!config.enabled || !config.pixelId || config.blocked) return;
+  if (!config.enabled || !config.pixelId || config.blocked) return false;
 
   const payload = { ...params };
-  const eventID = String(payload.event_id || payload.eventID || (eventName === 'Purchase' && payload.order_id ? `purchase-${payload.order_id}` : '')).trim();
+  const eventID = String(payload.event_id || payload.eventID || '').trim();
+  if (eventName === 'Purchase' && (!options.verifiedPurchase || !isValidMetaPurchase({ eventId: eventID, params: payload }))) return false;
   delete payload.event_id;
   delete payload.eventID;
   if (config.testEventCode) payload.test_event_code = config.testEventCode;
 
-  const args = [options.custom ? 'trackCustom' : 'track', eventName, payload];
+  const args = eventName === 'Purchase'
+    ? ['trackSingle', config.pixelId, eventName, payload]
+    : [options.custom ? 'trackCustom' : 'track', eventName, payload];
   if (eventID) args.push({ eventID });
   window.fbq(...args);
+  return true;
+}
+
+export function trackVerifiedMetaPurchase(result) {
+  if (!isBrowser() || result?.success !== true || result.paymentStatus !== 'paid') return false;
+  const event = result.metaPurchase;
+  if (!isValidMetaPurchase(event) || event.params.order_id !== result.orderNumber || event.params.value !== purchaseAmount(result.total)) {
+    console.warn('Meta Purchase skipped: invalid verified order tracking payload');
+    return false;
+  }
+  // Revisiting a historic receipt must not become a new browser conversion.
+  const age = Date.now() / 1000 - event.eventTime;
+  if (!Number.isFinite(age) || age < -300 || age > 48 * 60 * 60) return false;
+  const pending = window.__groveryGiftzMetaPurchasesPending ||= new Map();
+  pending.set(event.eventId, event);
+  flushMetaPurchases();
+  return true;
+}
+
+export function flushMetaPurchases() {
+  if (!isBrowser()) return;
+  const config = getMetaPixelConfig();
+  if (!config.enabled || !config.pixelId || config.blocked || typeof window.fbq !== 'function') return;
+  const pending = window.__groveryGiftzMetaPurchasesPending;
+  if (!pending) return;
+  const sent = window.__groveryGiftzMetaPurchasesSent ||= new Set();
+  for (const [id, event] of pending) {
+    const key = `groverygiftz-meta-purchase:${config.pixelId}:${id}`;
+    let previouslySent = sent.has(key);
+    try { previouslySent ||= window.localStorage.getItem(key) === 'sent'; } catch {}
+    if (!previouslySent) {
+      try {
+        if (!trackMetaEvent('Purchase', { ...event.params, event_id: id }, { verifiedPurchase: true })) continue;
+      } catch {
+        console.warn('Meta Purchase could not be queued');
+        continue;
+      }
+      sent.add(key);
+      try { window.localStorage.setItem(key, 'sent'); } catch {}
+    }
+    pending.delete(id);
+  }
 }
 
 export function trackMetaCustomEvent(eventName, params = {}) {
