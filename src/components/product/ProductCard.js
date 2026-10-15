@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { trackGA4Product } from '@/lib/ga4';
+import { GOOGLE_CONSENT_SYNC_EVENT } from '@/lib/googleConsent';
 import { FiHeart, FiGift, FiShoppingBag, FiChevronRight, FiClock } from 'react-icons/fi';
 import { formatPrice, calcSavings, getDisplayPrice, getDisplayRegularPrice, isOfferActive } from '@/lib/utils';
 import { getProductAvailableStock, isProductSoldOut } from '@/lib/stock';
@@ -44,13 +45,24 @@ export default function ProductCard({ product, listId, listName, listIndex }) {
   useEffect(() => {
     const node = cardRef.current;
     if (!node) return;
-    const track = () => trackGA4Product('view_item_list', product, { price: displayPrice, listId: analyticsListId, listName: analyticsListName, index: listIndex });
-    if (typeof IntersectionObserver === 'undefined') { track(); return; }
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) { track(); observer.disconnect(); }
-    }, { threshold: 0.1 });
-    observer.observe(node);
-    return () => observer.disconnect();
+    let visible = typeof IntersectionObserver === 'undefined';
+    let observer;
+    const track = () => {
+      if (visible) trackGA4Product('view_item_list', product, { price: displayPrice, listId: analyticsListId, listName: analyticsListName, index: listIndex });
+    };
+    if (typeof IntersectionObserver !== 'undefined') {
+      observer = new IntersectionObserver((entries) => {
+        visible = entries.some((entry) => entry.isIntersecting);
+        track();
+      }, { threshold: 0.1 });
+      observer.observe(node);
+    }
+    track();
+    window.addEventListener(GOOGLE_CONSENT_SYNC_EVENT, track);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener(GOOGLE_CONSENT_SYNC_EVENT, track);
+    };
   }, [product, displayPrice, analyticsListId, analyticsListName, listIndex]);
 
   return (

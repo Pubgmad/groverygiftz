@@ -7,6 +7,7 @@ import { getProductAvailableStock, getSelectedAvailableStock, hasVariantManagedS
 import { buildDeliveryEstimateText } from '@/lib/deliveryDate';
 import { buildProductMetaPayload, trackMetaCustomEvent, trackMetaEvent } from '@/lib/metaPixel';
 import { trackGA4Product } from '@/lib/ga4';
+import { GOOGLE_CONSENT_SYNC_EVENT } from '@/lib/googleConsent';
 import { FiMinus, FiPlus, FiX, FiTruck, FiShield, FiClock, FiShoppingCart, FiZap, FiUpload, FiImage, FiChevronLeft, FiChevronRight, FiStar, FiLoader } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { startNavigationFeedback } from '@/components/layout/NavigationFeedback';
@@ -439,7 +440,10 @@ export default function ProductDetail({ product }) {
 
   const ga4Variant = Object.entries(selectedVariants).filter(([, option]) => option?.label).map(([name, option]) => `${name}: ${option.label}`).join(', ');
   useEffect(() => {
-    trackGA4Product('view_item', product, { price: baseDisplayPrice + selectedVariantExtra, variant: ga4Variant, quantity: 1 });
+    const track = () => trackGA4Product('view_item', product, { price: baseDisplayPrice + selectedVariantExtra, variant: ga4Variant, quantity: 1 });
+    track();
+    window.addEventListener(GOOGLE_CONSENT_SYNC_EVENT, track);
+    return () => window.removeEventListener(GOOGLE_CONSENT_SYNC_EVENT, track);
   }, [product, baseDisplayPrice, selectedVariantExtra, ga4Variant]);
 
   useEffect(() => {

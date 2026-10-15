@@ -1,5 +1,7 @@
 # Purchase Conversion Setup Audit
 
+The current Google consent policy is documented in [GA4 Purpose-Specific Consent Correction](ga4-consent-correction.md), superseding the automatic/strict Google consent description in this earlier audit. The direct-tag versus GTM findings remain applicable.
+
 Date: 15 October 2026. Website: https://groverygiftz.in/. Measurement ID: G-JNPXLZQB0V. Application baseline: a47e964.
 
 ## Conclusion

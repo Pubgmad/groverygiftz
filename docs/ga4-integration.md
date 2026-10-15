@@ -1,5 +1,7 @@
 # GA4 Integration and Verification
 
+Current consent behavior is documented in [GA4 Purpose-Specific Consent Correction](ga4-consent-correction.md). It supersedes the automatic Google consent policy described in this earlier integration audit; the historical audit below is retained for context.
+
 Date: 15 October 2026. Measurement ID: **G-JNPXLZQB0V**. No new property, dependency, Google Tag Manager container, database field or admin setting was created.
 
 ## Activation Prerequisite

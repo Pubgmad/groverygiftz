@@ -1,15 +1,18 @@
-import { getMarketingConsent, isMetaTrackingAllowed } from './metaAttribution';
+import { getGoogleConsent, getGoogleConsentState, hasGooglePrivacySignal } from './googleConsent';
 import { GA4_MEASUREMENT_ID, GA4_CURRENCY, ga4Money, ga4Text, ga4PublicUrl, buildGA4Cart, buildGA4Item, ga4SearchTerm } from './ga4Data';
 
 const GA4_ECOMMERCE_EVENTS = new Set(['view_item', 'view_item_list', 'select_item', 'add_to_cart', 'remove_from_cart', 'view_cart', 'begin_checkout', 'add_shipping_info', 'add_payment_info']);
 const ga4Browser = () => typeof window !== 'undefined' && typeof document !== 'undefined';
 export const isGA4AdminPath = (path = '') => ['/admin', '/account/manage'].some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
-const ga4Allowed = () => {
-  if (!ga4Browser() || isGA4AdminPath(window.location.pathname) || !isMetaTrackingAllowed()) return false;
+const ga4CanLoad = () => {
+  if (!ga4Browser() || isGA4AdminPath(window.location.pathname) || hasGooglePrivacySignal()) return false;
   const local = ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
-  return !(local || process.env.NODE_ENV === 'development') || process.env.NEXT_PUBLIC_GA4_DEBUG === 'true';
+  if ((local || process.env.NODE_ENV === 'development') && process.env.NEXT_PUBLIC_GA4_DEBUG !== 'true') return false;
+  const choice = getGoogleConsent();
+  return choice.analytics === 'granted' || choice.advertising === 'granted';
 };
-// Follow the store's existing automatic/strict policy without inventing a saved choice.
+export const isGA4TrackingAllowed = () => ga4CanLoad() && getGoogleConsent().analytics === 'granted';
+const ga4Allowed = isGA4TrackingAllowed;
 const ga4StorageAllowed = () => ga4Allowed();
 const ga4State = () => window.__groveryGA4 || (window.__groveryGA4 = { initialized: false, ready: false, queue: [], pendingPurchases: new Set(), sentPurchases: new Set(), lastPage: '', lastPageKey: '', contextKey: '', referrer: '', impressions: new Set(), lastSearch: '' });
 const ga4ReceiptPrefix = `gg-ga4-purchase-${GA4_MEASUREMENT_ID}-`;
@@ -27,12 +30,12 @@ function pruneGA4Receipts() {
 }
 
 function ga4ConsentState() {
-  return { analytics_storage: ga4StorageAllowed() ? 'granted' : 'denied', ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied' };
+  return getGoogleConsentState();
 }
 
 export function initializeGA4() {
   try {
-    if (!ga4Allowed()) return false;
+    if (!ga4CanLoad()) return false;
     const state = ga4State();
     window[`ga-disable-${GA4_MEASUREMENT_ID}`] = false;
     if (state.initialized) return true;
@@ -40,6 +43,7 @@ export function initializeGA4() {
     if (typeof window.gtag !== 'function') window.gtag = function gtag() { window.dataLayer.push(arguments); };
     window.gtag('consent', 'default', ga4ConsentState());
     window.gtag('set', 'ads_data_redaction', true);
+    window.gtag('set', 'allow_ad_personalization_signals', getGoogleConsent().advertising === 'granted');
     window.gtag('js', new Date());
     const referrer = ga4PublicUrl(document.referrer || '', window.location.origin, true);
     const pageContext = { page_location: ga4PublicUrl(window.location.href), page_referrer: referrer, page_title: ga4Text(document.title) || 'GroveryGiftz' };
@@ -48,7 +52,6 @@ export function initializeGA4() {
     window.gtag('config', GA4_MEASUREMENT_ID, {
       send_page_view: false,
       allow_google_signals: false,
-      allow_ad_personalization_signals: false,
       ignore_referrer: /^https?:\/\/([a-z0-9-]+\.)*cashfree\.com\//i.test(referrer),
     });
     state.pageContextKey = JSON.stringify(pageContext);
@@ -62,8 +65,9 @@ export function syncGA4Privacy() {
   try {
     if (!ga4Browser()) return false;
     const state = ga4State();
+    const canLoad = ga4CanLoad();
     const allowed = ga4Allowed();
-    window[`ga-disable-${GA4_MEASUREMENT_ID}`] = !allowed;
+    window[`ga-disable-${GA4_MEASUREMENT_ID}`] = !canLoad;
     if (!allowed) {
       state.queue = [];
       state.pendingPurchases.clear();
@@ -74,16 +78,29 @@ export function syncGA4Privacy() {
       state.impressions.clear();
       state.lastSearch = '';
       clearGA4GoogleLogin();
-      if (getMarketingConsent() === 'denied') {
-        for (const name of ['_ga', `_ga_${GA4_MEASUREMENT_ID.slice(2)}`]) {
-          for (const domain of ['', window.location.hostname, 'groverygiftz.in']) {
-            document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax${domain ? `; Domain=${domain}` : ''}`;
+      if (getGoogleConsent().analytics !== 'granted') {
+        try {
+          for (const name of ['_ga', `_ga_${GA4_MEASUREMENT_ID.slice(2)}`]) {
+            for (const domain of ['', window.location.hostname, 'groverygiftz.in']) {
+              document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax${domain ? `; Domain=${domain}` : ''}`;
+            }
           }
-        }
+        } catch {}
       }
     }
-    if (state.initialized && typeof window.gtag === 'function') window.gtag('consent', 'update', allowed ? ga4ConsentState() : { analytics_storage: 'denied', ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied' });
-    return allowed;
+    if (state.initialized && typeof window.gtag === 'function') {
+      window.gtag('consent', 'update', ga4ConsentState());
+      window.gtag('set', 'allow_ad_personalization_signals', canLoad && getGoogleConsent().advertising === 'granted');
+    }
+    if (getGoogleConsent().advertising !== 'granted') {
+      try {
+        const names = document.cookie.split(';').map((part) => part.split('=')[0].trim()).filter((name) => /^_gcl_[a-zA-Z0-9_]+$/.test(name));
+        for (const name of names) {
+          for (const domain of ['', window.location.hostname, 'groverygiftz.in']) document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax${domain ? `; Domain=${domain}` : ''}`;
+        }
+      } catch {}
+    }
+    return canLoad;
   } catch { return false; }
 }
 
@@ -138,7 +155,7 @@ function ga4Queue(name, params, purchaseId = '', purchaseTime = 0) {
 
 export function setGA4Ready() {
   try {
-    if (!ga4Allowed()) return;
+    if (!ga4CanLoad()) return;
     const state = ga4State();
     state.ready = true;
     const queued = state.queue;

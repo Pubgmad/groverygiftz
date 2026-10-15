@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef } from 'react';
-import { trackGA4Ecommerce } from '@/lib/ga4';
+import { isGA4TrackingAllowed, trackGA4Ecommerce } from '@/lib/ga4';
+import { GOOGLE_CONSENT_SYNC_EVENT } from '@/lib/googleConsent';
 import { useCart } from '@/context/CartContext';
 import { formatPrice } from '@/lib/utils';
 import { FiMinus, FiPlus, FiTrash2, FiTruck, FiShoppingBag, FiGift } from 'react-icons/fi';
@@ -13,7 +14,13 @@ export default function CartPage() {
   const router = useRouter();
   const ga4ViewedRef = useRef(false);
   useEffect(() => {
-    if (cartReady && !ga4ViewedRef.current) ga4ViewedRef.current = trackGA4Ecommerce('view_cart', cart);
+    const track = () => {
+      if (!isGA4TrackingAllowed()) { ga4ViewedRef.current = false; return; }
+      if (cartReady && !ga4ViewedRef.current) ga4ViewedRef.current = trackGA4Ecommerce('view_cart', cart);
+    };
+    track();
+    window.addEventListener(GOOGLE_CONSENT_SYNC_EVENT, track);
+    return () => window.removeEventListener(GOOGLE_CONSENT_SYNC_EVENT, track);
   }, [cartReady, cart]);
 
   if (!cartReady) {

@@ -10,6 +10,7 @@ import NavigationFeedback from '@/components/layout/NavigationFeedback';
 import Providers from '@/components/Providers';
 import MetaPixel from '@/components/meta/MetaPixel';
 import GoogleAnalytics from '@/components/analytics/GoogleAnalytics';
+import TrackingPreferences from '@/components/analytics/TrackingPreferences';
 import { Toaster } from 'react-hot-toast';
 import dbConnect from '@/lib/db';
 import Settings from '@/models/Settings';
@@ -47,6 +48,7 @@ export default function RootLayout({ children }) {
           <MetaPixel />
           <Suspense fallback={null}>
             <GoogleAnalytics />
+            <TrackingPreferences />
           </Suspense>
           <Suspense fallback={null}>
             <NavigationFeedback />

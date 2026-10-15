@@ -4,8 +4,8 @@ import { useSession, signOut } from 'next-auth/react';
 import { useCart } from '@/context/CartContext';
 import { formatPrice } from '@/lib/utils';
 import { buildCartMetaPayload, trackMetaEvent, trackVerifiedMetaPurchase } from '@/lib/metaPixel';
-import { trackGA4Ecommerce, trackGA4OrderConfirmation, trackGA4Purchase } from '@/lib/ga4';
-import { META_CONSENT_EVENT } from '@/lib/metaAttribution';
+import { isGA4TrackingAllowed, trackGA4Ecommerce, trackGA4OrderConfirmation, trackGA4Purchase } from '@/lib/ga4';
+import { GOOGLE_CONSENT_SYNC_EVENT } from '@/lib/googleConsent';
 import { FiChevronRight, FiCheckCircle, FiShield, FiTruck, FiCreditCard, FiMapPin, FiEdit2, FiGift, FiStar } from 'react-icons/fi';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -181,12 +181,13 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     const trackCheckout = () => {
+      if (!isGA4TrackingAllowed()) { ga4CheckoutRef.current = false; return; }
       if (ga4CheckoutRef.current || !cartReady || status !== 'authenticated' || session?.user?.type !== 'customer' || !cart.length || step === 3 || new URLSearchParams(window.location.search).has('cashfree_order_id')) return;
       ga4CheckoutRef.current = trackGA4Ecommerce('begin_checkout', cart);
     };
     trackCheckout();
-    window.addEventListener(META_CONSENT_EVENT, trackCheckout);
-    return () => window.removeEventListener(META_CONSENT_EVENT, trackCheckout);
+    window.addEventListener(GOOGLE_CONSENT_SYNC_EVENT, trackCheckout);
+    return () => window.removeEventListener(GOOGLE_CONSENT_SYNC_EVENT, trackCheckout);
   }, [cartReady, cart, status, session?.user?.type, step]);
 
   const showSuccessfulOrder = (verifyData, fallbackItems = cart, fallbackTotals = {}) => {

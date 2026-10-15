@@ -1,10 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { configureMetaPixel, flushMetaPurchases, isMetaAdminPath, trackMetaEvent } from '@/lib/metaPixel';
-import { captureMetaLandingAttribution, clearMetaIdentifiers, getMarketingConsent, isMetaTrackingAllowed, META_CONSENT_EVENT, META_PREFERENCES_EVENT, META_REQUIRE_MARKETING_CONSENT, setMarketingConsent } from '@/lib/metaAttribution';
+import { captureMetaLandingAttribution, clearMetaIdentifiers, getMarketingConsent, isMetaTrackingAllowed, META_CONSENT_EVENT } from '@/lib/metaAttribution';
 
 function installMetaPixel(pixelId) {
   if (typeof window === 'undefined' || !pixelId) return;
@@ -41,7 +40,6 @@ export default function MetaPixelClient({ enabled, pixelId, testEventCode, track
   const lastPageView = useRef('');
   const landingUrl = useRef('');
   const [consent, setConsent] = useState(null);
-  const [preferencesOpen, setPreferencesOpen] = useState(false);
   const cleanPixelId = String(pixelId || '').trim();
   const blocked = isMetaAdminPath(pathname);
 
@@ -55,14 +53,11 @@ export default function MetaPixelClient({ enabled, pixelId, testEventCode, track
         if (typeof window.fbq === 'function') window.fbq('consent', 'revoke');
       }
     };
-    const open = () => setPreferencesOpen(true);
     sync();
     window.addEventListener(META_CONSENT_EVENT, sync);
-    window.addEventListener(META_PREFERENCES_EVENT, open);
     window.addEventListener('focus', sync);
     return () => {
       window.removeEventListener(META_CONSENT_EVENT, sync);
-      window.removeEventListener(META_PREFERENCES_EVENT, open);
       window.removeEventListener('focus', sync);
     };
   }, []);
@@ -84,20 +79,5 @@ export default function MetaPixelClient({ enabled, pixelId, testEventCode, track
     }
   }, [blocked, cleanPixelId, consent, enabled, pathname, testEventCode, trackingEnabled]);
 
-  const showConsentPrompt = META_REQUIRE_MARKETING_CONSENT && trackingEnabled && consent === null;
-  if (blocked || !preferencesOpen && !showConsentPrompt) return null;
-  const choose = (choice) => { setConsent(setMarketingConsent(choice)); setPreferencesOpen(false); };
-  const privacyBlocked = consent === 'denied' && typeof window !== 'undefined' && (window.navigator?.globalPrivacyControl === true || ['1', 'yes'].includes(window.navigator?.doNotTrack));
-  return (
-    <section aria-label="Marketing cookie preferences" className="fixed bottom-24 left-4 right-4 z-40 max-h-[calc(100dvh-7rem)] max-w-sm overflow-y-auto rounded-lg border border-gray-200 bg-white p-4 text-gray-800 shadow-lg sm:bottom-6 sm:right-auto sm:max-h-[calc(100dvh-3rem)] sm:w-96">
-      <h2 className="text-base font-semibold">Marketing cookies</h2>
-      <p className="mt-2 text-sm leading-relaxed">Allow cookies that help us measure ads and purchases? Shopping and checkout work without them.</p>
-      {privacyBlocked && <p className="mt-2 text-sm">Your browser privacy preference disables marketing tracking.</p>}
-      <Link href="/policies/privacy-policy" className="mt-2 inline-block text-sm text-primary-600 underline">Privacy policy</Link>
-      <div className="mt-3 grid grid-cols-2 gap-3">
-        <button type="button" onClick={() => choose('denied')} className="min-h-11 rounded-md border border-gray-300 px-3 py-2 text-sm font-semibold">Reject</button>
-        <button type="button" disabled={privacyBlocked} onClick={() => choose('granted')} className="min-h-11 rounded-md border border-primary-600 px-3 py-2 text-sm font-semibold text-primary-700 disabled:opacity-50">Accept</button>
-      </div>
-    </section>
-  );
+  return null;
 }

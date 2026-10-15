@@ -53,7 +53,7 @@ export default async function PolicyPage({ params }) {
             <h2 className="text-xl font-semibold text-gray-950">Advertising measurement and privacy choices</h2>
             <p className="mt-3 leading-7">When enabled, Meta Pixel and Conversions API measure website activity, advertising results and completed purchases. Event and product information, advertising cookie identifiers, browser details and hashed customer contact details may be shared with Meta for matching and measurement. Uploaded photos, customer notes and payment credentials are not included in these tracking events.</p>
             <p className="mt-3 leading-7">We also use Google Analytics to understand visits and shopping activity. Google Analytics events do not include customer names, email addresses, phone numbers, delivery addresses, uploaded photos or payment credentials. Existing privacy choices and supported browser privacy signals are honored.</p>
-            <p className="mt-3 leading-7">You can disable marketing tracking through Cookie preferences in the footer. We also honor supported browser privacy signals. Disabling marketing tracking does not prevent shopping or checkout.</p>
+            <p className="mt-3 leading-7">Cookie preferences in the footer provides separate Analytics and Advertising choices. Google optional tracking starts only for the purposes you allow, and you can change those choices later. Advertising choices also update the existing Meta marketing preference. We honor supported browser privacy signals. Rejecting optional tracking does not prevent shopping or checkout.</p>
           </section>
         )}
       </div>

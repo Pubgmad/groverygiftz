@@ -5,9 +5,11 @@ const vm = require('node:vm');
 const read = (path) => fs.readFileSync(path, 'utf8');
 const source = (path) => read(path).replace(/^import .*;\r?\n/gm, '').replace(/export /g, '');
 const shared = source('src/lib/metaAttribution.js');
+const googleConsentSource = source('src/lib/googleConsent.js');
 const data = source('src/lib/ga4Data.js');
 const analytics = source('src/lib/ga4.js');
 const plain = (value) => JSON.parse(JSON.stringify(value));
+const consentCookie = (analytics = 'granted', advertising = 'denied') => encodeURIComponent(JSON.stringify({ version: 1, analytics, advertising }));
 const item = (changes = {}) => ({ productId: 'product-1', title: 'Metal Photo Frame', price: 500, quantity: 2, variant: 'Size: Large', ...changes });
 const order = (changes = {}) => ({ _id: 'database-order-1', orderNumber: 'GG0064', paymentStatus: 'paid', paidAt: new Date().toISOString(), total: 1100, subtotal: 1000, shippingCost: 100, items: [item({ productId: undefined, product: 'product-1' })], ...changes });
 
@@ -15,26 +17,159 @@ function fixture(options = {}) {
   const events = [];
   const storage = options.storage || new Map();
   const session = options.session || new Map();
-  const jar = new Map(Object.entries(options.cookies || {}));
+  const jar = new Map(Object.entries({ ...(options.unknown ? {} : { gg_google_consent: consentCookie() }), ...options.cookies }));
+  const signals = [];
+  const cookieWrites = [];
   const document = { title: 'GroveryGiftz', referrer: options.referrer || '' };
   Object.defineProperty(document, 'cookie', {
+    configurable: true,
     get: () => [...jar].map(([key, value]) => `${key}=${value}`).join('; '),
-    set: (raw) => { const [entry] = raw.split(';'); const split = entry.indexOf('='); if (/Max-Age=0/.test(raw)) jar.delete(entry.slice(0, split)); else jar.set(entry.slice(0, split), entry.slice(split + 1)); },
+    set: (raw) => { cookieWrites.push(raw); const [entry] = raw.split(';'); const split = entry.indexOf('='); if (/Max-Age=0/.test(raw)) jar.delete(entry.slice(0, split)); else jar.set(entry.slice(0, split), entry.slice(split + 1)); },
   });
   const window = {
     location: new URL(options.url || 'https://groverygiftz.in/'), navigator: options.navigator || {},
     localStorage: { get length() { return storage.size; }, key: (index) => [...storage.keys()][index], getItem: (key) => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: (key) => storage.delete(key) },
     sessionStorage: { getItem: (key) => session.get(key), setItem: (key, value) => session.set(key, value), removeItem: (key) => session.delete(key) },
     performance: { timeOrigin: options.documentTime || 100 },
+    dispatchEvent: (event) => signals.push(event.type),
     gtag: (...args) => events.push(plain(args)),
   };
-  const c = vm.createContext({ URL, console, process: { env: options.env || {} }, window, document, Date, Set, Map });
-  vm.runInContext(shared + '\n' + data + '\n' + analytics, c);
+  const c = vm.createContext({ URL, console, process: { env: options.env || {} }, window, document, Date, Set, Map, Event });
+  vm.runInContext(shared + '\n' + googleConsentSource + '\n' + data + '\n' + analytics, c);
   const ready = () => { c.initializeGA4(); c.setGA4Ready(); };
   const fired = (name) => events.filter((entry) => entry[0] === 'event' && (!name || entry[1] === name));
   const verified = (value = order()) => ({ success: true, paymentStatus: value.paymentStatus, orderNumber: value.orderNumber, total: value.total, ga4Purchase: c.buildGA4Purchase(value) });
-  return { c, events, window, document, storage, session, jar, ready, fired, verified };
+  return { c, events, window, document, storage, session, jar, signals, cookieWrites, ready, fired, verified };
 }
+
+for (const [analyticsChoice, adsChoice] of [[false, false], [true, false], [false, true], [true, true]]) {
+  test(`independent saved choices: analytics=${analyticsChoice}, advertising=${adsChoice}`, () => {
+    const b = fixture({ unknown: true });
+    assert.equal(b.c.saveGoogleConsent({ analytics: analyticsChoice, advertising: adsChoice }), true);
+    const state = plain(b.c.getGoogleConsentState());
+    assert.equal(state.analytics_storage, analyticsChoice ? 'granted' : 'denied');
+    for (const key of ['ad_storage', 'ad_user_data', 'ad_personalization']) assert.equal(state[key], adsChoice ? 'granted' : 'denied');
+    assert.deepEqual(b.signals, ['groverygiftz:google-consent']);
+    assert.match(b.cookieWrites[0], /Path=\/; Max-Age=15552000; SameSite=Lax; Secure; Domain=groverygiftz\.in/);
+    assert.equal(b.jar.has('gg_marketing_consent'), false);
+    b.ready();
+    assert.equal(b.events.some((event) => event[0] === 'config'), analyticsChoice || adsChoice);
+    assert.equal(b.c.trackGA4Ecommerce('add_to_cart', [item()]), analyticsChoice);
+  });
+}
+
+test('Meta rejection or strict mode cannot override a separate Google analytics grant', () => {
+  const b = fixture({ cookies: { gg_marketing_consent: 'denied' }, env: { NEXT_PUBLIC_META_REQUIRE_CONSENT: 'true' } }); b.ready();
+  assert.equal(b.c.trackGA4PageView(), true);
+  assert.equal(b.c.trackGA4Ecommerce('add_to_cart', [item()]), true);
+  assert.equal(b.jar.get('gg_marketing_consent'), 'denied');
+});
+
+test('advertising-only consent never queues or sends GA ecommerce or Purchase', () => {
+  const b = fixture({ cookies: { gg_google_consent: consentCookie('denied', 'granted') } }); b.ready();
+  assert.equal(b.events[0][2].analytics_storage, 'denied');
+  assert.equal(b.events[0][2].ad_user_data, 'granted');
+  assert.equal(b.c.trackGA4Product('view_item', item()), false);
+  assert.equal(b.c.trackGA4Purchase(b.verified()), false);
+  b.c.saveGoogleConsent({ analytics: true, advertising: true });
+  b.c.syncGA4Privacy(); b.c.initializeGA4();
+  assert.equal(b.c.trackGA4Product('view_item', item()), true);
+  assert.equal(b.fired('view_item').length, 1);
+  assert.equal(b.events.filter((event) => event[0] === 'config').length, 1);
+});
+
+test('advertising acceptance and withdrawal update Google before subsequent events without a second config', () => {
+  const b = fixture(); b.ready();
+  b.c.saveGoogleConsent({ analytics: true, advertising: true });
+  b.c.syncGA4Privacy(); b.c.trackGA4Ecommerce('add_to_cart', [item()]);
+  const update = b.events.findIndex((event) => event[0] === 'consent' && event[1] === 'update' && event[2].ad_user_data === 'granted');
+  const event = b.events.findIndex((entry) => entry[0] === 'event' && entry[1] === 'add_to_cart');
+  assert.ok(update >= 0 && update < event);
+  assert.equal(b.events.filter((entry) => entry[0] === 'set' && entry[1] === 'allow_ad_personalization_signals').at(-1)[2], true);
+  b.jar.set('_gcl_au', 'ad-cookie'); b.jar.set('_ga', 'analytics-cookie'); b.jar.set('_fbp', 'meta-cookie');
+  b.c.saveGoogleConsent({ analytics: true, advertising: false }); b.c.syncGA4Privacy();
+  assert.equal(b.events.filter((entry) => entry[0] === 'consent').at(-1)[2].ad_personalization, 'denied');
+  assert.equal(b.jar.has('_gcl_au'), false);
+  assert.equal(b.jar.get('_ga'), 'analytics-cookie');
+  assert.equal(b.jar.get('_fbp'), 'meta-cookie');
+  assert.equal(b.c.trackGA4Ecommerce('begin_checkout', [item()]), true);
+  assert.equal(b.events.filter((entry) => entry[0] === 'config').length, 1);
+});
+
+test('privacy signals override saved grants and prevent acceptance from bypassing them', () => {
+  for (const navigator of [{ globalPrivacyControl: true }, { doNotTrack: '1' }, { doNotTrack: 'yes' }]) {
+    const b = fixture({ navigator });
+    b.c.saveGoogleConsent({ analytics: true, advertising: true });
+    assert.deepEqual(plain(b.c.getGoogleConsent()), { analytics: 'denied', advertising: 'denied' });
+    b.ready();
+    assert.equal(b.events.length, 0);
+  }
+});
+
+test('malformed, unsupported-version or incomplete consent cookies never grant access', () => {
+  for (const raw of ['%E0', 'not-json', encodeURIComponent(JSON.stringify({ version: 2, analytics: 'granted', advertising: 'granted' })), encodeURIComponent(JSON.stringify({ version: 1, analytics: 'granted' }))]) {
+    const b = fixture({ cookies: { gg_google_consent: raw } }); b.ready();
+    assert.deepEqual(plain(b.c.getGoogleConsent()), { analytics: null, advertising: null });
+    assert.equal(b.events.length, 0);
+  }
+});
+
+test('blocked preference-cookie writes still honor an explicit in-page rejection', () => {
+  const b = fixture(); b.ready();
+  const original = b.document.cookie;
+  Object.defineProperty(b.document, 'cookie', { get: () => original, set: () => {} });
+  b.c.saveGoogleConsent({ analytics: false, advertising: false });
+  assert.equal(b.c.syncGA4Privacy(), false);
+  assert.equal(b.c.trackGA4Purchase(b.verified()), false);
+  assert.deepEqual(plain(b.c.getGoogleConsent()), { analytics: 'denied', advertising: 'denied' });
+});
+
+test('invalid save arguments do not create a consent choice', () => {
+  const b = fixture({ unknown: true });
+  assert.equal(b.c.saveGoogleConsent({ analytics: 'granted', advertising: true }), false);
+  assert.equal(b.jar.has('gg_google_consent'), false);
+  assert.equal(b.signals.length, 0);
+});
+
+test('in-page consent remains usable when browser cookie access itself throws', () => {
+  const b = fixture({ unknown: true });
+  Object.defineProperty(b.document, 'cookie', { get() { throw Error('Unavailable'); }, set() { throw Error('Unavailable'); } });
+  assert.equal(b.c.saveGoogleConsent({ analytics: true, advertising: false }), true);
+  assert.deepEqual(plain(b.c.getGoogleConsent()), { analytics: 'granted', advertising: 'denied' });
+  assert.equal(b.c.syncGA4Privacy(), true);
+  b.ready();
+  assert.equal(b.c.trackGA4PageView(), true);
+  assert.equal(b.c.saveGoogleConsent({ analytics: false, advertising: false }), true);
+  assert.deepEqual(plain(b.c.getGoogleConsent()), { analytics: 'denied', advertising: 'denied' });
+  assert.equal(b.c.syncGA4Privacy(), false);
+  assert.equal(b.c.trackGA4Ecommerce('add_to_cart', [item()]), false);
+});
+
+test('one independent preference panel has separate unchecked controls and does not depend on Meta settings', () => {
+  const layout = read('src/app/layout.js');
+  const panel = read('src/components/analytics/TrackingPreferences.js');
+  const meta = read('src/components/meta/MetaPixelClient.js');
+  const ga = read('src/components/analytics/GoogleAnalytics.js');
+  assert.equal(layout.match(/<TrackingPreferences\s*\/>/g).length, 1);
+  assert.match(panel, /\[analytics, setAnalytics\] = useState\(false\)/);
+  assert.match(panel, /\[advertising, setAdvertising\] = useState\(false\)/);
+  assert.match(panel, /save\(false, false\)/);
+  assert.match(panel, /save\(analytics, advertising\)/);
+  assert.match(panel, /isGA4AdminPath\(pathname\)/);
+  assert.equal(panel.includes('trackingEnabled'), false);
+  assert.equal(meta.includes('Marketing cookie preferences'), false);
+  assert.match(meta, /configureMetaPixel/);
+  const syncStart = ga.indexOf('const sync =');
+  const syncEnd = ga.indexOf('    sync();', syncStart);
+  const sync = ga.slice(syncStart, syncEnd);
+  assert.ok(sync.indexOf('syncGA4Privacy()') < sync.indexOf('initializeGA4()'));
+  assert.ok(sync.indexOf('initializeGA4()') < sync.indexOf('dispatchEvent(new Event(GOOGLE_CONSENT_SYNC_EVENT))'));
+  for (const file of ['src/components/product/ProductCard.js', 'src/components/product/ProductDetail.js', 'src/app/cart/page.js', 'src/components/cart/CartDrawer.js', 'src/components/analytics/GA4SearchTracker.js']) {
+    const component = read(file);
+    assert.match(component, /addEventListener\(GOOGLE_CONSENT_SYNC_EVENT, track\)/);
+    assert.match(component, /removeEventListener\(GOOGLE_CONSENT_SYNC_EVENT, track\)/);
+  }
+});
 
 test('one exact measurement ID, one config, manual page views and no Google advertising features', () => {
   const b = fixture();
@@ -44,15 +179,17 @@ test('one exact measurement ID, one config, manual page views and no Google adve
   assert.equal(configs[0][1], 'G-JNPXLZQB0V');
   assert.equal(configs[0][2].send_page_view, false);
   assert.equal(configs[0][2].allow_google_signals, false);
-  assert.equal(configs[0][2].allow_ad_personalization_signals, false);
+  assert.deepEqual(b.events.find((event) => event[0] === 'set' && event[1] === 'allow_ad_personalization_signals'), ['set', 'allow_ad_personalization_signals', false]);
   assert.equal(b.fired().length, 0);
 });
-test('automatic mode permits analytics storage without inventing a choice or granting advertising permission', () => {
-  const b = fixture(); b.ready();
-  const first = b.events[0];
-  assert.deepEqual(first, ['consent', 'default', { analytics_storage: 'granted', ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied' }]);
-  assert.equal(b.jar.size, 0);
-  assert.equal(b.c.trackGA4PageView(), true);
+test('unknown and legacy-only choices default to denied without fabricating acceptance', () => {
+  for (const cookies of [{}, { gg_marketing_consent: 'granted' }, { gg_marketing_consent: 'denied' }]) {
+    const b = fixture({ unknown: true, cookies }); b.ready();
+    assert.deepEqual(plain(b.c.getGoogleConsentState()), { analytics_storage: 'denied', ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied' });
+    assert.equal(b.jar.has('gg_google_consent'), false);
+    assert.equal(b.events.length, 0);
+    assert.equal(b.c.trackGA4PageView(), false);
+  }
 });
 test('an actual existing choice grants only analytics storage, not ads personalization', () => {
   const b = fixture({ cookies: { gg_marketing_consent: 'granted' } }); b.ready();
@@ -60,8 +197,8 @@ test('an actual existing choice grants only analytics storage, not ads personali
   assert.equal(b.events[0][2].ad_user_data, 'denied');
   assert.equal(b.events[0][2].ad_personalization, 'denied');
 });
-test('explicit denial, GPC, DNT, and strict unknown consent prevent all GA initialization/events', () => {
-  for (const options of [{ cookies: { gg_marketing_consent: 'denied' } }, { navigator: { globalPrivacyControl: true } }, { navigator: { doNotTrack: '1' } }, { env: { NEXT_PUBLIC_META_REQUIRE_CONSENT: 'true' } }]) {
+test('explicit Google denial, GPC, DNT, and unknown choices prevent all GA initialization/events', () => {
+  for (const options of [{ cookies: { gg_google_consent: consentCookie('denied') } }, { navigator: { globalPrivacyControl: true } }, { navigator: { doNotTrack: '1' } }, { unknown: true }]) {
     const b = fixture(options); b.ready();
     assert.equal(b.c.trackGA4Ecommerce('add_to_cart', [item()]), false);
     assert.equal(b.c.trackGA4Purchase(b.verified()), false);
@@ -72,7 +209,7 @@ test('withdrawal drops pending events, disables the property and removes only GA
   const b = fixture({ cookies: { _ga: 'old', _ga_JNPXLZQB0V: 'old', _fbc: 'meta', cart: 'saved', 'next-auth.session-token': 'auth' } });
   b.c.initializeGA4();
   b.c.trackGA4Purchase(b.verified());
-  b.jar.set('gg_marketing_consent', 'denied');
+  b.jar.set('gg_google_consent', consentCookie('denied'));
   assert.equal(b.c.syncGA4Privacy(), false);
   b.c.setGA4Ready();
   assert.equal(b.fired().length, 0);
@@ -86,8 +223,8 @@ test('withdrawal drops pending events, disables the property and removes only GA
 test('withdrawal clears markers for unsent views, so a later valid grant can measure the current view', () => {
   const b = fixture(); b.c.initializeGA4();
   b.c.trackGA4Product('view_item_list', item());
-  b.jar.set('gg_marketing_consent', 'denied'); b.c.syncGA4Privacy();
-  b.jar.set('gg_marketing_consent', 'granted'); b.c.syncGA4Privacy();
+  b.jar.set('gg_google_consent', consentCookie('denied')); b.c.syncGA4Privacy();
+  b.jar.set('gg_google_consent', consentCookie()); b.c.syncGA4Privacy();
   assert.equal(b.c.trackGA4Product('view_item_list', item()), true);
   b.c.setGA4Ready();
   assert.equal(b.fired('view_item_list').length, 1);
@@ -231,8 +368,8 @@ test('receipt refresh, repeat responses and blocked local storage do not emit du
   assert.equal(b.c.trackGA4Purchase(second), true);
   assert.equal(b.c.trackGA4Purchase(second), false);
 });
-test('strict unknown and explicit opt-outs never access analytics storage or emit purchases', () => {
-  for (const options of [{ env: { NEXT_PUBLIC_META_REQUIRE_CONSENT: 'true' } }, { cookies: { gg_marketing_consent: 'denied' } }, { navigator: { globalPrivacyControl: true } }, { navigator: { doNotTrack: '1' } }]) {
+test('unknown and explicit opt-outs never access analytics storage or emit purchases', () => {
+  for (const options of [{ unknown: true }, { cookies: { gg_google_consent: consentCookie('denied') } }, { navigator: { globalPrivacyControl: true } }, { navigator: { doNotTrack: '1' } }]) {
     const b = fixture(options); b.ready();
     let attempts = 0;
     b.window.localStorage = { getItem() { attempts += 1; }, setItem() { attempts += 1; } };
@@ -246,7 +383,7 @@ test('strict unknown and explicit opt-outs never access analytics storage or emi
   }
 });
 
-test('automatic mode persists purchase deduplication and fresh Google login intent', () => {
+test('independent analytics permission persists purchase deduplication and fresh Google login intent', () => {
   const b = fixture(); b.ready();
   const response = b.verified();
   assert.equal(b.c.trackGA4Purchase(response), true);
@@ -258,16 +395,16 @@ test('automatic mode persists purchase deduplication and fresh Google login inte
   assert.equal(returned.c.completeGA4GoogleLogin(), true);
 });
 
-test('strict mode starts tracking only after a real grant and stops on rejection', () => {
-  const b = fixture({ env: { NEXT_PUBLIC_META_REQUIRE_CONSENT: 'true' } });
+test('Google starts tracking only after an explicit analytics grant and stops on rejection', () => {
+  const b = fixture({ unknown: true });
   b.ready();
   assert.equal(b.events.length, 0);
-  b.jar.set('gg_marketing_consent', 'granted');
+  b.c.saveGoogleConsent({ analytics: true, advertising: false });
   assert.equal(b.c.syncGA4Privacy(), true);
   b.ready();
   assert.equal(b.events.find((event) => event[0] === 'consent' && event[1] === 'default')[2].analytics_storage, 'granted');
   assert.equal(b.c.trackGA4PageView(), true);
-  b.jar.set('gg_marketing_consent', 'denied');
+  b.c.saveGoogleConsent({ analytics: false, advertising: false });
   assert.equal(b.c.syncGA4Privacy(), false);
   assert.equal(b.events.filter((event) => event[0] === 'consent').at(-1)[2].analytics_storage, 'denied');
   assert.equal(b.c.trackGA4Ecommerce('add_to_cart', [item()]), false);
@@ -404,6 +541,6 @@ test('one framework script is globally mounted and Meta initialization is retain
   assert.match(component, /session\?\.user\?\.type === 'customer'/);
   assert.match(component, /requestAnimationFrame\(\(\) => trackGA4PageView\(\)\)/);
   const checkout = read('src/app/checkout/page.js');
-  assert.match(checkout, /addEventListener\(META_CONSENT_EVENT, trackCheckout\)/);
-  assert.match(checkout, /removeEventListener\(META_CONSENT_EVENT, trackCheckout\)/);
+  assert.match(checkout, /addEventListener\(GOOGLE_CONSENT_SYNC_EVENT, trackCheckout\)/);
+  assert.match(checkout, /removeEventListener\(GOOGLE_CONSENT_SYNC_EVENT, trackCheckout\)/);
 });
