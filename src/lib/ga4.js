@@ -9,11 +9,13 @@ const ga4Allowed = () => {
   const local = ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
   return !(local || process.env.NODE_ENV === 'development') || process.env.NEXT_PUBLIC_GA4_DEBUG === 'true';
 };
+// Follow the store's existing automatic/strict policy without inventing a saved choice.
+const ga4StorageAllowed = () => ga4Allowed();
 const ga4State = () => window.__groveryGA4 || (window.__groveryGA4 = { initialized: false, ready: false, queue: [], pendingPurchases: new Set(), sentPurchases: new Set(), lastPage: '', lastPageKey: '', contextKey: '', referrer: '', impressions: new Set(), lastSearch: '' });
 const ga4ReceiptPrefix = `gg-ga4-purchase-${GA4_MEASUREMENT_ID}-`;
 
 function pruneGA4Receipts() {
-  if (getMarketingConsent() !== 'granted') return;
+  if (!ga4StorageAllowed()) return;
   try {
     for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
       const key = window.localStorage.key(index);
@@ -25,7 +27,7 @@ function pruneGA4Receipts() {
 }
 
 function ga4ConsentState() {
-  return { analytics_storage: getMarketingConsent() === 'granted' ? 'granted' : 'denied', ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied' };
+  return { analytics_storage: ga4StorageAllowed() ? 'granted' : 'denied', ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied' };
 }
 
 export function initializeGA4() {
@@ -112,7 +114,7 @@ function ga4Send(event) {
   if (event.purchaseId) {
     state.sentPurchases.add(event.purchaseId);
     state.pendingPurchases.delete(event.purchaseId);
-    if (getMarketingConsent() === 'granted') {
+    if (ga4StorageAllowed()) {
       try { window.localStorage.setItem(`${ga4ReceiptPrefix}${event.purchaseId}`, String(Date.now())); } catch {}
     }
   }
@@ -229,7 +231,7 @@ export function trackGA4Purchase(result) {
     const id = params.transaction_id;
     const state = ga4State();
     if (state.sentPurchases.has(id) || state.pendingPurchases.has(id)) return false;
-    if (getMarketingConsent() === 'granted') {
+    if (ga4StorageAllowed()) {
       try {
         const recorded = Number(window.localStorage.getItem(`${ga4ReceiptPrefix}${id}`));
         if (recorded > Date.now() - 7 * 86400000) return false;
@@ -245,14 +247,14 @@ export function clearGA4GoogleLogin() {
 
 export function rememberGA4GoogleLogin() {
   try {
-    if (!ga4Allowed() || getMarketingConsent() !== 'granted') return;
+    if (!ga4StorageAllowed()) return;
     window.sessionStorage.setItem('gg-ga4-google-login', JSON.stringify({ startedAt: Date.now(), documentTime: window.performance.timeOrigin }));
   } catch {}
 }
 
 export function completeGA4GoogleLogin() {
   try {
-    if (!ga4Allowed() || getMarketingConsent() !== 'granted') return false;
+    if (!ga4StorageAllowed()) return false;
     const pending = JSON.parse(window.sessionStorage.getItem('gg-ga4-google-login') || 'null');
     if (!pending || pending.documentTime === window.performance.timeOrigin) return false;
     clearGA4GoogleLogin();

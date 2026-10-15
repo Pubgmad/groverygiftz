@@ -47,10 +47,10 @@ test('one exact measurement ID, one config, manual page views and no Google adve
   assert.equal(configs[0][2].allow_ad_personalization_signals, false);
   assert.equal(b.fired().length, 0);
 });
-test('unknown choice does not invent granted storage, advertising permission or a consent cookie', () => {
+test('automatic mode permits analytics storage without inventing a choice or granting advertising permission', () => {
   const b = fixture(); b.ready();
   const first = b.events[0];
-  assert.deepEqual(first, ['consent', 'default', { analytics_storage: 'denied', ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied' }]);
+  assert.deepEqual(first, ['consent', 'default', { analytics_storage: 'granted', ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied' }]);
   assert.equal(b.jar.size, 0);
   assert.equal(b.c.trackGA4PageView(), true);
 });
@@ -231,16 +231,46 @@ test('receipt refresh, repeat responses and blocked local storage do not emit du
   assert.equal(b.c.trackGA4Purchase(second), true);
   assert.equal(b.c.trackGA4Purchase(second), false);
 });
-test('without storage permission, purchase tracking uses memory and never accesses analytics storage', () => {
+test('strict unknown and explicit opt-outs never access analytics storage or emit purchases', () => {
+  for (const options of [{ env: { NEXT_PUBLIC_META_REQUIRE_CONSENT: 'true' } }, { cookies: { gg_marketing_consent: 'denied' } }, { navigator: { globalPrivacyControl: true } }, { navigator: { doNotTrack: '1' } }]) {
+    const b = fixture(options); b.ready();
+    let attempts = 0;
+    b.window.localStorage = { getItem() { attempts += 1; }, setItem() { attempts += 1; } };
+    b.window.sessionStorage = { getItem() { attempts += 1; }, setItem() { attempts += 1; } };
+    assert.equal(b.c.trackGA4Purchase(b.verified()), false);
+    assert.equal(b.c.trackGA4Purchase(b.verified()), false);
+    b.c.rememberGA4GoogleLogin();
+    assert.equal(b.c.completeGA4GoogleLogin(), false);
+    assert.equal(attempts, 0);
+    assert.equal(b.fired().length, 0);
+  }
+});
+
+test('automatic mode persists purchase deduplication and fresh Google login intent', () => {
   const b = fixture(); b.ready();
-  let attempts = 0;
-  b.window.localStorage = { getItem() { attempts += 1; }, setItem() { attempts += 1; } };
-  b.window.sessionStorage = { getItem() { attempts += 1; }, setItem() { attempts += 1; } };
-  assert.equal(b.c.trackGA4Purchase(b.verified()), true);
-  assert.equal(b.c.trackGA4Purchase(b.verified()), false);
+  const response = b.verified();
+  assert.equal(b.c.trackGA4Purchase(response), true);
+  assert.equal(b.storage.has('gg-ga4-purchase-G-JNPXLZQB0V-GG0064-database-order-1'), true);
   b.c.rememberGA4GoogleLogin();
-  assert.equal(b.c.completeGA4GoogleLogin(), false);
-  assert.equal(attempts, 0);
+  assert.equal(b.jar.has('gg_marketing_consent'), false);
+  const returned = fixture({ storage: b.storage, session: b.session, documentTime: 200 }); returned.ready();
+  assert.equal(returned.c.trackGA4Purchase(response), false);
+  assert.equal(returned.c.completeGA4GoogleLogin(), true);
+});
+
+test('strict mode starts tracking only after a real grant and stops on rejection', () => {
+  const b = fixture({ env: { NEXT_PUBLIC_META_REQUIRE_CONSENT: 'true' } });
+  b.ready();
+  assert.equal(b.events.length, 0);
+  b.jar.set('gg_marketing_consent', 'granted');
+  assert.equal(b.c.syncGA4Privacy(), true);
+  b.ready();
+  assert.equal(b.events.find((event) => event[0] === 'consent' && event[1] === 'default')[2].analytics_storage, 'granted');
+  assert.equal(b.c.trackGA4PageView(), true);
+  b.jar.set('gg_marketing_consent', 'denied');
+  assert.equal(b.c.syncGA4Privacy(), false);
+  assert.equal(b.events.filter((event) => event[0] === 'consent').at(-1)[2].analytics_storage, 'denied');
+  assert.equal(b.c.trackGA4Ecommerce('add_to_cart', [item()]), false);
 });
 test('old analytics receipt markers are pruned without touching cart/auth storage', () => {
   const storage = new Map([
