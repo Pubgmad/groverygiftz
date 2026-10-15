@@ -6,6 +6,7 @@ import { deductOrderInventory } from '@/lib/inventory';
 import { getCashfreeConfig } from '@/lib/cashfreeConfig';
 import { sendMetaPurchaseEvent } from '@/lib/metaConversionApi';
 import { buildMetaPurchase } from '@/lib/metaPurchase';
+import { buildGA4Purchase } from '@/lib/ga4Data';
 import { getOrderDeliveryEstimate } from '@/lib/orderDeliveryEstimate';
 
 export const CASHFREE_VERSION = '2025-01-01';
@@ -34,6 +35,7 @@ const responseForOrder = (order, success, settings = {}) => ({
   total: order.total,
   items: order.items || [],
   metaPurchase: success ? buildMetaPurchase(order) : null,
+  ga4Purchase: success ? buildGA4Purchase(order) : null,
 });
 
 export async function finalizeCashfreeOrder(orderId) {

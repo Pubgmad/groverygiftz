@@ -1,6 +1,7 @@
 'use client';
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
+import { trackGA4Ecommerce } from '@/lib/ga4';
 
 const CartContext = createContext();
 
@@ -179,22 +180,33 @@ export function CartProvider({ children }) {
     }
     applyCart(nextCart);
     if (!isAuthenticatedCustomer) persistGuestCart(nextCart);
+    const addedLine = nextCart.find((entry) => isSameCartLine(entry, item.productId, item.variant, item.cartItemId));
+    const addedQuantity = Number(addedLine?.quantity || 0) - Number(existing?.quantity || 0);
+    if (addedQuantity > 0) trackGA4Ecommerce('add_to_cart', [{ ...addedLine, quantity: addedQuantity }]);
     if (options.openDrawer !== false) setIsCartOpen(true);
   };
 
   const removeFromCart = (productId, variant, cartItemId) => {
+    const removed = (cartRef.current || []).filter((item) => isSameCartLine(item, productId, variant, cartItemId));
     const nextCart = (cartRef.current || []).filter((item) => !isSameCartLine(item, productId, variant, cartItemId));
     applyCart(nextCart);
     if (!isAuthenticatedCustomer) persistGuestCart(nextCart);
+    if (removed.length) trackGA4Ecommerce('remove_from_cart', removed);
   };
 
   const updateQuantity = (productId, variant, quantity, cartItemId) => {
     if (quantity <= 0) return removeFromCart(productId, variant, cartItemId);
+    const previous = (cartRef.current || []).filter((item) => isSameCartLine(item, productId, variant, cartItemId));
     const nextCart = (cartRef.current || []).map((item) =>
       isSameCartLine(item, productId, variant, cartItemId) ? { ...item, quantity: capQuantity(quantity, item.availableStock) } : item
     );
     applyCart(nextCart);
     if (!isAuthenticatedCustomer) persistGuestCart(nextCart);
+    previous.forEach((item) => {
+      const updated = nextCart.find((entry) => isSameCartLine(entry, productId, variant, cartItemId));
+      const difference = Number(updated?.quantity || 0) - Number(item.quantity || 0);
+      if (difference) trackGA4Ecommerce(difference > 0 ? 'add_to_cart' : 'remove_from_cart', [{ ...item, quantity: Math.abs(difference) }]);
+    });
   };
 
   const clearCart = () => {

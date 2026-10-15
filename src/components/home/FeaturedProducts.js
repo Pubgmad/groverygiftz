@@ -29,7 +29,7 @@ export default function FeaturedProducts({ products, eyebrow, title, subtitle, b
         </div>
 
         <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 md:gap-6 lg:grid-cols-4">
-          {products.map(product => <ProductCard key={product._id} product={product} />)}
+          {products.map((product, index) => <ProductCard key={product._id} product={product} listId={`home_featured:${buttonLink}`} listName={title || eyebrow || 'Featured Products'} listIndex={index} />)}
         </div>
       </div>
     </section>

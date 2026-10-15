@@ -6,6 +6,7 @@ import { formatPrice, calcSavings, getEffectivePrice, isOfferActive, getVariantR
 import { getProductAvailableStock, getSelectedAvailableStock, hasVariantManagedStock, isProductSoldOut, isVariantOptionSoldOut } from '@/lib/stock';
 import { buildDeliveryEstimateText } from '@/lib/deliveryDate';
 import { buildProductMetaPayload, trackMetaCustomEvent, trackMetaEvent } from '@/lib/metaPixel';
+import { trackGA4Product } from '@/lib/ga4';
 import { FiMinus, FiPlus, FiX, FiTruck, FiShield, FiClock, FiShoppingCart, FiZap, FiUpload, FiImage, FiChevronLeft, FiChevronRight, FiStar, FiLoader } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { startNavigationFeedback } from '@/components/layout/NavigationFeedback';
@@ -435,6 +436,11 @@ export default function ProductDetail({ product }) {
     viewedProductRef.current = product._id;
     trackMetaEvent('ViewContent', buildProductMetaPayload(product, { price, value: price }));
   }, [price, product]);
+
+  const ga4Variant = Object.entries(selectedVariants).filter(([, option]) => option?.label).map(([name, option]) => `${name}: ${option.label}`).join(', ');
+  useEffect(() => {
+    trackGA4Product('view_item', product, { price: baseDisplayPrice + selectedVariantExtra, variant: ga4Variant, quantity: 1 });
+  }, [product, baseDisplayPrice, selectedVariantExtra, ga4Variant]);
 
   useEffect(() => {
     fetch(`/api/products/${product.slug || product._id}/reviews`)

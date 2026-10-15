@@ -29,7 +29,7 @@ export default async function ProductPage({ params }) {
         <section className="mt-16">
           <h2 className="section-title">You May Also Like</h2>
           <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4 md:gap-6">
-            {relatedData.map(p => <ProductCard key={p._id} product={p} />)}
+            {relatedData.map((p, index) => <ProductCard key={p._id} product={p} listId="related_products" listName="You May Also Like" listIndex={index} />)}
           </div>
         </section>
       )}

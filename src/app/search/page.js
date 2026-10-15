@@ -4,6 +4,7 @@ import Product from '@/models/Product';
 import Settings from '@/models/Settings';
 import ProductCard from '@/components/product/ProductCard';
 import SearchTracker from '@/components/meta/SearchTracker';
+import GA4SearchTracker from '@/components/analytics/GA4SearchTracker';
 import { buildSearchKeywordMaps } from '@/lib/giftFinderResolve';
 
 export default async function SearchPage({ searchParams }) {
@@ -58,6 +59,7 @@ export default async function SearchPage({ searchParams }) {
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       <SearchTracker query={q} occasion={occasion} giftType={giftType} resultCount={data.length} />
+      <GA4SearchTracker query={q} products={data.map(({ title }) => ({ title }))} />
       <h1 className="text-3xl font-display font-bold mb-2">Search</h1>
       {(q || occasion || giftType) && (
         <p className="text-gray-500 mb-8">

@@ -6,6 +6,7 @@ import Link from 'next/link';
 import toast from 'react-hot-toast';
 import PasswordInput from '@/components/common/PasswordInput';
 import { startNavigationFeedback } from '@/components/layout/NavigationFeedback';
+import { trackGA4Auth, rememberGA4GoogleLogin, clearGA4GoogleLogin } from '@/lib/ga4';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -32,15 +33,18 @@ export default function LoginPage() {
     document.cookie = 'google_auth_intent=signin; path=/; max-age=600; SameSite=Lax';
     setLoading(true);
     startNavigationFeedback();
+    rememberGA4GoogleLogin();
     signIn('google', { callbackUrl }, { prompt: 'select_account' });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    clearGA4GoogleLogin();
     setLoading(true);
     const res = await signIn('credentials', { email, password, loginType: 'customer', redirect: false });
     setLoading(false);
     if (res?.ok) {
+      if (!res.error) trackGA4Auth('login');
       toast.success('Welcome back!');
       startNavigationFeedback();
       router.push(callbackUrl || '/account');

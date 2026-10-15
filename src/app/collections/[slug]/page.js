@@ -113,7 +113,7 @@ export default async function CollectionPage({ params, searchParams }) {
             <p className="text-center py-12 text-gray-500">No products in this range yet.</p>
           ) : (
             <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 md:gap-6 lg:grid-cols-4">
-              {data.map(product => <ProductCard key={product._id} product={product} />)}
+              {data.map((product, index) => <ProductCard key={product._id} product={product} listId={`collection_${collection.slug}`} listName={collection.name} listIndex={index} />)}
             </div>
           )}
 

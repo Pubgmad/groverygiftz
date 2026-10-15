@@ -1,5 +1,8 @@
 'use client';
 import Link from 'next/link';
+import { useEffect, useRef } from 'react';
+import { usePathname } from 'next/navigation';
+import { trackGA4Product } from '@/lib/ga4';
 import { FiHeart, FiGift, FiShoppingBag, FiChevronRight, FiClock } from 'react-icons/fi';
 import { formatPrice, calcSavings, getDisplayPrice, getDisplayRegularPrice, isOfferActive } from '@/lib/utils';
 import { getProductAvailableStock, isProductSoldOut } from '@/lib/stock';
@@ -15,7 +18,9 @@ function firstProductImage(product, index = 0) {
   return images[index] || images[0] || '/placeholder.svg';
 }
 
-export default function ProductCard({ product }) {
+export default function ProductCard({ product, listId, listName, listIndex }) {
+  const cardRef = useRef(null);
+  const pathname = usePathname();
   const { toggleWishlist, isWishlisted } = useWishlist();
   const wishlisted = isWishlisted(product._id);
   const displayPrice = getDisplayPrice(product);
@@ -33,10 +38,28 @@ export default function ProductCard({ product }) {
   const lowStock = !isSoldOut && availableStock > 0 && availableStock <= 10;
   const img1 = firstProductImage(product, 0);
   const img2 = firstProductImage(product, 1);
+  const analyticsListId = listId || pathname;
+  const analyticsListName = listName || (pathname === '/search' ? 'Search results' : 'Products');
+
+  useEffect(() => {
+    const node = cardRef.current;
+    if (!node) return;
+    const track = () => trackGA4Product('view_item_list', product, { price: displayPrice, listId: analyticsListId, listName: analyticsListName, index: listIndex });
+    if (typeof IntersectionObserver === 'undefined') { track(); return; }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) { track(); observer.disconnect(); }
+    }, { threshold: 0.1 });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [product, displayPrice, analyticsListId, analyticsListName, listIndex]);
 
   return (
     <Link
+      ref={cardRef}
       href={`/products/${product.slug}`}
+      onClick={(event) => {
+        if (!event.defaultPrevented) trackGA4Product('select_item', product, { price: displayPrice, listId: analyticsListId, listName: analyticsListName, index: listIndex });
+      }}
       className="group product-card flex h-full flex-col rounded-2xl border border-gray-100 bg-white p-2.5 shadow-sm product-lift transition-all duration-300 hover:-translate-y-1 sm:p-3"
     >
       <div className="relative flex min-h-[180px] items-center justify-center overflow-hidden rounded-xl bg-white image-sheen sm:min-h-[220px]">

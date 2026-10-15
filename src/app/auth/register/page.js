@@ -8,6 +8,7 @@ import { trackMetaEvent } from '@/lib/metaPixel';
 import PasswordInput from '@/components/common/PasswordInput';
 import { PASSWORD_REQUIREMENTS, validateStrongPassword, strongPasswordMessage } from '@/lib/passwordPolicy';
 import { startNavigationFeedback } from '@/components/layout/NavigationFeedback';
+import { trackGA4Auth, clearGA4GoogleLogin } from '@/lib/ga4';
 
 export default function RegisterPage() {
   const [formData, setFormData] = useState({ name: '', email: '', password: '', phone: '' });
@@ -30,6 +31,7 @@ export default function RegisterPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    clearGA4GoogleLogin();
     const normalizedPhone = String(formData.phone || '').replace(/\D/g, '');
     if (normalizedPhone.length < 10 || normalizedPhone.length > 15) {
       toast.error('Please enter a valid contact number');
@@ -50,6 +52,7 @@ export default function RegisterPage() {
       });
       const data = await res.json();
       if (res.ok) {
+        trackGA4Auth('sign_up');
         trackMetaEvent('CompleteRegistration', { status: true, registration_method: 'email' });
         const loginResult = await signIn('credentials', {
           email: formData.email,
@@ -57,6 +60,7 @@ export default function RegisterPage() {
           loginType: 'customer',
           redirect: false,
         });
+        if (loginResult?.ok && !loginResult.error) trackGA4Auth('login');
         if (loginResult?.error) {
           toast.success('Account created. Please sign in to continue.');
           startNavigationFeedback();

@@ -1,4 +1,6 @@
 'use client';
+import { useEffect, useRef } from 'react';
+import { trackGA4Ecommerce } from '@/lib/ga4';
 import { useCart } from '@/context/CartContext';
 import { formatPrice } from '@/lib/utils';
 import { FiMinus, FiPlus, FiTrash2, FiTruck, FiShoppingBag, FiGift } from 'react-icons/fi';
@@ -9,6 +11,10 @@ import ConfiguredImageSections from '@/components/cart/ConfiguredImageSections';
 export default function CartPage() {
   const { cart, removeFromCart, updateQuantity, cartTotal, cartReady } = useCart();
   const router = useRouter();
+  const ga4ViewedRef = useRef(false);
+  useEffect(() => {
+    if (cartReady && !ga4ViewedRef.current) ga4ViewedRef.current = trackGA4Ecommerce('view_cart', cart);
+  }, [cartReady, cart]);
 
   if (!cartReady) {
     return (

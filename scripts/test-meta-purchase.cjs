@@ -11,9 +11,10 @@ const source = (file) => read(file).replace(/^import .*;\r?\n/gm, '').replace(/e
 const purchaseSource = source('src/lib/metaPurchase.js');
 const attributionSource = source('src/lib/metaAttribution.js');
 const customerSource = source('src/lib/metaCustomerData.js');
+const ga4DataSource = source('src/lib/ga4Data.js');
 function load(extraSource = '', globals = {}) {
   const context = vm.createContext({ console: { warn() {}, info() {}, error() {} }, URL, AbortSignal, crypto, isIP, process: { env: {} }, ...globals });
-  vm.runInContext(purchaseSource + '\n' + attributionSource + '\n' + customerSource + '\n' + extraSource, context);
+  vm.runInContext(purchaseSource + '\n' + attributionSource + '\n' + customerSource + '\n' + ga4DataSource + '\n' + extraSource, context);
   return context;
 }
 const paidOrder = (overrides = {}) => ({
@@ -352,6 +353,9 @@ test('cashfree verification response exposes tracking only after confirmed payme
   vm.runInContext(text.slice(start, end) + '\nglobalThis.responseForOrder = responseForOrder;', c);
   assert.equal(c.responseForOrder(paidOrder(), false).metaPurchase, null);
   assert.equal(c.responseForOrder(paidOrder(), true).metaPurchase.params.value, 1499);
+  assert.equal(c.responseForOrder(paidOrder(), true).ga4Purchase.params.value, 1399);
+  assert.equal(c.responseForOrder(paidOrder(), true).ga4Purchase.params.shipping, 100);
+  assert.equal(c.responseForOrder(paidOrder(), false).ga4Purchase, null);
 });
 
 function paymentFixture(providerStatus) {

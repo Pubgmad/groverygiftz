@@ -1,5 +1,6 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { trackGA4Ecommerce } from '@/lib/ga4';
 import { useCart } from '@/context/CartContext';
 import { FiX, FiPlus, FiMinus, FiTrash2, FiShoppingBag, FiTruck, FiGift } from 'react-icons/fi';
 import Link from 'next/link';
@@ -8,7 +9,12 @@ import { calculateCartShipping } from '@/lib/shipping';
 import ConfiguredImageSections from '@/components/cart/ConfiguredImageSections';
 
 export default function CartDrawer() {
-  const { cart, isCartOpen, setIsCartOpen, removeFromCart, updateQuantity, cartTotal, cartCount } = useCart();
+  const { cart, isCartOpen, setIsCartOpen, removeFromCart, updateQuantity, cartTotal, cartCount, cartReady } = useCart();
+  const ga4ViewedRef = useRef(false);
+  useEffect(() => {
+    if (!isCartOpen) { ga4ViewedRef.current = false; return; }
+    if (cartReady && !ga4ViewedRef.current) ga4ViewedRef.current = trackGA4Ecommerce('view_cart', cart);
+  }, [isCartOpen, cartReady, cart]);
   const [settings, setSettings] = useState({ tamilNaduShippingCost: 0, otherStateShippingCost: 120, tamilNaduDeliveryEstimate: 'Within 8 days', otherStateDeliveryEstimate: '10-15 days' });
   const selectedState = cart.find((item) => item.deliveryState)?.deliveryState || (typeof window !== 'undefined' ? window.localStorage?.getItem('groveryDeliveryState') : '') || '';
   const shippingSummary = useMemo(() => calculateCartShipping(cart, selectedState, settings), [cart, selectedState, settings]);

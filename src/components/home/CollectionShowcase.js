@@ -16,8 +16,8 @@ export default function CollectionShowcase({ products, title, subtitle, collecti
         {title && <h2 className="section-title">{title}</h2>}
       </div>
       <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 md:gap-6 lg:grid-cols-4">
-        {products.map(product => (
-          <ProductCard key={product._id} product={product} />
+        {products.map((product, index) => (
+          <ProductCard key={product._id} product={product} listId={`home_collection_${collectionSlug || 'showcase'}`} listName={title || subtitle || collectionSlug || 'Collection Showcase'} listIndex={index} />
         ))}
       </div>
       {collectionSlug && (

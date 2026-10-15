@@ -4,6 +4,8 @@ import { useSession, signOut } from 'next-auth/react';
 import { useCart } from '@/context/CartContext';
 import { formatPrice } from '@/lib/utils';
 import { buildCartMetaPayload, trackMetaEvent, trackVerifiedMetaPurchase } from '@/lib/metaPixel';
+import { trackGA4Ecommerce, trackGA4OrderConfirmation, trackGA4Purchase } from '@/lib/ga4';
+import { META_CONSENT_EVENT } from '@/lib/metaAttribution';
 import { FiChevronRight, FiCheckCircle, FiShield, FiTruck, FiCreditCard, FiMapPin, FiEdit2, FiGift, FiStar } from 'react-icons/fi';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -61,6 +63,7 @@ export default function CheckoutPage() {
   const [orderResult, setOrderResult] = useState(null);
   const checkoutTrackedRef = useRef(false);
   const returnVerifyRef = useRef('');
+  const ga4CheckoutRef = useRef(false);
 
   const hasSelectedState = Boolean(address.state);
   const outOfTamilNadu = hasSelectedState && !isTamilNadu(address.state);
@@ -176,10 +179,22 @@ export default function CheckoutPage() {
     return null;
   };
 
+  useEffect(() => {
+    const trackCheckout = () => {
+      if (ga4CheckoutRef.current || !cartReady || status !== 'authenticated' || session?.user?.type !== 'customer' || !cart.length || step === 3 || new URLSearchParams(window.location.search).has('cashfree_order_id')) return;
+      ga4CheckoutRef.current = trackGA4Ecommerce('begin_checkout', cart);
+    };
+    trackCheckout();
+    window.addEventListener(META_CONSENT_EVENT, trackCheckout);
+    return () => window.removeEventListener(META_CONSENT_EVENT, trackCheckout);
+  }, [cartReady, cart, status, session?.user?.type, step]);
+
   const showSuccessfulOrder = (verifyData, fallbackItems = cart, fallbackTotals = {}) => {
     const placedItems = verifyData.items?.length ? verifyData.items : fallbackItems.map((item) => ({ ...item }));
     const paidTotal = verifyData.total ?? fallbackTotals.total ?? grandTotal;
     trackVerifiedMetaPurchase(verifyData);
+    trackGA4Purchase(verifyData);
+    trackGA4OrderConfirmation();
     clearCart();
     setOrderResult({
       orderNumber: verifyData.orderNumber,
@@ -212,6 +227,7 @@ export default function CheckoutPage() {
   const handleAddressNext = () => {
     const err = validateAddress();
     if (err) { toast.error(err); return; }
+    trackGA4Ecommerce('add_shipping_info', cart);
     setStep(2);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -244,6 +260,7 @@ export default function CheckoutPage() {
       }
 
       trackMetaEvent('AddPaymentInfo', getCartPixelPayload(cartWithLatestDelivery, createData.total ?? grandTotal, { payment_method: 'Cashfree' }));
+      trackGA4Ecommerce('add_payment_info', cartWithLatestDelivery);
 
       const cashfree = window.Cashfree({ mode: createData.mode || 'sandbox' });
       const result = await cashfree.checkout({ paymentSessionId: createData.paymentSessionId, redirectTarget: '_self' });

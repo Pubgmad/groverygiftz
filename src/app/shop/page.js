@@ -110,7 +110,7 @@ export default async function ShopPage({ searchParams }) {
         <p className="text-center py-12 text-gray-500">No matching products yet.</p>
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 md:gap-6 lg:grid-cols-4">
-          {productsData.map(product => <ProductCard key={product._id} product={product} />)}
+          {productsData.map((product, index) => <ProductCard key={product._id} product={product} listId={`shop_${currentView || 'all-products'}`} listName={currentViewLabel} listIndex={index} />)}
         </div>
       )}
 

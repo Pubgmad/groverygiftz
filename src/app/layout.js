@@ -9,6 +9,7 @@ import ChromeVisibility from '@/components/layout/ChromeVisibility';
 import NavigationFeedback from '@/components/layout/NavigationFeedback';
 import Providers from '@/components/Providers';
 import MetaPixel from '@/components/meta/MetaPixel';
+import GoogleAnalytics from '@/components/analytics/GoogleAnalytics';
 import { Toaster } from 'react-hot-toast';
 import dbConnect from '@/lib/db';
 import Settings from '@/models/Settings';
@@ -44,6 +45,9 @@ export default function RootLayout({ children }) {
       <body>
         <Providers>
           <MetaPixel />
+          <Suspense fallback={null}>
+            <GoogleAnalytics />
+          </Suspense>
           <Suspense fallback={null}>
             <NavigationFeedback />
           </Suspense>
