@@ -308,6 +308,24 @@ test('success virtual page is emitted once and redirect-query cleanup cannot cre
   assert.equal(b.fired('page_view')[1][2].page_location, 'https://groverygiftz.in/checkout/success');
   assert.equal(b.fired('page_view')[1][2].page_title, 'Order placed successfully | GroveryGiftz');
 });
+
+test('confirmation views and unverified payment responses cannot create a purchase', () => {
+  const b = fixture({ url: 'https://groverygiftz.in/checkout' }); b.ready();
+  b.c.trackGA4OrderConfirmation();
+  assert.equal(b.fired('purchase').length, 0);
+  const paid = b.verified();
+  for (const response of [
+    { ...paid, success: false },
+    { ...paid, paymentStatus: 'pending' },
+    { ...paid, paymentStatus: 'failed' },
+    { ...paid, ga4Purchase: null },
+  ]) assert.equal(b.c.trackGA4Purchase(response), false);
+  assert.equal(b.fired('purchase').length, 0);
+  assert.equal(b.c.trackGA4Purchase(paid), true);
+  b.c.trackGA4OrderConfirmation();
+  assert.equal(b.c.trackGA4Purchase(paid), false);
+  assert.equal(b.fired('purchase').length, 1);
+});
 test('search terms must match public catalog vocabulary and cannot contain contact information', () => {
   const b = fixture({ url: 'https://groverygiftz.in/search?q=metal' }); b.ready();
   const products = [{ title: 'Metal Photo Frame' }];
