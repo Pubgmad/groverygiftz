@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { configureMetaPixel, flushMetaPurchases, isMetaAdminPath, trackMetaEvent } from '@/lib/metaPixel';
-import { captureMetaLandingAttribution, clearMetaIdentifiers, getMarketingConsent, META_CONSENT_EVENT, META_PREFERENCES_EVENT, setMarketingConsent } from '@/lib/metaAttribution';
+import { captureMetaLandingAttribution, clearMetaIdentifiers, getMarketingConsent, isMetaTrackingAllowed, META_CONSENT_EVENT, META_PREFERENCES_EVENT, META_REQUIRE_MARKETING_CONSENT, setMarketingConsent } from '@/lib/metaAttribution';
 
 function installMetaPixel(pixelId) {
   if (typeof window === 'undefined' || !pixelId) return;
@@ -49,7 +49,7 @@ export default function MetaPixelClient({ enabled, pixelId, testEventCode, track
     const sync = () => {
       const choice = getMarketingConsent();
       setConsent(choice);
-      if (choice !== 'granted') {
+      if (!isMetaTrackingAllowed()) {
         if (choice === 'denied') clearMetaIdentifiers();
         lastPageView.current = '';
         if (typeof window.fbq === 'function') window.fbq('consent', 'revoke');
@@ -69,7 +69,7 @@ export default function MetaPixelClient({ enabled, pixelId, testEventCode, track
 
   useEffect(() => {
     if (!landingUrl.current || new URL(window.location.href).searchParams.has('fbclid')) landingUrl.current = window.location.href;
-    const allowed = consent === 'granted';
+    const allowed = isMetaTrackingAllowed();
     configureMetaPixel({ enabled: enabled && allowed, pixelId: cleanPixelId, testEventCode, blocked });
     if (trackingEnabled && !blocked && allowed) captureMetaLandingAttribution(landingUrl.current);
     if (!enabled || !cleanPixelId || blocked || !allowed) return;
@@ -84,7 +84,8 @@ export default function MetaPixelClient({ enabled, pixelId, testEventCode, track
     }
   }, [blocked, cleanPixelId, consent, enabled, pathname, testEventCode, trackingEnabled]);
 
-  if (blocked || !trackingEnabled && !preferencesOpen || consent !== null && !preferencesOpen) return null;
+  const showConsentPrompt = META_REQUIRE_MARKETING_CONSENT && trackingEnabled && consent === null;
+  if (blocked || !preferencesOpen && !showConsentPrompt) return null;
   const choose = (choice) => { setConsent(setMarketingConsent(choice)); setPreferencesOpen(false); };
   const privacyBlocked = consent === 'denied' && typeof window !== 'undefined' && (window.navigator?.globalPrivacyControl === true || ['1', 'yes'].includes(window.navigator?.doNotTrack));
   return (

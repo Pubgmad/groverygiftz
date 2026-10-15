@@ -2,6 +2,12 @@ export const META_CONSENT_COOKIE = 'gg_marketing_consent';
 export const META_CONSENT_EVENT = 'groverygiftz:marketing-consent';
 export const META_PREFERENCES_EVENT = 'groverygiftz:marketing-preferences';
 export const META_ATTRIBUTION_LIFETIME = 7 * 24 * 60 * 60 * 1000;
+export const META_REQUIRE_MARKETING_CONSENT = process.env.NEXT_PUBLIC_META_REQUIRE_CONSENT === 'true';
+
+export function isMetaPermissionAllowed(choice) {
+  if (choice === 'denied') return false;
+  return !META_REQUIRE_MARKETING_CONSENT || choice === 'granted';
+}
 
 export function readMetaCookies(raw = '') {
   const cookies = {};
@@ -48,7 +54,7 @@ export function getMarketingConsent() {
 }
 
 export function isMetaTrackingAllowed() {
-  return getMarketingConsent() === 'granted';
+  return typeof window !== 'undefined' && typeof document !== 'undefined' && isMetaPermissionAllowed(getMarketingConsent());
 }
 
 function cookieDomain() {

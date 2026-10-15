@@ -23,7 +23,7 @@ function context(extra = '', globals = {}) {
   vm.runInContext(shared + '\n' + customer + '\n' + server + '\n' + extra, value);
   return value;
 }
-function browser(url = 'https://groverygiftz.in/', initial = {}, navigator = {}) {
+function browser(url = 'https://groverygiftz.in/', initial = {}, navigator = {}, env = {}) {
   const jar = new Map(Object.entries(initial));
   const calls = [];
   const requests = [];
@@ -45,7 +45,7 @@ function browser(url = 'https://groverygiftz.in/', initial = {}, navigator = {})
     fetch: async (...args) => { requests.push(args); return {}; },
     localStorage: { getItem: () => null, setItem() {} },
   };
-  const c = context(purchase + '\n' + pixel, { window, document });
+  const c = context(purchase + '\n' + pixel, { window, document, process: { env } });
   return { c, window, document, jar, calls, requests, events };
 }
 function request(headers = {}) {
@@ -53,14 +53,13 @@ function request(headers = {}) {
 }
 const permitted = { cookie: `gg_marketing_consent=granted; _fbc=${fbc}; _fbp=${fbp}`, 'user-agent': 'Original customer browser' };
 
-test('ad landing creates fbc only from the actual URL after consent', () => {
+test('automatic ad attribution uses the actual URL without manufacturing a consent choice', () => {
   const b = browser('https://groverygiftz.in/?fbclid=actual_click');
-  b.c.captureMetaLandingAttribution();
-  assert.equal(b.jar.has('_fbc'), false);
-  b.c.setMarketingConsent('granted');
   b.c.captureMetaLandingAttribution();
   assert.match(b.jar.get('_fbc'), /^fb\.1\.\d{13}\.actual_click$/);
   assert.equal(b.jar.has('_fbp'), false);
+  assert.equal(b.jar.has('gg_marketing_consent'), false);
+  assert.equal(b.c.getMarketingConsent(), null);
 });
 test('no-ad landing never manufactures fbc or fbp', () => {
   const b = browser('https://groverygiftz.in/', { gg_marketing_consent: 'granted' });
@@ -112,13 +111,31 @@ test('denial clears ad cookies and pending events but leaves login/cart cookies 
   assert.deepEqual(b.calls[0], ['consent', 'revoke']);
   assert.equal(b.requests[0][0], '/api/meta/consent');
 });
-test('unknown consent, GPC, and DNT prevent all manual Pixel events', () => {
-  for (const [cookie, nav] of [[{}, {}], [{ gg_marketing_consent: 'denied' }, {}], [{ gg_marketing_consent: 'granted' }, { globalPrivacyControl: true }], [{ gg_marketing_consent: 'granted' }, { doNotTrack: '1' }]]) {
+test('explicit rejection, GPC, and DNT still prevent all manual Pixel events', () => {
+  for (const [cookie, nav] of [[{ gg_marketing_consent: 'denied' }, {}], [{ gg_marketing_consent: 'granted' }, { globalPrivacyControl: true }], [{ gg_marketing_consent: 'granted' }, { doNotTrack: '1' }], [{}, { globalPrivacyControl: true }], [{}, { doNotTrack: '1' }]]) {
     const b = browser('https://groverygiftz.in/', cookie, nav);
     b.c.configureMetaPixel({ enabled: true, pixelId: 'test-pixel' });
     assert.equal(b.c.trackMetaEvent('PageView'), false);
     assert.equal(b.calls.length, 0);
   }
+});
+test('new visitors can track genuine events without an Accept action or consent cookie', () => {
+  const b = browser();
+  b.c.configureMetaPixel({ enabled: true, pixelId: 'test-pixel' });
+  assert.equal(b.c.trackMetaEvent('PageView'), true);
+  assert.equal(b.calls.length, 1);
+  assert.equal(b.jar.has('gg_marketing_consent'), false);
+});
+test('explicit-consent deployment mode still blocks both landing attribution and events until acceptance', () => {
+  const b = browser('https://groverygiftz.in/?fbclid=actual_click', {}, {}, { NEXT_PUBLIC_META_REQUIRE_CONSENT: 'true' });
+  b.c.configureMetaPixel({ enabled: true, pixelId: 'test-pixel' });
+  b.c.captureMetaLandingAttribution();
+  assert.equal(b.jar.has('_fbc'), false);
+  assert.equal(b.c.trackMetaEvent('PageView'), false);
+  b.c.setMarketingConsent('granted');
+  b.c.captureMetaLandingAttribution();
+  assert.match(b.jar.get('_fbc'), /\.actual_click$/);
+  assert.equal(b.c.trackMetaEvent('PageView'), true);
 });
 test('GPC cannot be overridden by the Accept action', () => {
   const b = browser('https://groverygiftz.in/?fbclid=click', {}, { globalPrivacyControl: true });
@@ -143,9 +160,9 @@ test('absence of ad cookies still yields a valid consented website event', () =>
   assert.equal(userData.fbc, undefined);
   assert.equal(userData.fbp, undefined);
 });
-test('denied/unknown/server privacy signals capture no identifiers or browser metadata', () => {
+test('denied/server privacy signals capture no identifiers or browser metadata', () => {
   const c = context();
-  for (const headers of [{}, { ...permitted, cookie: 'gg_marketing_consent=denied' }, { ...permitted, 'sec-gpc': '1' }, { ...permitted, dnt: '1' }]) {
+  for (const headers of [{ ...permitted, cookie: 'gg_marketing_consent=denied' }, { ...permitted, 'sec-gpc': '1' }, { ...permitted, dnt: '1' }]) {
     const data = c.captureMetaOrderAttribution(request(headers));
     assert.equal(data.allowed, false);
     assert.equal(data.clientUserAgent, undefined);
@@ -153,6 +170,19 @@ test('denied/unknown/server privacy signals capture no identifiers or browser me
     assert.equal(data.fbp, undefined);
     assert.equal(c.buildMetaBrowserData(data), null);
   }
+});
+test('server automatic mode captures actual metadata without a consent cookie; strict mode does not', () => {
+  const req = request({ cookie: `_fbc=${fbc}; _fbp=${fbp}`, 'user-agent': 'Original browser' });
+  const data = context().captureMetaOrderAttribution(req);
+  assert.equal(data.allowed, true);
+  assert.equal(data.clientUserAgent, 'Original browser');
+  assert.equal(data.fbc, fbc);
+  assert.equal(data.fbp, fbp);
+  const strict = context('', { process: { env: { NEXT_PUBLIC_META_REQUIRE_CONSENT: 'true' } } });
+  const blocked = strict.captureMetaOrderAttribution(req);
+  assert.equal(blocked.allowed, false);
+  assert.equal(strict.buildMetaBrowserData(blocked), null);
+  assert.equal(strict.captureMetaOrderAttribution(request(permitted)).allowed, true);
 });
 test('untrusted forwarded headers and malformed client IPs are ignored', () => {
   const c = context();
@@ -300,6 +330,17 @@ test('denied checkout still succeeds and ignores forged body attribution', async
   assert.equal((await fixture.c.POST(fixture.req)).status, 201);
   assert.equal(fixture.record().metaAttribution.allowed, false);
   assert.equal(fixture.record().metaAttribution.clientUserAgent, undefined);
+});
+
+test('automatic checkout preserves totals and captures the actual browser without an acceptance cookie', async () => {
+  const fixture = checkoutFixture({ user: { type: 'customer', id: 'customer-1' } }, { 'user-agent': 'Automatic checkout browser' });
+  assert.equal((await fixture.c.POST(fixture.req)).status, 201);
+  assert.equal(fixture.record().metaAttribution.allowed, true);
+  assert.equal(fixture.record().metaAttribution.clientUserAgent, 'Automatic checkout browser');
+  assert.equal(fixture.record().metaAttribution.fbc, undefined);
+  assert.equal(fixture.record().metaAttribution.fbp, undefined);
+  assert.equal(fixture.providerBody().order_amount, 1100);
+  assert.equal(fixture.providerBody().order_currency, 'INR');
 });
 
 function withdrawalFixture(session, origin = 'https://groverygiftz.in') {

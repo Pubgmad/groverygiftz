@@ -48,6 +48,13 @@ export default async function PolicyPage({ params }) {
         ) : (
           <p className="text-gray-500">This page content can be managed from the admin panel.</p>
         )}
+        {params.slug === 'privacy-policy' && (
+          <section className="mt-8 border-t pt-6 text-gray-700">
+            <h2 className="text-xl font-semibold text-gray-950">Advertising measurement and privacy choices</h2>
+            <p className="mt-3 leading-7">When enabled, Meta Pixel and Conversions API measure website activity, advertising results and completed purchases. Event and product information, advertising cookie identifiers, browser details and hashed customer contact details may be shared with Meta for matching and measurement. Uploaded photos, customer notes and payment credentials are not included in these tracking events.</p>
+            <p className="mt-3 leading-7">You can disable marketing tracking through Cookie preferences in the footer. We also honor supported browser privacy signals. Disabling marketing tracking does not prevent shopping or checkout.</p>
+          </section>
+        )}
       </div>
     </div>
   );

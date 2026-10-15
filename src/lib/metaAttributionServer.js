@@ -1,7 +1,7 @@
 import { isIP } from 'node:net';
 import Order from '@/models/Order';
 import dbConnect from '@/lib/db';
-import { META_CONSENT_COOKIE, META_ATTRIBUTION_LIFETIME, readMetaCookies, validateMetaIdentifier } from './metaAttribution';
+import { META_CONSENT_COOKIE, META_ATTRIBUTION_LIFETIME, isMetaPermissionAllowed, readMetaCookies, validateMetaIdentifier } from './metaAttribution';
 
 export function trustedMetaClientIp(req, env = process.env) {
   // Only configure this after the hosting proxy is verified to overwrite the header.
@@ -22,7 +22,7 @@ export function trustedMetaClientIp(req, env = process.env) {
 
 export function captureMetaOrderAttribution(req, now = new Date()) {
   const cookies = readMetaCookies(req.headers.get('cookie') || '');
-  const allowed = cookies[META_CONSENT_COOKIE] === 'granted' && req.headers.get('sec-gpc') !== '1' && req.headers.get('dnt') !== '1';
+  const allowed = isMetaPermissionAllowed(cookies[META_CONSENT_COOKIE] || null) && req.headers.get('sec-gpc') !== '1' && req.headers.get('dnt') !== '1';
   const metadata = { allowed, capturedAt: now, expiresAt: new Date(now.getTime() + META_ATTRIBUTION_LIFETIME) };
   if (!allowed) return metadata;
   const agent = String(req.headers.get('user-agent') || '').trim();

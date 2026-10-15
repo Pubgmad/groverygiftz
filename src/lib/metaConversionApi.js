@@ -9,7 +9,7 @@ export function buildPurchasePayload(order, settings) {
   const purchase = buildMetaPurchase(order);
   if (!purchase) throw new Error('Invalid paid order Purchase data');
   const browserData = buildMetaBrowserData(order.metaAttribution);
-  if (!browserData) throw new Error('Consented original browser metadata unavailable or expired');
+  if (!browserData) throw new Error('Permitted original browser metadata unavailable or expired');
   const eventId = purchase.eventId;
   const userData = { ...buildMetaCustomerData(order), ...browserData };
 
