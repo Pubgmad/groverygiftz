@@ -3,6 +3,7 @@ import { FiInstagram, FiYoutube, FiMail, FiPhone, FiMapPin, FiPackage } from 're
 import Newsletter from './Newsletter';
 import dbConnect from '@/lib/db';
 import Settings from '@/models/Settings';
+import MarketingPreferencesLink from '@/components/meta/MarketingPreferencesLink';
 
 export default async function Footer() {
   await dbConnect();
@@ -97,6 +98,7 @@ export default async function Footer() {
                   <Link href={l.href} className="hover:text-accent-400 transition-colors hover:pl-1 block">{l.label}</Link>
                 </li>
               ))}
+              <li><MarketingPreferencesLink /></li>
             </ul>
           </div>
 

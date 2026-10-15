@@ -3,14 +3,17 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const crypto = require('node:crypto');
+const { isIP } = require('node:net');
 
 const read = (file) => fs.readFileSync(file, 'utf8');
 const plain = (value) => JSON.parse(JSON.stringify(value));
 const source = (file) => read(file).replace(/^import .*;\r?\n/gm, '').replace(/export /g, '');
 const purchaseSource = source('src/lib/metaPurchase.js');
+const attributionSource = source('src/lib/metaAttribution.js');
+const customerSource = source('src/lib/metaCustomerData.js');
 function load(extraSource = '', globals = {}) {
-  const context = vm.createContext({ console: { warn() {}, info() {}, error() {} }, URL, AbortSignal, crypto, process: { env: {} }, ...globals });
-  vm.runInContext(purchaseSource + '\n' + extraSource, context);
+  const context = vm.createContext({ console: { warn() {}, info() {}, error() {} }, URL, AbortSignal, crypto, isIP, process: { env: {} }, ...globals });
+  vm.runInContext(purchaseSource + '\n' + attributionSource + '\n' + customerSource + '\n' + extraSource, context);
   return context;
 }
 const paidOrder = (overrides = {}) => ({
@@ -18,6 +21,7 @@ const paidOrder = (overrides = {}) => ({
   paidAt: new Date().toISOString(), total: 1499, subtotal: 1399, shippingCost: 100,
   items: [{ product: 'product-1', price: 1399, quantity: 1 }],
   shippingAddress: { fullName: 'Test Customer', email: 'test@example.invalid', phone: '9876543210', city: 'Chennai', state: 'Tamil Nadu', pincode: '600001' },
+  metaAttribution: { allowed: true, clientUserAgent: 'Test browser', capturedAt: new Date(), expiresAt: new Date(Date.now() + 86400000) },
   ...overrides,
 });
 const settings = { metaPixelId: 'test-pixel', metaConversionApiEnabled: true, metaConversionApiAccessToken: 'test-token' };
@@ -27,7 +31,7 @@ function browser(storage = new Map(), ready = true) {
   const events = [];
   const window = { localStorage: { getItem: (key) => storage.get(key), setItem: (key, value) => storage.set(key, value) } };
   if (ready) window.fbq = (...args) => events.push(plain(args));
-  const context = load(browserSource, { window });
+  const context = load(browserSource, { window, document: { cookie: 'gg_marketing_consent=granted' } });
   context.configureMetaPixel({ enabled: true, pixelId: 'test-pixel' });
   return { context, events, window, storage };
 }
@@ -212,11 +216,12 @@ test('Pixel initialization disables automatic setup before init and installs one
 function matches(doc, filter) {
   return Object.entries(filter).every(([key, value]) => {
     if (key === '$or') return value.some((entry) => matches(doc, entry));
-    if (value === null) return doc[key] == null;
-    if (value && typeof value === 'object' && '$exists' in value) return (doc[key] !== undefined) === value.$exists;
-    if (value && typeof value === 'object' && '$lt' in value) return doc[key] != null && new Date(doc[key]) < value.$lt;
-    if (value instanceof Date) return doc[key] != null && new Date(doc[key]).getTime() === value.getTime();
-    return doc[key] === value;
+    const actual = key.split('.').reduce((entry, part) => entry?.[part], doc);
+    if (value === null) return actual == null;
+    if (value && typeof value === 'object' && '$exists' in value) return (actual !== undefined) === value.$exists;
+    if (value && typeof value === 'object' && '$lt' in value) return actual != null && new Date(actual) < value.$lt;
+    if (value instanceof Date) return actual != null && new Date(actual).getTime() === value.getTime();
+    return actual === value;
   });
 }
 function apply(doc, update) {
@@ -227,10 +232,11 @@ function serverFixture(order = paidOrder(), fetchImpl = async () => ({ ok: true,
   const doc = { ...order };
   const requests = [];
   const Order = {
-    async findOneAndUpdate(filter, update) {
-      if (!matches(doc, filter)) return null;
-      apply(doc, update);
-      return { ...doc };
+    async exists(filter) { return matches(doc, filter) ? { _id: doc._id } : null; },
+    findOneAndUpdate(filter, update) {
+      let result = null;
+      if (matches(doc, filter)) { apply(doc, update); result = { ...doc }; }
+      return { select: async () => result };
     },
     async updateOne(filter, update) {
       if (!matches(doc, filter)) return { matchedCount: 0 };
@@ -252,6 +258,7 @@ test('duplicate and concurrent webhooks send one CAPI event', async () => {
   assert.ok(doc.metaConversionPurchaseSentAt);
   assert.equal(doc.metaConversionPurchaseEventId, 'purchase-order-database-id-1');
   assert.equal(doc.metaConversionPurchaseStartedAt, undefined);
+  assert.equal(doc.metaAttribution, undefined);
   assert.equal(requests[0].url.includes('test-token'), false);
   assert.ok(requests[0].signal);
 });
@@ -269,6 +276,18 @@ test('network timeout retries once with the same identifier', async () => {
   await context.sendMetaPurchaseEvent(doc._id);
   assert.equal(requests.length, 2);
   assert.deepEqual(requests[0].payload, requests[1].payload);
+});
+
+test('withdrawal during a failed Meta request prevents the retry', async () => {
+  let fixture;
+  fixture = serverFixture(paidOrder(), async () => {
+    fixture.doc.metaAttribution = { allowed: false };
+    delete fixture.doc.metaConversionPurchaseStartedAt;
+    return { ok: false, status: 503, json: async () => ({}) };
+  });
+  assert.equal((await fixture.context.sendMetaPurchaseEvent(fixture.doc._id)).skipped, true);
+  assert.equal(fixture.requests.length, 1);
+  assert.equal(fixture.doc.metaConversionPurchaseSentAt, undefined);
 });
 test('unsuccessful acknowledgement is not marked sent and releases the claim', async () => {
   const { context, doc } = serverFixture(paidOrder(), async () => ({ ok: true, status: 200, json: async () => ({ events_received: 0 }) }));
@@ -296,6 +315,24 @@ test('server never posts pending, invalid-valued or disabled-config purchases', 
   await fixture.context.sendMetaPurchaseEvent(fixture.doc._id);
   assert.equal(fixture.requests.length, 0);
 });
+
+test('CAPI sends original raw browser identifiers and skips denied or incomplete metadata', async () => {
+  const timestamp = Date.now();
+  const attribution = { allowed: true, expiresAt: new Date(timestamp + 86400000), clientUserAgent: 'Original device browser', clientIpAddress: '2001:db8::42', fbc: `fb.1.${timestamp}.original_click`, fbp: `fb.1.${timestamp}.123456789` };
+  const fixture = serverFixture(paidOrder({ metaAttribution: attribution }));
+  await fixture.context.sendMetaPurchaseEvent(fixture.doc._id);
+  const data = fixture.requests[0].payload.data[0].user_data;
+  assert.equal(data.fbc, attribution.fbc);
+  assert.equal(data.fbp, attribution.fbp);
+  assert.equal(data.client_user_agent, attribution.clientUserAgent);
+  assert.equal(data.client_ip_address, attribution.clientIpAddress);
+  for (const metadata of [undefined, { ...attribution, allowed: false }, { ...attribution, clientUserAgent: '' }, { ...attribution, expiresAt: new Date(0) }]) {
+    const skipped = serverFixture(paidOrder({ metaAttribution: metadata }));
+    await skipped.context.sendMetaPurchaseEvent(skipped.doc._id);
+    assert.equal(skipped.requests.length, 0);
+    assert.equal(skipped.doc.metaConversionPurchaseSentAt, undefined);
+  }
+});
 test('CAPI retains hashed matching, verified purchase time and checkout source', () => {
   const c = load(serverSource);
   const order = paidOrder();
@@ -304,7 +341,7 @@ test('CAPI retains hashed matching, verified purchase time and checkout source',
   assert.equal(event.data[0].event_source_url, 'https://groverygiftz.in/checkout');
   assert.equal(event.data[0].action_source, 'website');
   assert.equal(event.data[0].user_data.ph, crypto.createHash('sha256').update('919876543210').digest('hex'));
-  for (const hash of Object.values(event.data[0].user_data)) assert.match(hash, /^[a-f0-9]{64}$/);
+  for (const [key, hash] of Object.entries(event.data[0].user_data)) if (key !== 'client_user_agent') assert.match(hash, /^[a-f0-9]{64}$/);
   assert.equal(event.test_event_code, 'TEST-ONLY');
 });
 test('cashfree verification response exposes tracking only after confirmed payment', () => {

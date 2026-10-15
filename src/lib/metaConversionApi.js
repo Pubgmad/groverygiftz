@@ -1,46 +1,17 @@
-import crypto from 'crypto';
 import Settings from '@/models/Settings';
 import Order from '@/models/Order';
 import { buildMetaPurchase } from './metaPurchase';
+import { buildMetaBrowserData, buildMetaCustomerData } from './metaCustomerData';
 
 const META_GRAPH_VERSION = 'v26.0';
-
-const clean = (value) => String(value || '').trim();
-const normalizeLower = (value) => clean(value).toLowerCase();
-const digitsOnly = (value) => clean(value).replace(/\D/g, '');
-const sha256 = (value) => {
-  const normalized = clean(value);
-  if (!normalized) return undefined;
-  return crypto.createHash('sha256').update(normalized).digest('hex');
-};
-
-const splitName = (fullName = '') => {
-  const parts = clean(fullName).toLowerCase().split(/\s+/).filter(Boolean);
-  return { firstName: parts[0] || '', lastName: parts.length > 1 ? parts[parts.length - 1] : '' };
-};
 
 export function buildPurchasePayload(order, settings) {
   const purchase = buildMetaPurchase(order);
   if (!purchase) throw new Error('Invalid paid order Purchase data');
-  const address = order.shippingAddress || {};
-  const { firstName, lastName } = splitName(address.fullName);
-  const email = normalizeLower(address.email || order.guestEmail);
-  const phoneDigits = digitsOnly(address.whatsappNumber || address.phone);
-  const phone = phoneDigits.length === 10 ? `91${phoneDigits}` : phoneDigits;
+  const browserData = buildMetaBrowserData(order.metaAttribution);
+  if (!browserData) throw new Error('Consented original browser metadata unavailable or expired');
   const eventId = purchase.eventId;
-
-  const userData = {
-    em: sha256(email),
-    ph: sha256(phone),
-    fn: sha256(firstName),
-    ln: sha256(lastName),
-    ct: sha256(normalizeLower(address.city)),
-    st: sha256(normalizeLower(address.state)),
-    zp: sha256(clean(address.pincode)),
-    country: sha256('in'),
-    external_id: sha256(String(order.customer || email || order._id || '')),
-  };
-  Object.keys(userData).forEach((key) => userData[key] === undefined && delete userData[key]);
+  const userData = { ...buildMetaCustomerData(order), ...browserData };
 
   const customData = purchase.params;
 
@@ -69,6 +40,7 @@ export async function sendMetaPurchaseEvent(orderId) {
     {
       _id: orderId,
       paymentStatus: 'paid',
+      'metaAttribution.allowed': true,
       metaConversionPurchaseSentAt: null,
       $or: [
         { metaConversionPurchaseStartedAt: null },
@@ -82,18 +54,19 @@ export async function sendMetaPurchaseEvent(orderId) {
       },
     },
     { new: true }
-  );
+  ).select('+metaAttribution');
 
   if (!order) return { skipped: true };
 
   try {
     const { payload, eventId } = buildPurchasePayload(order, settings);
-    const claim = { _id: order._id, metaConversionPurchaseStartedAt: startedAt };
+    const claim = { _id: order._id, metaConversionPurchaseStartedAt: startedAt, 'metaAttribution.allowed': true };
     const identitySaved = await Order.updateOne(claim, { $set: { metaConversionPurchaseEventId: eventId } });
     if (!identitySaved.matchedCount) return { skipped: true };
     // A transient retry always carries the same ID and exact same purchase data.
     let accepted = false;
     for (let attempt = 0; attempt < 2; attempt += 1) {
+      if (attempt > 0 && !await Order.exists(claim)) return { skipped: true };
       try {
         const res = await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/${encodeURIComponent(settings.metaPixelId)}/events`, {
           method: 'POST',
@@ -115,7 +88,7 @@ export async function sendMetaPurchaseEvent(orderId) {
 
     await Order.updateOne(
       claim,
-      { $set: { metaConversionPurchaseSentAt: new Date(), metaConversionPurchaseEventId: eventId, metaConversionPurchaseError: '' }, $unset: { metaConversionPurchaseStartedAt: '' } }
+      { $set: { metaConversionPurchaseSentAt: new Date(), metaConversionPurchaseEventId: eventId, metaConversionPurchaseError: '' }, $unset: { metaConversionPurchaseStartedAt: '', metaAttribution: '' } }
     );
     console.info('Meta Purchase accepted', { orderNumber: order.orderNumber, eventId, value: payload.data[0].custom_data.value, currency: payload.data[0].custom_data.currency });
     return { sent: true, eventId };

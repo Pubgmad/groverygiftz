@@ -48,6 +48,18 @@ const OrderSchema = new mongoose.Schema({
   metaConversionPurchaseSentAt: Date,
   metaConversionPurchaseStartedAt: Date,
   metaConversionPurchaseError: String,
+  metaAttribution: {
+    type: new mongoose.Schema({
+      allowed: Boolean,
+      capturedAt: Date,
+      expiresAt: Date,
+      fbc: String,
+      fbp: String,
+      clientUserAgent: String,
+      clientIpAddress: String,
+    }, { _id: false }),
+    select: false,
+  },
   notes: String,
 }, { timestamps: true });
 

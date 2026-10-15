@@ -9,6 +9,7 @@ import { buildDeliveryEstimateText } from '@/lib/deliveryDate';
 import { hydrateProductShippingTemplates } from '@/lib/shippingTemplateHydration';
 import { assertStockAvailable, getGroupedStockRequests } from '@/lib/inventory';
 import { getCashfreeConfig } from '@/lib/cashfreeConfig';
+import { captureMetaOrderAttribution } from '@/lib/metaAttributionServer';
 
 const CASHFREE_VERSION = '2025-01-01';
 const endpointFor = (environment) => environment === 'production'
@@ -196,6 +197,7 @@ export async function POST(req) {
       cashfreeCfOrderId: String(cashfreeData.cf_order_id || ''),
       cashfreePaymentSessionId: cashfreeData.payment_session_id,
       notes: notes || '',
+      metaAttribution: captureMetaOrderAttribution(req),
     });
 
     return NextResponse.json({

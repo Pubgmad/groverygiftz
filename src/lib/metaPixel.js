@@ -1,4 +1,5 @@
 import { isValidMetaPurchase, purchaseAmount, PURCHASE_CURRENCY } from './metaPurchase';
+import { isMetaTrackingAllowed } from './metaAttribution';
 
 const ADMIN_PATH_PREFIXES = ['/admin', '/account/manage'];
 
@@ -27,6 +28,7 @@ export function getMetaPixelConfig() {
 
 export function trackMetaEvent(eventName, params = {}, options = {}) {
   if (!isBrowser() || typeof window.fbq !== 'function') return false;
+  if (!isMetaTrackingAllowed()) return false;
   const config = getMetaPixelConfig();
   if (!config.enabled || !config.pixelId || config.blocked) return false;
 
@@ -46,6 +48,7 @@ export function trackMetaEvent(eventName, params = {}, options = {}) {
 
 export function trackVerifiedMetaPurchase(result) {
   if (!isBrowser() || result?.success !== true || result.paymentStatus !== 'paid') return false;
+  if (!isMetaTrackingAllowed()) return false;
   const event = result.metaPurchase;
   if (!isValidMetaPurchase(event) || event.params.order_id !== result.orderNumber || event.params.value !== purchaseAmount(result.total)) {
     console.warn('Meta Purchase skipped: invalid verified order tracking payload');
@@ -62,6 +65,7 @@ export function trackVerifiedMetaPurchase(result) {
 
 export function flushMetaPurchases() {
   if (!isBrowser()) return;
+  if (!isMetaTrackingAllowed()) { window.__groveryGiftzMetaPurchasesPending?.clear(); return; }
   const config = getMetaPixelConfig();
   if (!config.enabled || !config.pixelId || config.blocked || typeof window.fbq !== 'function') return;
   const pending = window.__groveryGiftzMetaPurchasesPending;
