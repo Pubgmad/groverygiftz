@@ -4,7 +4,8 @@ import { useRouter } from 'next/navigation';
 import { useCart } from '@/context/CartContext';
 import { formatPrice, calcSavings, getEffectivePrice, isOfferActive, getVariantRegularPrice, getVariantSalePrice, getVariantEffectivePrice } from '@/lib/utils';
 import { getProductAvailableStock, getSelectedAvailableStock, hasVariantManagedStock, isProductSoldOut, isVariantOptionSoldOut } from '@/lib/stock';
-import { buildDeliveryEstimateText } from '@/lib/deliveryDate';
+import { getCentralDeliveryEstimate, buildCurrentDeliveryEstimate } from '@/lib/centralDeliveryEstimates';
+import useDeliverySettings from '@/hooks/useDeliverySettings';
 import { buildProductMetaPayload, META_READY_EVENT, trackMetaCustomEvent, trackMetaEvent } from '@/lib/metaPixel';
 import { trackGA4Product } from '@/lib/ga4';
 import { GOOGLE_CONSENT_SYNC_EVENT } from '@/lib/googleConsent';
@@ -60,7 +61,7 @@ export default function ProductDetail({ product }) {
   const [customerNote, setCustomerNote] = useState('');
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [sizeChartOpen, setSizeChartOpen] = useState(false);
-  const [settings, setSettings] = useState({ freeShippingThreshold: 499, whatsapp: '919994549781', tamilNaduShippingCost: 0, otherStateShippingCost: 120, tamilNaduDeliveryEstimate: 'Within 8 days', otherStateDeliveryEstimate: '10-15 days', deliveryHolidays: [] });
+  const settings = useDeliverySettings();
   const { addToCart, setIsCartOpen } = useCart();
   const router = useRouter();
   const viewedProductRef = useRef('');
@@ -189,23 +190,21 @@ export default function ProductDetail({ product }) {
     .flatMap((selected) => selected?.stateOverrides || [])
     .find((row) => String(row.state || '').trim().toLowerCase() === String(state || '').trim().toLowerCase());
   const getProductShippingForState = (state) => {
-    if (!state) return { cost: 0, estimate: 'Select state to see delivery estimate' };
+    if (!state) return { cost: 0, estimate: getCentralDeliveryEstimate(settings, state) };
     const variantOverride = getSelectedVariantShippingOverride(state);
-    if (variantOverride?.state) return { cost: Number(variantOverride.shippingCost || 0), estimate: variantOverride.deliveryEstimate || '' };
+    if (variantOverride?.state) return { cost: Number(variantOverride.shippingCost || 0), estimate: getCentralDeliveryEstimate(settings, state) };
     if (usesProductDelivery) {
       const override = getStateOverride(productDelivery, state);
-      if (override?.state) return { cost: Number(override.shippingCost || 0), estimate: override.deliveryEstimate || '' };
-      if (isTamilNadu(state)) return { cost: Number(productDelivery.tamilNaduShippingCost || 0), estimate: productDelivery.tamilNaduDeliveryEstimate || settings.tamilNaduDeliveryEstimate || 'Within 8 days' };
-      return { cost: Number(productDelivery.otherStateShippingCost || 0), estimate: productDelivery.otherStateDeliveryEstimate || settings.otherStateDeliveryEstimate || '10-15 days' };
+      if (override?.state) return { cost: Number(override.shippingCost || 0), estimate: getCentralDeliveryEstimate(settings, state) };
+      if (isTamilNadu(state)) return { cost: Number(productDelivery.tamilNaduShippingCost || 0), estimate: getCentralDeliveryEstimate(settings, state) };
+      return { cost: Number(productDelivery.otherStateShippingCost || 0), estimate: getCentralDeliveryEstimate(settings, state) };
     }
     return isTamilNadu(state)
-      ? { cost: Number(settings.tamilNaduShippingCost || 0), estimate: settings.tamilNaduDeliveryEstimate || 'Within 8 days' }
-      : { cost: Number(settings.otherStateShippingCost || 0), estimate: settings.otherStateDeliveryEstimate || '10-15 days' };
+      ? { cost: Number(settings.tamilNaduShippingCost || 0), estimate: getCentralDeliveryEstimate(settings, state) }
+      : { cost: Number(settings.otherStateShippingCost || 0), estimate: getCentralDeliveryEstimate(settings, state) };
   };
   const selectedDelivery = getProductShippingForState(selectedDeliveryState);
-  const selectedDeliveryEstimateText = selectedDeliveryState
-    ? buildDeliveryEstimateText(selectedDelivery.estimate, { fallbackDays: isTamilNadu(selectedDeliveryState) ? 8 : 15, holidays: settings.deliveryHolidays || [] })
-    : '';
+  const selectedDeliveryEstimateText = buildCurrentDeliveryEstimate(settings, selectedDeliveryState);
   const productPageTotal = finalUnitPrice * quantity + selectedDelivery.cost;
   const reviewCount = reviews.length;
   const averageRating = reviewCount ? reviews.reduce((sum, review) => sum + Number(review.rating || 0), 0) / reviewCount : 0;
@@ -514,23 +513,6 @@ export default function ProductDetail({ product }) {
   };
 
   useEffect(() => {
-    fetch('/api/settings')
-      .then((r) => r.json())
-      .then((d) => {
-        setSettings({
-          freeShippingThreshold: Number(d.freeShippingThreshold ?? 499),
-          whatsapp: d.whatsapp || '919994549781',
-          tamilNaduShippingCost: Number(d.tamilNaduShippingCost ?? 0),
-          otherStateShippingCost: Number(d.otherStateShippingCost ?? d.shippingCost ?? 120),
-          tamilNaduDeliveryEstimate: d.tamilNaduDeliveryEstimate || 'Within 8 days',
-          otherStateDeliveryEstimate: d.otherStateDeliveryEstimate || '10-15 days',
-          deliveryHolidays: Array.isArray(d.deliveryHolidays) ? d.deliveryHolidays : [],
-        });
-      })
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
     const savedState = window.localStorage?.getItem('groveryDeliveryState');
     if (savedState) setSelectedDeliveryState(savedState);
   }, []);
@@ -830,7 +812,9 @@ const handleCustomerPhotoUpload = async (files) => {
           </div>
           <div className="flex items-center gap-2 text-sm text-gray-700">
             <FiClock size={14} className="text-primary-600 shrink-0" />
-            <span>Tamil Nadu Delivery: Within 8 working days | Other States: Within 10-15 working days</span>
+            <span>{getCentralDeliveryEstimate(settings, 'Tamil Nadu') && getCentralDeliveryEstimate(settings, 'Karnataka')
+              ? `Tamil Nadu Delivery: ${getCentralDeliveryEstimate(settings, 'Tamil Nadu')} | Other States: ${getCentralDeliveryEstimate(settings, 'Karnataka')}`
+              : selectedDeliveryEstimateText}</span>
           </div>
           <div className="flex items-center gap-2 text-sm text-gray-700">
             <FiShield size={14} className="text-primary-600 shrink-0" />

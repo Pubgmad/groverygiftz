@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { FiHome, FiPackage, FiGrid, FiTruck, FiShoppingCart, FiUsers, FiImage, FiFileText, FiBookOpen, FiMail, FiMessageSquare, FiSettings, FiX, FiStar, FiGift } from 'react-icons/fi';
+import { FiHome, FiPackage, FiGrid, FiTruck, FiShoppingCart, FiUsers, FiImage, FiFileText, FiBookOpen, FiMail, FiMessageSquare, FiSettings, FiX, FiStar, FiGift, FiClock } from 'react-icons/fi';
 
 const BASE = '/account/manage';
 const navItems = [
@@ -9,6 +9,7 @@ const navItems = [
   { href: `${BASE}/products`, icon: FiPackage, label: 'Products' },
   { href: `${BASE}/collections`, icon: FiGrid, label: 'Collections' },
   { href: `${BASE}/shipping`, icon: FiTruck, label: 'Shipping Templates' },
+  { href: `${BASE}/estimated-delivery`, icon: FiClock, label: 'Estimated Delivery Days' },
   { href: `${BASE}/orders`, icon: FiShoppingCart, label: 'Orders' },
   { href: `${BASE}/customers`, icon: FiUsers, label: 'Customers' },
   { href: `${BASE}/reviews`, icon: FiStar, label: 'Reviews' },

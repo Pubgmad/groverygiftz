@@ -3,6 +3,9 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import ImageUploader from '@/components/admin/ImageUploader';
+import Link from 'next/link';
+import useDeliverySettings from '@/hooks/useDeliverySettings';
+import { getCentralDeliveryEstimate } from '@/lib/centralDeliveryEstimates';
 import { FiPlus, FiX, FiVideo, FiUpload, FiImage, FiLoader } from 'react-icons/fi';
 
 const INDIAN_STATES = [
@@ -14,7 +17,7 @@ const INDIAN_STATES = [
 ];
 
 const defaultPreviewArea = () => ({ label: '', width: '', height: '', unit: 'inch', frameImage: '', shape: 'rectangle', required: true, requiresImageUpload: true, instructions: '' });
-const defaultDelivery = () => ({ useCustomDelivery: false, tamilNaduShippingCost: 0, otherStateShippingCost: 120, tamilNaduDeliveryEstimate: 'Within 8 days', otherStateDeliveryEstimate: '10-15 days', stateOverrides: [] });
+const defaultDelivery = () => ({ useCustomDelivery: false, tamilNaduShippingCost: 0, otherStateShippingCost: 120, tamilNaduDeliveryEstimate: '', otherStateDeliveryEstimate: '', stateOverrides: [] });
 
 function normalizePreviewAreas(preview = {}) {
   if (Array.isArray(preview.areas) && preview.areas.length > 0) return preview.areas.map((area) => ({ ...defaultPreviewArea(), ...area }));
@@ -37,6 +40,7 @@ function fromDatetimeLocalInput(value) {
 }
 
 export default function AdminProductForm({ params }) {
+  const deliverySettings = useDeliverySettings();
   const isEdit = params?.id && params.id !== 'new';
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -349,8 +353,9 @@ export default function AdminProductForm({ params }) {
               <div className="grid md:grid-cols-2 gap-4">
                 <div><label className="block text-sm font-medium mb-1">Tamil Nadu Delivery Charge (INR)</label><input type="number" min="0" value={form.delivery?.tamilNaduShippingCost ?? ''} onChange={e => setForm(p => ({ ...p, delivery: { ...p.delivery, tamilNaduShippingCost: e.target.value } }))} className="w-full border rounded-lg px-4 py-2" /></div>
                 <div><label className="block text-sm font-medium mb-1">Other States Default Charge (INR)</label><input type="number" min="0" value={form.delivery?.otherStateShippingCost ?? ''} onChange={e => setForm(p => ({ ...p, delivery: { ...p.delivery, otherStateShippingCost: e.target.value } }))} className="w-full border rounded-lg px-4 py-2" /></div>
-                <div><label className="block text-sm font-medium mb-1">Tamil Nadu Delivery Estimate</label><input value={form.delivery?.tamilNaduDeliveryEstimate || ''} onChange={e => setForm(p => ({ ...p, delivery: { ...p.delivery, tamilNaduDeliveryEstimate: e.target.value } }))} className="w-full border rounded-lg px-4 py-2" placeholder="Within 8 days" /></div>
-                <div><label className="block text-sm font-medium mb-1">Other States Default Estimate</label><input value={form.delivery?.otherStateDeliveryEstimate || ''} onChange={e => setForm(p => ({ ...p, delivery: { ...p.delivery, otherStateDeliveryEstimate: e.target.value } }))} className="w-full border rounded-lg px-4 py-2" placeholder="10-15 days" /></div>
+                <div><label className="block text-sm font-medium mb-1">Tamil Nadu Delivery Estimate</label><input readOnly value={getCentralDeliveryEstimate(deliverySettings, 'Tamil Nadu')} className="w-full border rounded-lg bg-gray-100 px-4 py-2" /></div>
+                <div><label className="block text-sm font-medium mb-1">Other States Default Estimate</label><input readOnly value={getCentralDeliveryEstimate(deliverySettings, 'Kerala')} className="w-full border rounded-lg bg-gray-100 px-4 py-2" /></div>
+                <p className="text-sm md:col-span-2">Delivery estimates are managed in <Link href="/account/manage/estimated-delivery" className="text-primary-600 underline">Estimated Delivery Days</Link>.</p>
               </div>
               <div className="rounded-xl border bg-gray-50 p-4 space-y-3">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -361,7 +366,7 @@ export default function AdminProductForm({ params }) {
                   <div key={idx} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_120px_1fr_auto] sm:items-center">
                     <select value={row.state || ''} onChange={e => updateStateOverride(idx, 'state', e.target.value)} className="border rounded-lg px-3 py-2 text-sm"><option value="">Select state</option>{INDIAN_STATES.map(state => <option key={state} value={state}>{state}</option>)}</select>
                     <input type="number" min="0" value={row.shippingCost ?? ''} onChange={e => updateStateOverride(idx, 'shippingCost', e.target.value)} className="border rounded-lg px-3 py-2 text-sm" placeholder="Cost" />
-                    <input value={row.deliveryEstimate || ''} onChange={e => updateStateOverride(idx, 'deliveryEstimate', e.target.value)} className="border rounded-lg px-3 py-2 text-sm" placeholder="Estimate" />
+                    <input readOnly value={getCentralDeliveryEstimate(deliverySettings, row.state)} className="min-w-0 border rounded-lg bg-gray-100 px-3 py-2 text-sm" aria-label="Centrally managed delivery estimate" />
                     <button type="button" onClick={() => removeStateOverride(idx)} className="text-red-500"><FiX /></button>
                   </div>
                 ))}
@@ -476,7 +481,7 @@ export default function AdminProductForm({ params }) {
                       <div key={rowIdx} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_110px_1fr_auto] sm:items-center">
                         <select value={row.state || ''} onChange={e => updateVariantStateOverride(vIdx, oIdx, rowIdx, 'state', e.target.value)} className="border rounded-lg px-3 py-2 text-xs"><option value="">Select state</option>{INDIAN_STATES.map(state => <option key={state} value={state}>{state}</option>)}</select>
                         <input type="number" min="0" value={row.shippingCost ?? ''} onChange={e => updateVariantStateOverride(vIdx, oIdx, rowIdx, 'shippingCost', e.target.value)} className="border rounded-lg px-3 py-2 text-xs" placeholder="Cost" />
-                        <input value={row.deliveryEstimate || ''} onChange={e => updateVariantStateOverride(vIdx, oIdx, rowIdx, 'deliveryEstimate', e.target.value)} className="border rounded-lg px-3 py-2 text-xs" placeholder="Estimate" />
+                        <input readOnly value={getCentralDeliveryEstimate(deliverySettings, row.state)} className="min-w-0 border rounded-lg bg-gray-100 px-3 py-2 text-xs" aria-label="Centrally managed delivery estimate" />
                         <button type="button" onClick={() => removeVariantStateOverride(vIdx, oIdx, rowIdx)} className="text-red-500"><FiX size={14} /></button>
                       </div>
                     ))}

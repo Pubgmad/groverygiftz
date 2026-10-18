@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 import dbConnect from '@/lib/db';
 import Page from '@/models/Page';
 import { notFound } from 'next/navigation';
+import DeliveryEstimateSummary from '@/components/product/DeliveryEstimateSummary';
 
 const titleMap = {
   'privacy-policy': 'Privacy Policy',
@@ -25,6 +26,9 @@ const oldSeedMarkers = [
   'Orders can be cancelled within 24 hours of placing',
 ];
 
+const legacyShippingTimeline = '<h2>Order Processing</h2><p>Since every product is custom-made:</p><p><strong>Dispatch Time:</strong> Within 6 Working Days</p><h2>Delivery Time</h2><p>After dispatch:</p><p><strong>Estimated Delivery:</strong> 2 Working Days</p>';
+const currentShippingTimeline = '<h2>Delivery Time</h2><p>Current estimated delivery days for Tamil Nadu and other supported destinations are shown above. The estimate for your selected state is confirmed at checkout.</p>';
+
 const shouldUseDefaultPolicy = (slug, content = '') => {
   if (!defaultPolicyContent[slug]) return false;
   if (!String(content || '').trim()) return true;
@@ -37,12 +41,14 @@ export default async function PolicyPage({ params }) {
 
   const title = page?.title || titleMap[params.slug];
   if (!title) notFound();
-  const content = shouldUseDefaultPolicy(params.slug, page?.content) ? defaultPolicyContent[params.slug] : page?.content;
+  const savedContent = shouldUseDefaultPolicy(params.slug, page?.content) ? defaultPolicyContent[params.slug] : page?.content;
+  const content = params.slug === 'shipping-policy' ? String(savedContent || '').replace(legacyShippingTimeline, currentShippingTimeline) : savedContent;
 
   return (
     <div className="bg-gradient-to-b from-primary-50/60 to-white px-4 py-12">
       <div className="mx-auto max-w-4xl rounded-2xl border bg-white p-5 shadow-sm sm:p-8 md:p-10">
         <h1 className="text-3xl md:text-4xl font-display font-bold mb-8 text-gray-950">{title}</h1>
+        {params.slug === 'shipping-policy' && <DeliveryEstimateSummary />}
         {content ? (
           <div className="prose max-w-none prose-headings:font-display prose-headings:text-gray-950 prose-h2:mt-8 prose-h2:text-xl prose-p:leading-7 prose-li:my-1 overflow-x-auto prose-img:max-w-full prose-table:block prose-table:overflow-x-auto" dangerouslySetInnerHTML={{ __html: content }} />
         ) : (

@@ -6,6 +6,7 @@ import Settings from '@/models/Settings';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getCashfreeConfig } from '@/lib/cashfreeConfig';
+import { DEFAULT_DELIVERY_ESTIMATES, DELIVERY_ESTIMATE_KEYS, withDeliveryEstimateDefaults } from '@/lib/centralDeliveryEstimates';
 
 const GOOGLE_REVIEW_SETTING_KEYS = [
   'googleReviewsEnabled',
@@ -46,8 +47,7 @@ export async function GET() {
       shippingCost: 40,
       tamilNaduShippingCost: 0,
       otherStateShippingCost: 120,
-      tamilNaduDeliveryEstimate: 'Within 8 days',
-      otherStateDeliveryEstimate: '10-15 days',
+      ...DEFAULT_DELIVERY_ESTIMATES,
       deliveryHolidays: [],
       socialLinks: { instagram: 'https://www.instagram.com/groverygiftz?igsh=dGNpbHlybWI0cjNy', youtube: '' },
       promoEnabled: true,
@@ -74,9 +74,9 @@ export async function GET() {
   }
 
   if (!session || session.user.type !== 'admin') {
-    return NextResponse.json(sanitizePublicSettings(settings));
+    return NextResponse.json(sanitizePublicSettings(withDeliveryEstimateDefaults(settings)), { headers: { 'Cache-Control': 'no-store' } });
   }
-  return NextResponse.json(settings);
+  return NextResponse.json(withDeliveryEstimateDefaults(settings), { headers: { 'Cache-Control': 'no-store' } });
 }
 
 export async function PUT(req) {
@@ -87,6 +87,8 @@ export async function PUT(req) {
 
   await dbConnect();
   const body = await req.json();
+  // The dedicated two-field endpoint is the only writer of delivery durations.
+  DELIVERY_ESTIMATE_KEYS.forEach((key) => { delete body[key]; });
   if (GOOGLE_REVIEW_SETTING_KEYS.some((key) => Object.prototype.hasOwnProperty.call(body, key))) {
     body.googleReviewsCache = null;
     body.googleReviewsCacheFetchedAt = null;

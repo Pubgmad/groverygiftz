@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { isGA4TrackingAllowed, trackGA4Ecommerce } from '@/lib/ga4';
 import { GOOGLE_CONSENT_SYNC_EVENT } from '@/lib/googleConsent';
 import { useCart } from '@/context/CartContext';
@@ -7,6 +7,8 @@ import { FiX, FiPlus, FiMinus, FiTrash2, FiShoppingBag, FiTruck, FiGift } from '
 import Link from 'next/link';
 import { formatPrice } from '@/lib/utils';
 import { calculateCartShipping } from '@/lib/shipping';
+import { buildCurrentDeliveryEstimate } from '@/lib/centralDeliveryEstimates';
+import useDeliverySettings from '@/hooks/useDeliverySettings';
 import ConfiguredImageSections from '@/components/cart/ConfiguredImageSections';
 
 export default function CartDrawer() {
@@ -22,22 +24,10 @@ export default function CartDrawer() {
     window.addEventListener(GOOGLE_CONSENT_SYNC_EVENT, track);
     return () => window.removeEventListener(GOOGLE_CONSENT_SYNC_EVENT, track);
   }, [isCartOpen, cartReady, cart]);
-  const [settings, setSettings] = useState({ tamilNaduShippingCost: 0, otherStateShippingCost: 120, tamilNaduDeliveryEstimate: 'Within 8 days', otherStateDeliveryEstimate: '10-15 days' });
+  const settings = useDeliverySettings();
   const selectedState = cart.find((item) => item.deliveryState)?.deliveryState || (typeof window !== 'undefined' ? window.localStorage?.getItem('groveryDeliveryState') : '') || '';
   const shippingSummary = useMemo(() => calculateCartShipping(cart, selectedState, settings), [cart, selectedState, settings]);
   const checkoutTotal = cartTotal + (selectedState ? shippingSummary.cost : 0);
-
-  useEffect(() => {
-    fetch('/api/settings')
-      .then((r) => r.json())
-      .then((d) => setSettings({
-        tamilNaduShippingCost: Number(d.tamilNaduShippingCost ?? 0),
-        otherStateShippingCost: Number(d.otherStateShippingCost ?? d.shippingCost ?? 120),
-        tamilNaduDeliveryEstimate: d.tamilNaduDeliveryEstimate || 'Within 8 days',
-        otherStateDeliveryEstimate: d.otherStateDeliveryEstimate || '10-15 days',
-      }))
-      .catch(() => {});
-  }, []);
 
   if (!isCartOpen) return null;
 
@@ -96,6 +86,7 @@ export default function CartDrawer() {
               {selectedState && <div className="flex justify-between items-center text-sm"><span className="text-gray-600">Delivery charge</span><span className="font-bold text-gray-900">{shippingSummary.cost === 0 ? 'FREE' : formatPrice(shippingSummary.cost)}</span></div>}
               {selectedState && <div className="flex justify-between items-center border-t pt-2"><span className="text-gray-900 font-bold">Checkout total</span><span className="text-xl font-bold text-primary-700">{formatPrice(checkoutTotal)}</span></div>}
               {!selectedState && <div className="rounded-lg bg-primary-50 px-3 py-2 text-xs text-gray-600">Select state on product or checkout page to see delivery charge.</div>}
+              <p className="text-xs text-gray-600">Estimated delivery: {buildCurrentDeliveryEstimate(settings, selectedState)}</p>
             </div>
             <Link href="/checkout" onClick={() => setIsCartOpen(false)} className="flex items-center justify-center gap-2 btn-accent w-full text-center text-base font-bold py-4">Checkout Now</Link>
             <Link href="/cart" onClick={() => setIsCartOpen(false)} className="block w-full text-center text-sm font-semibold text-primary-600 hover:text-primary-700 transition-colors">View cart</Link>

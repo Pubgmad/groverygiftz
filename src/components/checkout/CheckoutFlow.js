@@ -11,6 +11,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { calculateCartShipping, isTamilNadu } from '@/lib/shipping';
+import { buildCurrentDeliveryEstimate } from '@/lib/centralDeliveryEstimates';
+import useDeliverySettings from '@/hooks/useDeliverySettings';
 import { checkoutOutcomeUrl, forgetCheckoutReturn, isCheckoutReturnCompleted, readCheckoutReturn, rememberCheckoutReturn, verifyCheckoutPayment } from '@/lib/checkoutPayment';
 
 const STEPS = ['Address', 'Payment', 'Confirm'];
@@ -53,14 +55,7 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
   const [orderNote, setOrderNote] = useState('');
   const [loading, setLoading] = useState(false);
   const [latestCartDelivery, setLatestCartDelivery] = useState({});
-  const [settings, setSettings] = useState({
-    cashfreeEnabled: false,
-    tamilNaduShippingCost: 0,
-    otherStateShippingCost: 120,
-    tamilNaduDeliveryEstimate: 'Within 8 days',
-    otherStateDeliveryEstimate: '10-15 days',
-    deliveryHolidays: [],
-  });
+  const settings = useDeliverySettings();
   const [orderResult, setOrderResult] = useState(null);
   const checkoutTrackedRef = useRef(false);
   const returnVerifyRef = useRef('');
@@ -79,7 +74,7 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
   }), [cart, latestCartDelivery]);
   const shippingSummary = calculateCartShipping(cartWithLatestDelivery, address.state, settings);
   const shippingCost = hasSelectedState ? shippingSummary.cost : 0;
-  const deliveryEstimate = shippingSummary.estimate;
+  const deliveryEstimate = buildCurrentDeliveryEstimate(settings, address.state);
   const grandTotal = cartTotal + shippingCost;
   const getCartPixelPayload = (items = cart, total = grandTotal, extra = {}) => buildCartMetaPayload(items, total, extra);
   const authenticationCallback = mode === 'confirmation' ? checkoutOutcomeUrl('confirmation', orderId) : orderId || mode === 'return' ? checkoutOutcomeUrl('return', orderId) : '/checkout';
@@ -105,19 +100,6 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
     }
   }, [session]);
 
-  useEffect(() => {
-    fetch('/api/settings')
-      .then((r) => r.json())
-      .then((d) => setSettings({
-        cashfreeEnabled: !!d.cashfreeEnabled,
-        tamilNaduShippingCost: Number(d.tamilNaduShippingCost ?? 0),
-        otherStateShippingCost: Number(d.otherStateShippingCost ?? d.shippingCost ?? 120),
-        tamilNaduDeliveryEstimate: d.tamilNaduDeliveryEstimate || 'Within 8 days',
-        otherStateDeliveryEstimate: d.otherStateDeliveryEstimate || '10-15 days',
-        deliveryHolidays: Array.isArray(d.deliveryHolidays) ? d.deliveryHolidays : [],
-      }))
-      .catch(() => {});
-  }, []);
   useEffect(() => {
     const productIds = [...new Set(cart.map((item) => item.productId).filter(Boolean))];
     if (!productIds.length) {

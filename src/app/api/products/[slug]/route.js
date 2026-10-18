@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/db';
@@ -8,6 +9,8 @@ import { authOptions } from '@/lib/auth';
 import slugify from 'slugify';
 import { sanitizeProductPayload } from '@/lib/productPayload';
 import { hydrateProductShippingTemplates } from '@/lib/shippingTemplateHydration';
+import { centralizeProductDeliveryEstimates } from '@/lib/centralDeliveryEstimates';
+import { readDeliveryEstimateSettings } from '@/lib/deliveryEstimateSettings';
 
 function productLookup(segment) {
   if (typeof segment === 'string' && /^[a-fA-F0-9]{24}$/.test(segment)) {
@@ -22,7 +25,7 @@ export async function GET(req, { params }) {
   const product = await Product.findOne(productLookup(segment)).populate('collections').lean();
   if (!product) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   await hydrateProductShippingTemplates(product);
-  return NextResponse.json(product);
+  return NextResponse.json(product, { headers: { 'Cache-Control': 'no-store' } });
 }
 
 export async function PUT(req, { params }) {
@@ -34,6 +37,7 @@ export async function PUT(req, { params }) {
   const { slug: segment } = await params;
   await dbConnect();
   const body = sanitizeProductPayload(await req.json());
+  centralizeProductDeliveryEstimates(body, await readDeliveryEstimateSettings());
   if (body.title) body.slug = slugify(body.title, { lower: true, strict: true });
 
   const product = await Product.findOneAndUpdate(productLookup(segment), body, { new: true });

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import toast from 'react-hot-toast';
 import PasswordInput from '@/components/common/PasswordInput';
 import ImageUploader from '@/components/admin/ImageUploader';
@@ -27,7 +28,7 @@ export default function AdminSettingsPage() {
     siteName: '', tagline: '', logo: '', desktopLogo: '', tabletLogo: '', mobileLogo: '', favicon: '', announcementText: '',
     phone: '', email: '', whatsapp: '', address: '', timings: '',
     socialLinks: { instagram: '', youtube: '' },
-    freeShippingThreshold: 499, shippingCost: 40, tamilNaduShippingCost: 0, otherStateShippingCost: 120, tamilNaduDeliveryEstimate: 'Within 8 days', otherStateDeliveryEstimate: '10-15 days', deliveryHolidaysText: '',
+    freeShippingThreshold: 499, shippingCost: 40, tamilNaduShippingCost: 0, otherStateShippingCost: 120, deliveryHolidaysText: '',
     promoEnabled: true, promoTitle: '', promoSubtitle: '', promoEndsAt: '', promoButtonText: '', promoButtonLink: '',
     gstNumber: '33KVUPS5560J1ZL', tradeName: 'GroveryGiftz',
     spotlightProductSlug: '',
@@ -90,7 +91,7 @@ export default function AdminSettingsPage() {
         announcementText: d.announcementText || '', phone: d.phone || '', email: d.email || '',
         whatsapp: d.whatsapp || '', address: d.address || '', timings: d.timings || '',
         socialLinks: { instagram: d.socialLinks?.instagram || '', youtube: d.socialLinks?.youtube || '' },
-        freeShippingThreshold: d.freeShippingThreshold ?? 499, shippingCost: d.shippingCost ?? 40, tamilNaduShippingCost: d.tamilNaduShippingCost ?? 0, otherStateShippingCost: d.otherStateShippingCost ?? 120, tamilNaduDeliveryEstimate: d.tamilNaduDeliveryEstimate || 'Within 8 days', otherStateDeliveryEstimate: d.otherStateDeliveryEstimate || '10-15 days', deliveryHolidaysText: (d.deliveryHolidays || []).map(formatAdminHolidayDate).filter(Boolean).join('\n'),
+        freeShippingThreshold: d.freeShippingThreshold ?? 499, shippingCost: d.shippingCost ?? 40, tamilNaduShippingCost: d.tamilNaduShippingCost ?? 0, otherStateShippingCost: d.otherStateShippingCost ?? 120, deliveryHolidaysText: (d.deliveryHolidays || []).map(formatAdminHolidayDate).filter(Boolean).join('\n'),
         promoEnabled: d.promoEnabled ?? true,
         promoTitle: d.promoTitle || 'Limited Time Offer!',
         promoSubtitle: d.promoSubtitle || "Hurry! Sale ends soon. Don't miss out on amazing deals.",
@@ -182,8 +183,6 @@ export default function AdminSettingsPage() {
       shippingCost: Number(rest.shippingCost) || 40,
       tamilNaduShippingCost: Number(rest.tamilNaduShippingCost) || 0,
       otherStateShippingCost: Number(rest.otherStateShippingCost) || 0,
-      tamilNaduDeliveryEstimate: rest.tamilNaduDeliveryEstimate || 'Within 8 days',
-      otherStateDeliveryEstimate: rest.otherStateDeliveryEstimate || '10-15 days',
       deliveryHolidays: deliveryHolidaysText.split(/\r?\n|,/).map((s) => s.trim()).filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date)),
       tickerMessages: tickerMessagesText.split('\n').map((s) => s.trim()).filter(Boolean),
       heroTrustBadges: heroTrustBadgesText.split('\n').map((s) => s.trim()).filter(Boolean),
@@ -246,12 +245,10 @@ export default function AdminSettingsPage() {
 
         <div className="bg-white p-6 rounded-xl border space-y-4">
           <h2 className="font-bold text-lg">Shipping & Delivery</h2>
-          <p className="text-sm text-gray-500">Tamil Nadu delivery can stay free. For other states, set the delivery charge and estimated timeline customers should see during checkout.</p>
+          <Link href="/account/manage/estimated-delivery" className="inline-block text-sm font-medium text-primary-700 hover:underline">Estimated Delivery Days</Link>
           <div className="grid md:grid-cols-2 gap-4">
             <div><label className="block text-sm font-medium mb-1">Tamil Nadu Delivery Charge (INR)</label><input type="number" value={form.tamilNaduShippingCost} onChange={e => setForm(p => ({ ...p, tamilNaduShippingCost: e.target.value }))} className="w-full border rounded-lg px-4 py-2" /></div>
             <div><label className="block text-sm font-medium mb-1">Other States Delivery Charge (INR)</label><input type="number" value={form.otherStateShippingCost} onChange={e => setForm(p => ({ ...p, otherStateShippingCost: e.target.value }))} className="w-full border rounded-lg px-4 py-2" /></div>
-            <div><label className="block text-sm font-medium mb-1">Tamil Nadu Delivery Estimate</label><input value={form.tamilNaduDeliveryEstimate} onChange={e => setForm(p => ({ ...p, tamilNaduDeliveryEstimate: e.target.value }))} className="w-full border rounded-lg px-4 py-2" placeholder="Within 8 days" /></div>
-            <div><label className="block text-sm font-medium mb-1">Other States Delivery Estimate</label><input value={form.otherStateDeliveryEstimate} onChange={e => setForm(p => ({ ...p, otherStateDeliveryEstimate: e.target.value }))} className="w-full border rounded-lg px-4 py-2" placeholder="10-15 days" /></div>
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Government / Public Holidays</label>

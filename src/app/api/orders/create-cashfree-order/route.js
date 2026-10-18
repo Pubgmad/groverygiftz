@@ -5,7 +5,7 @@ import Order from '@/models/Order';
 import Product from '@/models/Product';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { buildDeliveryEstimateText } from '@/lib/deliveryDate';
+import { buildCurrentDeliveryEstimate, getCentralDeliveryEstimate, withDeliveryEstimateDefaults } from '@/lib/centralDeliveryEstimates';
 import { hydrateProductShippingTemplates } from '@/lib/shippingTemplateHydration';
 import { assertStockAvailable, getGroupedStockRequests } from '@/lib/inventory';
 import { getCashfreeConfig } from '@/lib/cashfreeConfig';
@@ -61,23 +61,23 @@ const resolveItemDelivery = (item, productsById, state, settings) => {
   const product = productsById[String(item.productId || item.product || '')];
   const currentVariantDelivery = resolveCurrentVariantDelivery(item, product) || item?.variantDelivery;
   const variantOverride = getStateOverride(currentVariantDelivery, state);
-  if (variantOverride?.state) return { cost: Number(variantOverride.shippingCost || 0), estimate: variantOverride.deliveryEstimate || '' };
+  if (variantOverride?.state) return { cost: Number(variantOverride.shippingCost || 0), estimate: getCentralDeliveryEstimate(settings, state) };
   const delivery = product?.delivery || item.delivery || {};
   if (!delivery.useCustomDelivery) return null;
 
   const override = getStateOverride(delivery, state);
-  if (override?.state) return { cost: Number(override.shippingCost || 0), estimate: override.deliveryEstimate || '' };
+  if (override?.state) return { cost: Number(override.shippingCost || 0), estimate: getCentralDeliveryEstimate(settings, state) };
 
   if (isTamilNadu(state)) {
     return {
       cost: Number(delivery.tamilNaduShippingCost || 0),
-      estimate: delivery.tamilNaduDeliveryEstimate || settings.tamilNaduDeliveryEstimate || 'Within 8 days',
+      estimate: getCentralDeliveryEstimate(settings, state),
     };
   }
 
   return {
     cost: Number(delivery.otherStateShippingCost || 0),
-    estimate: delivery.otherStateDeliveryEstimate || settings.otherStateDeliveryEstimate || '10-15 days',
+    estimate: getCentralDeliveryEstimate(settings, state),
   };
 };
 
@@ -86,13 +86,11 @@ const calculateShipping = (items, productsById, state, settings) => {
 
   let cost = 0;
   let hasStoreDefaultItem = false;
-  const estimates = [];
 
   items.forEach((item) => {
     const resolved = resolveItemDelivery(item, productsById, state, settings);
     if (resolved) {
       cost += resolved.cost * Number(item.quantity || 1);
-      if (resolved.estimate) estimates.push(resolved.estimate);
       return;
     }
     hasStoreDefaultItem = true;
@@ -100,13 +98,11 @@ const calculateShipping = (items, productsById, state, settings) => {
 
   if (hasStoreDefaultItem) {
     cost += isTamilNadu(state) ? Number(settings.tamilNaduShippingCost || 0) : Number(settings.otherStateShippingCost || 0);
-    estimates.push(isTamilNadu(state) ? settings.tamilNaduDeliveryEstimate : settings.otherStateDeliveryEstimate);
   }
 
-  const uniqueEstimates = [...new Set(estimates.filter(Boolean))];
   return {
     cost,
-    estimate: buildDeliveryEstimateText(uniqueEstimates.length > 1 ? uniqueEstimates.join(' / ') : (uniqueEstimates[0] || (isTamilNadu(state) ? 'Within 8 days' : '10-15 days')), { fallbackDays: isTamilNadu(state) ? 8 : 15, holidays: settings.deliveryHolidays || [] }),
+    estimate: buildCurrentDeliveryEstimate(settings, state),
   };
 };
 
@@ -118,7 +114,7 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Please sign in as a customer before placing an order.' }, { status: 401 });
     }
 
-    const settings = await Settings.findOne().lean();
+    const settings = withDeliveryEstimateDefaults(await Settings.findOne().lean() || {});
     const cashfree = getCashfreeConfig(settings);
     if (!cashfree.enabled || !cashfree.appId || !cashfree.secretKey) {
       return NextResponse.json({ error: 'Cashfree payment is not configured yet' }, { status: 503 });
@@ -140,7 +136,7 @@ export async function POST(req) {
     });
     const productIds = [...new Set(orderItems.map((item) => item.productId).filter(Boolean))];
     const products = await Product.find({ _id: { $in: productIds } }).select('title stock variants delivery isActive regularPrice salePrice offerStartsAt offerEndsAt giftWrap').lean();
-    await hydrateProductShippingTemplates(products);
+    await hydrateProductShippingTemplates(products, settings);
     const productsById = Object.fromEntries(products.map((product) => [String(product._id), product]));
     assertStockAvailable(getGroupedStockRequests(orderItems, productsById));
     assertOrderPricing(orderItems, productsById);

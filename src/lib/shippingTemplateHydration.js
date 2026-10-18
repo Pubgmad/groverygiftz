@@ -1,4 +1,6 @@
 import ShippingTemplate from '@/models/ShippingTemplate';
+import { readDeliveryEstimateSettings } from '@/lib/deliveryEstimateSettings';
+import { centralizeProductDeliveryEstimates } from '@/lib/centralDeliveryEstimates';
 
 const templateIdOf = (value) => {
   if (!value) return '';
@@ -25,15 +27,16 @@ const collectTemplateIds = (product) => {
   return ids;
 };
 
-export async function hydrateProductShippingTemplates(products = []) {
+export async function hydrateProductShippingTemplates(products = [], deliverySettings = null) {
   const list = Array.isArray(products) ? products : [products];
   const ids = [...list.reduce((set, product) => {
     collectTemplateIds(product).forEach((id) => set.add(id));
     return set;
   }, new Set())];
 
-  if (!ids.length) return products;
-  const templates = await ShippingTemplate.find({ _id: { $in: ids } }).lean();
+  if (!list.length) return products;
+  const settings = deliverySettings || await readDeliveryEstimateSettings();
+  const templates = ids.length ? await ShippingTemplate.find({ _id: { $in: ids } }).lean() : [];
   const templatesById = new Map(templates.map((template) => [String(template._id), templateRatesToOverrides(template.rates)]));
 
   list.forEach((product) => {
@@ -53,6 +56,7 @@ export async function hydrateProductShippingTemplates(products = []) {
         }
       });
     });
+    centralizeProductDeliveryEstimates(product, settings);
   });
 
   return products;

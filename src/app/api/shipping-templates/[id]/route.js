@@ -6,6 +6,8 @@ import Product from '@/models/Product';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { sanitizeShippingTemplatePayload } from '@/lib/shippingTemplatePayload';
+import { readDeliveryEstimateSettings } from '@/lib/deliveryEstimateSettings';
+import { centralizeTemplateRates } from '@/lib/centralDeliveryEstimates';
 
 async function requireAdmin() {
   const session = await getServerSession(authOptions);
@@ -57,6 +59,7 @@ export async function PUT(req, { params }) {
   await dbConnect();
   const { id } = await params;
   const body = sanitizeShippingTemplatePayload(await req.json());
+  body.rates = centralizeTemplateRates(body.rates, await readDeliveryEstimateSettings());
   const template = await ShippingTemplate.findByIdAndUpdate(id, body, { new: true });
   if (!template) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const changedSlugs = await syncProductsUsingTemplate(template);

@@ -10,6 +10,8 @@ import slugify from 'slugify';
 import { activeAdminOfferMatch } from '@/lib/offers';
 import { sanitizeProductPayload } from '@/lib/productPayload';
 import { hydrateProductShippingTemplates } from '@/lib/shippingTemplateHydration';
+import { centralizeProductDeliveryEstimates } from '@/lib/centralDeliveryEstimates';
+import { readDeliveryEstimateSettings } from '@/lib/deliveryEstimateSettings';
 
 export async function GET(req) {
   await dbConnect();
@@ -46,7 +48,7 @@ export async function GET(req) {
 
   await hydrateProductShippingTemplates(products);
 
-  return NextResponse.json({ products, total, pages: Math.ceil(total / limit), page });
+  return NextResponse.json({ products, total, pages: Math.ceil(total / limit), page }, { headers: { 'Cache-Control': 'no-store' } });
 }
 
 export async function POST(req) {
@@ -57,6 +59,7 @@ export async function POST(req) {
 
   await dbConnect();
   const body = sanitizeProductPayload(await req.json());
+  centralizeProductDeliveryEstimates(body, await readDeliveryEstimateSettings());
   body.slug = slugify(body.title, { lower: true, strict: true });
 
   const existing = await Product.findOne({ slug: body.slug });

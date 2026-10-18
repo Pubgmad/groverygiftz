@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { DEFAULT_DELIVERY_ESTIMATES } from '@/lib/centralDeliveryEstimates';
 
 const GiftFinderOptionSchema = new mongoose.Schema({
   value: { type: String, default: '' },
@@ -41,8 +42,8 @@ const SettingsSchema = new mongoose.Schema({
   shippingCost: { type: Number, default: 40 },
   tamilNaduShippingCost: { type: Number, default: 0 },
   otherStateShippingCost: { type: Number, default: 120 },
-  tamilNaduDeliveryEstimate: { type: String, default: 'Within 8 days' },
-  otherStateDeliveryEstimate: { type: String, default: '10-15 days' },
+  tamilNaduDeliveryEstimate: { type: String, default: DEFAULT_DELIVERY_ESTIMATES.tamilNaduDeliveryEstimate },
+  otherStateDeliveryEstimate: { type: String, default: DEFAULT_DELIVERY_ESTIMATES.otherStateDeliveryEstimate },
   deliveryHolidays: [{ type: Date }],
   promoEnabled: { type: Boolean, default: true },
   promoTitle: { type: String, default: 'Limited Time Offer!' },

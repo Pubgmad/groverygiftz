@@ -294,7 +294,7 @@ function checkoutFixture(session, headers = permitted) {
   let record;
   let providerBody;
   const pricing = source('src/lib/offers.js') + '\nconst checkOfferActive = (product, now) => getOfferStatus(product, now) === "active";\n' + ['src/lib/utils.js', 'src/lib/stock.js', 'src/lib/orderPricing.js'].map(source).join('\n');
-  const c = context(pricing + '\n' + source('src/lib/checkoutPayment.js') + '\n' + source('src/app/api/orders/create-cashfree-order/route.js'), {
+  const c = context(pricing + '\n' + source('src/lib/checkoutPayment.js') + '\n' + source('src/lib/centralDeliveryEstimates.js') + '\n' + source('src/app/api/orders/create-cashfree-order/route.js'), {
     randomUUID: crypto.randomUUID,
     NextResponse: { json: (body, init = {}) => ({ body, status: init.status || 200 }) },
     dbConnect: async () => {}, getServerSession: async () => session, authOptions: {},

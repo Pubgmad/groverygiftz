@@ -2,6 +2,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { FiEdit2, FiPlus, FiTrash2 } from 'react-icons/fi';
+import Link from 'next/link';
+import { getCentralDeliveryEstimate } from '@/lib/centralDeliveryEstimates';
 
 const INDIAN_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
@@ -11,7 +13,7 @@ const INDIAN_STATES = [
   'West Bengal', 'Delhi', 'Jammu & Kashmir', 'Ladakh', 'Puducherry',
 ];
 
-const blankRates = () => INDIAN_STATES.map((state) => ({ state, shippingCost: state === 'Tamil Nadu' ? 0 : 0, deliveryEstimate: state === 'Tamil Nadu' ? 'Within 8 working days' : '10-15 working days' }));
+const blankRates = () => INDIAN_STATES.map((state) => ({ state, shippingCost: 0, deliveryEstimate: '' }));
 const emptyTemplate = () => ({ name: '', description: '', rates: blankRates(), isActive: true });
 
 export default function ShippingTemplatesPage() {
@@ -19,11 +21,17 @@ export default function ShippingTemplatesPage() {
   const [selectedId, setSelectedId] = useState(null);
   const [form, setForm] = useState(emptyTemplate());
   const [loading, setLoading] = useState(false);
+  const [deliveryEstimates, setDeliveryEstimates] = useState({});
   const selected = useMemo(() => templates.find((template) => template._id === selectedId), [templates, selectedId]);
 
-  const loadTemplates = () => fetch('/api/shipping-templates?all=true').then(r => r.json()).then(d => setTemplates(d.templates || [])).catch(() => toast.error('Unable to load shipping templates'));
+  const loadTemplates = () => fetch('/api/shipping-templates?all=true', { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error(); return r.json(); }).then(d => { setTemplates(d.templates || []); setDeliveryEstimates(d.deliveryEstimates || {}); }).catch(() => toast.error('Unable to load shipping templates'));
 
-  useEffect(() => { loadTemplates(); }, []);
+  useEffect(() => {
+    loadTemplates();
+    const refresh = () => { fetch('/api/delivery-estimates', { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error(); return r.json(); }).then(setDeliveryEstimates).catch(() => {}); };
+    window.addEventListener('focus', refresh);
+    return () => window.removeEventListener('focus', refresh);
+  }, []);
   useEffect(() => {
     if (!selectedId) return;
     if (selectedId === 'new') return setForm(emptyTemplate());
@@ -41,7 +49,7 @@ export default function ShippingTemplatesPage() {
       const res = await fetch(isEdit ? `/api/shipping-templates/${selectedId}` : '/api/shipping-templates', {
         method: isEdit ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, rates: form.rates.map((row) => ({ ...row, deliveryEstimate: getCentralDeliveryEstimate(deliveryEstimates, row.state) })) }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Unable to save template');
@@ -82,7 +90,7 @@ export default function ShippingTemplatesPage() {
         <button type="button" onClick={() => setSelectedId('new')} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary-600 px-4 py-3 text-sm font-bold text-white sm:w-auto"><FiPlus /> New Template</button>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[280px_1fr]">
+      <div className="grid min-w-0 gap-5 lg:grid-cols-[240px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)]">
         <div className="rounded-2xl border bg-white p-3">
           <div className="mb-3 px-2 py-1">
             <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Saved templates</p>
@@ -110,12 +118,13 @@ export default function ShippingTemplatesPage() {
             </div>
           </div>
         ) : (
-        <form onSubmit={saveTemplate} className="rounded-2xl border bg-white p-4 sm:p-6">
+        <form onSubmit={saveTemplate} className="min-w-0 rounded-2xl border bg-white p-4 sm:p-6">
           <div className="mb-5 grid gap-4 md:grid-cols-2">
             <div><label className="mb-1 block text-sm font-medium">Template Name</label><input required value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} className="w-full rounded-lg border px-4 py-2" placeholder="Example: 1 KG - All States" /></div>
             <div><label className="mb-1 block text-sm font-medium">Description</label><input value={form.description || ''} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} className="w-full rounded-lg border px-4 py-2" placeholder="Optional internal note" /></div>
           </div>
           <label className="mb-5 flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={form.isActive !== false} onChange={e => setForm(p => ({ ...p, isActive: e.target.checked }))} /> Active for product dropdowns</label>
+          <p className="mb-4 text-sm text-gray-500">Delivery days are managed in <Link href="/account/manage/estimated-delivery" className="text-primary-600 underline">Estimated Delivery Days</Link>.</p>
 
           <div className="space-y-3 md:hidden">
             {form.rates.map((row, idx) => (
@@ -131,7 +140,7 @@ export default function ShippingTemplatesPage() {
                   </div>
                   <div>
                     <label className="mb-1 block text-xs font-semibold text-gray-500">Delivery Estimate</label>
-                    <input value={row.deliveryEstimate || ''} onChange={e => updateRate(idx, { deliveryEstimate: e.target.value })} className="w-full rounded-lg border bg-white px-3 py-2 text-sm" placeholder="Within 8 working days" />
+                    <input readOnly aria-label={`${row.state} centrally managed delivery estimate`} value={getCentralDeliveryEstimate(deliveryEstimates, row.state)} className="w-full rounded-lg border bg-gray-100 px-3 py-2 text-sm" />
                   </div>
                 </div>
               </div>
@@ -139,15 +148,15 @@ export default function ShippingTemplatesPage() {
           </div>
 
           <div className="hidden overflow-x-auto rounded-xl border md:block">
-            <table className="w-full min-w-[720px] text-sm">
+            <table className="w-full table-fixed text-sm">
               <thead className="bg-gray-50 text-left text-gray-600"><tr><th className="p-3">S.No</th><th className="p-3">State</th><th className="p-3">Price</th><th className="p-3">Delivery Estimate</th></tr></thead>
               <tbody>
                 {form.rates.map((row, idx) => (
                   <tr key={row.state} className="border-t">
                     <td className="p-3 text-gray-500">{idx + 1}</td>
-                    <td className="p-3 font-semibold text-gray-900">{row.state}</td>
-                    <td className="p-3"><input type="number" min="0" value={row.shippingCost ?? ''} onChange={e => updateRate(idx, { shippingCost: e.target.value })} className="w-28 rounded-lg border px-3 py-2" /></td>
-                    <td className="p-3"><input value={row.deliveryEstimate || ''} onChange={e => updateRate(idx, { deliveryEstimate: e.target.value })} className="w-full rounded-lg border px-3 py-2" placeholder="Within 8 working days" /></td>
+                    <td className="break-words p-3 font-semibold text-gray-900">{row.state}</td>
+                    <td className="p-3"><input type="number" min="0" value={row.shippingCost ?? ''} onChange={e => updateRate(idx, { shippingCost: e.target.value })} className="w-full min-w-0 rounded-lg border px-3 py-2" /></td>
+                    <td className="p-3"><input readOnly aria-label={`${row.state} centrally managed delivery estimate`} value={getCentralDeliveryEstimate(deliveryEstimates, row.state)} className="w-full rounded-lg border bg-gray-100 px-3 py-2" /></td>
                   </tr>
                 ))}
               </tbody>
