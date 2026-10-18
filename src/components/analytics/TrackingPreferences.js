@@ -11,7 +11,6 @@ import { isGA4AdminPath } from '@/lib/ga4';
 export default function TrackingPreferences() {
   const pathname = usePathname();
   const [visible, setVisible] = useState(false);
-  const [hasChoice, setHasChoice] = useState(false);
   const [analytics, setAnalytics] = useState(false);
   const [advertising, setAdvertising] = useState(false);
   const [privacyBlocked, setPrivacyBlocked] = useState(false);
@@ -19,12 +18,10 @@ export default function TrackingPreferences() {
   useEffect(() => {
     const sync = (open = false) => {
       const choice = getGoogleConsent();
-      const saved = choice.analytics !== null && choice.advertising !== null;
-      setHasChoice(saved);
       setAnalytics(choice.analytics === 'granted');
       setAdvertising(choice.advertising === 'granted');
       setPrivacyBlocked(hasGooglePrivacySignal());
-      setVisible(open || !saved);
+      setVisible(open);
     };
     const refresh = () => sync();
     const open = () => sync(true);
@@ -51,7 +48,7 @@ export default function TrackingPreferences() {
     <section aria-labelledby="cookie-preferences-title" className="fixed bottom-24 left-3 right-3 z-40 max-h-[calc(100dvh-7rem)] overflow-y-auto rounded-lg border border-gray-200 bg-white p-4 text-gray-800 shadow-lg sm:bottom-6 sm:left-6 sm:right-auto sm:max-h-[calc(100dvh-3rem)] sm:w-[400px] sm:max-w-[calc(100vw-3rem)]">
       <div className="flex items-start justify-between gap-3">
         <h2 id="cookie-preferences-title" className="text-base font-semibold">Cookie preferences</h2>
-        {hasChoice && <button type="button" aria-label="Close cookie preferences" title="Close cookie preferences" onClick={() => setVisible(false)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100"><FiX size={20} /></button>}
+        <button type="button" aria-label="Close cookie preferences" title="Close cookie preferences" onClick={() => setVisible(false)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100"><FiX size={20} /></button>
       </div>
       <p className="mt-2 text-sm leading-relaxed">Optional cookies are your choice. Shopping and checkout work without them.</p>
       <div className="mt-3 space-y-3 text-sm">

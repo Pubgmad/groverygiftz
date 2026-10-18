@@ -1,5 +1,7 @@
 # GA4 Purpose-Specific Consent Correction
 
+Update, 18 October 2026: at the operator's request, the panel no longer opens automatically for visitors without a saved choice. It opens only through the existing footer Cookie preferences link and can always be closed without saving. Consent defaults, saved choices and tracking gates are unchanged: a visitor without an Analytics grant is not measured by the manual GA4 integration. Descriptions of the initial prompt below describe the original 15 October rollout, not a current automatic popup.
+
 Date: 15 October 2026. Measurement ID: G-JNPXLZQB0V. The operator confirmed India-only sales. Sales territory is not used as a substitute for visitor location or permission; no IP geolocation service or regional auto-grant was added.
 
 ## Confirmed Findings

@@ -145,6 +145,34 @@ test('in-page consent remains usable when browser cookie access itself throws', 
   assert.equal(b.c.trackGA4Ecommerce('add_to_cart', [item()]), false);
 });
 
+test('preferences stay closed on arrival and focus, and open only from the footer action', () => {
+  const panel = read('src/components/analytics/TrackingPreferences.js');
+  const start = panel.indexOf('  useEffect(() => {') + '  useEffect(() => {'.length;
+  const end = panel.indexOf('\n  }, []);', start);
+  assert.ok(start > 0 && end > start);
+  const listeners = new Map();
+  let visible;
+  const cleanup = vm.runInNewContext(`(function () { ${panel.slice(start, end)} })()`, {
+    getGoogleConsent: () => ({ analytics: null, advertising: null }),
+    hasGooglePrivacySignal: () => false,
+    setAnalytics() {}, setAdvertising() {}, setPrivacyBlocked() {},
+    setVisible: (value) => { visible = value; },
+    META_PREFERENCES_EVENT: 'open-preferences', GOOGLE_CONSENT_EVENT: 'consent-change',
+    window: { addEventListener: (name, callback) => listeners.set(name, callback), removeEventListener: (name) => listeners.delete(name) },
+  });
+  assert.equal(visible, false);
+  listeners.get('focus')();
+  assert.equal(visible, false);
+  listeners.get('open-preferences')();
+  assert.equal(visible, true);
+  listeners.get('consent-change')();
+  assert.equal(visible, false);
+  cleanup();
+  assert.equal(listeners.size, 0);
+  assert.equal(panel.includes('hasChoice'), false);
+  assert.match(panel, /aria-label="Close cookie preferences"/);
+});
+
 test('one independent preference panel has separate unchecked controls and does not depend on Meta settings', () => {
   const layout = read('src/app/layout.js');
   const panel = read('src/components/analytics/TrackingPreferences.js');
