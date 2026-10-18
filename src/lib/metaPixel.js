@@ -2,6 +2,7 @@ import { isValidMetaPurchase, purchaseAmount, PURCHASE_CURRENCY } from './metaPu
 import { isMetaTrackingAllowed } from './metaAttribution';
 
 const ADMIN_PATH_PREFIXES = ['/admin', '/account/manage'];
+export const META_READY_EVENT = 'groverygiftz:meta-ready';
 
 function isBrowser() {
   return typeof window !== 'undefined';
@@ -68,6 +69,7 @@ export function flushMetaPurchases() {
   if (!isMetaTrackingAllowed()) { window.__groveryGiftzMetaPurchasesPending?.clear(); return; }
   const config = getMetaPixelConfig();
   if (!config.enabled || !config.pixelId || config.blocked || typeof window.fbq !== 'function') return;
+  if (typeof window.fbq.callMethod !== 'function') return;
   const pending = window.__groveryGiftzMetaPurchasesPending;
   if (!pending) return;
   const sent = window.__groveryGiftzMetaPurchasesSent ||= new Set();

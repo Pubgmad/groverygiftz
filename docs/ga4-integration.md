@@ -35,7 +35,7 @@ New regression tests cover fresh automatic visits, purchase refresh deduplicatio
 | Component | Implementation | Verification | Status |
 | --- | --- | --- | --- |
 | Google tag installation | One next/script instance and one js/config initialization per document; afterInteractive loading | Initialization/id tests and production build passed | Code verified locally; live tag reception pending |
-| Page views | Manual direct/SPA views with safe URL, title and referrer; confirmation is a virtual screen | Repeated renders, route/query changes, return-query cleanup and context scope tested | Google Enhanced Measurement must be OFF; Realtime/DebugView pending |
+| Page views | Manual direct/SPA views with safe URL, title and referrer; confirmation has a separate verified route | Repeated renders, route/query changes, legacy returns and confirmation context tested | Google Enhanced Measurement must be OFF; Realtime/DebugView pending |
 | Product views | Catalog/selected-variant view_item; visible list-card impressions and real selections | Actual ID/name, price, variant, list/index and per-visit guards tested | Local tests passed; physical-browser validation pending |
 | Add to Cart | Actual successful CartContext mutation and quantity delta, after stock caps | Real CartContext source exercised; no event for a capped no-op | Local tests passed |
 | Checkout | Ready authenticated checkout, validated address confirmation, provider-ready payment method | Payload tests, source guards and existing checkout/payment regressions passed | Local tests passed; sandbox E2E pending |
@@ -97,7 +97,7 @@ The purchase builder requires merchandise value + saved shipping = saved total w
 
 Example from controlled fixtures: two INR 500 items and INR 100 shipping produce GA value=1000, shipping=100, total paid=1100. Meta continues reporting its established grand-total policy, value=1100. This difference is deliberate; each integration follows its own documented semantics. Existing discounted prices and gift-wrap-in-unit-price behavior remain unchanged.
 
-The existing /checkout page renders its success screen without a separate route. Analytics records that genuine verified screen as virtual /checkout/success, with a confirmation title. It does not navigate there or change browser history. Payment-return query cleanup cannot turn it into another checkout impression.
+Address/payment remains on /checkout. Cashfree returns through /checkout/return, then verified payment opens the real /checkout/success route. These routes share the existing checkout implementation. Confirmation rechecks ownership/payment and records a sanitized /checkout/success location without the order query. Legacy /checkout?cashfree_order_id=... links redirect to the return route. Visiting a confirmation URL alone does not emit Purchase.
 
 ## Purchase Delivery and Deduplication
 

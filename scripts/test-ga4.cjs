@@ -32,7 +32,10 @@ function fixture(options = {}) {
     sessionStorage: { getItem: (key) => session.get(key), setItem: (key, value) => session.set(key, value), removeItem: (key) => session.delete(key) },
     performance: { timeOrigin: options.documentTime || 100 },
     dispatchEvent: (event) => signals.push(event.type),
-    gtag: (...args) => events.push(plain(args)),
+    gtag: (...args) => {
+      events.push(plain(args));
+      if (options.processCallbacks !== false && typeof args[2]?.event_callback === 'function') args[2].event_callback();
+    },
   };
   const c = vm.createContext({ URL, console, process: { env: options.env || {} }, window, document, Date, Set, Map, Event });
   vm.runInContext(shared + '\n' + googleConsentSource + '\n' + data + '\n' + analytics, c);
@@ -568,7 +571,68 @@ test('one framework script is globally mounted and Meta initialization is retain
   assert.match(component, /id="grovery-ga4-sdk"/);
   assert.match(component, /session\?\.user\?\.type === 'customer'/);
   assert.match(component, /requestAnimationFrame\(\(\) => trackGA4PageView\(\)\)/);
-  const checkout = read('src/app/checkout/page.js');
+  const checkout = read('src/components/checkout/CheckoutFlow.js');
   assert.match(checkout, /addEventListener\(GOOGLE_CONSENT_SYNC_EVENT, trackCheckout\)/);
   assert.match(checkout, /removeEventListener\(GOOGLE_CONSENT_SYNC_EVENT, trackCheckout\)/);
+});
+
+test('consented Purchase queued before SDK readiness survives a document reload with the same transaction ID', () => {
+  const b = fixture(); b.c.initializeGA4();
+  const result = b.verified();
+  assert.equal(b.c.trackGA4Purchase(result), true);
+  assert.equal(b.fired('purchase').length, 0);
+  const serialized = [...b.storage.values()].join('');
+  assert.equal(serialized.includes('shippingAddress'), false);
+  const returned = fixture({ storage: b.storage }); returned.ready();
+  assert.equal(returned.fired('purchase').length, 1);
+  assert.equal(returned.fired('purchase')[0][2].transaction_id, result.ga4Purchase.params.transaction_id);
+  const refreshed = fixture({ storage: b.storage }); refreshed.ready();
+  assert.equal(refreshed.fired('purchase').length, 0);
+});
+
+test('SDK dispatch without its callback retains the pending purchase for a later document', () => {
+  const b = fixture({ processCallbacks: false }); b.ready();
+  b.c.trackGA4Purchase(b.verified());
+  assert.equal([...b.storage.keys()].some((key) => key.startsWith('gg-ga4-purchase-')), false);
+  const returned = fixture({ storage: b.storage }); returned.ready();
+  assert.equal(returned.fired('purchase').length, 1);
+});
+
+test('withdrawing analytics removes unsent purchase snapshots without deleting cart or authentication data', () => {
+  const b = fixture(); b.c.initializeGA4(); b.c.trackGA4Purchase(b.verified());
+  b.storage.set('cart', 'keep'); b.storage.set('auth', 'keep');
+  b.c.saveGoogleConsent({ analytics: false, advertising: false }); b.c.syncGA4Privacy();
+  assert.equal([...b.storage.keys()].some((key) => key.startsWith('gg-ga4-pending-')), false);
+  assert.equal(b.storage.get('cart'), 'keep'); assert.equal(b.storage.get('auth'), 'keep');
+});
+
+test('late consent measures the current confirmation screen but never replays a purchase collected without permission', () => {
+  const b = fixture({ unknown: true, url: 'https://groverygiftz.in/checkout' });
+  assert.equal(b.c.trackGA4OrderConfirmation(), false);
+  assert.equal(b.c.trackGA4Purchase(b.verified()), false);
+  assert.equal(b.storage.size, 0);
+  b.c.saveGoogleConsent({ analytics: true, advertising: false }); b.ready();
+  b.c.trackGA4PageView();
+  assert.equal(b.fired('page_view')[0][2].page_path, '/checkout/success');
+  assert.equal(b.fired('purchase').length, 0);
+});
+
+test('real confirmation has one sanitized page view without exposing the Cashfree order ID', () => {
+  const b = fixture({ url: 'https://groverygiftz.in/checkout/success?cashfree_order_id=private-provider-id' }); b.ready();
+  b.c.trackGA4PageView(); b.c.trackGA4OrderConfirmation(); b.c.trackGA4Purchase(b.verified());
+  b.window.location = new URL('https://groverygiftz.in/checkout/success?cashfree_order_id=another-private-id');
+  b.c.trackGA4PageView();
+  assert.equal(b.fired('page_view').length, 1);
+  assert.equal(b.fired('page_view')[0][2].page_location, 'https://groverygiftz.in/checkout/success');
+  assert.equal(b.fired('purchase').length, 1);
+  assert.equal(JSON.stringify(b.events).includes('private-provider-id'), false);
+});
+
+test('starting a new checkout after the real receipt is measured as checkout, not another confirmation', () => {
+  const b = fixture({ url: 'https://groverygiftz.in/checkout/success?cashfree_order_id=previous-order' }); b.ready();
+  b.c.trackGA4OrderConfirmation();
+  b.window.location = new URL('https://groverygiftz.in/checkout');
+  b.c.trackGA4PageView(); b.c.trackGA4Ecommerce('begin_checkout', [item()]);
+  assert.equal(b.fired('page_view').at(-1)[2].page_path, '/checkout');
+  assert.equal(b.fired('begin_checkout')[0][2].page_location, 'https://groverygiftz.in/checkout');
 });

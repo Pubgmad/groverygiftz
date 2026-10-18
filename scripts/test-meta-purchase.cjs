@@ -31,7 +31,10 @@ const serverSource = source('src/lib/metaConversionApi.js');
 function browser(storage = new Map(), ready = true) {
   const events = [];
   const window = { localStorage: { getItem: (key) => storage.get(key), setItem: (key, value) => storage.set(key, value) } };
-  if (ready) window.fbq = (...args) => events.push(plain(args));
+  if (ready) {
+    window.fbq = (...args) => events.push(plain(args));
+    window.fbq.callMethod = () => {};
+  }
   const context = load(browserSource, { window, document: { cookie: 'gg_marketing_consent=granted' } });
   context.configureMetaPixel({ enabled: true, pixelId: 'test-pixel' });
   return { context, events, window, storage };
@@ -120,6 +123,7 @@ test('verified Purchase is queued until Pixel initialization and then sent once'
   context.trackVerifiedMetaPurchase(verified(context, paidOrder()));
   assert.equal(events.length, 0);
   window.fbq = (...args) => events.push(plain(args));
+  window.fbq.callMethod = () => {};
   context.flushMetaPurchases();
   context.flushMetaPurchases();
   assert.equal(events.length, 1);
@@ -158,6 +162,7 @@ test('a queued Purchase that ages past the receipt window is discarded', () => {
   // Simulate a tab staying open with the Pixel unavailable beyond the reporting window.
   window.__groveryGiftzMetaPurchasesPending.get(result.metaPurchase.eventId).eventTime -= 3 * 86400;
   window.fbq = (...args) => events.push(plain(args));
+  window.fbq.callMethod = () => {};
   context.flushMetaPurchases();
   assert.equal(events.length, 0);
   assert.equal(window.__groveryGiftzMetaPurchasesPending.size, 0);
@@ -339,7 +344,7 @@ test('CAPI retains hashed matching, verified purchase time and checkout source',
   const order = paidOrder();
   const event = c.buildPurchasePayload(order, { ...settings, metaPixelTestEventCode: 'TEST-ONLY' }).payload;
   assert.equal(event.data[0].event_time, Math.floor(new Date(order.paidAt).getTime() / 1000));
-  assert.equal(event.data[0].event_source_url, 'https://groverygiftz.in/checkout');
+  assert.equal(event.data[0].event_source_url, 'https://groverygiftz.in/checkout/success');
   assert.equal(event.data[0].action_source, 'website');
   assert.equal(event.data[0].user_data.ph, crypto.createHash('sha256').update('919876543210').digest('hex'));
   for (const [key, hash] of Object.entries(event.data[0].user_data)) if (key !== 'client_user_agent') assert.match(hash, /^[a-f0-9]{64}$/);
@@ -358,7 +363,7 @@ test('cashfree verification response exposes tracking only after confirmed payme
   assert.equal(c.responseForOrder(paidOrder(), false).ga4Purchase, null);
 });
 
-function paymentFixture(providerStatus) {
+function paymentFixture(providerStatus, providerOverrides = {}) {
   let deductions = 0;
   let conversions = 0;
   let numbers = 0;
@@ -367,7 +372,7 @@ function paymentFixture(providerStatus) {
     dbConnect: async () => {},
     Settings: { findOne: () => ({ lean: async () => ({}) }) },
     getCashfreeConfig: () => ({ appId: 'sandbox-id', secretKey: 'sandbox-secret', environment: 'sandbox' }),
-    fetch: async () => ({ ok: true, json: async () => ({ order_status: providerStatus, cf_order_id: 'test-provider-id' }) }),
+    fetch: async () => ({ ok: true, json: async () => ({ order_status: providerStatus, cf_order_id: 'test-provider-id', order_id: 'provider-order', order_currency: 'INR', order_amount: 1499, ...providerOverrides }) }),
     Order: {
       findOne: async () => doc, findById: async () => doc,
       findOneAndUpdate: async (filter, update) => { if (!matches(doc, filter)) return null; apply(doc, update); return doc; },
@@ -404,4 +409,66 @@ test('gateway pending/failed/cancelled responses never invoke the Purchase sende
     assert.equal(fixture.counts().deductions, 0);
     assert.equal(fixture.counts().conversions, 0);
   }
+});
+
+test('a stale ACTIVE response cannot downgrade a paid or dispatched order', async () => {
+  const f = paymentFixture('ACTIVE');
+  f.doc.paymentStatus = 'paid';
+  f.doc.status = 'dispatched';
+  f.doc.orderNumber = 'GG0063';
+  f.doc.inventoryDeductedAt = new Date();
+  const result = await f.context.finalizeCashfreeOrder('provider-order');
+  assert.equal(result.success, true);
+  assert.equal(f.doc.paymentStatus, 'paid');
+  assert.equal(f.doc.status, 'dispatched');
+  assert.equal(f.counts().deductions, 0);
+});
+
+test('unpaid provider responses do not save stale pending snapshots', async () => {
+  const f = paymentFixture('ACTIVE');
+  f.doc.save = async () => { throw Error('Must not write an old snapshot'); };
+  assert.equal((await f.context.finalizeCashfreeOrder('provider-order')).retryable, true);
+});
+
+test('mismatched provider amount, currency or identity never finalize stock or tracking', async () => {
+  for (const changes of [{ order_amount: 1 }, { order_currency: 'USD' }, { order_id: 'another-order' }, { order_amount: undefined }]) {
+    const f = paymentFixture('PAID', changes);
+    await assert.rejects(f.context.finalizeCashfreeOrder('provider-order'), /do not match/);
+    assert.equal(f.counts().deductions, 0);
+    assert.equal(f.counts().conversions, 0);
+  }
+});
+
+test('refunded payments are never turned back into paid purchases', async () => {
+  const f = paymentFixture('PAID');
+  f.doc.paymentStatus = 'refunded';
+  await assert.rejects(f.context.finalizeCashfreeOrder('provider-order'), /refunded/);
+  assert.equal(f.counts().deductions, 0);
+});
+
+test('a webhook can request CAPI retry without failing a customer confirmation or deducting stock again', async () => {
+  const f = paymentFixture('PAID');
+  f.context.sendMetaPurchaseEvent = async () => ({ sent: false, retryable: true });
+  await assert.rejects(f.context.finalizeCashfreeOrder('provider-order', { retryTracking: true }), (error) => error.status === 503);
+  assert.equal(f.doc.paymentStatus, 'paid');
+  assert.equal((await f.context.finalizeCashfreeOrder('provider-order')).success, true);
+  assert.equal(f.counts().deductions, 1);
+});
+
+test('a loading Pixel stub cannot mark a Purchase sent before the actual SDK loads', () => {
+  const b = browser(new Map(), false);
+  b.window.fbq = (...args) => b.events.push(plain(args));
+  b.context.trackVerifiedMetaPurchase(verified(b.context, paidOrder()));
+  assert.equal(b.events.length, 0);
+  assert.equal(b.storage.size, 0);
+  b.window.fbq.callMethod = () => {};
+  b.context.flushMetaPurchases();
+  assert.equal(b.events.length, 1);
+});
+
+test('an in-flight CAPI claim keeps webhook delivery retryable until it is acknowledged', async () => {
+  const f = serverFixture(paidOrder({ metaConversionPurchaseStartedAt: new Date() }));
+  const result = await f.context.sendMetaPurchaseEvent(f.doc._id);
+  assert.equal(result.retryable, true);
+  assert.equal(f.requests.length, 0);
 });

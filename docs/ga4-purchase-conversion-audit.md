@@ -1,5 +1,7 @@
 # Purchase Conversion Setup Audit
 
+Current routing supersedes this historical audit: checkout uses /checkout, Cashfree returns through /checkout/return, and the existing verified receipt now has a real /checkout/success route. Old return links remain supported. See [Purchase confirmation reliability](purchase-confirmation-reliability.md).
+
 The current Google consent policy is documented in [GA4 Purpose-Specific Consent Correction](ga4-consent-correction.md), superseding the automatic/strict Google consent description in this earlier audit. The direct-tag versus GTM findings remain applicable.
 
 Date: 15 October 2026. Website: https://groverygiftz.in/. Measurement ID: G-JNPXLZQB0V. Application baseline: a47e964.

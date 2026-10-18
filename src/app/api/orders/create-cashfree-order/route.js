@@ -10,6 +10,9 @@ import { hydrateProductShippingTemplates } from '@/lib/shippingTemplateHydration
 import { assertStockAvailable, getGroupedStockRequests } from '@/lib/inventory';
 import { getCashfreeConfig } from '@/lib/cashfreeConfig';
 import { captureMetaOrderAttribution } from '@/lib/metaAttributionServer';
+import { assertOrderPricing } from '@/lib/orderPricing';
+import { randomUUID } from 'node:crypto';
+import { PAYMENT_RETURN_PATH } from '@/lib/checkoutPayment';
 
 const CASHFREE_VERSION = '2025-01-01';
 const endpointFor = (environment) => environment === 'production'
@@ -123,7 +126,7 @@ export async function POST(req) {
 
     const body = await req.json();
     const { items, shippingAddress, notes } = body;
-    if (!items?.length || !shippingAddress) {
+    if (!Array.isArray(items) || !items.length || items.some((item) => !item || typeof item !== 'object') || !shippingAddress) {
       return NextResponse.json({ error: 'Missing required order fields' }, { status: 400 });
     }
     if (!isValidPincode(shippingAddress.pincode)) {
@@ -136,17 +139,18 @@ export async function POST(req) {
       return { ...sanitizedItem, product: sanitizedItem.product || sanitizedItem.productId || undefined, productId: sanitizedItem.productId || sanitizedItem.product || '' };
     });
     const productIds = [...new Set(orderItems.map((item) => item.productId).filter(Boolean))];
-    const products = await Product.find({ _id: { $in: productIds } }).select('title stock variants delivery isActive').lean();
+    const products = await Product.find({ _id: { $in: productIds } }).select('title stock variants delivery isActive regularPrice salePrice offerStartsAt offerEndsAt giftWrap').lean();
     await hydrateProductShippingTemplates(products);
     const productsById = Object.fromEntries(products.map((product) => [String(product._id), product]));
     assertStockAvailable(getGroupedStockRequests(orderItems, productsById));
+    assertOrderPricing(orderItems, productsById);
     const subtotal = orderItems.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 1), 0);
     const shipping = calculateShipping(orderItems, productsById, shippingAddress.state, settings);
     const shippingCost = shipping.cost;
     const total = subtotal + shippingCost;
 
-    const pendingOrderNumber = 'PENDING-' + Date.now().toString(36).toUpperCase();
-    const origin = req.headers.get('origin') || process.env.NEXTAUTH_URL || 'http://localhost:3000';
+    const pendingOrderNumber = 'PENDING-' + randomUUID();
+    const origin = new URL(process.env.NEXTAUTH_URL || req.url).origin;
 
     const cashfreeRes = await fetch(endpointFor(cashfree.environment), {
       method: 'POST',
@@ -169,7 +173,7 @@ export async function POST(req) {
           customer_phone: shippingAddress.whatsappNumber || shippingAddress.phone,
         },
         order_meta: {
-          return_url: `${origin}/checkout?cashfree_order_id={order_id}`,
+          return_url: `${origin}${PAYMENT_RETURN_PATH}?cashfree_order_id={order_id}`,
           notify_url: `${origin}/api/orders/cashfree-webhook`,
         },
       }),
@@ -211,7 +215,7 @@ export async function POST(req) {
       mode: cashfree.environment === 'production' ? 'production' : 'sandbox',
     }, { status: 201 });
   } catch (error) {
-    if (error?.name === 'InventoryError') {
+    if (error?.name === 'InventoryError' || error?.name === 'OrderPricingError') {
       return NextResponse.json({ error: error.message }, { status: error.status || 409 });
     }
     console.error('Cashfree create order error:', error);

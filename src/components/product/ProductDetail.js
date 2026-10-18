@@ -5,7 +5,7 @@ import { useCart } from '@/context/CartContext';
 import { formatPrice, calcSavings, getEffectivePrice, isOfferActive, getVariantRegularPrice, getVariantSalePrice, getVariantEffectivePrice } from '@/lib/utils';
 import { getProductAvailableStock, getSelectedAvailableStock, hasVariantManagedStock, isProductSoldOut, isVariantOptionSoldOut } from '@/lib/stock';
 import { buildDeliveryEstimateText } from '@/lib/deliveryDate';
-import { buildProductMetaPayload, trackMetaCustomEvent, trackMetaEvent } from '@/lib/metaPixel';
+import { buildProductMetaPayload, META_READY_EVENT, trackMetaCustomEvent, trackMetaEvent } from '@/lib/metaPixel';
 import { trackGA4Product } from '@/lib/ga4';
 import { GOOGLE_CONSENT_SYNC_EVENT } from '@/lib/googleConsent';
 import { FiMinus, FiPlus, FiX, FiTruck, FiShield, FiClock, FiShoppingCart, FiZap, FiUpload, FiImage, FiChevronLeft, FiChevronRight, FiStar, FiLoader } from 'react-icons/fi';
@@ -433,9 +433,13 @@ export default function ProductDetail({ product }) {
   });
 
   useEffect(() => {
-    if (viewedProductRef.current === product._id) return;
-    viewedProductRef.current = product._id;
-    trackMetaEvent('ViewContent', buildProductMetaPayload(product, { price, value: price }));
+    const track = () => {
+      if (viewedProductRef.current === product._id) return;
+      if (trackMetaEvent('ViewContent', buildProductMetaPayload(product, { price, value: price }))) viewedProductRef.current = product._id;
+    };
+    track();
+    window.addEventListener(META_READY_EVENT, track);
+    return () => window.removeEventListener(META_READY_EVENT, track);
   }, [price, product]);
 
   const ga4Variant = Object.entries(selectedVariants).filter(([, option]) => option?.label).map(([name, option]) => `${name}: ${option.label}`).join(', ');
@@ -686,7 +690,7 @@ const handleCustomerPhotoUpload = async (files) => {
     const customizationPreviewPayload = await buildCustomizationPreviewPayload();
     const hasConfiguredAssets = Object.keys(allCustomFields).length > 0 || collageGroups.length > 0 || Boolean(customizationPreviewPayload) || giftWrap || Boolean(giftMessage.trim());
 
-    addToCart({
+    const addedQuantity = addToCart({
       productId: product._id,
       cartItemId: hasConfiguredAssets ? `${product._id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` : undefined,
       title: product.title,
@@ -706,7 +710,7 @@ const handleCustomerPhotoUpload = async (files) => {
       deliveryState: selectedDeliveryState,
       customizationPreview: customizationPreviewPayload,
     }, { openDrawer: openCart });
-    trackMetaEvent('AddToCart', getProductPixelPayload());
+    if (addedQuantity > 0) trackMetaEvent('AddToCart', getProductPixelPayload({ quantity: addedQuantity, value: finalUnitPrice * addedQuantity }));
     if (Object.keys(allCustomFields || {}).length > 0 || giftWrap || giftMessage.trim()) {
       trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'configured_product' }));
     }

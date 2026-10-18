@@ -16,6 +16,37 @@ const ga4Allowed = isGA4TrackingAllowed;
 const ga4StorageAllowed = () => ga4Allowed();
 const ga4State = () => window.__groveryGA4 || (window.__groveryGA4 = { initialized: false, ready: false, queue: [], pendingPurchases: new Set(), sentPurchases: new Set(), lastPage: '', lastPageKey: '', contextKey: '', referrer: '', impressions: new Set(), lastSearch: '' });
 const ga4ReceiptPrefix = `gg-ga4-purchase-${GA4_MEASUREMENT_ID}-`;
+const ga4PendingKey = `gg-ga4-pending-${GA4_MEASUREMENT_ID}`;
+
+function pendingGA4Purchases() {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(ga4PendingKey) || '[]');
+    return Array.isArray(saved) ? saved.filter((entry) => {
+      const age = Date.now() / 1000 - entry?.ga4Purchase?.eventTime;
+      return typeof entry?.ga4Purchase?.params?.transaction_id === 'string' && Number.isFinite(age) && age >= -300 && age <= 72 * 3600;
+    }).slice(-10) : [];
+  } catch { return []; }
+}
+
+function savePendingGA4Purchase(result) {
+  if (!ga4StorageAllowed()) return;
+  try {
+    const id = result.ga4Purchase.params.transaction_id;
+    const saved = pendingGA4Purchases().filter((entry) => entry.ga4Purchase.params.transaction_id !== id);
+    // Persist only the sanitized tracking snapshot, never addresses or uploads.
+    saved.push({ success: true, paymentStatus: 'paid', orderNumber: result.orderNumber, total: result.total, ga4Purchase: result.ga4Purchase });
+    window.localStorage.setItem(ga4PendingKey, JSON.stringify(saved.slice(-10)));
+  } catch {}
+}
+
+function removePendingGA4Purchase(id) {
+  try { window.localStorage.setItem(ga4PendingKey, JSON.stringify(pendingGA4Purchases().filter((entry) => entry.ga4Purchase.params.transaction_id !== id))); } catch {}
+}
+
+export function resumeGA4Purchases() {
+  if (!ga4Allowed()) return;
+  for (const result of pendingGA4Purchases()) trackGA4Purchase(result);
+}
 
 function pruneGA4Receipts() {
   if (!ga4StorageAllowed()) return;
@@ -78,6 +109,7 @@ export function syncGA4Privacy() {
       state.impressions.clear();
       state.lastSearch = '';
       clearGA4GoogleLogin();
+      try { window.localStorage.removeItem(ga4PendingKey); } catch {}
       if (getGoogleConsent().analytics !== 'granted') {
         try {
           for (const name of ['_ga', `_ga_${GA4_MEASUREMENT_ID.slice(2)}`]) {
@@ -111,7 +143,7 @@ function ga4Context() {
     state.impressions.clear();
     state.lastSearch = '';
   }
-  const confirmation = state.checkoutComplete && window.location.pathname === '/checkout';
+  const confirmation = state.checkoutComplete && ['/checkout', '/checkout/success'].includes(window.location.pathname);
   const location = ga4PublicUrl(confirmation ? `${window.location.origin}/checkout/success` : window.location.href);
   return { page_location: location, page_title: confirmation ? 'Order placed successfully | GroveryGiftz' : ga4Text(document.title) || 'GroveryGiftz', page_referrer: state.referrer || ga4PublicUrl(document.referrer || '', window.location.origin, true) };
 }
@@ -127,13 +159,23 @@ function ga4Send(event) {
     window.gtag('set', pageContext);
     state.pageContextKey = pageContextKey;
   }
-  window.gtag('event', event.name, { ...event.params, send_to: GA4_MEASUREMENT_ID, ...(process.env.NEXT_PUBLIC_GA4_DEBUG === 'true' ? { debug_mode: true } : {}) });
   if (event.purchaseId) {
     state.sentPurchases.add(event.purchaseId);
     state.pendingPurchases.delete(event.purchaseId);
+  }
+  const completed = () => {
+    if (!event.purchaseId || !ga4Allowed()) return;
     if (ga4StorageAllowed()) {
       try { window.localStorage.setItem(`${ga4ReceiptPrefix}${event.purchaseId}`, String(Date.now())); } catch {}
     }
+    removePendingGA4Purchase(event.purchaseId);
+  };
+  try {
+    // A callback confirms SDK processing, not Google's reporting receipt.
+    window.gtag('event', event.name, { ...event.params, send_to: GA4_MEASUREMENT_ID, ...(event.purchaseId ? { event_callback: completed, event_timeout: 10000 } : {}), ...(process.env.NEXT_PUBLIC_GA4_DEBUG === 'true' ? { debug_mode: true } : {}) });
+  } catch (error) {
+    if (event.purchaseId) state.sentPurchases.delete(event.purchaseId);
+    throw error;
   }
   return true;
 }
@@ -164,6 +206,7 @@ export function setGA4Ready() {
       if (event.purchaseId) state.pendingPurchases.delete(event.purchaseId);
       try { ga4Send(event); } catch {}
     }
+    resumeGA4Purchases();
   } catch {}
 }
 
@@ -171,23 +214,27 @@ export function trackGA4PageView(rawUrl) {
   try {
     if (!ga4Allowed()) return false;
     const state = ga4State();
-    if (window.location.pathname !== '/checkout') state.checkoutComplete = false;
-    const key = rawUrl || (state.checkoutComplete ? `${window.location.origin}/checkout/success` : window.location.href);
+    if (!['/checkout', '/checkout/success'].includes(window.location.pathname)) state.checkoutComplete = false;
+    if (state.checkoutCompletePath && state.checkoutCompletePath !== window.location.pathname) state.checkoutComplete = false;
+    const key = rawUrl || (state.checkoutComplete && window.location.pathname === '/checkout' ? `${window.location.origin}/checkout/success` : window.location.href);
     const location = ga4PublicUrl(key);
-    if (!location || state.lastPageKey === key) return false;
+    const pageKey = window.location.pathname === '/checkout/success' ? location : key;
+    if (!location || state.lastPageKey === pageKey) return false;
     state.referrer = state.lastPage || ga4PublicUrl(document.referrer || '', window.location.origin, true);
     const url = new URL(location);
     if (!ga4Queue('page_view', { page_location: location, page_path: url.pathname + url.search })) return false;
     state.lastPage = location;
-    state.lastPageKey = key;
+    state.lastPageKey = pageKey;
     return true;
   } catch { return false; }
 }
 
 export function trackGA4OrderConfirmation() {
   try {
-    if (!ga4Allowed() || window.location.pathname !== '/checkout') return false;
+    if (!ga4Browser() || !['/checkout', '/checkout/success'].includes(window.location.pathname)) return false;
     ga4State().checkoutComplete = true;
+    ga4State().checkoutCompletePath = window.location.pathname;
+    if (!ga4Allowed()) return false;
     return trackGA4PageView();
   } catch { return false; }
 }
@@ -251,10 +298,11 @@ export function trackGA4Purchase(result) {
     if (ga4StorageAllowed()) {
       try {
         const recorded = Number(window.localStorage.getItem(`${ga4ReceiptPrefix}${id}`));
-        if (recorded > Date.now() - 7 * 86400000) return false;
+        if (recorded > Date.now() - 7 * 86400000) { removePendingGA4Purchase(id); return false; }
       } catch {}
     }
-    return ga4Queue('purchase', { ...cart, transaction_id: id, shipping: ga4Money(params.shipping) }, id, snapshot.eventTime);
+    savePendingGA4Purchase({ ...result, ga4Purchase: { eventTime: snapshot.eventTime, params: { ...cart, transaction_id: id, shipping: ga4Money(params.shipping) } } });
+    return ga4Queue('purchase', { ...cart, transaction_id: id, shipping: ga4Money(params.shipping), page_location: ga4PublicUrl(`${window.location.origin}/checkout/success`), page_title: 'Order placed successfully | GroveryGiftz' }, id, snapshot.eventTime);
   } catch { return false; }
 }
 

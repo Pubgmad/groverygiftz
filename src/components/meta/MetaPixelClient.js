@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { configureMetaPixel, flushMetaPurchases, isMetaAdminPath, trackMetaEvent } from '@/lib/metaPixel';
+import { configureMetaPixel, flushMetaPurchases, isMetaAdminPath, META_READY_EVENT, trackMetaEvent } from '@/lib/metaPixel';
 import { captureMetaLandingAttribution, clearMetaIdentifiers, getMarketingConsent, isMetaTrackingAllowed, META_CONSENT_EVENT } from '@/lib/metaAttribution';
 
 function installMetaPixel(pixelId) {
@@ -24,6 +24,10 @@ function installMetaPixel(pixelId) {
     script.id = 'meta-pixel-sdk';
     script.async = true;
     script.src = 'https://connect.facebook.net/en_US/fbevents.js';
+    script.onload = () => {
+      flushMetaPurchases();
+      window.dispatchEvent(new Event(META_READY_EVENT));
+    };
     document.head.appendChild(script);
   }
 
@@ -72,6 +76,7 @@ export default function MetaPixelClient({ enabled, pixelId, testEventCode, track
     installMetaPixel(cleanPixelId);
     window.fbq('consent', 'grant');
     flushMetaPurchases();
+    window.dispatchEvent(new Event(META_READY_EVENT));
 
     if (lastPageView.current !== pathname) {
       lastPageView.current = pathname;

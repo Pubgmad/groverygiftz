@@ -184,6 +184,7 @@ export function CartProvider({ children }) {
     const addedQuantity = Number(addedLine?.quantity || 0) - Number(existing?.quantity || 0);
     if (addedQuantity > 0) trackGA4Ecommerce('add_to_cart', [{ ...addedLine, quantity: addedQuantity }]);
     if (options.openDrawer !== false) setIsCartOpen(true);
+    return addedQuantity;
   };
 
   const removeFromCart = (productId, variant, cartItemId) => {

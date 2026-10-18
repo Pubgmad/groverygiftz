@@ -16,10 +16,11 @@ const endpointFor = (environment, orderId) => environment === 'production'
   : `https://sandbox.cashfree.com/pg/orders/${encodeURIComponent(orderId)}`;
 
 export class CashfreeFinalizeError extends Error {
-  constructor(message, status = 500) {
+  constructor(message, status = 500, retryable = false) {
     super(message);
     this.name = 'CashfreeFinalizeError';
     this.status = status;
+    this.retryable = retryable;
   }
 }
 
@@ -38,7 +39,7 @@ const responseForOrder = (order, success, settings = {}) => ({
   ga4Purchase: success ? buildGA4Purchase(order) : null,
 });
 
-export async function finalizeCashfreeOrder(orderId) {
+export async function finalizeCashfreeOrder(orderId, { retryTracking = false } = {}) {
   await dbConnect();
   const settings = await Settings.findOne().lean();
   const cashfree = getCashfreeConfig(settings);
@@ -49,6 +50,8 @@ export async function finalizeCashfreeOrder(orderId) {
   }
 
   const cashfreeRes = await fetch(endpointFor(cashfree.environment, orderId), {
+    cache: 'no-store',
+    signal: AbortSignal.timeout(15000),
     headers: {
       'x-api-version': CASHFREE_VERSION,
       'x-client-id': cashfree.appId,
@@ -57,7 +60,7 @@ export async function finalizeCashfreeOrder(orderId) {
   });
   const data = await cashfreeRes.json().catch(() => ({}));
   if (!cashfreeRes.ok) {
-    throw new CashfreeFinalizeError(data.message || 'Unable to verify Cashfree order', cashfreeRes.status);
+    throw new CashfreeFinalizeError('Unable to verify Cashfree order', cashfreeRes.status, cashfreeRes.status === 429 || cashfreeRes.status >= 500);
   }
 
   const order = await Order.findOne({ cashfreeOrderId: orderId });
@@ -67,11 +70,15 @@ export async function finalizeCashfreeOrder(orderId) {
   const paid = data.order_status === 'PAID';
 
   if (!paid) {
-    order.paymentStatus = 'pending';
-    order.status = 'pending';
-    order.deliveryEstimate = getDisplayDeliveryEstimate(order, settings);
-    await order.save();
-    return responseForOrder(order, false, settings);
+    // A delayed ACTIVE response must never overwrite another request's paid save.
+    if (order.paymentStatus !== 'paid' || !order.inventoryDeductedAt) {
+      return { ...responseForOrder(order, false, settings), retryable: data.order_status === 'ACTIVE' };
+    }
+  }
+
+  if (order.paymentStatus === 'refunded') throw new CashfreeFinalizeError('This payment has been refunded.', 409);
+  if (paid && (data.order_id !== orderId || data.order_currency !== 'INR' || data.order_amount == null || String(data.order_amount).trim() === '' || !Number.isFinite(Number(data.order_amount)) || order.total == null || !Number.isFinite(Number(order.total)) || Math.abs(Number(data.order_amount) - Number(order.total)) > 0.01)) {
+    throw new CashfreeFinalizeError('Payment details do not match the store order. Please contact support.', 409);
   }
 
   if (!order.inventoryDeductedAt) {
@@ -92,7 +99,7 @@ export async function finalizeCashfreeOrder(orderId) {
     if (!claimed) {
       const currentOrder = await Order.findById(order._id);
       if (!currentOrder?.inventoryDeductedAt) {
-        throw new CashfreeFinalizeError('Payment confirmation is already being processed. Please try again.', 409);
+        throw new CashfreeFinalizeError('Payment confirmation is already being processed. Please try again.', 409, true);
       }
       order.inventoryDeductedAt = currentOrder.inventoryDeductedAt;
       order.paymentStatus = currentOrder.paymentStatus;
@@ -153,11 +160,14 @@ export async function finalizeCashfreeOrder(orderId) {
     await order.save();
   }
 
+  let tracking;
   try {
-    await sendMetaPurchaseEvent(order._id);
+    tracking = await sendMetaPurchaseEvent(order._id);
   } catch (metaError) {
     console.error('Meta Conversion API finalization hook error:', metaError);
+    if (retryTracking) throw new CashfreeFinalizeError('Tracking delivery is awaiting retry.', 503, true);
   }
+  if (retryTracking && tracking?.retryable) throw new CashfreeFinalizeError('Tracking delivery is awaiting retry.', 503, true);
 
   return responseForOrder(order, true, settings);
 }

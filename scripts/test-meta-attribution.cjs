@@ -293,12 +293,14 @@ test('verification honors withdrawal and can recover legacy metadata only for it
 function checkoutFixture(session, headers = permitted) {
   let record;
   let providerBody;
-  const c = context(source('src/app/api/orders/create-cashfree-order/route.js'), {
+  const pricing = source('src/lib/offers.js') + '\nconst checkOfferActive = (product, now) => getOfferStatus(product, now) === "active";\n' + ['src/lib/utils.js', 'src/lib/stock.js', 'src/lib/orderPricing.js'].map(source).join('\n');
+  const c = context(pricing + '\n' + source('src/lib/checkoutPayment.js') + '\n' + source('src/app/api/orders/create-cashfree-order/route.js'), {
+    randomUUID: crypto.randomUUID,
     NextResponse: { json: (body, init = {}) => ({ body, status: init.status || 200 }) },
     dbConnect: async () => {}, getServerSession: async () => session, authOptions: {},
     Settings: { findOne: () => ({ lean: async () => ({ tamilNaduShippingCost: 100, tamilNaduDeliveryEstimate: '8 working days' }) }) },
     getCashfreeConfig: () => ({ enabled: true, appId: 'sandbox-id', secretKey: 'sandbox-secret', environment: 'sandbox' }),
-    Product: { find: () => ({ select: () => ({ lean: async () => [] }) }) },
+    Product: { find: () => ({ select: () => ({ lean: async () => [{ _id: 'p', regularPrice: 500, stock: 10 }] }) }) },
     hydrateProductShippingTemplates: async () => {}, assertStockAvailable() {}, getGroupedStockRequests: () => [],
     buildDeliveryEstimateText: () => '8 working days',
     fetch: async (url, options) => { providerBody = JSON.parse(options.body); return { ok: true, json: async () => ({ order_id: 'provider-order', cf_order_id: 'test-provider', payment_session_id: 'sandbox-session' }) }; },
@@ -330,6 +332,23 @@ test('denied checkout still succeeds and ignores forged body attribution', async
   assert.equal((await fixture.c.POST(fixture.req)).status, 201);
   assert.equal(fixture.record().metaAttribution.allowed, false);
   assert.equal(fixture.record().metaAttribution.clientUserAgent, undefined);
+});
+
+test('checkout rejects a tampered price before contacting Cashfree or saving an order', async () => {
+  const fixture = checkoutFixture({ user: { type: 'customer', id: 'customer-1' } });
+  const body = await fixture.req.json();
+  body.items[0].price = 1;
+  fixture.req.json = async () => body;
+  assert.equal((await fixture.c.POST(fixture.req)).status, 409);
+  assert.equal(fixture.record(), undefined);
+  assert.equal(fixture.providerBody(), undefined);
+});
+
+test('Cashfree callbacks use the configured site origin, never an arbitrary Origin header', async () => {
+  const fixture = checkoutFixture({ user: { type: 'customer', id: 'customer-1' } }, { origin: 'https://untrusted.invalid' });
+  fixture.c.process.env.NEXTAUTH_URL = 'https://groverygiftz.in';
+  assert.equal((await fixture.c.POST(fixture.req)).status, 201);
+  assert.equal(fixture.providerBody().order_meta.return_url, 'https://groverygiftz.in/checkout/return?cashfree_order_id={order_id}');
 });
 
 test('automatic checkout preserves totals and captures the actual browser without an acceptance cookie', async () => {

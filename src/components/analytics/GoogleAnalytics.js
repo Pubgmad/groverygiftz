@@ -6,7 +6,7 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { GOOGLE_CONSENT_EVENT, GOOGLE_CONSENT_SYNC_EVENT } from '@/lib/googleConsent';
 import { GA4_MEASUREMENT_ID } from '@/lib/ga4Data';
-import { completeGA4GoogleLogin, initializeGA4, isGA4AdminPath, setGA4Ready, syncGA4Privacy, trackGA4PageView } from '@/lib/ga4';
+import { completeGA4GoogleLogin, initializeGA4, isGA4AdminPath, resumeGA4Purchases, setGA4Ready, syncGA4Privacy, trackGA4PageView } from '@/lib/ga4';
 
 export default function GoogleAnalytics() {
   const pathname = usePathname();
@@ -21,6 +21,7 @@ export default function GoogleAnalytics() {
       if (enabled) {
         initializeGA4();
         trackGA4PageView();
+        resumeGA4Purchases();
       }
       window.dispatchEvent(new Event(GOOGLE_CONSENT_SYNC_EVENT));
     };

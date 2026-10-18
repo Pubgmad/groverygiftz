@@ -20,7 +20,7 @@ export function buildPurchasePayload(order, settings) {
     event_time: purchase.eventTime,
     event_id: eventId,
     action_source: 'website',
-    event_source_url: new URL('/checkout', process.env.NEXTAUTH_URL || 'https://groverygiftz.in').href,
+    event_source_url: new URL('/checkout/success', process.env.NEXTAUTH_URL || 'https://groverygiftz.in').href,
     user_data: userData,
     custom_data: customData,
   };
@@ -56,7 +56,10 @@ export async function sendMetaPurchaseEvent(orderId) {
     { new: true }
   ).select('+metaAttribution');
 
-  if (!order) return { skipped: true };
+  if (!order) {
+    const outstanding = await Order.exists({ _id: orderId, paymentStatus: 'paid', 'metaAttribution.allowed': true, metaConversionPurchaseSentAt: null });
+    return { skipped: true, retryable: !!outstanding };
+  }
 
   try {
     const { payload, eventId } = buildPurchasePayload(order, settings);
@@ -78,7 +81,9 @@ export async function sendMetaPurchaseEvent(orderId) {
         if (res.ok && data.events_received === 1) { accepted = true; break; }
         const retryable = res.status === 429 || res.status >= 500 || data?.error?.is_transient === true;
         if (retryable && attempt === 0) continue;
-        throw new Error(`Meta Purchase was not accepted (HTTP ${res.status}, code ${Number(data?.error?.code) || 0})`);
+        const error = new Error(`Meta Purchase was not accepted (HTTP ${res.status}, code ${Number(data?.error?.code) || 0})`);
+        error.retryable = retryable || (res.ok && data.events_received !== 1);
+        throw error;
       } catch (error) {
         if (attempt === 0 && ['TimeoutError', 'AbortError', 'TypeError'].includes(error.name)) continue;
         throw error;
@@ -98,6 +103,6 @@ export async function sendMetaPurchaseEvent(orderId) {
       { $set: { metaConversionPurchaseError: error.message || 'Meta Conversion API request failed' }, $unset: { metaConversionPurchaseStartedAt: '' } }
     );
     console.error('Meta Purchase failed', { orderNumber: order.orderNumber, error: error.message || 'Tracking request failed' });
-    return { sent: false, error: error.message };
+    return { sent: false, error: error.message, retryable: error.retryable === true || ['TimeoutError', 'AbortError', 'TypeError'].includes(error.name) };
   }
 }
