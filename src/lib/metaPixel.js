@@ -8,6 +8,37 @@ function isBrowser() {
   return typeof window !== 'undefined';
 }
 
+export function canTrackMetaIdentity() {
+  return isBrowser() && !window.__groveryGiftzMetaIdentityLocked && window.__groveryGiftzMetaIdentityGuard?.() !== false;
+}
+
+export function clearMetaAdvancedMatching() {
+  if (!isBrowser()) return;
+  // The general Pixel SDK cannot safely replace a nonempty init identity in-place.
+  if (window.__groveryGiftzMetaMatchedCustomer) window.__groveryGiftzMetaIdentityLocked = true;
+  delete window.__groveryGiftzMetaMatchedCustomer;
+  window.__groveryGiftzMetaPurchasesPending?.clear();
+  if (window.__groveryGiftzMetaPixel) window.__groveryGiftzMetaPixel.enabled = false;
+  if (typeof window.fbq === 'function') window.fbq('consent', 'revoke');
+}
+
+export function applyMetaAdvancedMatching(customerId, data) {
+  if (!isBrowser() || !customerId || !isMetaTrackingAllowed() || !canTrackMetaIdentity()) return false;
+  const config = getMetaPixelConfig();
+  if (!config.enabled || config.blocked || !config.pixelId || typeof window.fbq !== 'function') return false;
+  const previous = window.__groveryGiftzMetaMatchedCustomer;
+  if (previous && previous !== customerId) { clearMetaAdvancedMatching(); return false; }
+  if (previous === customerId) return true;
+  const userData = {};
+  for (const key of ['em', 'ph', 'fn', 'ln', 'external_id']) {
+    if (typeof data?.[key] === 'string' && /^[a-f0-9]{64}$/.test(data[key])) userData[key] = data[key];
+  }
+  if (!userData.external_id || (!userData.em && !userData.ph)) return false;
+  window.fbq('init', config.pixelId, userData);
+  window.__groveryGiftzMetaMatchedCustomer = customerId;
+  return true;
+}
+
 export function isMetaAdminPath(pathname) {
   return ADMIN_PATH_PREFIXES.some((prefix) => String(pathname || '').startsWith(prefix));
 }
@@ -29,7 +60,7 @@ export function getMetaPixelConfig() {
 
 export function trackMetaEvent(eventName, params = {}, options = {}) {
   if (!isBrowser() || typeof window.fbq !== 'function') return false;
-  if (!isMetaTrackingAllowed()) return false;
+  if (!isMetaTrackingAllowed() || !canTrackMetaIdentity()) return false;
   const config = getMetaPixelConfig();
   if (!config.enabled || !config.pixelId || config.blocked) return false;
 
@@ -49,7 +80,7 @@ export function trackMetaEvent(eventName, params = {}, options = {}) {
 
 export function trackVerifiedMetaPurchase(result) {
   if (!isBrowser() || result?.success !== true || result.paymentStatus !== 'paid') return false;
-  if (!isMetaTrackingAllowed()) return false;
+  if (!isMetaTrackingAllowed() || !canTrackMetaIdentity()) return false;
   const event = result.metaPurchase;
   if (!isValidMetaPurchase(event) || event.params.order_id !== result.orderNumber || event.params.value !== purchaseAmount(result.total)) {
     console.warn('Meta Purchase skipped: invalid verified order tracking payload');
@@ -67,6 +98,7 @@ export function trackVerifiedMetaPurchase(result) {
 export function flushMetaPurchases() {
   if (!isBrowser()) return;
   if (!isMetaTrackingAllowed()) { window.__groveryGiftzMetaPurchasesPending?.clear(); return; }
+  if (!canTrackMetaIdentity()) return;
   const config = getMetaPixelConfig();
   if (!config.enabled || !config.pixelId || config.blocked || typeof window.fbq !== 'function') return;
   if (typeof window.fbq.callMethod !== 'function') return;

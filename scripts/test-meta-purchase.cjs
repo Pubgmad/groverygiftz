@@ -213,8 +213,9 @@ test('Pixel initialization disables automatic setup before init and installs one
   context.installMetaPixel('test-pixel');
   context.installMetaPixel('test-pixel');
   assert.deepEqual(events[0], ['set', 'autoConfig', false, 'test-pixel']);
-  assert.deepEqual(events[1], ['init', 'test-pixel']);
-  assert.equal(events.length, 2);
+  assert.deepEqual(events[1], ['optOut', 'test-pixel', 'AutomaticMatching']);
+  assert.deepEqual(events[2], ['init', 'test-pixel']);
+  assert.equal(events.length, 3);
   assert.equal(scripts.size, 1);
   assert.equal(window.__groveryGiftzMetaPixelId, 'test-pixel');
 });
