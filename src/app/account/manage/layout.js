@@ -56,7 +56,7 @@ export default function AdminLayout({ children }) {
   })();
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="flex min-h-screen min-w-0 overflow-x-hidden bg-gray-50">
       {mobileSidebarOpen && (
         <button
           className="fixed inset-0 bg-black/40 z-30 lg:hidden"
@@ -65,9 +65,9 @@ export default function AdminLayout({ children }) {
         />
       )}
       <AdminSidebar mobileOpen={mobileSidebarOpen} onClose={() => setMobileSidebarOpen(false)} />
-      <div className="flex-1 min-w-0">
+      <div className="min-w-0 flex-1 overflow-x-hidden">
         <AdminHeader onMenuClick={() => setMobileSidebarOpen(true)} />
-        <main className="p-4 md:p-6">
+        <main className="min-w-0 overflow-x-hidden p-4 md:p-6">
           {denied ? (
             <div className="mx-auto max-w-lg rounded-2xl border bg-white p-6 text-center">
               <h1 className="text-xl font-bold">Access denied</h1>
