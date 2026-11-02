@@ -12,14 +12,26 @@ export default function PhotoUploadCard({
   uploading = false,
   disabled = false,
   accept = 'image/*,.heic,.heif',
+  multiple = false,
   orientation = '',
-  onOrientation,
+  orientationLabel = '',
+  aspectWidth = 1,
+  aspectHeight = 1,
+  fitMode = 'fit',
   onUpload,
   onRemove,
   onEdit,
   instructions = '',
 }) {
   const hasPhoto = Boolean(photoUrl);
+  const ratioW = Math.max(1, Number(aspectWidth) || 1);
+  const ratioH = Math.max(1, Number(aspectHeight) || 1);
+  const pickFiles = (event) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (files.length) onUpload?.(files);
+  };
+
   return (
     <article
       aria-invalid={missingRequired || undefined}
@@ -32,86 +44,77 @@ export default function PhotoUploadCard({
           <p className="truncate text-sm font-extrabold text-gray-950">{label}</p>
           {sizeLabel ? <p className="text-[11px] leading-4 text-gray-500">{sizeLabel}</p> : null}
         </div>
-        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
-          hasPhoto ? 'bg-emerald-50 text-emerald-700' : required ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-600'
-        }`}>
-          {hasPhoto ? 'Uploaded' : required ? 'Required' : 'Optional'}
-        </span>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+            hasPhoto ? 'bg-emerald-50 text-emerald-700' : required ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-600'
+          }`}>
+            {hasPhoto ? 'Uploaded' : required ? 'Required' : 'Optional'}
+          </span>
+          {orientationLabel ? <span className="rounded-full bg-primary-50 px-2 py-0.5 text-[10px] font-bold text-primary-700">{orientationLabel}</span> : null}
+        </div>
       </div>
-      <div className="relative aspect-square overflow-hidden rounded-xl border border-dashed border-gray-200 bg-gray-50">
-        {hasPhoto ? (
-          <button type="button" onClick={() => onEdit?.()} className="h-full w-full" aria-label={`Edit ${label}`}>
-            <img src={photoUrl} alt={`${label} upload`} className="h-full w-full object-cover" />
-          </button>
-        ) : (
-          <label className={`flex h-full w-full cursor-pointer flex-col items-center justify-center gap-1 px-2 text-center ${uploading || disabled ? 'pointer-events-none opacity-70' : ''}`}>
-            {uploading ? <FiLoader className="animate-spin text-primary-600" size={22} /> : <FiUpload className="text-primary-600" size={20} />}
-            <span className="text-[11px] font-semibold text-gray-800">{uploading ? 'Uploading...' : missingRequired ? 'Photo required' : 'Upload photo'}</span>
+      <div className="flex h-36 items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50">
+        <div
+          className={`relative h-full max-w-full overflow-hidden rounded-md ${hasPhoto ? 'border border-gray-900 bg-white' : ''}`}
+          style={{ aspectRatio: `${ratioW} / ${ratioH}`, width: ratioW >= ratioH ? '100%' : 'auto' }}
+        >
+          {hasPhoto ? (
+            <button type="button" onClick={() => onEdit?.()} className="h-full w-full bg-white" aria-label={`Edit ${label}`}>
+              <img
+                src={photoUrl}
+                alt={`${label} upload`}
+                className={`h-full w-full ${fitMode === 'fill' ? 'object-cover' : 'object-contain'}`}
+              />
+            </button>
+          ) : (
+            <label className={`flex h-full w-full cursor-pointer flex-col items-center justify-center gap-1 px-2 text-center ${uploading || disabled ? 'pointer-events-none opacity-70' : ''}`}>
+              {uploading ? <FiLoader className="animate-spin text-primary-600" size={22} /> : <FiUpload className="text-primary-600" size={20} />}
+              <span className="text-[11px] font-semibold text-gray-800">{uploading ? 'Uploading...' : missingRequired ? 'Photo required' : multiple ? 'Upload photos' : 'Upload photo'}</span>
+              <input
+                type="file"
+                accept={accept}
+                multiple={multiple}
+                className="sr-only"
+                disabled={uploading || disabled}
+                onChange={pickFiles}
+              />
+            </label>
+          )}
+          {uploading ? (
+            <span className="absolute inset-0 flex items-center justify-center bg-white/80">
+              <FiLoader className="animate-spin text-primary-600" size={24} />
+            </span>
+          ) : null}
+          {hasPhoto ? (
+            <button
+              type="button"
+              onClick={onRemove}
+              disabled={uploading || disabled}
+              className="absolute right-1.5 top-1.5 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-red-600 shadow disabled:opacity-50"
+              aria-label={`Remove ${label}`}
+            >
+              <FiX size={16} />
+            </button>
+          ) : null}
+        </div>
+      </div>
+      {hasPhoto ? (
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          {typeof onEdit === 'function' ? (
+            <button type="button" onClick={onEdit} disabled={uploading || disabled} className="flex min-h-[36px] items-center justify-center rounded-lg border border-gray-200 text-xs font-semibold text-gray-800 disabled:opacity-70">
+              Edit
+            </button>
+          ) : null}
+          <label className={`relative flex min-h-[36px] cursor-pointer items-center justify-center rounded-lg border border-primary-100 bg-primary-50/60 text-xs font-semibold text-primary-800 ${uploading || disabled ? 'pointer-events-none opacity-70' : ''} ${typeof onEdit === 'function' ? '' : 'col-span-2'}`}>
+            Replace photo
             <input
               type="file"
               accept={accept}
               className="sr-only"
               disabled={uploading || disabled}
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                event.target.value = '';
-                if (file) onUpload?.(file);
-              }}
+              onChange={pickFiles}
             />
           </label>
-        )}
-        {uploading ? (
-          <span className="absolute inset-0 flex items-center justify-center bg-white/80">
-            <FiLoader className="animate-spin text-primary-600" size={24} />
-          </span>
-        ) : null}
-        {hasPhoto ? (
-          <button
-            type="button"
-            onClick={onRemove}
-            disabled={uploading || disabled}
-            className="absolute right-1.5 top-1.5 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-red-600 shadow disabled:opacity-50"
-            aria-label={`Remove ${label}`}
-          >
-            <FiX size={16} />
-          </button>
-        ) : null}
-      </div>
-      {hasPhoto ? (
-        <div className="mt-2 grid grid-cols-2 gap-2">
-        {typeof onEdit === 'function' ? (
-          <button type="button" onClick={onEdit} disabled={uploading || disabled} className="flex min-h-[36px] items-center justify-center rounded-lg border border-gray-200 text-xs font-semibold text-gray-800 disabled:opacity-70">
-            Edit
-          </button>
-        ) : null}
-        <label className={`relative flex min-h-[36px] cursor-pointer items-center justify-center rounded-lg border border-primary-100 bg-primary-50/60 text-xs font-semibold text-primary-800 ${uploading || disabled ? 'pointer-events-none opacity-70' : ''} ${typeof onEdit === 'function' ? '' : 'col-span-2'}`}>
-          Replace photo
-          <input
-            type="file"
-            accept={accept}
-            className="sr-only"
-            disabled={uploading || disabled}
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              event.target.value = '';
-              if (file) onUpload?.(file);
-            }}
-          />
-        </label>
-        </div>
-      ) : null}
-      {typeof onOrientation === 'function' ? (
-        <div className="mt-2 grid grid-cols-3 gap-1">
-          {[['auto', 'Auto'], ['portrait', 'Portrait'], ['landscape', 'Landscape']].map(([value, text]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => onOrientation(value)}
-              className={`min-h-[36px] rounded-lg border px-0.5 text-[9px] font-bold leading-tight ${orientation === value ? 'border-primary-600 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-600'}`}
-            >
-              {text}
-            </button>
-          ))}
         </div>
       ) : null}
       {missingRequired ? <p className="mt-2 text-[11px] font-semibold text-red-600" role="alert">Photo required</p> : null}

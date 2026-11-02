@@ -14,6 +14,7 @@ import toast from 'react-hot-toast';
 import { startNavigationFeedback } from '@/components/layout/NavigationFeedback';
 import { appendImageUpload, attachLocalPreview, prepareImageUpload } from '@/lib/clientImageUpload';
 import { alignPhotoSlots, clearPhotoSlot, filledPhotoCount, filledPhotos, firstEmptyPhotoSlot, removeListPhotoByUrl, setPhotoSlot } from '@/lib/photoSlots';
+import { adjustmentsForUploadedPhoto, formatFrameSizeLabel, getFrameSize, orientationCaption } from '@/lib/photoEditor';
 import PhotoUploadCard from '@/components/product/PhotoUploadCard';
 import PhotoAdjuster from '@/components/product/PhotoAdjuster';
 const INDIAN_STATES = [
@@ -62,7 +63,6 @@ export default function ProductDetail({ product }) {
   const router = useRouter();
   const viewedProductRef = useRef('');
   const customTextTrackedRef = useRef({});
-  const previewFrameRefs = useRef({});
   const actionLockRef = useRef(false);
   const galleryTouchRef = useRef({ startX: 0, endX: 0 });
   const lightboxTouchRef = useRef({ startX: 0, endX: 0 });
@@ -224,13 +224,17 @@ export default function ProductDetail({ product }) {
   const googleReviewImages = visibleGoogleReviews.flatMap((review) => Array.isArray(review?.images) ? review.images : []).slice(0, 8);
   const googleReviewTopics = Array.isArray(googleReviews?.topics) ? googleReviews.topics.filter((topic) => topic?.keyword).slice(0, 3) : [];
   const googleBusinessName = googleReviews?.title || 'Grovery giftz - Customized Photo Frames';
-  const formatPreviewSize = (width, height, unit = 'inch') => {
-    if (width === undefined && height === undefined) return '';
-    if (!width && !height) return '';
-    return `${width || '-'} × ${height || '-'} ${unit || 'inch'}`;
-  };
   const uploadCardGridClass = 'grid grid-cols-2 gap-3 xl:grid-cols-3';
   const getAreaAdjustments = (idx) => ({ ...getDefaultPreviewAdjustments(), ...(previewAdjustments[idx] || {}) });
+  const areaSizeLabel = (area, idx) => formatFrameSizeLabel(area, getAreaAdjustments(idx).orientation);
+  const variantAreaFromSelected = (selected) => ({
+    label: selected?.label,
+    width: selected?.previewWidth || 1,
+    height: selected?.previewHeight || 1,
+    unit: selected?.previewUnit || 'inch',
+    frameImage: selected?.previewFrameImage || '',
+    instructions: selected?.previewInstructions || '',
+  });
   const loadPreviewImage = (src) => new Promise((resolve, reject) => {
     const image = new Image();
     const timer = setTimeout(() => { image.onload = null; image.onerror = null; reject(new Error('Preview image loading timed out. Please try again.')); }, 30000);
@@ -245,14 +249,9 @@ export default function ProductDetail({ product }) {
     const height = sourceHeight * scale;
     return { x: (boxWidth - width) / 2, y: (boxHeight - height) / 2, width, height };
   };
-  const getPreviewDimensions = (area, orientation, idx) => {
-    const rect = previewFrameRefs.current[idx]?.getBoundingClientRect();
-    if (rect?.width && rect?.height) return { displayWidth: rect.width, displayHeight: rect.height };
-    const rawWidth = Math.max(1, Number(area?.width || 1));
-    const rawHeight = Math.max(1, Number(area?.height || 1));
-    const width = orientation === 'portrait' ? Math.min(rawWidth, rawHeight) : orientation === 'landscape' ? Math.max(rawWidth, rawHeight) : rawWidth;
-    const height = orientation === 'portrait' ? Math.max(rawWidth, rawHeight) : orientation === 'landscape' ? Math.min(rawWidth, rawHeight) : rawHeight;
-    const displayWidth = 360;
+  const getPreviewDimensions = (area, orientation) => {
+    const { width, height } = getFrameSize(area, orientation);
+    const displayWidth = 720;
     return { displayWidth, displayHeight: displayWidth * (height / width) };
   };
   const renderFinalPreviewImage = async (area, idx, sourceUrl = '', overrideAdjustments) => {
@@ -261,7 +260,7 @@ export default function ProductDetail({ product }) {
     if (!photoUrl) return '';
     try {
       const adjustments = overrideAdjustments ? { ...getDefaultPreviewAdjustments(), ...overrideAdjustments } : getAreaAdjustments(idx);
-      const { displayWidth, displayHeight } = getPreviewDimensions(area, adjustments.orientation, idx);
+      const { displayWidth, displayHeight } = getPreviewDimensions(area, adjustments.orientation);
       const scale = 2;
       const canvas = document.createElement('canvas');
       canvas.width = Math.max(320, Math.round(displayWidth * scale));
@@ -344,15 +343,19 @@ export default function ProductDetail({ product }) {
         const cached = saved?.sourceUrl === uploadedFile.url && saved?.adjustments === JSON.stringify(getAreaAdjustments(idx)) ? saved.file : null;
         const finalPreviewDataUrl = cached ? '' : await renderFinalPreviewImage(area, idx, uploadedFile);
         const finalPreviewImage = cached || await uploadRenderedPreviewImage(finalPreviewDataUrl, areaLabel, idx);
+        const adjustments = getAreaAdjustments(idx);
+        const oriented = getFrameSize(area, adjustments.orientation);
         previews.push({
           areaLabel,
-          width: area.width || '',
-          height: area.height || '',
+          width: oriented.width,
+          height: oriented.height,
+          configuredWidth: area.width || '',
+          configuredHeight: area.height || '',
           unit: area.unit || 'inch',
           instructions: area.instructions || '',
           frameImage: area.frameImage || '',
           uploadedFile,
-          adjustments: getAreaAdjustments(idx),
+          adjustments,
           finalPreviewImage,
           finalPreviewDataUrl: finalPreviewImage?.url ? '' : finalPreviewDataUrl,
         });
@@ -376,15 +379,19 @@ export default function ProductDetail({ product }) {
       const cached = saved?.sourceUrl === uploadedFile.url && saved?.adjustments === JSON.stringify(getAreaAdjustments(previewKey)) ? saved.file : null;
       const finalPreviewDataUrl = cached ? '' : await renderFinalPreviewImage(area, previewKey, uploadedFile);
       const finalPreviewImage = cached || await uploadRenderedPreviewImage(finalPreviewDataUrl, areaLabel, previews.length);
+      const adjustments = getAreaAdjustments(previewKey);
+      const oriented = getFrameSize(area, adjustments.orientation);
       previews.push({
         areaLabel,
-        width: area.width || '',
-        height: area.height || '',
+        width: oriented.width,
+        height: oriented.height,
+        configuredWidth: area.width || '',
+        configuredHeight: area.height || '',
         unit: area.unit || 'inch',
         instructions: area.instructions || '',
         frameImage: area.frameImage || '',
         uploadedFile,
-        adjustments: getAreaAdjustments(previewKey),
+        adjustments,
         finalPreviewImage,
         finalPreviewDataUrl: finalPreviewImage?.url ? '' : finalPreviewDataUrl,
         sourceType: 'variant',
@@ -411,7 +418,7 @@ export default function ProductDetail({ product }) {
         savedPreviewFilesRef.current[idx] = { file, sourceUrl: upload.url, adjustments: JSON.stringify(adjustmentsObj) };
       }
       setSavedPreviewAreas((prev) => ({ ...prev, [idx]: true }));
-      toast.success('Applied to this frame');
+      toast.success('Photo updated for this frame');
       return true;
     } catch (error) {
       toast.error(error.message || 'Unable to save preview. Please try again.');
@@ -550,8 +557,8 @@ export default function ProductDetail({ product }) {
       let cursor = firstEmptyPhotoSlot(slots);
       if (cursor < 0) {
         toast.error(`Maximum ${photoSlotCount} photos allowed for this product`);
-      return;
-    }
+        return;
+      }
       for (const file of selectedFiles) {
         while (cursor < slots.length && slots[cursor]?.url) cursor += 1;
         if (cursor >= slots.length) break;
@@ -560,11 +567,10 @@ export default function ProductDetail({ product }) {
       }
       if (jobs.length === 0) {
         toast.error(`Maximum ${photoSlotCount} photos allowed for this product`);
-      return;
-    }
-      if (jobs.length < selectedFiles.length) {
-        toast.error(`Please upload exactly the requested photos. You can add ${jobs.length} more photo${jobs.length === 1 ? '' : 's'} for this product.`);
         return;
+      }
+      if (jobs.length < selectedFiles.length) {
+        toast.error(`Added ${jobs.length} photo${jobs.length === 1 ? '' : 's'}. Extra images were not uploaded because all frames are filled.`);
       }
     }
     setUploadingCustomerPhotos(true);
@@ -578,11 +584,11 @@ export default function ProductDetail({ product }) {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || `Failed to upload ${job.file.name}`);
         const uploadedFile = attachLocalPreview(data, prepared);
+        const adjustments = adjustmentsForUploadedPhoto(prepared.width, prepared.height);
         setActivePreviewSlot(job.index);
         editPreviewArea(job.index);
-        setPreviewAdjustments((prev) => ({ ...prev, [job.index]: getDefaultPreviewAdjustments() }));
+        setPreviewAdjustments((prev) => ({ ...prev, [job.index]: adjustments }));
         setCustomerPhotos((prev) => setPhotoSlot(alignPhotoSlots(prev, photoSlotCount), job.index, uploadedFile));
-        setEditorSlotKey(job.index);
         setUploadingPhotoSlots((prev) => ({ ...prev, [job.index]: false }));
       }
       toast.success(jobs.length === 1 ? 'Photo uploaded' : `${jobs.length} photos uploaded`);
@@ -621,9 +627,8 @@ export default function ProductDetail({ product }) {
       if (!res.ok) throw new Error(data.error || 'Upload failed');
       const uploadedFile = attachLocalPreview(data, prepared);
       editPreviewArea(`variant-${label}`);
-      setPreviewAdjustments((prev) => ({ ...prev, [`variant-${label}`]: getDefaultPreviewAdjustments() }));
+      setPreviewAdjustments((prev) => ({ ...prev, [`variant-${label}`]: adjustmentsForUploadedPhoto(prepared.width, prepared.height) }));
       setVariantLabelUploads((prev) => ({ ...prev, [label]: { ...uploadedFile, label } }));
-      setEditorSlotKey(`variant-${label}`);
       toast.success(`${label} image uploaded`);
       trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'variant_label_upload', field_label: label, file_type: data.type || file.type || '' }));
     } catch (error) {
@@ -1012,6 +1017,15 @@ export default function ProductDetail({ product }) {
         )}
 
 
+        {(needsCustomerPhotos || selectedVariantUploadOptions.length > 0 || needsCollageUploads) && (
+          <div className="mb-5 rounded-2xl border border-primary-100 bg-white p-4">
+            <p className="font-display text-sm font-bold text-gray-950">{previewConfig.title || 'Preview Your Personalized Gift'}</p>
+            <p className="mt-2 text-xs leading-5 text-gray-600">
+              Upload clear, high-quality photos for the best printing results. Basic clarity and alignment may be applied while keeping your original photo. Your frame automatically switches between portrait and landscape to match each photo. Use Edit if you want to fit, fill, crop, or rotate. Any uncovered white space shown in the preview may also appear in the final print.
+            </p>
+            {previewConfig.instructions ? <p className="mt-2 rounded-lg bg-primary-50 px-3 py-2 text-xs text-primary-800">{previewConfig.instructions}</p> : null}
+          </div>
+        )}
         {selectedVariantUploadOptions.length > 0 && (
           <div className="mb-5 rounded-2xl border border-primary-100 bg-primary-50/20 p-4">
             <div className="mb-3">
@@ -1023,18 +1037,26 @@ export default function ProductDetail({ product }) {
               const upload = variantLabelUploads[selected.label];
               const isUploading = !!uploadingVariantLabels[selected.label];
                     const previewKey = `variant-${selected.label}`;
+                    const adjustments = getAreaAdjustments(previewKey);
+                    const variantArea = variantAreaFromSelected(selected);
+                    const oriented = getFrameSize(variantArea, adjustments.orientation);
                     return (
                   <PhotoUploadCard
                     key={selected.label}
                     label={selected.label}
-                    sizeLabel={formatPreviewSize(selected.previewWidth, selected.previewHeight, selected.previewUnit)}
+                    sizeLabel={areaSizeLabel(variantArea, previewKey)}
                     required
                     missingRequired={!upload?.url}
                     photo={upload}
                     photoUrl={displayUploadUrl(upload)}
                     uploading={isUploading}
                     disabled={Boolean(actionLoading) || savingPreviewAreas[previewKey]}
-                    onUpload={(file) => handleVariantLabelUpload(selected.label, file)}
+                    orientation={adjustments.orientation}
+                    orientationLabel={upload?.url ? orientationCaption(adjustments.orientation) : ''}
+                    aspectWidth={oriented.width}
+                    aspectHeight={oriented.height}
+                    fitMode={adjustments.fitMode}
+                    onUpload={(files) => handleVariantLabelUpload(selected.label, files[0])}
                     onRemove={() => removeVariantLabelUpload(selected.label)}
                     onEdit={upload?.url ? () => setEditorSlotKey(previewKey) : undefined}
                     instructions={selected.previewInstructions || ''}
@@ -1053,31 +1075,55 @@ export default function ProductDetail({ product }) {
                   {requiredPhotoCount > 0
                     ? `Please upload ${requiredPhotoCount} photo${requiredPhotoCount === 1 ? '' : 's'} for this product.`
                     : `You can upload up to ${maxPhotoCount} photo${maxPhotoCount === 1 ? '' : 's'} for this product.`}
-                  {' After you upload a photo, you can adjust how it sits in that frame.'}
+                  {photoSlotCount > 1 ? ' You can select several photos at once; each photo fills the next empty frame.' : ''}
                 </p>
               </div>
               <span className="self-start rounded-full border border-accent-100 bg-white px-3 py-1 text-xs font-bold text-accent-700">
                 {uploadedPhotoCount}/{requiredPhotoCount || maxPhotoCount}
               </span>
             </div>
+            {photoSlotCount > 1 ? (
+              <label className={`mb-3 flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-accent-200 bg-white px-4 text-sm font-semibold text-accent-800 ${uploadingCustomerPhotos || Boolean(actionLoading) ? 'pointer-events-none opacity-70' : ''}`}>
+                {uploadingCustomerPhotos ? 'Uploading photos...' : `Upload photos (${uploadedPhotoCount}/${photoSlotCount})`}
+                <input
+                  type="file"
+                  accept="image/*,.heic,.heif"
+                  multiple
+                  className="sr-only"
+                  disabled={uploadingCustomerPhotos || Boolean(actionLoading)}
+                  onChange={(event) => {
+                    const files = Array.from(event.target.files || []);
+                    event.target.value = '';
+                    if (files.length) handleCustomerPhotoUpload(files);
+                  }}
+                />
+              </label>
+            ) : null}
             <div className={uploadCardGridClass}>
               {Array.from({ length: photoSlotCount }, (_, idx) => {
-                const area = previewAreas[idx];
+                const area = previewAreas[idx] || { label: `Photo ${idx + 1}`, width: 1, height: 1, unit: 'ratio' };
                 const photo = customerPhotos[idx];
-                const slotRequired = area ? area.required !== false : idx < requiredPhotoCount;
+                const slotRequired = previewAreas[idx] ? previewAreas[idx].required !== false : idx < requiredPhotoCount;
                 const label = area?.label || `Photo ${idx + 1}`;
+                const adjustments = getAreaAdjustments(idx);
+                const oriented = getFrameSize(area, adjustments.orientation);
                 return (
                   <PhotoUploadCard
                     key={`photo-slot-${idx}`}
                     label={label}
-                    sizeLabel={area ? formatPreviewSize(area.width, area.height, area.unit) : ''}
+                    sizeLabel={areaSizeLabel(area, idx)}
                     required={slotRequired}
                     missingRequired={slotRequired && !photo?.url}
                     photo={photo}
                     photoUrl={displayUploadUrl(photo)}
                     uploading={!!uploadingPhotoSlots[idx]}
                     disabled={previewSaveLocksRef.current.size > 0 || Boolean(actionLoading) || uploadingCustomerPhotos}
-                    onUpload={(file) => handleCustomerPhotoUpload([file], idx)}
+                    orientation={adjustments.orientation}
+                    orientationLabel={photo?.url ? orientationCaption(adjustments.orientation) : ''}
+                    aspectWidth={oriented.width}
+                    aspectHeight={oriented.height}
+                    fitMode={adjustments.fitMode}
+                    onUpload={(files) => handleCustomerPhotoUpload(files, idx)}
                     onRemove={() => removeCustomerPhoto(idx)}
                     onEdit={photo?.url ? () => setEditorSlotKey(idx) : undefined}
                     instructions={area?.instructions || ''}
@@ -1117,7 +1163,7 @@ export default function ProductDetail({ product }) {
                         photo={photo}
                         photoUrl={displayUploadUrl(photo)}
                         uploading={isUploading}
-                        onUpload={(file) => handleCollageReplace(label, idx, file)}
+                        onUpload={(files) => handleCollageReplace(label, idx, files[0])}
                         onRemove={() => removeCollagePhoto(label, photo.url)}
                         disabled={isUploading || Boolean(actionLoading)}
                       />
@@ -1130,7 +1176,8 @@ export default function ProductDetail({ product }) {
                         missingRequired={belowMin}
                         uploading={isUploading}
                         disabled={isUploading || Boolean(actionLoading)}
-                        onUpload={(file) => handleCollageUpload(label, [file])}
+                        multiple
+                        onUpload={(files) => handleCollageUpload(label, files)}
                       />
                     ) : null}
                     </div>
@@ -1139,12 +1186,6 @@ export default function ProductDetail({ product }) {
             })}
           </div>
         )}
-        {previewEnabled && previewConfig.instructions ? (
-          <div className="mb-5 rounded-2xl border border-primary-100 bg-white p-4">
-                <p className="text-sm font-bold text-gray-900">{previewConfig.title || 'Preview your personalized gift'}</p>
-            <p className="mt-2 rounded-lg bg-primary-50 px-3 py-2 text-xs text-primary-700">{previewConfig.instructions}</p>
-              </div>
-        ) : null}
         {/* Gift Wrap */}
         {product.giftWrap?.enabled && (
           <div className="mb-4">

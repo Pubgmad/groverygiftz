@@ -28,11 +28,13 @@ export async function prepareImageUpload(file) {
       const { heicTo } = await import('heic-to');
       const previewBlob = await heicTo({ blob: file, type: 'image/jpeg', quality: 0.92 });
       const previewUrl = URL.createObjectURL(previewBlob);
-      await verifyImageDecode(previewUrl);
+      const image = await verifyImageDecode(previewUrl);
       return {
         previewUrl,
         previewFile: previewBlob,
         previewName: `${String(file.name || 'image').replace(/\.[^.]+$/, '') || 'image'}-preview.jpg`,
+        width: image.naturalWidth,
+        height: image.naturalHeight,
       };
     } catch (error) {
       throw new Error('This HEIC/HEIF image could not be converted for preview. Please export it as JPG and try again.');
@@ -43,11 +45,13 @@ export async function prepareImageUpload(file) {
   const detectedMime = { jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', avif: 'image/avif' }[signature];
   const previewBlob = detectedMime && file.type !== detectedMime ? file.slice(0, file.size, detectedMime) : file;
   const previewUrl = browserImage ? URL.createObjectURL(previewBlob) : '';
-  if (previewUrl) await verifyImageDecode(previewUrl);
+  const image = previewUrl ? await verifyImageDecode(previewUrl) : null;
   return {
     previewUrl,
     previewFile: null,
     previewName: '',
+    width: image?.naturalWidth || 0,
+    height: image?.naturalHeight || 0,
   };
 }
 
@@ -77,5 +81,7 @@ export function attachLocalPreview(upload, prepared) {
   return {
     ...upload,
     previewUrl: prepared?.previewUrl || upload?.previewUrl || upload?.displayUrl || upload?.url || '',
+    width: prepared?.width || upload?.width || 0,
+    height: prepared?.height || upload?.height || 0,
   };
 }
