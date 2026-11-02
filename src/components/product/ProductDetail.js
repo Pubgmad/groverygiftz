@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useCart } from '@/context/CartContext';
 import { formatPrice, calcSavings, getEffectivePrice, isOfferActive, getVariantRegularPrice, getVariantSalePrice, getVariantEffectivePrice } from '@/lib/utils';
 import { getProductAvailableStock, getSelectedAvailableStock, hasVariantManagedStock, isProductSoldOut, isVariantOptionSoldOut } from '@/lib/stock';
-import { getCentralDeliveryEstimate, buildCurrentDeliveryEstimate } from '@/lib/centralDeliveryEstimates';
+import { getCentralDeliveryEstimate } from '@/lib/centralDeliveryEstimates';
 import useDeliverySettings from '@/hooks/useDeliverySettings';
 import { buildProductMetaPayload, META_READY_EVENT, trackMetaCustomEvent, trackMetaEvent } from '@/lib/metaPixel';
 import { trackGA4Product } from '@/lib/ga4';
@@ -18,6 +18,7 @@ import { adjustmentsForUploadedPhoto, formatFrameSizeLabel, getFrameSize, orient
 import PhotoUploadCard from '@/components/product/PhotoUploadCard';
 import PhotoAdjuster from '@/components/product/PhotoAdjuster';
 import PhotoLimitDialog from '@/components/product/PhotoLimitDialog';
+import ProductAssurancePanel from '@/components/product/ProductAssurancePanel';
 const INDIAN_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
   'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh',
@@ -216,7 +217,6 @@ export default function ProductDetail({ product }) {
       : { cost: Number(settings.otherStateShippingCost || 0), estimate: getCentralDeliveryEstimate(settings, state) };
   };
   const selectedDelivery = getProductShippingForState(selectedDeliveryState);
-  const selectedDeliveryEstimateText = buildCurrentDeliveryEstimate(settings, selectedDeliveryState);
   const productPageTotal = finalUnitPrice * quantity + selectedDelivery.cost;
   const reviewCount = reviews.length;
   const averageRating = reviewCount ? reviews.reduce((sum, review) => sum + Number(review.rating || 0), 0) / reviewCount : 0;
@@ -895,7 +895,6 @@ export default function ProductDetail({ product }) {
                   <div className="flex justify-between gap-3"><span>Product price</span><span className="font-semibold">{formatPrice(finalUnitPrice * quantity)}</span></div>
                   <div className="flex justify-between gap-3"><span>Delivery charge</span><span className="font-semibold">{selectedDelivery.cost === 0 ? 'FREE' : formatPrice(selectedDelivery.cost)}</span></div>
                   <div className="flex justify-between gap-3 border-t border-primary-100 pt-2 text-base font-bold"><span>Total for {selectedDeliveryState}</span><span className="text-primary-700">{formatPrice(productPageTotal)}</span></div>
-                  <p className="text-xs text-gray-500">Estimated delivery: <span className="font-semibold text-gray-800">{selectedDeliveryEstimateText}</span></p>
                 </div>
               ) : (
                 <p className="text-gray-600">Tamil Nadu delivery is free. Other state shipment cost varies and will be shown after state selection.</p>
@@ -904,16 +903,12 @@ export default function ProductDetail({ product }) {
           </div>
         )}
 
+        <ProductAssurancePanel settings={settings} selectedDeliveryState={selectedDeliveryState} />
+
         <div className="bg-primary-50/60 rounded-xl px-4 py-3 mb-6 space-y-2">
           <div className="flex items-center gap-2 text-sm text-gray-700">
             <FiTruck size={14} className="text-primary-600 shrink-0" />
             <span>Free Delivery Across Tamil Nadu. Shipping charges for other states will be calculated after selecting your state.</span>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-gray-700">
-            <FiClock size={14} className="text-primary-600 shrink-0" />
-            <span>{getCentralDeliveryEstimate(settings, 'Tamil Nadu') && getCentralDeliveryEstimate(settings, 'Karnataka')
-              ? `Tamil Nadu Delivery: ${getCentralDeliveryEstimate(settings, 'Tamil Nadu')} | Other States: ${getCentralDeliveryEstimate(settings, 'Karnataka')}`
-              : selectedDeliveryEstimateText}</span>
           </div>
           <div className="flex items-center gap-2 text-sm text-gray-700">
             <FiShield size={14} className="text-primary-600 shrink-0" />
