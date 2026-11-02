@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   Area,
@@ -77,6 +77,28 @@ function Panel({ title, children, action }) {
   );
 }
 
+const EMPTY_FILTER_OPTIONS = { states: [], cities: [], methods: [], products: [], collections: [] };
+const selectClass = 'w-full min-w-0 rounded-lg border bg-white px-3 py-2.5 text-sm';
+
+function FilterSelect({ label, value, onChange, placeholder, loadingLabel, options, loading, optionKey }) {
+  const ready = options.length > 0;
+  return (
+    <label className="text-sm font-medium">{label}
+      <select
+        key={`${label}-${optionKey || options.length}`}
+        value={value}
+        onChange={onChange}
+        className={`mt-1 ${selectClass}`}
+      >
+        <option value="">{loading && !ready ? loadingLabel : placeholder}</option>
+        {options.map((item) => (
+          <option key={item.value} value={item.value}>{item.label}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 export default function RevenueAnalyticsPage() {
   const [preset, setPreset] = useState('last30');
   const [from, setFrom] = useState('');
@@ -92,6 +114,9 @@ export default function RevenueAnalyticsPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [filterOptions, setFilterOptions] = useState(EMPTY_FILTER_OPTIONS);
+  const [optionsLoading, setOptionsLoading] = useState(true);
+  const hasLoadedRef = useRef(false);
 
   const query = useMemo(() => {
     const params = new URLSearchParams();
@@ -110,8 +135,30 @@ export default function RevenueAnalyticsPage() {
     return params.toString();
   }, [preset, granularity, from, to, paymentMethod, status, state, city, product, collection]);
 
+  const optionsQuery = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set('preset', preset);
+    params.set('optionsOnly', '1');
+    if (preset === 'custom') {
+      if (from) params.set('from', from);
+      if (to) params.set('to', to);
+    }
+    return params.toString();
+  }, [preset, from, to]);
+
+  const applyOptions = useCallback((next) => {
+    if (!next) return;
+    setFilterOptions({
+      states: next.states || [],
+      cities: next.cities || [],
+      methods: next.methods || [],
+      products: next.products || [],
+      collections: next.collections || [],
+    });
+  }, []);
+
   const load = useCallback(async () => {
-    setLoading(true);
+    if (!hasLoadedRef.current) setLoading(true);
     setError('');
     const res = await fetch(`/api/admin/revenue?${query}`, { cache: 'no-store' });
     const json = await res.json().catch(() => ({}));
@@ -121,10 +168,28 @@ export default function RevenueAnalyticsPage() {
       return;
     }
     setData(json);
+    applyOptions(json.options);
+    hasLoadedRef.current = true;
     setLoading(false);
-  }, [query]);
+  }, [applyOptions, query]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setOptionsLoading(true);
+    (async () => {
+      const res = await fetch(`/api/admin/revenue?${optionsQuery}`, { cache: 'no-store' });
+      const json = await res.json().catch(() => ({}));
+      if (cancelled || !res.ok) {
+        if (!cancelled) setOptionsLoading(false);
+        return;
+      }
+      applyOptions(json.options);
+      setOptionsLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [applyOptions, optionsQuery]);
 
   const reset = () => {
     setPreset('last30');
@@ -145,7 +210,11 @@ export default function RevenueAnalyticsPage() {
   const hours = data?.hours || [];
   const maxHeat = Math.max(1, ...(data?.heatmap || []).flatMap((row) => row.hours.map((cell) => cell.orders)));
   const ordersHref = `/account/manage/orders?dateFrom=${encodeURIComponent(data?.range?.from || '')}&dateTo=${encodeURIComponent(data?.range?.to || '')}${status ? `&status=${encodeURIComponent(status)}` : ''}`;
-  const selectClass = 'w-full min-w-0 rounded-lg border bg-white px-3 py-2.5 text-sm';
+  const methodOptions = (filterOptions.methods || []).map((method) => ({ value: method, label: method }));
+  const stateOptions = (filterOptions.states || []).map((item) => ({ value: item, label: item }));
+  const cityOptions = (filterOptions.cities || []).map((item) => ({ value: item, label: item }));
+  const productOptions = (filterOptions.products || []).filter((item) => item.id).map((item) => ({ value: item.id, label: item.title }));
+  const collectionOptions = (filterOptions.collections || []).map((item) => ({ value: item.id, label: item.name }));
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-7xl space-y-4">
@@ -186,12 +255,16 @@ export default function RevenueAnalyticsPage() {
               <option value="year">Yearly</option>
             </select>
           </label>
-          <label className="text-sm font-medium">Payment method
-            <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className={`mt-1 ${selectClass}`}>
-              <option value="">All methods</option>
-              {(data?.options?.methods || []).map((method) => <option key={method} value={method}>{method}</option>)}
-            </select>
-          </label>
+          <FilterSelect
+            label="Payment method"
+            value={paymentMethod}
+            onChange={(e) => setPaymentMethod(e.target.value)}
+            placeholder="All methods"
+            loadingLabel="Loading methods…"
+            options={methodOptions}
+            loading={optionsLoading}
+            optionKey={methodOptions.map((item) => item.value).join('|')}
+          />
           <label className="text-sm font-medium">Order status
             <select value={status} onChange={(e) => setStatus(e.target.value)} className={`mt-1 ${selectClass}`}>
               <option value="">All statuses</option>
@@ -200,30 +273,46 @@ export default function RevenueAnalyticsPage() {
               <option value="dispatched">Dispatched</option>
             </select>
           </label>
-          <label className="text-sm font-medium">State
-            <select value={state} onChange={(e) => { setState(e.target.value); setCity(''); }} className={`mt-1 ${selectClass}`}>
-              <option value="">All states</option>
-              {(data?.options?.states || []).map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
-          </label>
-          <label className="text-sm font-medium">City
-            <select value={city} onChange={(e) => setCity(e.target.value)} className={`mt-1 ${selectClass}`}>
-              <option value="">All cities</option>
-              {(data?.options?.cities || []).map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
-          </label>
-          <label className="text-sm font-medium">Product
-            <select value={product} onChange={(e) => setProduct(e.target.value)} className={`mt-1 ${selectClass}`}>
-              <option value="">All products</option>
-              {(data?.products || []).filter((item) => item.id).map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
-            </select>
-          </label>
-          <label className="text-sm font-medium">Collection
-            <select value={collection} onChange={(e) => setCollection(e.target.value)} className={`mt-1 ${selectClass}`}>
-              <option value="">All collections</option>
-              {(data?.options?.collections || []).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </select>
-          </label>
+          <FilterSelect
+            label="State"
+            value={state}
+            onChange={(e) => { setState(e.target.value); setCity(''); }}
+            placeholder="All states"
+            loadingLabel="Loading states…"
+            options={stateOptions}
+            loading={optionsLoading}
+            optionKey={stateOptions.map((item) => item.value).join('|')}
+          />
+          <FilterSelect
+            label="City"
+            value={city}
+            onChange={(e) => setCity(e.target.value)}
+            placeholder="All cities"
+            loadingLabel="Loading cities…"
+            options={cityOptions}
+            loading={optionsLoading}
+            optionKey={cityOptions.map((item) => item.value).join('|')}
+          />
+          <FilterSelect
+            label="Product"
+            value={product}
+            onChange={(e) => setProduct(e.target.value)}
+            placeholder="All products"
+            loadingLabel="Loading products…"
+            options={productOptions}
+            loading={optionsLoading}
+            optionKey={productOptions.map((item) => item.value).join('|')}
+          />
+          <FilterSelect
+            label="Collection"
+            value={collection}
+            onChange={(e) => setCollection(e.target.value)}
+            placeholder="All collections"
+            loadingLabel="Loading collections…"
+            options={collectionOptions}
+            loading={optionsLoading}
+            optionKey={collectionOptions.map((item) => item.value).join('|')}
+          />
         </div>
         <button type="button" onClick={reset} className="mt-4 inline-flex min-h-[44px] items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold">
           <FiRefreshCw /> Reset filters

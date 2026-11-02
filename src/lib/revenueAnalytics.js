@@ -99,6 +99,46 @@ export function normalizeLabel(value, fallback = 'Unknown') {
   return text || fallback;
 }
 
+export function normalizePlaceLabel(value) {
+  return String(value || '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function uniquePlaceLabels(values = []) {
+  const map = new Map();
+  values.forEach((value) => {
+    const label = normalizePlaceLabel(value);
+    if (!label) return;
+    const key = label.toLowerCase();
+    const current = map.get(key);
+    if (!current) {
+      map.set(key, label);
+      return;
+    }
+    const score = (text) => {
+      const mixed = text !== text.toLowerCase() && text !== text.toUpperCase();
+      return mixed ? 2 : text !== text.toLowerCase() ? 1 : 0;
+    };
+    if (score(label) > score(current)) map.set(key, label);
+  });
+  return [...map.values()].sort((a, b) => a.localeCompare(b, 'en-IN'));
+}
+
+function placeValue(field) {
+  return {
+    $trim: {
+      input: { $toString: { $ifNull: [field, ''] } },
+    },
+  };
+}
+
+function placeKey(field) {
+  return { $toLower: placeValue(field) };
+}
+
 function statusAlias(status) {
   if (!status) return null;
   return STATUS_GROUPS[status] || [status];
@@ -317,22 +357,50 @@ export function filterOptionPipeline({ from, to }) {
     {
       $facet: {
         states: [
-          { $group: { _id: { $trim: { input: { $ifNull: ['$shippingAddress.state', ''] } } } } },
+          { $group: { _id: placeKey('$shippingAddress.state'), label: { $first: placeValue('$shippingAddress.state') } } },
           { $match: { _id: { $nin: ['', null] } } },
-          { $sort: { _id: 1 } },
+          { $sort: { label: 1 } },
         ],
         cities: [
-          { $group: { _id: { $trim: { input: { $ifNull: ['$shippingAddress.city', ''] } } } } },
+          { $group: { _id: placeKey('$shippingAddress.city'), label: { $first: placeValue('$shippingAddress.city') } } },
           { $match: { _id: { $nin: ['', null] } } },
-          { $sort: { _id: 1 } },
+          { $sort: { label: 1 } },
         ],
         methods: [
           { $group: { _id: { $ifNull: ['$paymentMethod', 'Cashfree'] } } },
           { $sort: { _id: 1 } },
         ],
+        products: [
+          { $unwind: { path: '$items', preserveNullAndEmptyArrays: false } },
+          {
+            $group: {
+              _id: { $toString: { $ifNull: ['$items.product', ''] } },
+              title: { $first: { $ifNull: ['$items.title', 'Product'] } },
+            },
+          },
+          { $match: { _id: { $nin: ['', null] } } },
+          { $sort: { title: 1 } },
+          { $limit: 300 },
+        ],
       },
     },
   ];
+}
+
+export function shapeFilterOptions(options = {}, collections = []) {
+  return {
+    states: uniquePlaceLabels((options.states || []).map((row) => row.label || row._id)),
+    cities: uniquePlaceLabels((options.cities || []).map((row) => row.label || row._id)),
+    methods: uniquePlaceLabels((options.methods || []).map((row) => row._id || 'Cashfree')),
+    products: (options.products || [])
+      .filter((row) => row._id)
+      .map((row) => ({
+        id: String(row._id),
+        title: normalizePlaceLabel(row.title) || 'Product',
+      }))
+      .sort((a, b) => a.title.localeCompare(b.title, 'en-IN')),
+    collections: collections.map((row) => ({ id: String(row._id), name: row.name })),
+  };
 }
 
 export function shapeKpis(row = {}, previous = {}, refund = {}) {

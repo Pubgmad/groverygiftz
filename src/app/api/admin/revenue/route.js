@@ -16,6 +16,7 @@ import {
   previousEquivalentRange,
   refundPipeline,
   revenuePipeline,
+  shapeFilterOptions,
   shapeHeatmap,
   shapeHours,
   shapeInsights,
@@ -25,6 +26,31 @@ import {
   shapeTrend,
   shapeWeekdays,
 } from '@/lib/revenueAnalytics';
+
+function emptyAnalytics(range, preset, granularity, options, insights) {
+  return {
+    empty: true,
+    definitions: REVENUE_DEFINITIONS,
+    range: { from: range.fromStr, to: range.toStr, preset, granularity },
+    kpis: shapeKpis(),
+    trend: [],
+    states: [],
+    cities: [],
+    hours: shapeHours(),
+    weekdays: shapeWeekdays(),
+    heatmap: shapeHeatmap(),
+    products: [],
+    variants: [],
+    payments: [],
+    statuses: [],
+    paymentOutcomes: [],
+    customers: { unique: 0, repeatInPeriod: 0, repeatRate: 0, revenueFromRepeat: 0 },
+    collections: [],
+    insights,
+    options,
+    limitations: [REVENUE_DEFINITIONS.district, REVENUE_DEFINITIONS.collections],
+  };
+}
 
 function parseProductId(value) {
   if (value && mongoose.Types.ObjectId.isValid(value) && String(new mongoose.Types.ObjectId(value)) === String(value)) {
@@ -54,61 +80,30 @@ export async function GET(req) {
   }
 
   await dbConnect();
+  const collections = await Collection.find().select('name').sort({ name: 1 }).lean();
+  const [optionFacet] = await Order.aggregate(filterOptionPipeline(range)).allowDiskUse(true);
+  const filterOptions = shapeFilterOptions(optionFacet, collections);
+
+  if (searchParams.get('optionsOnly') === '1') {
+    return NextResponse.json({ options: filterOptions }, { headers: { 'Cache-Control': 'no-store' } });
+  }
+
   const productId = parseProductId(product);
   let productIds = productId ? [productId] : [];
   if (collection && mongoose.Types.ObjectId.isValid(collection)) {
     const inCollection = await Product.find({ collections: collection }).select('_id').lean();
     const ids = inCollection.map((row) => row._id);
     if (!ids.length) {
-      return NextResponse.json({
-        empty: true,
-        definitions: REVENUE_DEFINITIONS,
-        range: { from: range.fromStr, to: range.toStr, preset, granularity },
-        kpis: shapeKpis(),
-        trend: [],
-        states: [],
-        cities: [],
-        hours: shapeHours(),
-        weekdays: shapeWeekdays(),
-        heatmap: shapeHeatmap(),
-        products: [],
-        variants: [],
-        payments: [],
-        statuses: [],
-        paymentOutcomes: [],
-        customers: { unique: 0, repeatInPeriod: 0, repeatRate: 0, revenueFromRepeat: 0 },
-        collections: [],
-        insights: ['No products currently belong to this collection.'],
-        options: { states: [], cities: [], methods: [], collections: [] },
-        limitations: [REVENUE_DEFINITIONS.district, REVENUE_DEFINITIONS.collections],
-      });
+      return NextResponse.json(
+        emptyAnalytics(range, preset, granularity, filterOptions, ['No products currently belong to this collection.']),
+        { headers: { 'Cache-Control': 'no-store' } },
+      );
     }
     if (productId && !ids.some((id) => String(id) === String(productId))) {
-      return NextResponse.json({
-        empty: true,
-        definitions: REVENUE_DEFINITIONS,
-        range: { from: range.fromStr, to: range.toStr, preset, granularity },
-        kpis: shapeKpis(),
-        trend: [],
-        states: [],
-        cities: [],
-        hours: shapeHours(),
-        weekdays: shapeWeekdays(),
-        heatmap: shapeHeatmap(),
-        products: [],
-        variants: [],
-        payments: [],
-        statuses: [],
-        paymentOutcomes: [],
-        customers: { unique: 0, repeatInPeriod: 0, repeatRate: 0, revenueFromRepeat: 0 },
-        collections: [],
-        insights: ['No paid orders match this collection and product filter.'],
-        options: { states: [], cities: [], methods: [], collections: [] },
-        limitations: [
-          'District is not stored on orders and is not inferred from pincode.',
-          'Collection filter uses current product membership, not the collection at purchase time.',
-        ],
-      });
+      return NextResponse.json(
+        emptyAnalytics(range, preset, granularity, filterOptions, ['No paid orders match this collection and product filter.']),
+        { headers: { 'Cache-Control': 'no-store' } },
+      );
     }
     productIds = productId ? [productId] : ids;
   }
@@ -133,8 +128,6 @@ export async function GET(req) {
   const [previousKpi] = previous ? await Order.aggregate(kpiPipeline(previous)).allowDiskUse(true) : [{}];
   const [refund] = await Order.aggregate(refundPipeline(range)).allowDiskUse(true);
   const paymentOutcomes = await Order.aggregate(paymentOutcomePipeline(range)).allowDiskUse(true);
-  const [options] = await Order.aggregate(filterOptionPipeline(range)).allowDiskUse(true);
-  const collections = await Collection.find().select('name').sort({ name: 1 }).lean();
 
   const kpis = shapeKpis(facet?.kpis?.[0], previousKpi, refund);
   const products = shapeProducts(facet?.products || []);
@@ -209,12 +202,7 @@ export async function GET(req) {
     },
     collections: collectionStats,
     insights: shapeInsights({ kpis, trend, states, hours, weekdays, products }),
-    options: {
-      states: (options?.states || []).map((row) => row._id).filter(Boolean),
-      cities: (options?.cities || []).map((row) => row._id).filter(Boolean),
-      methods: (options?.methods || []).map((row) => row._id).filter(Boolean),
-      collections: collections.map((row) => ({ id: String(row._id), name: row.name })),
-    },
+    options: filterOptions,
     limitations: [
       'District is not stored on orders and is not inferred from pincode or city.',
       'Profit is not shown because product cost is not stored.',

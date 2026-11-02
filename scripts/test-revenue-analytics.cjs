@@ -10,7 +10,7 @@ const source = fs.readFileSync(sourcePath, 'utf8')
   .replace(/export \{ IST, WEEKDAYS, STATUS_GROUPS \};/, '');
 const context = { module: { exports: {} }, exports: {}, console };
 vm.createContext(context);
-vm.runInContext(`${source}\nmodule.exports = { istInclusiveRange, previousEquivalentRange, presetToRange, growthPercent, shapeKpis, REVENUE_DEFINITIONS, DATE_PRESETS, formatIstDateInput, shiftIstDate };`, context);
+vm.runInContext(`${source}\nmodule.exports = { istInclusiveRange, previousEquivalentRange, presetToRange, growthPercent, shapeKpis, REVENUE_DEFINITIONS, DATE_PRESETS, formatIstDateInput, shiftIstDate, uniquePlaceLabels, shapeFilterOptions };`, context);
 const {
   istInclusiveRange,
   previousEquivalentRange,
@@ -20,6 +20,8 @@ const {
   DATE_PRESETS,
   formatIstDateInput,
   shiftIstDate,
+  uniquePlaceLabels,
+  shapeFilterOptions,
 } = context.module.exports;
 
 const day = istInclusiveRange('2026-11-02', '2026-11-02');
@@ -46,5 +48,28 @@ assert.ok(!REVENUE_DEFINITIONS.district.includes('inferred') || REVENUE_DEFINITI
 const next = shiftIstDate('2026-11-02', -1);
 assert.strictEqual(next, '2026-11-01');
 assert.ok(formatIstDateInput(new Date('2026-11-02T00:30:00.000Z')).length === 10);
+
+const host = (value) => JSON.parse(JSON.stringify(value));
+assert.deepStrictEqual(
+  host(uniquePlaceLabels(['Chennai', 'chennai', ' CHENNAI ', 'Chennai\u00a0', 'Coimbatore'])),
+  ['Chennai', 'Coimbatore'],
+);
+assert.deepStrictEqual(
+  host(uniquePlaceLabels(['tamil nadu', 'Tamil Nadu', 'TAMIL NADU'])),
+  ['Tamil Nadu'],
+);
+
+const shaped = host(shapeFilterOptions({
+  states: [{ _id: 'tamil nadu', label: 'Tamil Nadu' }, { _id: 'tamil nadu', label: 'tamil nadu' }],
+  cities: [{ _id: 'chennai', label: 'Chennai' }, { _id: 'chennai', label: 'chennai' }],
+  methods: [{ _id: 'Cashfree' }, { _id: 'cashfree' }],
+  products: [{ _id: 'abc', title: ' Gift hamper ' }, { _id: '', title: 'skip' }],
+}, [{ _id: 'col1', name: 'Festive' }]));
+assert.deepStrictEqual(shaped.cities, ['Chennai']);
+assert.deepStrictEqual(shaped.states, ['Tamil Nadu']);
+assert.deepStrictEqual(shaped.methods, ['Cashfree']);
+assert.strictEqual(shaped.products.length, 1);
+assert.strictEqual(shaped.products[0].title, 'Gift hamper');
+assert.strictEqual(shaped.collections[0].name, 'Festive');
 
 console.log('Revenue analytics helper tests passed');
