@@ -67,14 +67,22 @@ export const authOptions = {
       user.type = 'customer';
       return true;
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger }) {
       if (user) {
         token.type = user.type;
         token.role = user.role;
         token.userId = user.id;
       }
       if (token.type === 'admin' && token.userId) {
-        token.adminAccess = accessForSession(await loadAdminAccessById(token.userId));
+        const stale = !token.adminAccess || !token.adminAccessAt || Date.now() - token.adminAccessAt > 30000;
+        if (user || trigger === 'update' || stale) {
+          try {
+            token.adminAccess = accessForSession(await loadAdminAccessById(token.userId));
+            token.adminAccessAt = Date.now();
+          } catch (error) {
+            if (!token.adminAccess) token.adminAccess = publicAdminAccess();
+          }
+        }
       } else {
         token.adminAccess = publicAdminAccess();
       }

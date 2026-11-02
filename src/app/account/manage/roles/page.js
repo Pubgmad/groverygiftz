@@ -146,7 +146,7 @@ export default function AdminRolesPage() {
     await load();
   };
 
-  if (loading) return <div className="py-12 text-center text-gray-500">Loading roles...</div>;
+  if (loading && roles.length === 0) return <div className="py-12 text-center text-gray-500">Loading roles...</div>;
 
   return (
     <div className="mx-auto max-w-6xl">

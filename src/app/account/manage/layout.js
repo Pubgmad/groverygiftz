@@ -1,5 +1,5 @@
 ﻿'use client';
-import { useSession } from 'next-auth/react';
+import { getSession, useSession } from 'next-auth/react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import AdminSidebar from '@/components/admin/AdminSidebar';
@@ -8,38 +8,39 @@ import useAdminAccess from '@/hooks/useAdminAccess';
 import { ADMIN_BASE_PATH, ADMIN_MODULES, moduleIdFromPath } from '@/lib/adminPermissions';
 
 export default function AdminLayout({ children }) {
-  const { data: session, status, update } = useSession();
+  const { data: session, status } = useSession();
   const access = useAdminAccess();
   const router = useRouter();
   const pathname = usePathname();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const moduleId = useMemo(() => moduleIdFromPath(pathname), [pathname]);
+  const isAdmin = session?.user?.type === 'admin';
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/admin/login');
-    if (status === 'authenticated' && session?.user?.type !== 'admin') router.push('/admin/login');
-  }, [status, session, router, pathname]);
+    if (status === 'authenticated' && !isAdmin) router.push('/admin/login');
+  }, [status, isAdmin, router]);
 
   useEffect(() => {
     setMobileSidebarOpen(false);
   }, [pathname]);
 
   useEffect(() => {
-    if (status !== 'authenticated' || session?.user?.type !== 'admin') return undefined;
-    const timer = setInterval(() => { update(); }, 15000);
+    if (status !== 'authenticated' || !isAdmin) return undefined;
+    const timer = setInterval(() => { getSession(); }, 30000);
     return () => clearInterval(timer);
-  }, [status, session?.user?.type, update]);
+  }, [status, isAdmin]);
 
   useEffect(() => {
-    if (status !== 'authenticated' || session?.user?.type !== 'admin') return;
+    if (status !== 'authenticated' || !isAdmin) return;
     if (access.isPrimary || access.canRead('dashboard')) return;
     const first = ADMIN_MODULES.find((module) => access.canRead(module.id));
     if (pathname === ADMIN_BASE_PATH || pathname === `${ADMIN_BASE_PATH}/`) {
       router.replace(first?.href || ADMIN_BASE_PATH);
     }
-  }, [status, session, access, pathname, router]);
+  }, [status, isAdmin, access.isPrimary, access.canRead, pathname, router]);
 
-  if (status === 'loading') return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  if (status === 'loading' && !session) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
   if (!session || session.user.type !== 'admin') return null;
 
   const denied = (() => {
