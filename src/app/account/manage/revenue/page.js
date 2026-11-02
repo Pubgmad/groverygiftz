@@ -21,6 +21,7 @@ import { FiBarChart2, FiRefreshCw } from 'react-icons/fi';
 import { formatPrice } from '@/lib/utils';
 import { DATE_PRESETS } from '@/lib/revenueAnalytics';
 import BuyerDrillDown from '@/components/admin/BuyerDrillDown';
+import AdminSelect from '@/components/admin/AdminSelect';
 
 const STATUS_LABELS = {
   ordered: 'Ordered',
@@ -74,9 +75,9 @@ function Kpi({ label, value, hint, onClick }) {
 function Panel({ title, children, action }) {
   return (
     <section className="min-w-0 rounded-2xl border bg-white p-4 sm:p-5">
-      <div className="mb-4 flex min-w-0 flex-wrap items-start justify-between gap-2">
+      <div className="mb-4 flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
         <h2 className="text-lg font-bold leading-tight">{title}</h2>
-        {action}
+        {action ? <div className="w-full min-w-0 sm:w-auto">{action}</div> : null}
       </div>
       {children}
     </section>
@@ -86,21 +87,18 @@ function Panel({ title, children, action }) {
 const EMPTY_FILTER_OPTIONS = { states: [], cities: [], methods: [], products: [], collections: [], variants: [] };
 const selectClass = 'w-full min-w-0 rounded-lg border bg-white px-3 py-2.5 text-sm';
 
-function FilterSelect({ label, value, onChange, placeholder, loadingLabel, options, loading, optionKey }) {
+function FilterSelect({ label, value, onChange, placeholder, loadingLabel, options, loading }) {
   const ready = options.length > 0;
+  const emptyLabel = loading && !ready ? loadingLabel : placeholder;
   return (
-    <label className="text-sm font-medium">{label}
-      <select
-        key={`${label}-${optionKey || options.length}`}
+    <label className="block min-w-0 text-sm font-medium">{label}
+      <AdminSelect
+        className="mt-1"
         value={value}
         onChange={onChange}
-        className={`mt-1 ${selectClass}`}
-      >
-        <option value="">{loading && !ready ? loadingLabel : placeholder}</option>
-        {options.map((item) => (
-          <option key={item.value} value={item.value}>{item.label}</option>
-        ))}
-      </select>
+        placeholder={emptyLabel}
+        options={[{ value: '', label: emptyLabel }, ...options]}
+      />
     </label>
   );
 }
@@ -245,96 +243,103 @@ export default function RevenueAnalyticsPage() {
 
       <section className="min-w-0 rounded-2xl border bg-white p-4">
         <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <label className="text-sm font-medium">Period
-            <select value={preset} onChange={(e) => setPreset(e.target.value)} className={`mt-1 ${selectClass}`}>
-              {DATE_PRESETS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-            </select>
+          <label className="block min-w-0 text-sm font-medium">Period
+            <AdminSelect
+              className="mt-1"
+              value={preset}
+              onChange={setPreset}
+              options={DATE_PRESETS.map((item) => ({ value: item.id, label: item.label }))}
+            />
           </label>
           {preset === 'custom' && (
             <>
-              <label className="text-sm font-medium">From
+              <label className="min-w-0 text-sm font-medium">From
                 <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={`mt-1 ${selectClass}`} />
               </label>
-              <label className="text-sm font-medium">To
+              <label className="min-w-0 text-sm font-medium">To
                 <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={`mt-1 ${selectClass}`} />
               </label>
             </>
           )}
-          <label className="text-sm font-medium">Trend grouping
-            <select value={granularity} onChange={(e) => setGranularity(e.target.value)} className={`mt-1 ${selectClass}`}>
-              <option value="day">Daily</option>
-              <option value="week">Weekly</option>
-              <option value="month">Monthly</option>
-              <option value="year">Yearly</option>
-            </select>
+          <label className="block min-w-0 text-sm font-medium">Trend grouping
+            <AdminSelect
+              className="mt-1"
+              value={granularity}
+              onChange={setGranularity}
+              options={[
+                { value: 'day', label: 'Daily' },
+                { value: 'week', label: 'Weekly' },
+                { value: 'month', label: 'Monthly' },
+                { value: 'year', label: 'Yearly' },
+              ]}
+            />
           </label>
           <FilterSelect
             label="Payment method"
             value={paymentMethod}
-            onChange={(e) => setPaymentMethod(e.target.value)}
+            onChange={setPaymentMethod}
             placeholder="All methods"
             loadingLabel="Loading methods…"
             options={methodOptions}
             loading={optionsLoading}
-            optionKey={methodOptions.map((item) => item.value).join('|')}
           />
-          <label className="text-sm font-medium">Order status
-            <select value={status} onChange={(e) => setStatus(e.target.value)} className={`mt-1 ${selectClass}`}>
-              <option value="">All statuses</option>
-              <option value="ordered">Ordered</option>
-              <option value="on_process">On Process</option>
-              <option value="dispatched">Dispatched</option>
-            </select>
+          <label className="block min-w-0 text-sm font-medium">Order status
+            <AdminSelect
+              className="mt-1"
+              value={status}
+              onChange={setStatus}
+              options={[
+                { value: '', label: 'All statuses' },
+                { value: 'ordered', label: 'Ordered' },
+                { value: 'on_process', label: 'On Process' },
+                { value: 'dispatched', label: 'Dispatched' },
+              ]}
+            />
           </label>
           <FilterSelect
             label="State"
             value={state}
-            onChange={(e) => { setState(e.target.value); setCity(''); }}
+            onChange={(next) => { setState(next); setCity(''); }}
             placeholder="All states"
             loadingLabel="Loading states…"
             options={stateOptions}
             loading={optionsLoading}
-            optionKey={stateOptions.map((item) => item.value).join('|')}
           />
           <FilterSelect
             label="City"
             value={city}
-            onChange={(e) => setCity(e.target.value)}
+            onChange={setCity}
             placeholder="All cities"
             loadingLabel="Loading cities…"
             options={cityOptions}
             loading={optionsLoading}
-            optionKey={cityOptions.map((item) => item.value).join('|')}
           />
           <FilterSelect
             label="Product"
             value={product}
-            onChange={(e) => setProduct(e.target.value)}
+            onChange={setProduct}
             placeholder="All products"
             loadingLabel="Loading products…"
             options={productOptions}
             loading={optionsLoading}
-            optionKey={productOptions.map((item) => item.value).join('|')}
           />
           <FilterSelect
             label="Collection"
             value={collection}
-            onChange={(e) => setCollection(e.target.value)}
+            onChange={setCollection}
             placeholder="All collections"
             loadingLabel="Loading collections…"
             options={collectionOptions}
             loading={optionsLoading}
-            optionKey={collectionOptions.map((item) => item.value).join('|')}
           />
           <FilterSelect
             label="Variant"
             value={variant}
-            onChange={(e) => setVariant(e.target.value)}
+            onChange={setVariant}
             placeholder="All variants"
             loadingLabel="Loading variants…"
             options={variantOptions}
             loading={optionsLoading}
-            optionKey={variantOptions.map((item) => item.value).join('|')}
           />
         </div>
         <button type="button" onClick={reset} className="mt-4 inline-flex min-h-[44px] items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold">
@@ -410,9 +415,9 @@ export default function RevenueAnalyticsPage() {
               )}
               <div className="mt-4 space-y-2">
                 {data.states.slice(0, 8).map((row) => (
-                  <button key={row.key} type="button" onClick={() => setState(row.label)} className="flex w-full min-w-0 items-center justify-between gap-2 rounded-xl bg-gray-50 px-3 py-2 text-left text-sm">
+                  <button key={row.key} type="button" onClick={() => setState(row.label)} className="flex w-full min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-xl bg-gray-50 px-3 py-2 text-left text-sm">
                     <span className="min-w-0 truncate font-medium">{row.label || 'Unknown'}</span>
-                    <span className="shrink-0 text-xs text-gray-500">{row.orders} orders · {money(row.collected)} · {row.sharePct}%</span>
+                    <span className="text-xs leading-5 text-gray-500">{row.orders} orders · {money(row.collected)} · {row.sharePct}%</span>
                   </button>
                 ))}
               </div>
@@ -421,12 +426,12 @@ export default function RevenueAnalyticsPage() {
               <p className="mb-3 text-xs leading-5 text-gray-500">District is not stored on orders. These rows are cities from shipping addresses.</p>
               <div className="space-y-2">
                 {data.cities.slice(0, 12).map((row) => (
-                  <button key={row.key} type="button" onClick={() => { if (row.state) setState(row.state); setCity(row.label); }} className="flex w-full min-w-0 items-start justify-between gap-2 rounded-xl border px-3 py-2 text-left">
+                  <button key={row.key} type="button" onClick={() => { if (row.state) setState(row.state); setCity(row.label); }} className="flex w-full min-w-0 flex-wrap items-start justify-between gap-2 rounded-xl border px-3 py-2 text-left">
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-semibold">{row.label}</span>
                       <span className="text-xs text-gray-500">{row.state || 'Unknown state'}</span>
                     </span>
-                    <span className="shrink-0 text-right text-xs text-gray-600">{row.orders} orders<br />{money(row.collected)}</span>
+                    <span className="text-right text-xs leading-5 text-gray-600">{row.orders} orders<br />{money(row.collected)}</span>
                   </button>
                 ))}
                 {data.cities.length === 0 && <p className="text-sm text-gray-500">No city data.</p>}
@@ -501,23 +506,30 @@ export default function RevenueAnalyticsPage() {
           <Panel
             title="Best-selling products"
             action={(
-              <select value={sortProducts} onChange={(e) => setSortProducts(e.target.value)} className="rounded-lg border px-3 py-2 text-sm">
-                <option value="revenue">By revenue</option>
-                <option value="units">By quantity</option>
-              </select>
+              <AdminSelect
+                className="w-full sm:w-44"
+                value={sortProducts}
+                onChange={setSortProducts}
+                buttonClassName="min-h-[40px] py-2"
+                options={[
+                  { value: 'revenue', label: 'By revenue' },
+                  { value: 'units', label: 'By quantity' },
+                ]}
+              />
             )}
           >
             <p className="mb-3 text-xs leading-5 text-gray-500">Ranked from actual order items, not the admin Best Seller flag. Historical titles and prices are kept even if a product is later edited.</p>
             <div className="space-y-3">
               {products.slice(0, 10).map((row, index) => (
-                <button key={`${row.id}-${row.title}`} type="button" onClick={() => { if (row.id) setProduct(row.id); setProfitProduct(row.title); }} className="flex w-full min-w-0 items-center gap-3 rounded-2xl border p-3 text-left">
-                  <span className="w-6 shrink-0 text-sm font-bold text-gray-400">{index + 1}</span>
+                <button key={`${row.id}-${row.title}`} type="button" onClick={() => { if (row.id) setProduct(row.id); setProfitProduct(row.title); }} className="flex w-full min-w-0 items-start gap-3 rounded-2xl border p-3 text-left sm:items-center">
+                  <span className="w-6 shrink-0 pt-1 text-sm font-bold text-gray-400 sm:pt-0">{index + 1}</span>
                   {row.image ? <img src={row.image} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" /> : <span className="h-12 w-12 shrink-0 rounded-lg bg-gray-100" />}
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold">{row.title}</span>
-                    <span className="text-xs text-gray-500">{row.units} sold · {row.orders} orders · avg {money(row.averagePrice)}{row.marginPct === null || row.marginPct === undefined ? '' : ` · margin ${row.marginPct}%`}</span>
+                    <span className="block text-xs leading-5 text-gray-500">{row.units} sold · {row.orders} orders · avg {money(row.averagePrice)}{row.marginPct === null || row.marginPct === undefined ? '' : ` · margin ${row.marginPct}%`}</span>
+                    <span className="mt-1 block text-sm font-bold sm:hidden">{money(row.revenue)}<span className="ml-2 text-xs font-medium text-emerald-700">{row.grossProfit || row.grossProfit === 0 ? money(row.grossProfit) : 'Profit unknown'}</span></span>
                   </span>
-                  <span className="shrink-0 text-right text-sm font-bold">{money(row.revenue)}<span className="block text-xs font-medium text-emerald-700">{row.grossProfit || row.grossProfit === 0 ? money(row.grossProfit) : 'Profit unknown'}</span></span>
+                  <span className="hidden shrink-0 text-right text-sm font-bold sm:block">{money(row.revenue)}<span className="block text-xs font-medium text-emerald-700">{row.grossProfit || row.grossProfit === 0 ? money(row.grossProfit) : 'Profit unknown'}</span></span>
                 </button>
               ))}
               {products.length === 0 && <p className="text-sm text-gray-500">No product sales in this period.</p>}
@@ -528,9 +540,9 @@ export default function RevenueAnalyticsPage() {
             <Panel title="Variant performance">
               <div className="space-y-2">
                 {data.variants.slice(0, 12).map((row) => (
-                  <div key={`${row.title}-${row.variant}`} className="flex min-w-0 items-center justify-between gap-2 rounded-xl bg-gray-50 px-3 py-2 text-sm">
-                    <span className="min-w-0 truncate">{row.title} · {row.variant}</span>
-                    <span className="shrink-0 text-xs text-gray-600">{row.units} sold · {money(row.revenue)}{row.grossProfit || row.grossProfit === 0 ? ` · ${money(row.grossProfit)} profit` : ''}</span>
+                  <div key={`${row.title}-${row.variant}`} className="flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-xl bg-gray-50 px-3 py-2 text-sm">
+                    <span className="min-w-0 break-words">{row.title} · {row.variant}</span>
+                    <span className="text-xs leading-5 text-gray-600">{row.units} sold · {money(row.revenue)}{row.grossProfit || row.grossProfit === 0 ? ` · ${money(row.grossProfit)} profit` : ''}</span>
                   </div>
                 ))}
               </div>
@@ -554,10 +566,10 @@ export default function RevenueAnalyticsPage() {
               )}
               <div className="mt-2 space-y-1 text-sm">
                 {data.paymentOutcomes.map((row) => (
-                  <p key={row.status} className="flex justify-between gap-2"><span>{STATUS_LABELS[row.status] || row.status}</span><span>{row.orders} · {money(row.amount)}</span></p>
+                  <p key={row.status} className="flex min-w-0 flex-wrap justify-between gap-x-2 gap-y-1"><span>{STATUS_LABELS[row.status] || row.status}</span><span>{row.orders} · {money(row.amount)}</span></p>
                 ))}
                 {(data.payments || []).map((row) => (
-                  <p key={row.method} className="flex justify-between gap-2 text-gray-600"><span>{row.method} paid</span><span>{row.orders} · {money(row.collected)}</span></p>
+                  <p key={row.method} className="flex min-w-0 flex-wrap justify-between gap-x-2 gap-y-1 text-gray-600"><span className="min-w-0 break-words">{row.method} paid</span><span>{row.orders} · {money(row.collected)}</span></p>
                 ))}
               </div>
             </Panel>
@@ -588,9 +600,9 @@ export default function RevenueAnalyticsPage() {
             </Panel>
             <Panel title="Collection contribution">
               {data.collections?.length ? data.collections.slice(0, 8).map((row) => (
-                <div key={row.id} className="flex items-center justify-between gap-2 border-b py-2 text-sm last:border-0">
+                <div key={row.id} className="flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 border-b py-2 text-sm last:border-0">
                   <span className="min-w-0 truncate">{row.name}</span>
-                  <span className="shrink-0 text-xs text-gray-600">{row.units} sold · {money(row.revenue)}</span>
+                  <span className="text-xs leading-5 text-gray-600">{row.units} sold · {money(row.revenue)}</span>
                 </div>
               )) : <p className="text-sm text-gray-500">No current collection membership on sold products.</p>}
               <p className="mt-2 text-xs leading-5 text-gray-500">A product in multiple collections is counted in each. These rows can overlap and should not be added together.</p>
@@ -605,19 +617,12 @@ export default function RevenueAnalyticsPage() {
               {(data.limitations || []).map((note) => <p key={note}>{note}</p>)}
             </div>
           </Panel>
-          <BuyerDrillDown
-            open={!!buyerKind}
-            kind={buyerKind}
-            query={query}
-            range={data.range}
-            onClose={() => setBuyerKind('')}
-          />
           {profitProduct && (
             <div className="fixed inset-0 z-50 flex items-end bg-black/40 sm:items-center sm:justify-center">
-              <div className="max-h-[90vh] w-full overflow-y-auto rounded-t-3xl bg-white p-4 sm:max-w-lg sm:rounded-3xl sm:p-6">
+              <div className="max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:max-w-lg sm:rounded-3xl sm:p-6">
                 <div className="mb-3 flex items-start justify-between gap-3">
-                  <h2 className="text-lg font-bold">{profitProduct}</h2>
-                  <button type="button" onClick={() => setProfitProduct(null)} className="min-h-[44px] rounded-lg border px-3">Close</button>
+                  <h2 className="min-w-0 break-words text-lg font-bold leading-tight">{profitProduct}</h2>
+                  <button type="button" onClick={() => setProfitProduct(null)} className="inline-flex h-11 shrink-0 items-center rounded-lg border px-3">Close</button>
                 </div>
                 {(products.filter((row) => row.title === profitProduct)[0] ? [products.filter((row) => row.title === profitProduct)[0]] : []).map((row) => (
                   <div key={row.id || row.title} className="space-y-2 text-sm">
@@ -636,6 +641,13 @@ export default function RevenueAnalyticsPage() {
           )}
         </>
       )}
+      <BuyerDrillDown
+        open={!!buyerKind}
+        kind={buyerKind}
+        query={query}
+        range={data?.range}
+        onClose={() => setBuyerKind('')}
+      />
     </div>
   );
 }

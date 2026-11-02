@@ -7,6 +7,7 @@ import ReadOnlyBanner from '@/components/admin/ReadOnlyBanner';
 import useAdminAccess from '@/hooks/useAdminAccess';
 import { formatPrice } from '@/lib/utils';
 import { formatIstDateInput } from '@/lib/revenueAnalytics';
+import AdminSelect from '@/components/admin/AdminSelect';
 
 function statusBadge(status) {
   if (status === 'configured') return 'bg-emerald-50 text-emerald-800';
@@ -125,8 +126,8 @@ export default function MakingCostPage() {
         </p>
       </div>
 
-      <div className="mb-4 grid min-w-0 gap-3 rounded-2xl border bg-white p-4 sm:grid-cols-[1fr_auto_auto]">
-        <label className="relative block">
+      <div className="mb-4 grid min-w-0 gap-3 rounded-2xl border bg-white p-4 sm:grid-cols-[minmax(0,1fr)_13rem]">
+        <label className="relative block min-w-0">
           <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             value={search}
@@ -135,13 +136,17 @@ export default function MakingCostPage() {
             className="min-h-[44px] w-full rounded-lg border py-2 pl-10 pr-3 text-sm"
           />
         </label>
-        <select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} className="min-h-[44px] rounded-lg border px-3 text-sm">
-          <option value="all">All products</option>
-          <option value="missing">Not configured</option>
-          <option value="partial">Partial</option>
-          <option value="configured">Configured</option>
-        </select>
-        <p className="self-center text-sm text-gray-500">{missingLabel}</p>
+        <AdminSelect
+          value={status}
+          onChange={(next) => { setStatus(next); setPage(1); }}
+          options={[
+            { value: 'all', label: 'All products' },
+            { value: 'missing', label: 'Not configured' },
+            { value: 'partial', label: 'Partial' },
+            { value: 'configured', label: 'Configured' },
+          ]}
+        />
+        <p className="text-sm leading-5 text-gray-500 sm:col-span-2">{missingLabel}</p>
       </div>
 
       <div className="overflow-hidden rounded-2xl border bg-white">
@@ -193,8 +198,8 @@ export default function MakingCostPage() {
                   <div className="flex gap-3">
                     {product.image ? <img src={product.image} alt="" className="h-14 w-14 shrink-0 rounded-lg object-cover" /> : <span className="h-14 w-14 shrink-0 rounded-lg bg-gray-100" />}
                     <div className="min-w-0 flex-1">
-                      <p className="font-semibold leading-5">{product.title}</p>
-                      <p className="mt-1 text-xs text-gray-500">{statusLabel(product.costStatus)} · {product.makingCost === null ? 'Unknown cost' : formatPrice(product.makingCost)}</p>
+                      <p className="truncate font-semibold leading-5">{product.title}</p>
+                      <p className="mt-1 text-xs leading-5 text-gray-500">{statusLabel(product.costStatus)} · {product.makingCost === null ? 'Unknown cost' : formatPrice(product.makingCost)}</p>
                     </div>
                   </div>
                 </button>
@@ -217,16 +222,17 @@ export default function MakingCostPage() {
 
       {selectedId && (
         <div className="fixed inset-0 z-50 flex items-end bg-black/40 sm:items-center sm:justify-center">
-          <div className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-white p-4 sm:max-w-2xl sm:rounded-3xl sm:p-6">
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h2 className="text-lg font-bold leading-tight">{detail?.product?.title || 'Making cost'}</h2>
-                <p className="mt-1 text-xs text-gray-500">{detail?.product?.id || selectedId}</p>
+          <div className="flex h-[92dvh] max-h-[92dvh] w-full min-w-0 flex-col overflow-hidden rounded-t-3xl bg-white pb-[env(safe-area-inset-bottom)] sm:h-auto sm:max-h-[90vh] sm:max-w-2xl sm:rounded-3xl sm:pb-0">
+            <div className="flex shrink-0 items-start justify-between gap-3 border-b p-4 sm:p-6 sm:pb-4">
+              <div className="min-w-0 flex-1">
+                <h2 className="break-words text-lg font-bold leading-tight">{detail?.product?.title || 'Making cost'}</h2>
+                <p className="mt-1 break-all text-xs text-gray-500">{detail?.product?.id || selectedId}</p>
               </div>
-              <button type="button" onClick={() => setSelectedId('')} className="min-h-[44px] min-w-[44px] rounded-lg border" aria-label="Close">
-                <FiX className="mx-auto" />
+              <button type="button" onClick={() => setSelectedId('')} className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border" aria-label="Close">
+                <FiX />
               </button>
             </div>
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6 sm:pt-4">
             {!detail ? <p className="text-sm text-gray-500">Loading...</p> : (
               <div className="space-y-4">
                 <label className="block text-sm font-medium">Product making cost
@@ -239,7 +245,7 @@ export default function MakingCostPage() {
                       const profit = unitProfit(variant.salePrice > 0 && variant.salePrice < variant.regularPrice ? variant.salePrice : variant.regularPrice, variantAmounts[variant.variantKey]);
                       return (
                         <label key={variant.variantKey} className="block rounded-xl border p-3 text-sm">
-                          <span className="font-medium">{variant.variantName}: {variant.optionLabel}</span>
+                          <span className="break-words font-medium">{variant.variantName}: {variant.optionLabel}</span>
                           <span className="mt-1 block text-xs text-gray-500">Selling {formatPrice(variant.salePrice > 0 && variant.salePrice < variant.regularPrice ? variant.salePrice : variant.regularPrice)}</span>
                           <input type="number" min="0" step="0.01" value={variantAmounts[variant.variantKey] || ''} onChange={(e) => setVariantAmounts((prev) => ({ ...prev, [variant.variantKey]: e.target.value }))} disabled={!write} className="mt-2 min-h-[44px] w-full rounded-lg border px-3" />
                           <span className="mt-1 block text-xs text-gray-500">{profit === null ? 'Gross profit unknown until this cost is saved' : `Unit gross profit at current listed price: ${formatPrice(profit)}`}</span>
@@ -263,7 +269,7 @@ export default function MakingCostPage() {
                 <div>
                   <p className="mb-2 text-sm font-semibold">Cost history</p>
                   {detail.history?.length ? detail.history.map((row, index) => (
-                    <p key={`${row.variantKey}-${row.effectiveFrom}-${index}`} className="border-b py-2 text-xs leading-5 text-gray-600 last:border-0">
+                    <p key={`${row.variantKey}-${row.effectiveFrom}-${index}`} className="break-words border-b py-2 text-xs leading-5 text-gray-600 last:border-0">
                       {row.variantKey || 'Product'}: {formatPrice(row.amount)}
                       {row.previousAmount === null ? '' : ` (was ${formatPrice(row.previousAmount)})`}
                       {' · from '}
@@ -275,6 +281,7 @@ export default function MakingCostPage() {
                 </div>
               </div>
             )}
+            </div>
           </div>
         </div>
       )}

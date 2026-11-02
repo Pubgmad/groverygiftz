@@ -5,6 +5,7 @@ import { getOrderDeliveryEstimate, isOrderOutOfTamilNadu } from '@/lib/orderDeli
 import toast from 'react-hot-toast';
 import useAdminAccess from '@/hooks/useAdminAccess';
 import ReadOnlyBanner from '@/components/admin/ReadOnlyBanner';
+import AdminSelect from '@/components/admin/AdminSelect';
 
 const statusOptions = [
   { value: 'ordered', label: 'Ordered' },
@@ -329,9 +330,11 @@ export default function AdminOrdersPage() {
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1">Status</label>
-              <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setCurrentPage(1); }} className="w-full rounded-lg border px-3 py-2 text-sm">
-                {statusFilterOptions.map((status) => <option key={status.value || 'all'} value={status.value}>{status.label}</option>)}
-              </select>
+              <AdminSelect
+                value={statusFilter}
+                onChange={(next) => { setStatusFilter(next); setCurrentPage(1); }}
+                options={statusFilterOptions}
+              />
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1">From Date</label>
