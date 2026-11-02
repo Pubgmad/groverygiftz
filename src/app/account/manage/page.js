@@ -3,8 +3,10 @@ import { useEffect, useState } from 'react';
 import { FiPackage, FiShoppingCart, FiUsers, FiGrid, FiDollarSign, FiMail, FiMessageSquare, FiBookOpen } from 'react-icons/fi';
 import { formatPrice } from '@/lib/utils';
 import Link from 'next/link';
+import useAdminAccess from '@/hooks/useAdminAccess';
 
 export default function AdminDashboard() {
+  const { canRead } = useAdminAccess();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -18,15 +20,15 @@ export default function AdminDashboard() {
   if (loading) return <div className="text-center py-12">Loading dashboard...</div>;
 
   const cards = [
-    { label: 'Products', value: stats?.products || 0, icon: FiPackage, color: 'bg-blue-500', href: '/account/manage/products' },
-    { label: 'Orders', value: stats?.orders || 0, icon: FiShoppingCart, color: 'bg-green-500', href: '/account/manage/orders' },
-    { label: 'Revenue', value: formatPrice(stats?.revenue || 0), icon: FiDollarSign, color: 'bg-yellow-500', href: '/account/manage/orders' },
-    { label: 'Customers', value: stats?.customers || 0, icon: FiUsers, color: 'bg-purple-500', href: '/account/manage/customers' },
-    { label: 'Collections', value: stats?.collections || 0, icon: FiGrid, color: 'bg-pink-500', href: '/account/manage/collections' },
-    { label: 'Blogs', value: stats?.blogs || 0, icon: FiBookOpen, color: 'bg-indigo-500', href: '/account/manage/blogs' },
-    { label: 'Subscribers', value: stats?.subscribers || 0, icon: FiMail, color: 'bg-teal-500', href: '/account/manage/newsletter' },
-    { label: 'Unread Messages', value: stats?.unreadMessages || 0, icon: FiMessageSquare, color: 'bg-red-500', href: '/account/manage/messages' },
-  ];
+    { module: 'products', label: 'Products', value: stats?.products || 0, icon: FiPackage, color: 'bg-blue-500', href: '/account/manage/products' },
+    { module: 'orders', label: 'Orders', value: stats?.orders || 0, icon: FiShoppingCart, color: 'bg-green-500', href: '/account/manage/orders' },
+    { module: 'orders', label: 'Revenue', value: formatPrice(stats?.revenue || 0), icon: FiDollarSign, color: 'bg-yellow-500', href: '/account/manage/orders' },
+    { module: 'customers', label: 'Customers', value: stats?.customers || 0, icon: FiUsers, color: 'bg-purple-500', href: '/account/manage/customers' },
+    { module: 'collections', label: 'Collections', value: stats?.collections || 0, icon: FiGrid, color: 'bg-pink-500', href: '/account/manage/collections' },
+    { module: 'blogs', label: 'Blogs', value: stats?.blogs || 0, icon: FiBookOpen, color: 'bg-indigo-500', href: '/account/manage/blogs' },
+    { module: 'newsletter', label: 'Subscribers', value: stats?.subscribers || 0, icon: FiMail, color: 'bg-teal-500', href: '/account/manage/newsletter' },
+    { module: 'messages', label: 'Unread Messages', value: stats?.unreadMessages || 0, icon: FiMessageSquare, color: 'bg-red-500', href: '/account/manage/messages' },
+  ].filter((card) => canRead(card.module));
 
   return (
     <div>
@@ -46,7 +48,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Recent Orders */}
-      <div className="bg-white rounded-xl border p-6">
+      {canRead('orders') && <div className="bg-white rounded-xl border p-6">
         <h2 className="font-bold text-lg mb-4">Recent Orders</h2>
         {stats?.recentOrders?.length > 0 ? (
           <div className="overflow-x-auto">
@@ -74,7 +76,7 @@ export default function AdminDashboard() {
         ) : (
           <p className="text-gray-500 text-center py-4">No orders yet</p>
         )}
-      </div>
+      </div>}
     </div>
   );
 }

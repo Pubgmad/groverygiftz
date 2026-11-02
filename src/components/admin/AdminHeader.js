@@ -14,7 +14,10 @@ export default function AdminHeader({ onMenuClick = () => {} }) {
         <h2 className="truncate text-base font-semibold text-gray-700 sm:text-lg">Admin Dashboard</h2>
       </div>
       <div className="flex shrink-0 items-center gap-3 sm:gap-4">
-        <span className="text-sm text-gray-500 hidden sm:inline">{session?.user?.name || session?.user?.email}</span>
+        <span className="hidden min-w-0 text-right text-sm text-gray-500 sm:block">
+          <span className="block truncate">{session?.user?.name || session?.user?.email}</span>
+          {session?.user?.isPrimary ? <span className="text-xs text-primary-600">Primary admin</span> : session?.user?.roleName ? <span className="text-xs text-gray-400">{session.user.roleName}</span> : null}
+        </span>
         <button onClick={() => signOut({ callbackUrl: '/admin/login' })}
           className="text-sm text-red-600 hover:text-red-800">Sign Out</button>
       </div>

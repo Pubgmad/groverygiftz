@@ -21,6 +21,10 @@ async function seed() {
   );
 
   if (existingAdmin) {
+    await db.collection('admins').updateOne(
+      { _id: existingAdmin._id },
+      { $set: { isPrimary: true, isActive: true, role: 'superadmin', updatedAt: new Date() } }
+    );
     console.log('Admin already exists; credentials preserved');
   } else {
     const adminCount = await db.collection('admins').countDocuments();
@@ -34,6 +38,9 @@ async function seed() {
       email: adminEmail,
       password: adminPassword,
       role: 'superadmin',
+      isPrimary: true,
+      isActive: true,
+      roleId: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     });

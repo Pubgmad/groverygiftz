@@ -5,6 +5,7 @@ import Order from '@/models/Order';
 import Settings from '@/models/Settings';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { can, getRequestAdminAccess } from '@/lib/adminAccess';
 import { getOrderDeliveryEstimate } from '@/lib/orderDeliveryEstimate';
 
 const escapeRegex = (value = '') => String(value).split('').map((char) => '\\^$*+?.()|{}[]'.includes(char) ? '\\' + char : char).join('');
@@ -34,6 +35,8 @@ export async function GET(req) {
 
   const filter = { paymentStatus: 'paid' };
   if (session.user.type === 'admin') {
+    const access = await getRequestAdminAccess(session);
+    if (!can(access, 'orders', 'read')) return NextResponse.json({ error: 'You do not have permission to perform this action' }, { status: 403 });
     if (customerId) filter.customer = customerId;
   } else {
     const email = String(session.user.email || '').trim().toLowerCase();

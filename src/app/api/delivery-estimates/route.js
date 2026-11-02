@@ -1,8 +1,6 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import dbConnect from '@/lib/db';
 import Settings from '@/models/Settings';
 import { DELIVERY_ESTIMATE_KEYS, validateDeliveryEstimate } from '@/lib/centralDeliveryEstimates';
@@ -20,8 +18,9 @@ export async function GET() {
 }
 
 export async function PUT(req) {
-  const session = await getServerSession(authOptions);
-  if (session?.user?.type !== 'admin') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const { requireAdminPermission } = await import('@/lib/adminAccess');
+  const { error } = await requireAdminPermission('estimated-delivery', 'write');
+  if (error) return error;
   try {
     const body = await req.json();
     const values = Object.fromEntries(DELIVERY_ESTIMATE_KEYS.map((key) => [key, validateDeliveryEstimate(body?.[key])]));

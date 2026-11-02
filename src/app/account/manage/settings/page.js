@@ -7,6 +7,8 @@ import PasswordInput from '@/components/common/PasswordInput';
 import ImageUploader from '@/components/admin/ImageUploader';
 import AdminHomeGiftSettings from '@/components/admin/AdminHomeGiftSettings';
 import { resolveGiftFinderForUi, defaultTickerMessages, defaultHotspotSpots } from '@/lib/giftFinderResolve';
+import useAdminAccess from '@/hooks/useAdminAccess';
+import ReadOnlyBanner from '@/components/admin/ReadOnlyBanner';
 
 const formatAdminHolidayDate = (value) => {
   if (!value) return '';
@@ -24,6 +26,8 @@ const formatAdminHolidayDate = (value) => {
 
 
 export default function AdminSettingsPage() {
+  const { canWrite } = useAdminAccess();
+  const writable = canWrite('settings');
   const [form, setForm] = useState({
     siteName: '', tagline: '', logo: '', desktopLogo: '', tabletLogo: '', mobileLogo: '', favicon: '', announcementText: '',
     phone: '', email: '', whatsapp: '', address: '', timings: '',
@@ -175,6 +179,7 @@ export default function AdminSettingsPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!writable) return;
     setSaving(true);
     const { tickerMessagesText, heroTrustBadgesText, deliveryHolidaysText, ...rest } = form;
     const payload = {
@@ -201,8 +206,10 @@ export default function AdminSettingsPage() {
 
   return (
     <div>
+      <ReadOnlyBanner show={!writable} />
       <h1 className="text-2xl font-bold mb-6">Site Settings</h1>
       <form onSubmit={handleSubmit} className="space-y-6 max-w-4xl">
+        <fieldset disabled={!writable} className="space-y-6">
         <div className="bg-white p-6 rounded-xl border space-y-4">
           <h2 className="font-bold text-lg">General</h2>
           <div>
@@ -213,10 +220,10 @@ export default function AdminSettingsPage() {
             <label className="block text-sm font-medium">Website Logo Assets</label>
             <p className="text-xs text-gray-500">Use the remove button on a saved logo to delete it permanently. Desktop is used as the fallback when tablet or mobile logos are empty. Favicon is used for the browser tab icon.</p>
             <div className="grid gap-4 lg:grid-cols-4">
-              <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3"><p className="mb-1 text-sm font-semibold">Desktop Logo</p><p className="mb-2 text-xs text-gray-500">Recommended: 420 x 120 px transparent PNG/WebP</p><ImageUploader replaceOnUpload deleteOnRemove confirmRemove images={(form.desktopLogo || form.logo) ? [form.desktopLogo || form.logo] : []} onChange={imgs => setForm(p => ({ ...p, desktopLogo: imgs[0] || '', logo: imgs[0] || '' }))} /></div>
-              <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3"><p className="mb-1 text-sm font-semibold">Tablet Logo</p><p className="mb-2 text-xs text-gray-500">Recommended: 360 x 110 px</p><ImageUploader replaceOnUpload deleteOnRemove confirmRemove images={form.tabletLogo ? [form.tabletLogo] : []} onChange={imgs => setForm(p => ({ ...p, tabletLogo: imgs[0] || '' }))} /></div>
-              <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3"><p className="mb-1 text-sm font-semibold">Mobile Logo</p><p className="mb-2 text-xs text-gray-500">Recommended: 300 x 90 px</p><ImageUploader replaceOnUpload deleteOnRemove confirmRemove images={form.mobileLogo ? [form.mobileLogo] : []} onChange={imgs => setForm(p => ({ ...p, mobileLogo: imgs[0] || '' }))} /></div>
-              <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3"><p className="mb-1 text-sm font-semibold">Favicon / Browser Tab Icon</p><p className="mb-2 text-xs text-gray-500">Recommended: square 512 x 512 PNG/WebP</p><ImageUploader replaceOnUpload deleteOnRemove confirmRemove images={form.favicon ? [form.favicon] : []} onChange={imgs => setForm(p => ({ ...p, favicon: imgs[0] || '' }))} /></div>
+              <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3"><p className="mb-1 text-sm font-semibold">Desktop Logo</p><p className="mb-2 text-xs text-gray-500">Recommended: 420 x 120 px transparent PNG/WebP</p><ImageUploader module="settings" replaceOnUpload deleteOnRemove confirmRemove images={(form.desktopLogo || form.logo) ? [form.desktopLogo || form.logo] : []} onChange={imgs => setForm(p => ({ ...p, desktopLogo: imgs[0] || '', logo: imgs[0] || '' }))} /></div>
+              <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3"><p className="mb-1 text-sm font-semibold">Tablet Logo</p><p className="mb-2 text-xs text-gray-500">Recommended: 360 x 110 px</p><ImageUploader module="settings" replaceOnUpload deleteOnRemove confirmRemove images={form.tabletLogo ? [form.tabletLogo] : []} onChange={imgs => setForm(p => ({ ...p, tabletLogo: imgs[0] || '' }))} /></div>
+              <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3"><p className="mb-1 text-sm font-semibold">Mobile Logo</p><p className="mb-2 text-xs text-gray-500">Recommended: 300 x 90 px</p><ImageUploader module="settings" replaceOnUpload deleteOnRemove confirmRemove images={form.mobileLogo ? [form.mobileLogo] : []} onChange={imgs => setForm(p => ({ ...p, mobileLogo: imgs[0] || '' }))} /></div>
+              <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3"><p className="mb-1 text-sm font-semibold">Favicon / Browser Tab Icon</p><p className="mb-2 text-xs text-gray-500">Recommended: square 512 x 512 PNG/WebP</p><ImageUploader module="settings" replaceOnUpload deleteOnRemove confirmRemove images={form.favicon ? [form.favicon] : []} onChange={imgs => setForm(p => ({ ...p, favicon: imgs[0] || '' }))} /></div>
             </div>
           </div>
         </div>
@@ -353,7 +360,7 @@ export default function AdminSettingsPage() {
         <div className="bg-white p-6 rounded-xl border space-y-4">
           <h2 className="font-bold text-lg">Promo Image Banner</h2>
           <p className="text-sm text-gray-500">Full-width banner shown between sections on the homepage. If no image is set, a gradient is shown.</p>
-          <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3"><label className="mb-1 block text-sm font-semibold">Landscape Promo Banner</label><p className="mb-2 text-xs text-gray-500">Upload one landscape banner. The website preserves the full image ratio across mobile, tablet, and desktop.</p><ImageUploader replaceOnUpload images={(form.promoBannerDesktopImage || form.promoBannerImage || form.promoBannerTabletImage || form.promoBannerMobileImage) ? [form.promoBannerDesktopImage || form.promoBannerImage || form.promoBannerTabletImage || form.promoBannerMobileImage] : []} onChange={imgs => setForm(p => ({ ...p, promoBannerDesktopImage: imgs[0] || '', promoBannerImage: imgs[0] || '', promoBannerTabletImage: imgs[0] || '', promoBannerMobileImage: imgs[0] || '' }))} /></div>
+          <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3"><label className="mb-1 block text-sm font-semibold">Landscape Promo Banner</label><p className="mb-2 text-xs text-gray-500">Upload one landscape banner. The website preserves the full image ratio across mobile, tablet, and desktop.</p><ImageUploader module="settings" replaceOnUpload images={(form.promoBannerDesktopImage || form.promoBannerImage || form.promoBannerTabletImage || form.promoBannerMobileImage) ? [form.promoBannerDesktopImage || form.promoBannerImage || form.promoBannerTabletImage || form.promoBannerMobileImage] : []} onChange={imgs => setForm(p => ({ ...p, promoBannerDesktopImage: imgs[0] || '', promoBannerImage: imgs[0] || '', promoBannerTabletImage: imgs[0] || '', promoBannerMobileImage: imgs[0] || '' }))} /></div>
           <div className="grid md:grid-cols-2 gap-4">
             <div><label className="block text-sm font-medium mb-1">Title</label><input value={form.promoBannerTitle} onChange={e => setForm(p => ({ ...p, promoBannerTitle: e.target.value }))} className="w-full border rounded-lg px-4 py-2" /></div>
             <div><label className="block text-sm font-medium mb-1">Subtitle</label><input value={form.promoBannerSubtitle} onChange={e => setForm(p => ({ ...p, promoBannerSubtitle: e.target.value }))} className="w-full border rounded-lg px-4 py-2" /></div>
@@ -364,9 +371,12 @@ export default function AdminSettingsPage() {
 
         <AdminHomeGiftSettings form={form} setForm={setForm} />
 
+        {writable && (
         <button type="submit" disabled={saving} className="w-full sm:w-auto bg-primary-600 text-white px-6 sm:px-8 py-3 rounded-lg font-semibold hover:bg-primary-700">
           {saving ? 'Saving...' : 'Save Settings'}
         </button>
+        )}
+        </fieldset>
       </form>
     </div>
   );

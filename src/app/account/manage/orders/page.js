@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import { formatPrice } from '@/lib/utils';
 import { getOrderDeliveryEstimate, isOrderOutOfTamilNadu } from '@/lib/orderDeliveryEstimate';
 import toast from 'react-hot-toast';
+import useAdminAccess from '@/hooks/useAdminAccess';
+import ReadOnlyBanner from '@/components/admin/ReadOnlyBanner';
 
 const statusOptions = [
   { value: 'ordered', label: 'Ordered' },
@@ -207,6 +209,8 @@ function PreviewDetails({ preview }) {
 }
 
 export default function AdminOrdersPage() {
+  const { canWrite } = useAdminAccess();
+  const writable = canWrite('orders');
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
@@ -262,6 +266,7 @@ export default function AdminOrdersPage() {
     if (selected?._id && !orders.some((order) => order._id === selected._id)) setSelected(null);
   }, [orders, selected?._id]);
   const updateStatus = async (id, status) => {
+    if (!writable) return;
     const res = await fetch(`/api/orders/${id}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }),
     });
@@ -274,6 +279,7 @@ export default function AdminOrdersPage() {
   };
 
   const updateTracking = async (id, trackingNumber) => {
+    if (!writable) return;
     const res = await fetch(`/api/orders/${id}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackingNumber: trackingNumber.trim() }),
     });
@@ -289,6 +295,7 @@ export default function AdminOrdersPage() {
 
   return (
     <div>
+      <ReadOnlyBanner show={!writable} />
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">Orders</h1>
@@ -403,7 +410,7 @@ export default function AdminOrdersPage() {
                 {selected.notes && <div className="min-w-0 rounded-lg border bg-yellow-50 p-3 break-words"><span className="text-gray-500">Customer note:</span> <p className="font-medium text-gray-900 whitespace-pre-wrap">{selected.notes}</p></div>}
                 <div>
                   <span className="text-gray-500">Status:</span>
-                  <select value={normalizeStatus(selected.status)} onChange={e => updateStatus(selected._id, e.target.value)} className="ml-2 border rounded px-2 py-1 text-sm">
+                  <select disabled={!writable} value={normalizeStatus(selected.status)} onChange={e => updateStatus(selected._id, e.target.value)} className="ml-2 border rounded px-2 py-1 text-sm disabled:bg-gray-100">
                     {statusOptions.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
                   </select>
                 </div>
@@ -415,8 +422,8 @@ export default function AdminOrdersPage() {
                 <div className="min-w-0 border rounded-lg p-3 bg-gray-50 space-y-2 break-words">
                   <p className="text-xs text-gray-600 leading-relaxed"><strong>ST Couriers tracking ID:</strong> after booking the parcel with ST Couriers, paste the tracking ID here. Customers can copy it and open the ST website.</p>
                   <label className="text-xs font-medium text-gray-700">Tracking ID</label>
-                  <input value={trackingDraft} onChange={(e) => setTrackingDraft(e.target.value)} placeholder="Enter ST Couriers tracking ID" className="min-w-0 max-w-full border rounded-lg px-3 py-2 text-sm font-mono w-full" />
-                  <button type="button" onClick={() => updateTracking(selected._id, trackingDraft)} className="text-sm px-4 py-2 rounded-lg bg-primary-600 text-white font-semibold hover:bg-primary-700">Save tracking ID</button>
+                  <input disabled={!writable} value={trackingDraft} onChange={(e) => setTrackingDraft(e.target.value)} placeholder="Enter ST Couriers tracking ID" className="min-w-0 max-w-full border rounded-lg px-3 py-2 text-sm font-mono w-full disabled:bg-gray-100" />
+                  {writable && <button type="button" onClick={() => updateTracking(selected._id, trackingDraft)} className="text-sm px-4 py-2 rounded-lg bg-primary-600 text-white font-semibold hover:bg-primary-700">Save tracking ID</button>}
                 </div>
 
                 <h3 className="font-semibold mt-4">Items</h3>

@@ -4,6 +4,8 @@ import bcrypt from 'bcryptjs';
 import dbConnect from './db';
 import Admin from '@/models/Admin';
 import Customer from '@/models/Customer';
+import { accessForSession, isPrimaryAdminRecord, loadAdminAccessById, publicAdminAccess } from '@/lib/adminAccess';
+
 export const authOptions = {
   providers: [
     CredentialsProvider({
@@ -27,6 +29,7 @@ export const authOptions = {
           if (!admin) return null;
           const adminValid = await bcrypt.compare(password, admin.password);
           if (!adminValid) return null;
+          if (!isPrimaryAdminRecord(admin) && admin.isActive === false) return null;
           return { id: admin._id.toString(), email: admin.email, name: admin.name, role: admin.role, type: 'admin' };
         }
 
@@ -70,12 +73,24 @@ export const authOptions = {
         token.role = user.role;
         token.userId = user.id;
       }
+      if (token.type === 'admin' && token.userId) {
+        token.adminAccess = accessForSession(await loadAdminAccessById(token.userId));
+      } else {
+        token.adminAccess = publicAdminAccess();
+      }
       return token;
     },
     async session({ session, token }) {
       session.user.type = token.type;
       session.user.role = token.role;
       session.user.id = token.userId;
+      const access = token.adminAccess || publicAdminAccess();
+      session.user.isPrimary = !!access.isPrimary;
+      session.user.adminActive = !!access.adminActive;
+      session.user.accessStatus = access.accessStatus || 'unauthenticated';
+      session.user.roleId = access.roleId || null;
+      session.user.roleName = access.roleName || '';
+      session.user.permissions = access.permissions || publicAdminAccess().permissions;
       return session;
     },
   },

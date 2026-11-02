@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import dbConnect from '@/lib/db';
 import { authOptions } from '@/lib/auth';
+import dbConnect from '@/lib/db';
 import Order from '@/models/Order';
 import Product from '@/models/Product';
 import Review from '@/models/Review';
@@ -9,10 +9,9 @@ import Review from '@/models/Review';
 const normalizeId = (value) => String(value?._id || value || '');
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session || session.user.type !== 'admin') {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const { requireAdminPermission } = await import('@/lib/adminAccess');
+  const { error } = await requireAdminPermission('reviews', 'read');
+  if (error) return error;
 
   await dbConnect();
   const reviews = await Review.find()

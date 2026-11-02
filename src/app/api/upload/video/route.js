@@ -1,14 +1,13 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { requireAdminPermission } from '@/lib/adminAccess';
 import { saveUploadFile } from '@/lib/uploadStorage';
 
 const MAX_VIDEO_SIZE = 100 * 1024 * 1024;
 const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/quicktime'];
 
 export async function POST(req) {
-  const session = await getServerSession(authOptions);
-  if (!session || session.user.type !== 'admin') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const { error } = await requireAdminPermission('products', 'write');
+  if (error) return error;
 
   const formData = await req.formData();
   const file = formData.get('file');

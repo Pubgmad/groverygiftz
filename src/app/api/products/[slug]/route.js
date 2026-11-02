@@ -4,8 +4,7 @@ import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/db';
 import Product from '@/models/Product';
 import Collection from '@/models/Collection';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { requireAdminPermission } from '@/lib/adminAccess';
 import slugify from 'slugify';
 import { sanitizeProductPayload } from '@/lib/productPayload';
 import { hydrateProductShippingTemplates } from '@/lib/shippingTemplateHydration';
@@ -29,10 +28,8 @@ export async function GET(req, { params }) {
 }
 
 export async function PUT(req, { params }) {
-  const session = await getServerSession(authOptions);
-  if (!session || session.user.type !== 'admin') {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const { error } = await requireAdminPermission('products', 'write');
+  if (error) return error;
 
   const { slug: segment } = await params;
   await dbConnect();
@@ -50,10 +47,8 @@ export async function PUT(req, { params }) {
 }
 
 export async function DELETE(req, { params }) {
-  const session = await getServerSession(authOptions);
-  if (!session || session.user.type !== 'admin') {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const { error } = await requireAdminPermission('products', 'write');
+  if (error) return error;
 
   const { slug: segment } = await params;
   await dbConnect();

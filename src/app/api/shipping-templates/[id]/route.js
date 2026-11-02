@@ -3,16 +3,11 @@ import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/db';
 import ShippingTemplate from '@/models/ShippingTemplate';
 import Product from '@/models/Product';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { requireAdminPermission } from '@/lib/adminAccess';
 import { sanitizeShippingTemplatePayload } from '@/lib/shippingTemplatePayload';
 import { readDeliveryEstimateSettings } from '@/lib/deliveryEstimateSettings';
 import { centralizeTemplateRates } from '@/lib/centralDeliveryEstimates';
 
-async function requireAdmin() {
-  const session = await getServerSession(authOptions);
-  return session?.user?.type === 'admin';
-}
 
 const templateRatesToOverrides = (rates = []) => (Array.isArray(rates) ? rates : []).map((row) => ({
   state: row.state || '',
@@ -55,7 +50,8 @@ async function syncProductsUsingTemplate(template) {
 }
 
 export async function PUT(req, { params }) {
-  if (!(await requireAdmin())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const { error } = await requireAdminPermission('shipping', 'write');
+  if (error) return error;
   await dbConnect();
   const { id } = await params;
   const body = sanitizeShippingTemplatePayload(await req.json());
@@ -71,7 +67,8 @@ export async function PUT(req, { params }) {
 }
 
 export async function DELETE(req, { params }) {
-  if (!(await requireAdmin())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const { error } = await requireAdminPermission('shipping', 'write');
+  if (error) return error;
   await dbConnect();
   const { id } = await params;
   const deleted = await ShippingTemplate.findByIdAndDelete(id);

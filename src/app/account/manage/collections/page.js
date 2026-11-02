@@ -3,8 +3,12 @@ import { useEffect, useState } from 'react';
 import { FiPlus, FiEdit, FiTrash2, FiX, FiCopy } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import ImageUploader from '@/components/admin/ImageUploader';
+import useAdminAccess from '@/hooks/useAdminAccess';
+import ReadOnlyBanner from '@/components/admin/ReadOnlyBanner';
 
 export default function AdminCollectionsPage() {
+  const { canWrite } = useAdminAccess();
+  const writable = canWrite('collections');
   const [collections, setCollections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -12,7 +16,7 @@ export default function AdminCollectionsPage() {
   const [form, setForm] = useState({ name: '', description: '', image: '', order: 0, isFeatured: false, isActive: true });
 
   const fetchData = async () => {
-    const res = await fetch('/api/collections');
+    const res = await fetch('/api/collections?all=true');
     const data = await res.json();
     setCollections(data.collections || []);
     setLoading(false);
@@ -28,6 +32,7 @@ export default function AdminCollectionsPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!writable) return;
     const url = editing ? `/api/collections/${editing}` : '/api/collections';
     const method = editing ? 'PUT' : 'POST';
     const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form, order: Number(form.order || 0) }) });
@@ -59,11 +64,14 @@ export default function AdminCollectionsPage() {
 
   return (
     <div>
+      <ReadOnlyBanner show={!writable} />
       <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mb-6">
         <h1 className="text-2xl font-bold">Collections</h1>
+        {writable && (
         <button onClick={() => { resetForm(); setShowForm(true); }} className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-white hover:bg-primary-700 sm:w-auto">
           <FiPlus /> Add Collection
         </button>
+        )}
       </div>
 
       {showForm && (
@@ -77,7 +85,7 @@ export default function AdminCollectionsPage() {
               className="w-full border rounded-lg px-4 py-2 focus:outline-none focus:border-primary-500" />
             <textarea placeholder="Description" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
               className="w-full border rounded-lg px-4 py-2 focus:outline-none focus:border-primary-500" rows={3} />
-            <ImageUploader images={form.image ? [form.image] : []} onChange={imgs => setForm(p => ({ ...p, image: imgs[0] || '' }))} />
+            <ImageUploader module="collections" images={form.image ? [form.image] : []} onChange={imgs => setForm(p => ({ ...p, image: imgs[0] || '' }))} />
             <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
               <input type="number" placeholder="Display order" value={form.order ?? ''} onChange={e => setForm(p => ({ ...p, order: e.target.value }))}
                 className="w-full border rounded-lg px-4 py-2 focus:outline-none focus:border-primary-500 sm:w-32" />
@@ -100,7 +108,7 @@ export default function AdminCollectionsPage() {
                   <td className="p-4"><p className="font-medium">{col.name}</p><button type="button" onClick={() => copyPublicLink(col.slug)} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-primary-600 hover:text-primary-700"><FiCopy size={12} /> /collections/{col.slug}</button></td>
                   <td className="p-4">{col.order}</td>
                   <td className="p-4"><span className={`px-2 py-1 rounded-full text-xs ${col.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{col.isActive ? 'Active' : 'Inactive'}</span></td>
-                  <td className="p-4"><div className="flex gap-2"><button onClick={() => startEdit(col)} className="text-blue-600"><FiEdit /></button><button onClick={() => handleDelete(col._id)} className="text-red-600"><FiTrash2 /></button></div></td>
+                  <td className="p-4">{writable ? <div className="flex gap-2"><button onClick={() => startEdit(col)} className="text-blue-600"><FiEdit /></button><button onClick={() => handleDelete(col._id)} className="text-red-600"><FiTrash2 /></button></div> : <span className="text-gray-400">View only</span>}</td>
                 </tr>
               ))}
               {collections.length === 0 && <tr><td colSpan={5} className="p-6 text-center text-gray-500">No collections</td></tr>}

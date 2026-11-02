@@ -1,19 +1,19 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { requireUploadPermission } from '@/lib/adminAccess';
 import { deleteUploadByUrl, saveUploadFile } from '@/lib/uploadStorage';
 import { detectImageFormat } from '@/lib/imageFormat';
 
 const MAX_FILE_SIZE = 200 * 1024 * 1024;
 const ADMIN_IMAGE_FORMATS = new Set(['jpeg', 'png', 'webp', 'gif', 'svg', 'avif']);
 
-async function requireAdmin() {
-  const session = await getServerSession(authOptions);
-  return session?.user?.type === 'admin';
+async function requireUpload(req) {
+  const moduleId = new URL(req.url).searchParams.get('module') || '';
+  return requireUploadPermission(moduleId);
 }
 
 export async function POST(req) {
-  if (!(await requireAdmin())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const { error } = await requireUpload(req);
+  if (error) return error;
 
   try {
     const formData = await req.formData();
@@ -32,7 +32,8 @@ export async function POST(req) {
 }
 
 export async function DELETE(req) {
-  if (!(await requireAdmin())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const { error } = await requireUpload(req);
+  if (error) return error;
 
   try {
     const { url } = await req.json();

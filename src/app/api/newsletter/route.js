@@ -3,6 +3,9 @@ import dbConnect from '@/lib/db';
 import Newsletter from '@/models/Newsletter';
 
 export async function GET() {
+  const { requireAdminPermission } = await import('@/lib/adminAccess');
+  const { error } = await requireAdminPermission('newsletter', 'read');
+  if (error) return error;
   await dbConnect();
   const subscribers = await Newsletter.find().sort({ createdAt: -1 }).lean();
   return NextResponse.json({ subscribers });

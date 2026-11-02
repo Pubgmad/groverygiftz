@@ -5,6 +5,8 @@ import dbConnect from '@/lib/db';
 import Settings from '@/models/Settings';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { can, getRequestAdminAccess } from '@/lib/adminAccess';
+import { GIFT_RECOMMENDER_SETTING_KEYS } from '@/lib/adminPermissions';
 import { getCashfreeConfig } from '@/lib/cashfreeConfig';
 import { DEFAULT_DELIVERY_ESTIMATES, DELIVERY_ESTIMATE_KEYS, withDeliveryEstimateDefaults } from '@/lib/centralDeliveryEstimates';
 
@@ -73,20 +75,41 @@ export async function GET() {
     settings = created.toObject();
   }
 
-  if (!session || session.user.type !== 'admin') {
-    return NextResponse.json(sanitizePublicSettings(withDeliveryEstimateDefaults(settings)), { headers: { 'Cache-Control': 'no-store' } });
+  const access = await getRequestAdminAccess(session);
+  if (can(access, 'settings', 'read')) {
+    return NextResponse.json(withDeliveryEstimateDefaults(settings), { headers: { 'Cache-Control': 'no-store' } });
   }
-  return NextResponse.json(withDeliveryEstimateDefaults(settings), { headers: { 'Cache-Control': 'no-store' } });
+  const publicSettings = sanitizePublicSettings(withDeliveryEstimateDefaults(settings));
+  if (can(access, 'gift-recommender', 'read')) {
+    GIFT_RECOMMENDER_SETTING_KEYS.forEach((key) => { publicSettings[key] = settings[key]; });
+  }
+  return NextResponse.json(publicSettings, { headers: { 'Cache-Control': 'no-store' } });
 }
 
 export async function PUT(req) {
   const session = await getServerSession(authOptions);
+  const access = await getRequestAdminAccess(session);
   if (!session || session.user.type !== 'admin') {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  const canWriteSettings = can(access, 'settings', 'write');
+  const canWriteGift = can(access, 'gift-recommender', 'write');
+  if (!canWriteSettings && !canWriteGift) {
+    return NextResponse.json({ error: 'You do not have permission to perform this action' }, { status: 403 });
   }
 
   await dbConnect();
   const body = await req.json();
+  if (!canWriteSettings && canWriteGift) {
+    const allowed = {};
+    GIFT_RECOMMENDER_SETTING_KEYS.forEach((key) => {
+      if (Object.prototype.hasOwnProperty.call(body, key)) allowed[key] = body[key];
+    });
+    const settings = await Settings.findOneAndUpdate({}, allowed, { new: true, upsert: true });
+    revalidatePath('/', 'layout');
+    revalidatePath('/');
+    return NextResponse.json(settings);
+  }
   // The dedicated two-field endpoint is the only writer of delivery durations.
   DELIVERY_ESTIMATE_KEYS.forEach((key) => { delete body[key]; });
   if (GOOGLE_REVIEW_SETTING_KEYS.some((key) => Object.prototype.hasOwnProperty.call(body, key))) {

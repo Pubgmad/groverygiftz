@@ -2,20 +2,19 @@ import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/db';
 import Page from '@/models/Page';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { requireAdminPermission } from '@/lib/adminAccess';
 
 export async function GET() {
+  const { error } = await requireAdminPermission('pages', 'read');
+  if (error) return error;
   await dbConnect();
   const pages = await Page.find().sort({ type: 1 }).lean();
   return NextResponse.json({ pages });
 }
 
 export async function POST(req) {
-  const session = await getServerSession(authOptions);
-  if (!session || session.user.type !== 'admin') {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const { error } = await requireAdminPermission('pages', 'write');
+  if (error) return error;
 
   await dbConnect();
   const body = await req.json();

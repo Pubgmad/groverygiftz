@@ -71,15 +71,15 @@ export default function AdminHomeGiftSettings({ form, setForm }) {
           <div><label className="block text-sm font-medium mb-1">Quote / description</label><input value={form.beforeAfterDescription} onChange={(e) => setForm((p) => ({ ...p, beforeAfterDescription: e.target.value }))} className="w-full border rounded-lg px-4 py-2" /></div>
         </div>
         <div className="grid md:grid-cols-2 gap-4">
-          <div><label className="block text-sm font-medium mb-1">Before image</label><ImageUploader images={form.beforeAfterImageBefore ? [form.beforeAfterImageBefore] : []} onChange={(imgs) => setForm((p) => ({ ...p, beforeAfterImageBefore: imgs[0] || '' }))} /></div>
-          <div><label className="block text-sm font-medium mb-1">After image</label><ImageUploader images={form.beforeAfterImageAfter ? [form.beforeAfterImageAfter] : []} onChange={(imgs) => setForm((p) => ({ ...p, beforeAfterImageAfter: imgs[0] || '' }))} /></div>
+          <div><label className="block text-sm font-medium mb-1">Before image</label><ImageUploader module="settings" images={form.beforeAfterImageBefore ? [form.beforeAfterImageBefore] : []} onChange={(imgs) => setForm((p) => ({ ...p, beforeAfterImageBefore: imgs[0] || '' }))} /></div>
+          <div><label className="block text-sm font-medium mb-1">After image</label><ImageUploader module="settings" images={form.beforeAfterImageAfter ? [form.beforeAfterImageAfter] : []} onChange={(imgs) => setForm((p) => ({ ...p, beforeAfterImageAfter: imgs[0] || '' }))} /></div>
         </div>
       </div>
 
       <div className="bg-white p-6 rounded-xl border space-y-4">
         <h2 className="font-bold text-lg">Hotspot banner</h2>
         <div><label className="block text-sm font-medium mb-1">Section title</label><input value={form.hotspotBannerTitle} onChange={(e) => setForm((p) => ({ ...p, hotspotBannerTitle: e.target.value }))} className="w-full border rounded-lg px-4 py-2" /></div>
-        <div><label className="block text-sm font-medium mb-1">Background image</label><ImageUploader images={form.hotspotBannerImage ? [form.hotspotBannerImage] : []} onChange={(imgs) => setForm((p) => ({ ...p, hotspotBannerImage: imgs[0] || '' }))} /></div>
+        <div><label className="block text-sm font-medium mb-1">Background image</label><ImageUploader module="settings" images={form.hotspotBannerImage ? [form.hotspotBannerImage] : []} onChange={(imgs) => setForm((p) => ({ ...p, hotspotBannerImage: imgs[0] || '' }))} /></div>
         <p className="text-sm text-gray-500">Hotspots (clickable pins). Use CSS positions e.g. top 40%, left 50%.</p>
         {(form.hotspotSpots || []).map((spot, i) => (
           <div key={i} className="grid md:grid-cols-5 gap-2 items-end border rounded-lg p-3 bg-gray-50">

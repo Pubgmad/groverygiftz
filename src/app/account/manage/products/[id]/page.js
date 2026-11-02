@@ -7,6 +7,8 @@ import Link from 'next/link';
 import useDeliverySettings from '@/hooks/useDeliverySettings';
 import { getCentralDeliveryEstimate } from '@/lib/centralDeliveryEstimates';
 import { FiPlus, FiX, FiVideo, FiUpload, FiImage, FiLoader } from 'react-icons/fi';
+import useAdminAccess from '@/hooks/useAdminAccess';
+import ReadOnlyBanner from '@/components/admin/ReadOnlyBanner';
 
 const INDIAN_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
@@ -40,6 +42,8 @@ function fromDatetimeLocalInput(value) {
 }
 
 export default function AdminProductForm({ params }) {
+  const { canWrite, status: accessStatus } = useAdminAccess();
+  const writable = canWrite('products');
   const deliverySettings = useDeliverySettings();
   const isEdit = params?.id && params.id !== 'new';
   const router = useRouter();
@@ -78,8 +82,14 @@ export default function AdminProductForm({ params }) {
     }
   }, [isEdit, params?.id]);
 
+  useEffect(() => {
+    if (accessStatus === 'loading' || writable || isEdit) return;
+    router.replace('/account/manage/products');
+  }, [accessStatus, writable, isEdit, router]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!writable) return;
     setLoading(true);
     const url = isEdit ? `/api/products/${params.id}` : '/api/products';
     const method = isEdit ? 'PUT' : 'POST';
@@ -191,8 +201,10 @@ export default function AdminProductForm({ params }) {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">{isEdit ? 'Edit Product' : 'New Product'}</h1>
+      <ReadOnlyBanner show={!writable} />
+      <h1 className="text-2xl font-bold mb-6">{isEdit ? (writable ? 'Edit Product' : 'View Product') : 'New Product'}</h1>
       <form onSubmit={handleSubmit} className="space-y-6 max-w-4xl">
+        <fieldset disabled={!writable} className="space-y-6 disabled:opacity-80">
         {/* Basic Info */}
         <div className="bg-white p-4 sm:p-6 rounded-xl border space-y-4">
           <h2 className="font-bold text-lg">Basic Information</h2>
@@ -218,7 +230,7 @@ export default function AdminProductForm({ params }) {
             <h2 className="font-bold text-lg">Product Images</h2>
             <p className="mt-1 text-sm text-gray-500">Upload portrait product images. Product listings and galleries preserve the full image without cropping or stretching.</p>
           </div>
-          <div className="rounded-xl border bg-primary-50/40 p-3"><p className="text-sm font-semibold">Product Images</p><p className="mb-2 text-xs text-gray-500">Portrait images recommended. The storefront adapts to each uploaded image ratio and shows the complete image.</p><ImageUploader images={form.images?.length ? form.images : form.responsiveImages?.desktop?.length ? form.responsiveImages.desktop : form.responsiveImages?.tablet?.length ? form.responsiveImages.tablet : form.responsiveImages?.mobile || []} onChange={images => setForm(p => ({ ...p, images, responsiveImages: { ...(p.responsiveImages || {}), desktop: images, tablet: images, mobile: images } }))} /></div>
+          <div className="rounded-xl border bg-primary-50/40 p-3"><p className="text-sm font-semibold">Product Images</p><p className="mb-2 text-xs text-gray-500">Portrait images recommended. The storefront adapts to each uploaded image ratio and shows the complete image.</p><ImageUploader module="products" images={form.images?.length ? form.images : form.responsiveImages?.desktop?.length ? form.responsiveImages.desktop : form.responsiveImages?.tablet?.length ? form.responsiveImages.tablet : form.responsiveImages?.mobile || []} onChange={images => setForm(p => ({ ...p, images, responsiveImages: { ...(p.responsiveImages || {}), desktop: images, tablet: images, mobile: images } }))} /></div>
         </div>
 
         {/* Product Video */}
@@ -466,7 +478,7 @@ export default function AdminProductForm({ params }) {
                         </select>
                       </div>
                       <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[220px_1fr]">
-                        <ImageUploader value={opt.previewFrameImage || ''} onChange={(url) => updateVariantOption(vIdx, oIdx, { previewFrameImage: url })} label="Frame overlay image" />
+                        <ImageUploader module="products" value={opt.previewFrameImage || ''} onChange={(url) => updateVariantOption(vIdx, oIdx, { previewFrameImage: url })} label="Frame overlay image" />
                         <textarea rows={3} value={opt.previewInstructions || ''} onChange={e => updateVariantOption(vIdx, oIdx, { previewInstructions: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-xs" placeholder="Instructions for this variant preview" />
                       </div>
                     </div>
@@ -606,11 +618,14 @@ export default function AdminProductForm({ params }) {
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row">
+          {writable && (
           <button type="submit" disabled={loading} className="w-full sm:w-auto bg-primary-600 text-white px-6 sm:px-8 py-3 rounded-lg font-semibold hover:bg-primary-700">
             {loading ? 'Saving...' : isEdit ? 'Update Product' : 'Create Product'}
           </button>
-          <button type="button" onClick={() => router.push('/account/manage/products')} className="w-full sm:w-auto px-6 sm:px-8 py-3 border rounded-lg hover:bg-gray-50">Cancel</button>
+          )}
+          <button type="button" onClick={() => router.push('/account/manage/products')} className="w-full sm:w-auto px-6 sm:px-8 py-3 border rounded-lg hover:bg-gray-50">{writable ? 'Cancel' : 'Back'}</button>
         </div>
+        </fieldset>
       </form>
     </div>
   );

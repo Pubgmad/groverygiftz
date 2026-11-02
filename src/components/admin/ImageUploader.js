@@ -3,7 +3,7 @@ import { useRef, useState } from 'react';
 import { FiLoader, FiUpload, FiX } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
-export default function ImageUploader({ images, value = '', onChange, label = 'Upload', replaceOnUpload = false, deleteOnRemove = false, confirmRemove = false }) {
+export default function ImageUploader({ images, value = '', onChange, label = 'Upload', replaceOnUpload = false, deleteOnRemove = false, confirmRemove = false, module = '' }) {
   const currentImages = Array.isArray(images) ? images : (value ? [value] : []);
   const isSingleValue = !Array.isArray(images) && typeof value === 'string';
   const emitChange = (nextImages) => {
@@ -16,7 +16,7 @@ export default function ImageUploader({ images, value = '', onChange, label = 'U
   const deleteUploadedFile = async (url) => {
     if (!deleteOnRemove || !(url?.startsWith('/uploads/') || url?.startsWith('/media/uploads/'))) return;
     try {
-      const res = await fetch('/api/upload', {
+      const res = await fetch(`/api/upload${module ? `?module=${encodeURIComponent(module)}` : ''}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
@@ -40,7 +40,7 @@ export default function ImageUploader({ images, value = '', onChange, label = 'U
       const formData = new FormData();
       formData.append('file', file);
       try {
-        const res = await fetch('/api/upload', { method: 'POST', body: formData });
+        const res = await fetch(`/api/upload${module ? `?module=${encodeURIComponent(module)}` : ''}`, { method: 'POST', body: formData });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || `Failed to upload ${file.name}`);
         uploaded.push(data.url);

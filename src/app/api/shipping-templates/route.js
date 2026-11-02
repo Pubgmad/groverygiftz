@@ -4,19 +4,17 @@ import dbConnect from '@/lib/db';
 import ShippingTemplate from '@/models/ShippingTemplate';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { can, getRequestAdminAccess, requireAdminPermission } from '@/lib/adminAccess';
 import { sanitizeShippingTemplatePayload } from '@/lib/shippingTemplatePayload';
 import { readDeliveryEstimateSettings } from '@/lib/deliveryEstimateSettings';
 import { centralizeTemplateRates } from '@/lib/centralDeliveryEstimates';
 
-async function requireAdmin() {
-  const session = await getServerSession(authOptions);
-  return session?.user?.type === 'admin';
-}
-
 export async function GET(req) {
   await dbConnect();
   const { searchParams } = new URL(req?.url || 'http://localhost', 'http://localhost');
-  const includeAll = searchParams.get('all') === 'true';
+  const session = await getServerSession(authOptions);
+  const access = await getRequestAdminAccess(session);
+  const includeAll = searchParams.get('all') === 'true' && can(access, 'shipping', 'read');
   const filter = includeAll ? {} : { isActive: true };
   const templates = await ShippingTemplate.find(filter).sort({ createdAt: -1 }).lean();
   const deliveryEstimates = await readDeliveryEstimateSettings();
@@ -24,7 +22,8 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
-  if (!(await requireAdmin())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const { error } = await requireAdminPermission('shipping', 'write');
+  if (error) return error;
   await dbConnect();
   const body = sanitizeShippingTemplatePayload(await req.json());
   body.rates = centralizeTemplateRates(body.rates, await readDeliveryEstimateSettings());

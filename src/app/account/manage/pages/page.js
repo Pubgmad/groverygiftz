@@ -1,6 +1,8 @@
 'use client';
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
+import useAdminAccess from '@/hooks/useAdminAccess';
+import ReadOnlyBanner from '@/components/admin/ReadOnlyBanner';
 
 const pageTypes = [
   { type: 'about', title: 'About Us' },
@@ -11,6 +13,8 @@ const pageTypes = [
 ];
 
 export default function AdminPagesPage() {
+  const { canWrite } = useAdminAccess();
+  const writable = canWrite('pages');
   const [pages, setPages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null);
@@ -23,6 +27,7 @@ export default function AdminPagesPage() {
   const getPage = (type) => pages.find(p => p.type === type || p.slug === type);
 
   const handleSave = async () => {
+    if (!writable) return;
     const existing = getPage(editing);
     const url = existing ? `/api/pages/${existing._id}` : '/api/pages';
     const method = existing ? 'PUT' : 'POST';
@@ -52,16 +57,17 @@ export default function AdminPagesPage() {
 
   return (
     <div>
+      <ReadOnlyBanner show={!writable} />
       <h1 className="text-2xl font-bold mb-6">Pages</h1>
 
       {editing ? (
         <div className="bg-white rounded-xl border p-4 sm:p-6">
           <h2 className="font-bold text-lg mb-4">{pageTypes.find(p => p.type === editing)?.title}</h2>
-          <textarea value={content} onChange={e => setContent(e.target.value)}
+          <textarea value={content} onChange={e => setContent(e.target.value)} disabled={!writable}
             className="w-full border rounded-lg px-4 py-3 focus:outline-none focus:border-primary-500 font-mono text-sm" rows={20}
             placeholder="Write page content (HTML supported)" />
           <div className="flex flex-col gap-3 mt-4 sm:flex-row">
-            <button onClick={handleSave} className="w-full sm:w-auto bg-primary-600 text-white px-6 py-2 rounded-lg hover:bg-primary-700">Save</button>
+            {writable && <button onClick={handleSave} className="w-full sm:w-auto bg-primary-600 text-white px-6 py-2 rounded-lg hover:bg-primary-700">Save</button>}
             <button onClick={() => setEditing(null)} className="w-full sm:w-auto px-6 py-2 border rounded-lg hover:bg-gray-50">Cancel</button>
           </div>
         </div>
@@ -76,7 +82,7 @@ export default function AdminPagesPage() {
                   <tr key={pt.type} className="border-t hover:bg-gray-50">
                     <td className="p-4 font-medium">{pt.title}</td>
                     <td className="p-4"><span className={`px-2 py-1 rounded-full text-xs ${page ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>{page ? 'Published' : 'Not set'}</span></td>
-                    <td className="p-4"><button onClick={() => startEdit(pt.type)} className="text-primary-600 hover:underline text-sm">Edit</button></td>
+                    <td className="p-4"><button onClick={() => startEdit(pt.type)} className="text-primary-600 hover:underline text-sm">{writable ? 'Edit' : 'View'}</button></td>
                   </tr>
                 );
               })}

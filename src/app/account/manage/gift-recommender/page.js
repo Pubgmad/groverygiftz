@@ -4,8 +4,12 @@ import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import AdminGiftRecommenderSettings from '@/components/admin/AdminGiftRecommenderSettings';
 import { resolveGiftFinderForUi } from '@/lib/giftFinderResolve';
+import useAdminAccess from '@/hooks/useAdminAccess';
+import ReadOnlyBanner from '@/components/admin/ReadOnlyBanner';
 
 export default function AdminGiftRecommenderPage() {
+  const { canWrite } = useAdminAccess();
+  const writable = canWrite('gift-recommender');
   const [form, setForm] = useState({
     giftFinderStillConfused: '',
     giftFinderTryLine: '',
@@ -37,6 +41,7 @@ export default function AdminGiftRecommenderPage() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (!writable) return;
     setSaving(true);
     const payload = {
       giftFinderStillConfused: form.giftFinderStillConfused || '',
@@ -60,15 +65,20 @@ export default function AdminGiftRecommenderPage() {
 
   return (
     <div className="max-w-5xl">
+      <ReadOnlyBanner show={!writable} />
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Gift Recommender</h1>
         <p className="mt-1 text-sm text-gray-500">Manage the storefront Gift Recommender options and quick-pick chips.</p>
       </div>
       <form onSubmit={handleSubmit} className="space-y-6">
+        <fieldset disabled={!writable} className="space-y-6">
         <AdminGiftRecommenderSettings form={form} setForm={setForm} />
+        {writable && (
         <button type="submit" disabled={saving} className="w-full sm:w-auto bg-primary-600 text-white px-6 sm:px-8 py-3 rounded-lg font-semibold hover:bg-primary-700 disabled:opacity-70">
           {saving ? 'Saving...' : 'Save Settings'}
         </button>
+        )}
+        </fieldset>
       </form>
     </div>
   );

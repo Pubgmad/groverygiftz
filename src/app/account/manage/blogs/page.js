@@ -3,8 +3,12 @@ import { useEffect, useState } from 'react';
 import { FiPlus, FiEdit, FiTrash2 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
+import useAdminAccess from '@/hooks/useAdminAccess';
+import ReadOnlyBanner from '@/components/admin/ReadOnlyBanner';
 
 export default function AdminBlogsPage() {
+  const { canWrite } = useAdminAccess();
+  const writable = canWrite('blogs');
   const [blogs, setBlogs] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -26,9 +30,10 @@ export default function AdminBlogsPage() {
 
   return (
     <div>
+      <ReadOnlyBanner show={!writable} />
       <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mb-6">
         <h1 className="text-2xl font-bold">Blogs</h1>
-        <Link href="/account/manage/blogs/new" className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-white hover:bg-primary-700 sm:w-auto"><FiPlus /> New Post</Link>
+        {writable && <Link href="/account/manage/blogs/new" className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-white hover:bg-primary-700 sm:w-auto"><FiPlus /> New Post</Link>}
       </div>
       <div className="bg-white rounded-xl border overflow-hidden">
         {loading ? <p className="p-6 text-center">Loading...</p> : (
@@ -41,8 +46,8 @@ export default function AdminBlogsPage() {
                   <td className="p-4"><span className={`px-2 py-1 rounded-full text-xs ${b.isPublished ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>{b.isPublished ? 'Published' : 'Draft'}</span></td>
                   <td className="p-4 text-gray-500">{new Date(b.createdAt).toLocaleDateString()}</td>
                   <td className="p-4 flex gap-2">
-                    <Link href={`/account/manage/blogs/${b._id}`} className="text-blue-600"><FiEdit /></Link>
-                    <button onClick={() => handleDelete(b._id)} className="text-red-600"><FiTrash2 /></button>
+                    <Link href={`/account/manage/blogs/${b._id}`} className="text-blue-600">{writable ? <FiEdit /> : 'View'}</Link>
+                    {writable && <button onClick={() => handleDelete(b._id)} className="text-red-600"><FiTrash2 /></button>}
                   </td>
                 </tr>
               ))}

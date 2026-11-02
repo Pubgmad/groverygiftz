@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { validateDeliveryEstimate } from '@/lib/centralDeliveryEstimates';
+import useAdminAccess from '@/hooks/useAdminAccess';
+import ReadOnlyBanner from '@/components/admin/ReadOnlyBanner';
 
 const emptyEstimates = { tamilNaduDeliveryEstimate: '', otherStateDeliveryEstimate: '' };
 
@@ -17,6 +19,8 @@ function readEstimates(data) {
 }
 
 export default function EstimatedDeliveryPage() {
+  const { canWrite } = useAdminAccess();
+  const writable = canWrite('estimated-delivery');
   const [form, setForm] = useState(emptyEstimates);
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
@@ -47,7 +51,7 @@ export default function EstimatedDeliveryPage() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (!loaded || saving) return;
+    if (!writable || !loaded || saving) return;
     const tamilNaduDeliveryEstimate = validateDeliveryEstimate(form.tamilNaduDeliveryEstimate);
     const otherStateDeliveryEstimate = validateDeliveryEstimate(form.otherStateDeliveryEstimate);
     if (tamilNaduDeliveryEstimate === null || otherStateDeliveryEstimate === null) {
@@ -80,6 +84,7 @@ export default function EstimatedDeliveryPage() {
 
   return (
     <div className="max-w-2xl">
+      <ReadOnlyBanner show={!writable} />
       <h1 className="mb-6 text-2xl font-bold">Estimated Delivery Days</h1>
       <form onSubmit={handleSubmit} className="space-y-5" aria-busy={loading || saving}>
         {loading && <p role="status" className="text-sm text-gray-500">Loading...</p>}
@@ -88,18 +93,20 @@ export default function EstimatedDeliveryPage() {
           <label htmlFor="tamil-nadu-estimate" className="mb-1 block text-sm font-medium">Tamil Nadu Estimated Delivery Days</label>
           <input id="tamil-nadu-estimate" type="text" required maxLength={80} value={form.tamilNaduDeliveryEstimate}
             onChange={event => setForm(previous => ({ ...previous, tamilNaduDeliveryEstimate: event.target.value }))}
-            disabled={!loaded || saving} className="w-full min-w-0 rounded-lg border bg-white px-4 py-3 text-base disabled:opacity-60" />
+            disabled={!writable || !loaded || saving} className="w-full min-w-0 rounded-lg border bg-white px-4 py-3 text-base disabled:opacity-60" />
         </div>
         <div>
           <label htmlFor="other-states-estimate" className="mb-1 block text-sm font-medium">Other States Estimated Delivery Days</label>
           <input id="other-states-estimate" type="text" required maxLength={80} value={form.otherStateDeliveryEstimate}
             onChange={event => setForm(previous => ({ ...previous, otherStateDeliveryEstimate: event.target.value }))}
-            disabled={!loaded || saving} className="w-full min-w-0 rounded-lg border bg-white px-4 py-3 text-base disabled:opacity-60" />
+            disabled={!writable || !loaded || saving} className="w-full min-w-0 rounded-lg border bg-white px-4 py-3 text-base disabled:opacity-60" />
         </div>
+        {writable && (
         <button type="submit" disabled={!loaded || saving}
           className="w-full rounded-lg bg-primary-600 px-6 py-3 font-semibold text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto">
           {saving ? 'Saving...' : 'Save Changes'}
         </button>
+        )}
       </form>
     </div>
   );

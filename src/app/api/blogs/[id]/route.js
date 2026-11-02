@@ -2,11 +2,12 @@ import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/db';
 import Blog from '@/models/Blog';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { requireAdminPermission } from '@/lib/adminAccess';
 import slugify from 'slugify';
 
 export async function GET(req, { params }) {
+  const { error } = await requireAdminPermission('blogs', 'read');
+  if (error) return error;
   await dbConnect();
   const blog = await Blog.findById(params.id).lean();
   if (!blog) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -14,10 +15,8 @@ export async function GET(req, { params }) {
 }
 
 export async function PUT(req, { params }) {
-  const session = await getServerSession(authOptions);
-  if (!session || session.user.type !== 'admin') {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const { error } = await requireAdminPermission('blogs', 'write');
+  if (error) return error;
 
   await dbConnect();
   const body = await req.json();
@@ -31,10 +30,8 @@ export async function PUT(req, { params }) {
 }
 
 export async function DELETE(req, { params }) {
-  const session = await getServerSession(authOptions);
-  if (!session || session.user.type !== 'admin') {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const { error } = await requireAdminPermission('blogs', 'write');
+  if (error) return error;
 
   await dbConnect();
   const deleted = await Blog.findByIdAndDelete(params.id);

@@ -1,14 +1,13 @@
 import { NextResponse } from 'next/server';
 import path from 'path';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { readUploadFile } from '@/lib/uploadStorage';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req, { params }) {
-  const session = await getServerSession(authOptions);
-  if (session?.user?.type !== 'admin') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const { requireAdminPermission } = await import('@/lib/adminAccess');
+  const { error } = await requireAdminPermission('orders', 'read');
+  if (error) return error;
 
   try {
     const { path: pathParts = [] } = await params;

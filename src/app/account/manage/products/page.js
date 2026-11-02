@@ -5,8 +5,11 @@ import { formatPrice, getDisplayPrice } from '@/lib/utils';
 import { getProductAvailableStock, hasVariantManagedStock, isProductSoldOut, isVariantOptionSoldOut } from '@/lib/stock';
 import { FiPlus, FiEdit, FiTrash2, FiSearch, FiCopy } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import useAdminAccess from '@/hooks/useAdminAccess';
+import ReadOnlyBanner from '@/components/admin/ReadOnlyBanner';
 
 export default function AdminProductsPage() {
+  const { canWrite } = useAdminAccess();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -43,11 +46,14 @@ export default function AdminProductsPage() {
 
   return (
     <div>
+      <ReadOnlyBanner show={!canWrite('products')} />
       <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mb-6">
         <h1 className="text-2xl font-bold">Products</h1>
+        {canWrite('products') && (
         <Link href="/account/manage/products/new" className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-white hover:bg-primary-700 sm:w-auto">
           <FiPlus /> Add Product
         </Link>
+        )}
       </div>
 
       <div className="bg-white rounded-xl border p-4 mb-4">
@@ -87,8 +93,8 @@ export default function AdminProductsPage() {
                   </td>
                   <td className="p-4">
                     <div className="flex gap-2">
-                      <Link href={`/account/manage/products/${p._id}`} className="text-blue-600 hover:text-blue-800"><FiEdit /></Link>
-                      <button onClick={() => handleDelete(p._id)} className="text-red-600 hover:text-red-800"><FiTrash2 /></button>
+                      <Link href={`/account/manage/products/${p._id}`} className="text-blue-600 hover:text-blue-800">{canWrite('products') ? <FiEdit /> : 'View'}</Link>
+                      {canWrite('products') && <button onClick={() => handleDelete(p._id)} className="text-red-600 hover:text-red-800"><FiTrash2 /></button>}
                     </div>
                   </td>
                 </tr>

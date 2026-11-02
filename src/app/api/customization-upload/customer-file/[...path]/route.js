@@ -18,7 +18,11 @@ const containsPath = (value, relativePath) => {
 };
 
 async function canAccessCustomerFile(session, relativePath) {
-  if (session?.user?.type === 'admin') return true;
+  if (session?.user?.type === 'admin') {
+    const { can, getRequestAdminAccess } = await import('@/lib/adminAccess');
+    const access = await getRequestAdminAccess(session);
+    return can(access, 'orders', 'read') || can(access, 'products', 'read');
+  }
   if (session?.user?.type !== 'customer' || !session.user.id) return false;
 
   await dbConnect();

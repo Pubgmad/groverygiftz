@@ -4,12 +4,14 @@ import dbConnect from '@/lib/db';
 import Collection from '@/models/Collection';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { can, getRequestAdminAccess, requireAdminPermission } from '@/lib/adminAccess';
 import slugify from 'slugify';
 
 export async function GET(req) {
   const session = await getServerSession(authOptions);
   const { searchParams } = new URL(req.url);
-  const includeAll = searchParams.get('all') === 'true' && session?.user?.type === 'admin';
+  const access = await getRequestAdminAccess(session);
+  const includeAll = searchParams.get('all') === 'true' && can(access, 'collections', 'read');
 
   await dbConnect();
   const filter = includeAll ? {} : { isActive: true };
@@ -18,10 +20,8 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
-  const session = await getServerSession(authOptions);
-  if (!session || session.user.type !== 'admin') {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const { error } = await requireAdminPermission('collections', 'write');
+  if (error) return error;
 
   await dbConnect();
   const body = await req.json();

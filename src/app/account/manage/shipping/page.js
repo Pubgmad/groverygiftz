@@ -4,6 +4,8 @@ import toast from 'react-hot-toast';
 import { FiEdit2, FiPlus, FiTrash2 } from 'react-icons/fi';
 import Link from 'next/link';
 import { getCentralDeliveryEstimate } from '@/lib/centralDeliveryEstimates';
+import useAdminAccess from '@/hooks/useAdminAccess';
+import ReadOnlyBanner from '@/components/admin/ReadOnlyBanner';
 
 const INDIAN_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
@@ -17,6 +19,8 @@ const blankRates = () => INDIAN_STATES.map((state) => ({ state, shippingCost: 0,
 const emptyTemplate = () => ({ name: '', description: '', rates: blankRates(), isActive: true });
 
 export default function ShippingTemplatesPage() {
+  const { canWrite } = useAdminAccess();
+  const writable = canWrite('shipping');
   const [templates, setTemplates] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [form, setForm] = useState(emptyTemplate());
@@ -42,6 +46,7 @@ export default function ShippingTemplatesPage() {
 
   const saveTemplate = async (e) => {
     e.preventDefault();
+    if (!writable) return;
     if (!form.name.trim()) return toast.error('Template name is required');
     setLoading(true);
     const isEdit = selectedId !== 'new';
@@ -82,12 +87,13 @@ export default function ShippingTemplatesPage() {
 
   return (
     <div className="space-y-6">
+      <ReadOnlyBanner show={!writable} />
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-display text-2xl font-bold">Shipping Templates</h1>
           <p className="mt-1 text-sm text-gray-500">Create reusable state-wise delivery charges for product and variant pricing.</p>
         </div>
-        <button type="button" onClick={() => setSelectedId('new')} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary-600 px-4 py-3 text-sm font-bold text-white sm:w-auto"><FiPlus /> New Template</button>
+        {writable && <button type="button" onClick={() => setSelectedId('new')} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary-600 px-4 py-3 text-sm font-bold text-white sm:w-auto"><FiPlus /> New Template</button>}
       </div>
 
       <div className="grid min-w-0 gap-5 lg:grid-cols-[240px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)]">
@@ -114,11 +120,12 @@ export default function ShippingTemplatesPage() {
               <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-50 text-primary-600"><FiEdit2 size={22} /></div>
               <h2 className="font-display text-xl font-bold text-gray-950">Select a template</h2>
               <p className="mt-2 text-sm text-gray-500">Choose a saved shipping template to edit it, or create a new one when needed.</p>
-              <button type="button" onClick={() => setSelectedId('new')} className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-primary-600 px-4 py-3 text-sm font-bold text-white"><FiPlus /> New Template</button>
+              {writable && <button type="button" onClick={() => setSelectedId('new')} className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-primary-600 px-4 py-3 text-sm font-bold text-white"><FiPlus /> New Template</button>}
             </div>
           </div>
         ) : (
         <form onSubmit={saveTemplate} className="min-w-0 rounded-2xl border bg-white p-4 sm:p-6">
+          <fieldset disabled={!writable} className="min-w-0">
           <div className="mb-5 grid gap-4 md:grid-cols-2">
             <div><label className="mb-1 block text-sm font-medium">Template Name</label><input required value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} className="w-full rounded-lg border px-4 py-2" placeholder="Example: 1 KG - All States" /></div>
             <div><label className="mb-1 block text-sm font-medium">Description</label><input value={form.description || ''} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} className="w-full rounded-lg border px-4 py-2" placeholder="Optional internal note" /></div>
@@ -163,6 +170,7 @@ export default function ShippingTemplatesPage() {
             </table>
           </div>
 
+          {writable && (
           <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-between">
             {selectedId === 'new' ? (
               <button type="button" onClick={() => setForm(emptyTemplate())} disabled={loading} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-bold text-gray-600 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto">Clear new template</button>
@@ -171,6 +179,8 @@ export default function ShippingTemplatesPage() {
             )}
             <button disabled={loading} className="w-full rounded-xl bg-primary-600 px-5 py-3 text-sm font-bold text-white disabled:opacity-60 sm:w-auto">{loading ? 'Saving...' : 'Save Template'}</button>
           </div>
+          )}
+          </fieldset>
         </form>
         )}
       </div>

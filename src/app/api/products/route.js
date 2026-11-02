@@ -6,6 +6,7 @@ import Product from '@/models/Product';
 import Collection from '@/models/Collection';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { can, getRequestAdminAccess, requireAdminPermission } from '@/lib/adminAccess';
 import slugify from 'slugify';
 import { activeAdminOfferMatch } from '@/lib/offers';
 import { sanitizeProductPayload } from '@/lib/productPayload';
@@ -17,6 +18,7 @@ export async function GET(req) {
   await dbConnect();
   const { searchParams } = new URL(req?.url || 'http://localhost', 'http://localhost');
   const session = await getServerSession(authOptions);
+  const access = await getRequestAdminAccess(session);
   const page = Number(searchParams.get('page')) || 1;
   const limit = Number(searchParams.get('limit')) || 20;
   const search = searchParams.get('search') || '';
@@ -39,7 +41,7 @@ export async function GET(req) {
     filter.createdAt = { $gte: latestSince };
   }
   // Expose inactive products only to authenticated admins.
-  if (!includeAll || !session || session.user.type !== 'admin') filter.isActive = true;
+  if (!includeAll || !can(access, 'products', 'read')) filter.isActive = true;
 
   const [products, total] = await Promise.all([
     Product.find(filter).populate('collections', 'name slug').sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
@@ -52,10 +54,8 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
-  const session = await getServerSession(authOptions);
-  if (!session || session.user.type !== 'admin') {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const { error } = await requireAdminPermission('products', 'write');
+  if (error) return error;
 
   await dbConnect();
   const body = sanitizeProductPayload(await req.json());

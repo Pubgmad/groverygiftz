@@ -39,7 +39,7 @@ export default function AdminLoginPage() {
     <div className="min-h-[70vh] flex items-center justify-center px-4 py-16 bg-gradient-to-b from-primary-50/70 to-white">
       <div className="max-w-md w-full bg-white border rounded-2xl shadow-sm p-6 md:p-8">
         <h1 className="text-3xl font-display font-bold text-center mb-2">Admin Login</h1>
-        <p className="text-center text-gray-500 mb-8">Store owner access only</p>
+        <p className="text-center text-gray-500 mb-8">Primary admin and assigned staff access</p>
         <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
           <input type="email" required placeholder="Admin email" name="store_admin_email" autoComplete="off" readOnly={!inputReady} onFocus={() => setInputReady(true)} value={email} onChange={e => setEmail(e.target.value)}
             className="w-full border rounded-lg px-4 py-3 focus:outline-none focus:border-primary-500" />
