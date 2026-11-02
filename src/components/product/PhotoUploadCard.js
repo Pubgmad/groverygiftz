@@ -16,6 +16,7 @@ export default function PhotoUploadCard({
   onOrientation,
   onUpload,
   onRemove,
+  onEdit,
   instructions = '',
 }) {
   const hasPhoto = Boolean(photoUrl);
@@ -39,7 +40,9 @@ export default function PhotoUploadCard({
       </div>
       <div className="relative aspect-square overflow-hidden rounded-xl border border-dashed border-gray-200 bg-gray-50">
         {hasPhoto ? (
-          <img src={photoUrl} alt={`${label} upload`} className="h-full w-full object-cover" />
+          <button type="button" onClick={() => onEdit?.()} className="h-full w-full" aria-label={`Edit ${label}`}>
+            <img src={photoUrl} alt={`${label} upload`} className="h-full w-full object-cover" />
+          </button>
         ) : (
           <label className={`flex h-full w-full cursor-pointer flex-col items-center justify-center gap-1 px-2 text-center ${uploading || disabled ? 'pointer-events-none opacity-70' : ''}`}>
             {uploading ? <FiLoader className="animate-spin text-primary-600" size={22} /> : <FiUpload className="text-primary-600" size={20} />}
@@ -67,7 +70,7 @@ export default function PhotoUploadCard({
             type="button"
             onClick={onRemove}
             disabled={uploading || disabled}
-            className="absolute right-1.5 top-1.5 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-red-600 shadow disabled:opacity-50"
+            className="absolute right-1.5 top-1.5 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-red-600 shadow disabled:opacity-50"
             aria-label={`Remove ${label}`}
           >
             <FiX size={16} />
@@ -75,7 +78,13 @@ export default function PhotoUploadCard({
         ) : null}
       </div>
       {hasPhoto ? (
-        <label className={`mt-2 relative flex min-h-[36px] cursor-pointer items-center justify-center rounded-lg border border-primary-100 bg-primary-50/60 text-xs font-semibold text-primary-800 ${uploading || disabled ? 'pointer-events-none opacity-70' : ''}`}>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+        {typeof onEdit === 'function' ? (
+          <button type="button" onClick={onEdit} disabled={uploading || disabled} className="flex min-h-[36px] items-center justify-center rounded-lg border border-gray-200 text-xs font-semibold text-gray-800 disabled:opacity-70">
+            Edit
+          </button>
+        ) : null}
+        <label className={`relative flex min-h-[36px] cursor-pointer items-center justify-center rounded-lg border border-primary-100 bg-primary-50/60 text-xs font-semibold text-primary-800 ${uploading || disabled ? 'pointer-events-none opacity-70' : ''} ${typeof onEdit === 'function' ? '' : 'col-span-2'}`}>
           Replace photo
           <input
             type="file"
@@ -89,6 +98,7 @@ export default function PhotoUploadCard({
             }}
           />
         </label>
+        </div>
       ) : null}
       {typeof onOrientation === 'function' ? (
         <div className="mt-2 grid grid-cols-3 gap-1">
