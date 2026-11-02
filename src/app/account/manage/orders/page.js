@@ -220,6 +220,7 @@ export default function AdminOrdersPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [filtersReady, setFiltersReady] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalOrders, setTotalOrders] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -245,7 +246,18 @@ export default function AdminOrdersPage() {
     if (selected?._id) setSelected(nextOrders.find((order) => order._id === selected._id) || null);
   };
 
-  useEffect(() => { fetchOrders(); }, [currentPage, orderFilter, mobileFilter, statusFilter, dateFrom, dateTo]);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setDateFrom(params.get('dateFrom') || '');
+    setDateTo(params.get('dateTo') || '');
+    setStatusFilter(params.get('status') || '');
+    setFiltersReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!filtersReady) return;
+    fetchOrders();
+  }, [filtersReady, currentPage, orderFilter, mobileFilter, statusFilter, dateFrom, dateTo]);
 
   useEffect(() => {
     fetch('/api/settings')

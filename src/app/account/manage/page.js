@@ -22,7 +22,7 @@ export default function AdminDashboard() {
   const cards = [
     { module: 'products', label: 'Products', value: stats?.products || 0, icon: FiPackage, color: 'bg-blue-500', href: '/account/manage/products' },
     { module: 'orders', label: 'Orders', value: stats?.orders || 0, icon: FiShoppingCart, color: 'bg-green-500', href: '/account/manage/orders' },
-    { module: 'orders', label: 'Revenue', value: formatPrice(stats?.revenue || 0), icon: FiDollarSign, color: 'bg-yellow-500', href: '/account/manage/orders' },
+    { module: 'revenue', label: 'Revenue', value: formatPrice(stats?.revenue || 0), icon: FiDollarSign, color: 'bg-yellow-500', href: '/account/manage/revenue' },
     { module: 'customers', label: 'Customers', value: stats?.customers || 0, icon: FiUsers, color: 'bg-purple-500', href: '/account/manage/customers' },
     { module: 'collections', label: 'Collections', value: stats?.collections || 0, icon: FiGrid, color: 'bg-pink-500', href: '/account/manage/collections' },
     { module: 'blogs', label: 'Blogs', value: stats?.blogs || 0, icon: FiBookOpen, color: 'bg-indigo-500', href: '/account/manage/blogs' },

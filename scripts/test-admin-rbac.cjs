@@ -37,6 +37,10 @@ assert.strictEqual(unknownIgnored.orders.write, false);
 
 const customersWriteDisabled = ADMIN_MODULES.find((module) => module.id === 'customers');
 assert.strictEqual(customersWriteDisabled.writeSupported, false);
+const revenueModule = ADMIN_MODULES.find((module) => module.id === 'revenue');
+assert.ok(revenueModule, 'revenue analytics should be a catalogued admin module');
+assert.strictEqual(revenueModule.writeSupported, false);
+assert.strictEqual(moduleIdFromPath('/account/manage/revenue'), 'revenue');
 const customersPerms = normalizePermissions({ customers: { read: true, write: true } });
 assert.strictEqual(customersPerms.customers.write, false);
 assert.strictEqual(customersPerms.customers.read, true);

@@ -63,5 +63,8 @@ const OrderSchema = new mongoose.Schema({
   notes: String,
 }, { timestamps: true });
 
+OrderSchema.index({ paymentStatus: 1, paidAt: -1 });
+OrderSchema.index({ paymentStatus: 1, createdAt: -1 });
+
 export default mongoose.models.Order || mongoose.model('Order', OrderSchema);
 
