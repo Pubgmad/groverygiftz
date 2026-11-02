@@ -34,6 +34,7 @@ export async function GET(req) {
     targetType: 'orders',
     details: {
       orderId: parsed.orderId || '',
+      name: parsed.name || '',
       mobile: parsed.mobile || '',
       status: parsed.status || '',
       dateFrom: parsed.dateFrom || '',

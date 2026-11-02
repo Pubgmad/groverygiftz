@@ -61,15 +61,18 @@ const params = new Map([
   ['dateTo', '2026-11-02'],
   ['mobile', '9600253921'],
   ['orderId', 'GG0001'],
+  ['name', 'Raj'],
 ]);
 params.get = Map.prototype.get;
 const parsedOrders = parseOrderReportFilters(params);
 assert.strictEqual(parsedOrders.status, 'on_process');
 assert.strictEqual(parsedOrders.mobile, '9600253921');
+assert.strictEqual(parsedOrders.name, 'Raj');
 const orderFilter = buildAdminOrderFilter(parsedOrders);
 assert.strictEqual(orderFilter.paymentStatus, 'paid');
 assert.deepStrictEqual(JSON.parse(JSON.stringify(orderFilter.status.$in)), ['on_process', 'processing']);
 assert.ok(orderFilter.orderNumber.$regex);
+assert.ok(orderFilter['shippingAddress.fullName'].$regex);
 assert.strictEqual(Object.prototype.toString.call(orderFilter.paidAt.$gte), '[object Date]');
 assert.strictEqual(Object.prototype.toString.call(orderFilter.paidAt.$lte), '[object Date]');
 assert.strictEqual(csvFilename('orders', '2026-11-01', '2026-11-02'), 'orders_2026-11-01_to_2026-11-02.csv');

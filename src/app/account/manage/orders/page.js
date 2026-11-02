@@ -219,6 +219,7 @@ export default function AdminOrdersPage() {
   const [selected, setSelected] = useState(null);
   const [trackingDraft, setTrackingDraft] = useState('');
   const [orderFilter, setOrderFilter] = useState('');
+  const [nameFilter, setNameFilter] = useState('');
   const [mobileFilter, setMobileFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -234,6 +235,7 @@ export default function AdminOrdersPage() {
   const filterQuery = () => {
     const query = new URLSearchParams();
     if (orderFilter.trim()) query.set('orderId', orderFilter.trim());
+    if (nameFilter.trim()) query.set('name', nameFilter.trim());
     if (mobileFilter.trim()) query.set('mobile', mobileFilter.trim());
     if (statusFilter) query.set('status', statusFilter);
     if (dateFrom) query.set('dateFrom', dateFrom);
@@ -269,6 +271,7 @@ export default function AdminOrdersPage() {
     setDateTo(params.get('dateTo') || '');
     setStatusFilter(params.get('status') || '');
     setOrderFilter(params.get('orderId') || params.get('orderNumber') || '');
+    setNameFilter(params.get('name') || '');
     setFiltersReady(true);
   }, []);
 
@@ -282,7 +285,7 @@ export default function AdminOrdersPage() {
       return;
     }
     fetchOrders();
-  }, [filtersReady, currentPage, orderFilter, mobileFilter, statusFilter, dateFrom, dateTo, dateError]);
+  }, [filtersReady, currentPage, orderFilter, nameFilter, mobileFilter, statusFilter, dateFrom, dateTo, dateError]);
 
   useEffect(() => {
     fetch('/api/settings')
@@ -297,7 +300,7 @@ export default function AdminOrdersPage() {
 
   const paginatedOrders = orders;
 
-  useEffect(() => { setCurrentPage(1); }, [orderFilter, mobileFilter, statusFilter, dateFrom, dateTo]);
+  useEffect(() => { setCurrentPage(1); }, [orderFilter, nameFilter, mobileFilter, statusFilter, dateFrom, dateTo]);
   useEffect(() => { if (currentPage > totalPages) setCurrentPage(totalPages); }, [currentPage, totalPages]);
   useEffect(() => {
     if (selected?._id && !orders.some((order) => order._id === selected._id)) setSelected(null);
@@ -343,6 +346,7 @@ export default function AdminOrdersPage() {
             type="button"
             onClick={() => {
               setOrderFilter('');
+              setNameFilter('');
               setMobileFilter('');
               setStatusFilter('');
               setDateFrom('');
@@ -363,10 +367,14 @@ export default function AdminOrdersPage() {
 
       <div className={`grid gap-6 ${selected ? 'xl:grid-cols-3' : ''}`}>
         <div className={`${selected ? 'xl:col-span-2' : ''} bg-white rounded-xl border overflow-hidden`}>
-          <div className="grid min-w-0 gap-3 border-b bg-gray-50 p-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid min-w-0 gap-3 border-b bg-gray-50 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             <div className="min-w-0">
               <label className="mb-1 block text-xs font-semibold text-gray-500">Order ID</label>
               <input value={orderFilter} onChange={(e) => { setOrderFilter(e.target.value); setCurrentPage(1); }} placeholder="Search GG0001" className="min-h-[44px] w-full min-w-0 rounded-lg border px-3 py-2 text-sm" />
+            </div>
+            <div className="min-w-0">
+              <label className="mb-1 block text-xs font-semibold text-gray-500">Customer Name</label>
+              <input value={nameFilter} onChange={(e) => { setNameFilter(e.target.value); setCurrentPage(1); }} placeholder="Search name" className="min-h-[44px] w-full min-w-0 rounded-lg border px-3 py-2 text-sm" />
             </div>
             <div className="min-w-0">
               <label className="mb-1 block text-xs font-semibold text-gray-500">Mobile Number</label>
@@ -388,7 +396,7 @@ export default function AdminOrdersPage() {
               <label className="mb-1 block text-xs font-semibold text-gray-500">To Date</label>
               <input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setCurrentPage(1); }} className="min-h-[44px] w-full min-w-0 rounded-lg border px-3 py-2 text-sm" />
             </div>
-            {dateError ? <p className="text-sm text-red-600 sm:col-span-2 lg:col-span-5">{dateError}</p> : null}
+            {dateError ? <p className="text-sm text-red-600 sm:col-span-2 lg:col-span-3 xl:col-span-6">{dateError}</p> : null}
           </div>
 
           {loading ? <p className="p-6 text-center">Loading...</p> : (<>

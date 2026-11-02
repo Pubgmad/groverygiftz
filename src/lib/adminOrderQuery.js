@@ -53,6 +53,7 @@ export const ORDER_CSV_HEADERS = [
 
 export function parseOrderReportFilters(params) {
   const orderId = paramValue(params, 'orderId', 'orderNumber');
+  const name = paramValue(params, 'name');
   const mobile = paramValue(params, 'mobile', 'mobileNumber');
   const status = paramValue(params, 'status');
   const dateFrom = paramValue(params, 'dateFrom');
@@ -62,6 +63,7 @@ export function parseOrderReportFilters(params) {
   const normalizedStatus = status === 'pending' ? 'ordered' : status;
   return {
     orderId,
+    name,
     mobile,
     status: normalizedStatus,
     dateFrom: range.fromStr,
@@ -80,6 +82,9 @@ export function buildAdminOrderFilter(filters = {}) {
   }
   if (filters.orderId) {
     filter.orderNumber = { $regex: escapeRegex(filters.orderId), $options: 'i' };
+  }
+  if (filters.name) {
+    filter['shippingAddress.fullName'] = { $regex: escapeRegex(filters.name), $options: 'i' };
   }
   if (filters.mobile) {
     const mobileTerm = filters.mobile.replace(/\D/g, '') || filters.mobile;
