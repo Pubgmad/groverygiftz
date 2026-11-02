@@ -91,10 +91,35 @@ export function CartProvider({ children }) {
   };
 
   useEffect(() => {
+    let cancelled = false;
     const savedCart = readGuestCart();
-    if (savedCart.length) applyCart(savedCart);
-    localLoadedRef.current = true;
-    setLocalLoaded(true);
+    const hydrate = async () => {
+      if (!savedCart.length) {
+        if (!cancelled) {
+          localLoadedRef.current = true;
+          setLocalLoaded(true);
+        }
+        return;
+      }
+      applyCart(savedCart);
+      try {
+        const res = await fetch('/api/customization-upload/refresh-display', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cart: stripDisplayOnlyPreviewData(savedCart) }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (!cancelled && Array.isArray(data.cart)) applyCart(data.cart);
+        }
+      } catch {}
+      if (!cancelled) {
+        localLoadedRef.current = true;
+        setLocalLoaded(true);
+      }
+    };
+    hydrate();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -107,7 +132,18 @@ export function CartProvider({ children }) {
       .then((res) => res.ok ? res.json() : Promise.reject())
       .then(async (data) => {
         const guestCart = cartRef.current || [];
-        const merged = mergeCartItems(data.cart || [], guestCart);
+        let merged = mergeCartItems(data.cart || [], guestCart);
+        try {
+          const refreshRes = await fetch('/api/customization-upload/refresh-display', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cart: stripDisplayOnlyPreviewData(merged) }),
+          });
+          if (refreshRes.ok) {
+            const refreshed = await refreshRes.json();
+            if (Array.isArray(refreshed.cart)) merged = refreshed.cart;
+          }
+        } catch {}
         applyCart(merged);
         try {
           const saveRes = await fetch('/api/customers/saved-lists', {

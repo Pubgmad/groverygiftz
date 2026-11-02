@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { detectImageFormat, isSupportedUploadFormat } from '@/lib/imageFormat';
+import { buildCustomerDisplayUrl } from '@/lib/customerFileAccess';
 import { saveUploadFile } from '@/lib/uploadStorage';
 
 const MAX_FILE_SIZE = 500 * 1024 * 1024;
@@ -26,9 +27,8 @@ export async function POST(req) {
     const previewStored = format.isHeif ? await saveUploadFile(preview, 'customizations/previews') : null;
     const encodedPath = stored.relativePath.split('/').map(encodeURIComponent).join('/');
     const originalUrl = `/api/customization-upload/original-file/${encodedPath}?name=${encodeURIComponent(file.name)}`;
-    const originalDisplayUrl = `/api/customization-upload/customer-file/${encodedPath}`;
-    const previewEncodedPath = previewStored?.relativePath?.split('/').map(encodeURIComponent).join('/');
-    const displayUrl = previewEncodedPath ? `/api/customization-upload/customer-file/${previewEncodedPath}` : originalDisplayUrl;
+    const displayPath = previewStored?.relativePath || stored.relativePath;
+    const displayUrl = buildCustomerDisplayUrl(displayPath);
     return NextResponse.json({ name: file.name, type: format.mime, size: file.size, url: originalUrl, originalUrl, displayUrl, storagePath: stored.relativePath, previewStoragePath: previewStored?.relativePath || '', previewType: previewFormat?.mime || '' }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to upload customization file' }, { status: 500 });

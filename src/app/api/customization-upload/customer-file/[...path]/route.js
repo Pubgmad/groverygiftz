@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import dbConnect from '@/lib/db';
 import Customer from '@/models/Customer';
 import Order from '@/models/Order';
+import { verifyCustomerDisplayAccess } from '@/lib/customerFileAccess';
 import { detectImageFormat } from '@/lib/imageFormat';
 import { readUploadFile } from '@/lib/uploadStorage';
 
@@ -47,7 +48,11 @@ export async function GET(req, { params }) {
     const { path: pathParts = [] } = await params;
     const relativePath = pathParts.join('/');
     if (!relativePath.startsWith('customizations/')) return NextResponse.json({ error: 'Invalid file' }, { status: 400 });
-    if (!(await canAccessCustomerFile(session, relativePath))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const signed = verifyCustomerDisplayAccess(relativePath, req.nextUrl.searchParams);
+    if (!signed && !(await canAccessCustomerFile(session, relativePath))) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
     const file = await readUploadFile(relativePath);
     if (!file) return NextResponse.json({ error: 'File not found' }, { status: 404 });
@@ -57,7 +62,7 @@ export async function GET(req, { params }) {
       headers: {
         'Content-Type': format?.mime || 'application/octet-stream',
         'Content-Length': String(file.stat.size),
-        'Cache-Control': 'private, max-age=300, no-transform',
+        'Cache-Control': signed ? 'private, max-age=3600, no-transform' : 'private, max-age=300, no-transform',
         'X-Content-Type-Options': 'nosniff',
       },
     });

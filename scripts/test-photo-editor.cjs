@@ -35,14 +35,20 @@ assert.deepStrictEqual(JSON.parse(JSON.stringify(getFrameSize({ width: 4, height
 assert.deepStrictEqual(JSON.parse(JSON.stringify(getFrameSize({ width: 4, height: 4 }, 'landscape'))), { width: 4, height: 4 });
 assert.deepStrictEqual(JSON.parse(JSON.stringify(getFrameSize({ width: 9, height: 10.99 }, 'auto'))), { width: 9, height: 10.99 });
 
-const landscapeUpload = adjustmentsForUploadedPhoto(4000, 3000);
+const landscapeUpload = adjustmentsForUploadedPhoto(4000, 3000, { width: 6, height: 8, unit: 'inch' });
 assert.strictEqual(landscapeUpload.orientation, 'landscape');
-assert.strictEqual(landscapeUpload.fitMode, 'fit');
+assert.strictEqual(landscapeUpload.fitMode, 'fill');
 assert.deepStrictEqual(JSON.parse(JSON.stringify(getFrameSize({ width: 6, height: 8 }, landscapeUpload.orientation))), { width: 8, height: 6 });
+// Matching 4:3 photo into 8×6 frame → fill zoom is 1 (same as fit). Mismatched aspect must zoom up.
+const mismatchedFill = adjustmentsForUploadedPhoto(4000, 2000, { width: 10, height: 12, unit: 'inch' });
+assert.strictEqual(mismatchedFill.fitMode, 'fill');
+assert.ok(mismatchedFill.zoom > 1);
 
-const portraitUpload = adjustmentsForUploadedPhoto(3000, 4000);
+const portraitUpload = adjustmentsForUploadedPhoto(3000, 4000, { width: 10, height: 12, unit: 'inch' });
 assert.strictEqual(portraitUpload.orientation, 'portrait');
-assert.deepStrictEqual(JSON.parse(JSON.stringify(getFrameSize({ width: 6, height: 8 }, portraitUpload.orientation))), { width: 6, height: 8 });
+assert.strictEqual(portraitUpload.fitMode, 'fill');
+assert.deepStrictEqual(JSON.parse(JSON.stringify(getFrameSize({ width: 10, height: 12 }, portraitUpload.orientation))), { width: 10, height: 12 });
+assert.deepStrictEqual(JSON.parse(JSON.stringify(getFrameSize({ width: 10, height: 12 }, 'landscape'))), { width: 12, height: 10 });
 
 assert.strictEqual(Number(getFillZoom(4000, 3000, 1, 1).toFixed(3)), 1.333);
 assert.ok(getFillZoom(1000, 1000, 12, 18) > 1);

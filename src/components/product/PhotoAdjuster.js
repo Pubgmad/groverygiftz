@@ -32,10 +32,12 @@ export default function PhotoAdjuster({
   const frameRef = useRef(null);
   const fileRef = useRef(null);
   const draftRef = useRef(draft);
+  const baselineRef = useRef(baseline);
   const closeRef = useRef(onClose);
   const savingRef = useRef(saving);
   closeRef.current = onClose;
   savingRef.current = saving;
+  baselineRef.current = baseline;
 
   useEffect(() => { draftRef.current = draft; }, [draft]);
 
@@ -56,6 +58,18 @@ export default function PhotoAdjuster({
       document.body.style.overflow = previous;
       window.removeEventListener('keydown', onKey);
     };
+  }, [open]);
+
+  // When the photo is replaced while the editor stays open, reset draft from the
+  // latest baseline (ProductDetail updates adjustments before/with the new URL).
+  useEffect(() => {
+    if (!open || !photoUrl) return;
+    const next = baselineRef.current;
+    setDraft(next);
+    setOpenedBaseline(next);
+    setImageReady(false);
+    setImageError('');
+    setImageSize({ width: 0, height: 0 });
   }, [open, photoUrl]);
 
   useEffect(() => {

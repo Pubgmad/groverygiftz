@@ -14,14 +14,19 @@ export function getFrameSize(area, orientation = 'auto') {
   return { width, height };
 }
 
-export function adjustmentsForUploadedPhoto(imageWidth, imageHeight) {
+export function adjustmentsForUploadedPhoto(imageWidth, imageHeight, area = null, rotation = 0) {
+  const orientation = detectPhotoOrientation(imageWidth, imageHeight, rotation);
+  const frame = area ? getFrameSize(area, orientation) : null;
+  const zoom = frame
+    ? getFillZoom(imageWidth, imageHeight, frame.width, frame.height, rotation)
+    : 1;
   return {
-    zoom: 1,
+    zoom,
     x: 0,
     y: 0,
-    orientation: detectPhotoOrientation(imageWidth, imageHeight),
-    rotation: 0,
-    fitMode: 'fit',
+    orientation,
+    rotation: Number(rotation) || 0,
+    fitMode: 'fill',
   };
 }
 

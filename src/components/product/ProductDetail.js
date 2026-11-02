@@ -494,13 +494,24 @@ export default function ProductDetail({ product }) {
         return false;
       }
     }
-    if (needsCustomerPhotos && uploadedPhotoCount < requiredPhotoCount) {
-      toast.error(`Please upload ${requiredPhotoCount} customer photo${requiredPhotoCount === 1 ? '' : 's'} for this product`);
-      return false;
-    }
-    if (maxPhotoCount > 0 && uploadedPhotoCount > maxPhotoCount) {
-      toast.error(`Please upload no more than ${maxPhotoCount} photo${maxPhotoCount === 1 ? '' : 's'}`);
-      return false;
+    if (needsCustomerPhotos) {
+      const alignedPhotos = alignPhotoSlots(customerPhotos, photoSlotCount);
+      for (let idx = 0; idx < photoSlotCount; idx += 1) {
+        const slotRequired = previewAreas[idx] ? previewAreas[idx].required !== false : idx < requiredPhotoCount;
+        if (slotRequired && !alignedPhotos[idx]?.url) {
+          const label = previewAreas[idx]?.label || `Photo ${idx + 1}`;
+          toast.error(`Please upload a photo for "${label}"`);
+          return false;
+        }
+      }
+      if (uploadedPhotoCount < requiredPhotoCount) {
+        toast.error(`Please upload at least ${requiredPhotoCount} customer photo${requiredPhotoCount === 1 ? '' : 's'} for this product`);
+        return false;
+      }
+      if (maxPhotoCount > 0 && uploadedPhotoCount > maxPhotoCount) {
+        toast.error(`Please upload no more than ${maxPhotoCount} photo${maxPhotoCount === 1 ? '' : 's'}`);
+        return false;
+      }
     }
     for (const selected of selectedVariantUploadOptions) {
       if (!variantLabelUploads[selected.label]?.url) {
@@ -574,7 +585,8 @@ export default function ProductDetail({ product }) {
         if (!res.ok) throw new Error(data.error || `Failed to upload ${job.file.name}`);
         if (photoUploadTokenRef.current[job.index] !== token) continue;
         const uploadedFile = attachLocalPreview(data, prepared);
-        const adjustments = adjustmentsForUploadedPhoto(prepared.width, prepared.height);
+        const area = previewAreas[job.index] || null;
+        const adjustments = adjustmentsForUploadedPhoto(prepared.width, prepared.height, area);
         setActivePreviewSlot(job.index);
         editPreviewArea(job.index);
         setPreviewAdjustments((prev) => ({ ...prev, [job.index]: adjustments }));
@@ -622,7 +634,15 @@ export default function ProductDetail({ product }) {
       if (!res.ok) throw new Error(data.error || 'Upload failed');
       const uploadedFile = attachLocalPreview(data, prepared);
       editPreviewArea(`variant-${label}`);
-      setPreviewAdjustments((prev) => ({ ...prev, [`variant-${label}`]: adjustmentsForUploadedPhoto(prepared.width, prepared.height) }));
+      const variantArea = selectedVariantUploadOptions.find((entry) => entry.label === label)
+        || { label, width: 1, height: 1, unit: 'inch' };
+      const variantFrame = {
+        label: variantArea.label || label,
+        width: Number(variantArea.previewWidth || variantArea.width || 1),
+        height: Number(variantArea.previewHeight || variantArea.height || 1),
+        unit: variantArea.previewUnit || variantArea.unit || 'inch',
+      };
+      setPreviewAdjustments((prev) => ({ ...prev, [`variant-${label}`]: adjustmentsForUploadedPhoto(prepared.width, prepared.height, variantFrame) }));
       setVariantLabelUploads((prev) => ({ ...prev, [label]: { ...uploadedFile, label } }));
       setEditorSlotKey(`variant-${label}`);
       toast.success(`${label} image uploaded`);
@@ -1364,7 +1384,7 @@ export default function ProductDetail({ product }) {
         extraLabel={selectedVariantLabel}
         area={editorArea}
         photoUrl={editorPhotoUrl}
-        baseline={getAreaAdjustments(editorSlotKey || 0)}
+        baseline={editorSlotKey !== null ? getAreaAdjustments(editorSlotKey) : getDefaultPreviewAdjustments()}
         saving={Boolean(savingPreviewAreas[editorSlotKey])}
         replacing={Boolean(Number.isInteger(editorSlotKey) ? uploadingPhotoSlots[editorSlotKey] : uploadingVariantLabels[editorVariantLabel])}
         onClose={() => setEditorSlotKey(null)}

@@ -11,6 +11,7 @@ import { assertStockAvailable, getGroupedStockRequests } from '@/lib/inventory';
 import { getCashfreeConfig } from '@/lib/cashfreeConfig';
 import { captureMetaOrderAttribution } from '@/lib/metaAttributionServer';
 import { assertOrderPricing } from '@/lib/orderPricing';
+import { assertCustomizationRequirements } from '@/lib/customizationRequirements';
 import { randomUUID } from 'node:crypto';
 import { PAYMENT_RETURN_PATH } from '@/lib/checkoutPayment';
 import MakingCost from '@/models/MakingCost';
@@ -137,7 +138,7 @@ export async function POST(req) {
       return { ...sanitizedItem, product: sanitizedItem.product || sanitizedItem.productId || undefined, productId: sanitizedItem.productId || sanitizedItem.product || '' };
     });
     const productIds = [...new Set(orderItems.map((item) => item.productId).filter(Boolean))];
-    const products = await Product.find({ _id: { $in: productIds } }).select('title stock variants delivery isActive regularPrice salePrice offerStartsAt offerEndsAt giftWrap').lean();
+    const products = await Product.find({ _id: { $in: productIds } }).select('title stock variants delivery isActive regularPrice salePrice offerStartsAt offerEndsAt giftWrap customizationPreview collageEnabled collageTemplates').lean();
     await hydrateProductShippingTemplates(products, settings);
     const productsById = Object.fromEntries(products.map((product) => [String(product._id), product]));
     const costDocs = productIds.length
@@ -151,6 +152,7 @@ export async function POST(req) {
     }, {});
     assertStockAvailable(getGroupedStockRequests(orderItems, productsById));
     assertOrderPricing(orderItems, productsById);
+    assertCustomizationRequirements(orderItems, productsById);
     const subtotal = orderItems.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 1), 0);
     const shipping = calculateShipping(orderItems, productsById, shippingAddress.state, settings);
     const shippingCost = shipping.cost;
@@ -226,7 +228,7 @@ export async function POST(req) {
       mode: cashfree.environment === 'production' ? 'production' : 'sandbox',
     }, { status: 201 });
   } catch (error) {
-    if (error?.name === 'InventoryError' || error?.name === 'OrderPricingError') {
+    if (error?.name === 'InventoryError' || error?.name === 'OrderPricingError' || error?.name === 'CustomizationRequirementError') {
       return NextResponse.json({ error: error.message }, { status: error.status || 409 });
     }
     console.error('Cashfree create order error:', error);
