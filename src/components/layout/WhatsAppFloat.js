@@ -16,7 +16,7 @@ export default function WhatsAppFloat() {
   }, []);
 
   return (
-    <div className="group fixed bottom-6 right-6 z-50 flex items-center gap-3">
+    <div data-whatsapp-float className="group fixed bottom-6 right-6 z-40 flex items-center gap-3">
       <span className="pointer-events-none max-w-[190px] translate-x-2 rounded-xl bg-gray-900 px-3 py-2 text-xs font-medium text-white opacity-0 shadow-lg transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100 group-focus-within:translate-x-0 group-focus-within:opacity-100">
         Need help, chat with us
       </span>

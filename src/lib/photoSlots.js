@@ -32,6 +32,39 @@ export function firstEmptyPhotoSlot(slots = []) {
   return slots.findIndex((photo) => !photo?.url);
 }
 
+export function emptySlotIndexes(slots = []) {
+  return slots.map((photo, index) => (photo?.url ? -1 : index)).filter((index) => index >= 0);
+}
+
+export function planPhotoUploads(slots = [], files = [], slotIndex = null, count) {
+  const selected = Array.from(files || []).filter(Boolean);
+  const aligned = alignPhotoSlots(slots, count);
+  const empties = emptySlotIndexes(aligned);
+  const used = filledPhotoCount(aligned);
+  const max = aligned.length;
+  if (Number.isInteger(slotIndex) && slotIndex >= 0) {
+    if (!selected[0]) return { mode: 'empty', jobs: [], remaining: empties.length, used, max, blocked: false, files: selected };
+    return { mode: 'replace', jobs: [{ index: slotIndex, file: selected[0] }], remaining: empties.length, used, max, blocked: false, files: selected };
+  }
+  if (selected.length === 0) return { mode: 'empty', jobs: [], remaining: empties.length, used, max, blocked: false, files: selected };
+  if (empties.length === 0) {
+    return { mode: 'full', jobs: [], remaining: 0, used, max, blocked: true, selectedCount: selected.length, files: selected };
+  }
+  if (selected.length > empties.length) {
+    return { mode: 'excess', jobs: [], remaining: empties.length, used, max, blocked: true, selectedCount: selected.length, files: selected, empties };
+  }
+  return {
+    mode: selected.length === 1 ? 'single' : 'batch',
+    jobs: selected.map((file, index) => ({ index: empties[index], file })),
+    remaining: empties.length - selected.length,
+    used,
+    max,
+    blocked: false,
+    selectedCount: selected.length,
+    files: selected,
+  };
+}
+
 export function removeListPhotoByUrl(photos = [], url) {
   const target = String(url || '');
   if (!target) return photos;

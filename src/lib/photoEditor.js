@@ -25,14 +25,27 @@ export function adjustmentsForUploadedPhoto(imageWidth, imageHeight) {
   };
 }
 
-export function getFillZoom(imageWidth, imageHeight, frameWidth, frameHeight, rotation = 0) {
+export function getOrientedImageSize(imageWidth, imageHeight, rotation = 0) {
   const rotated = Math.abs(Number(rotation) || 0) % 180 === 90;
-  const imgW = Math.max(1, rotated ? Number(imageHeight) || 1 : Number(imageWidth) || 1);
-  const imgH = Math.max(1, rotated ? Number(imageWidth) || 1 : Number(imageHeight) || 1);
+  return {
+    width: Math.max(1, rotated ? Number(imageHeight) || 1 : Number(imageWidth) || 1),
+    height: Math.max(1, rotated ? Number(imageWidth) || 1 : Number(imageHeight) || 1),
+  };
+}
+
+export function getContainScale(imageWidth, imageHeight, frameWidth, frameHeight, rotation = 0) {
+  const image = getOrientedImageSize(imageWidth, imageHeight, rotation);
   const frameW = Math.max(1, Number(frameWidth) || 1);
   const frameH = Math.max(1, Number(frameHeight) || 1);
-  const contain = Math.min(frameW / imgW, frameH / imgH);
-  const cover = Math.max(frameW / imgW, frameH / imgH);
+  return Math.min(frameW / image.width, frameH / image.height);
+}
+
+export function getFillZoom(imageWidth, imageHeight, frameWidth, frameHeight, rotation = 0) {
+  const image = getOrientedImageSize(imageWidth, imageHeight, rotation);
+  const frameW = Math.max(1, Number(frameWidth) || 1);
+  const frameH = Math.max(1, Number(frameHeight) || 1);
+  const contain = Math.min(frameW / image.width, frameH / image.height);
+  const cover = Math.max(frameW / image.width, frameH / image.height);
   if (!(contain > 0)) return 1;
   return Math.max(1, cover / contain);
 }

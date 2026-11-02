@@ -7,12 +7,13 @@ const source = fs.readFileSync(path.join(__dirname, '../src/lib/photoEditor.js')
 const context = { module: { exports: {} }, exports: {}, console };
 vm.createContext(context);
 vm.runInContext(`${source}
-module.exports = { detectPhotoOrientation, getFrameSize, getFillZoom, estimatePrintPpi, qualityLabel, qualityGuidance, adjustmentsForUploadedPhoto, formatFrameSizeLabel, formatFrameSubtitle };
+module.exports = { detectPhotoOrientation, getFrameSize, getFillZoom, getContainScale, estimatePrintPpi, qualityLabel, qualityGuidance, adjustmentsForUploadedPhoto, formatFrameSizeLabel, formatFrameSubtitle };
 `, context);
 const {
   detectPhotoOrientation,
   getFrameSize,
   getFillZoom,
+  getContainScale,
   estimatePrintPpi,
   qualityLabel,
   adjustmentsForUploadedPhoto,
@@ -45,6 +46,8 @@ assert.deepStrictEqual(JSON.parse(JSON.stringify(getFrameSize({ width: 6, height
 
 assert.strictEqual(Number(getFillZoom(4000, 3000, 1, 1).toFixed(3)), 1.333);
 assert.ok(getFillZoom(1000, 1000, 12, 18) > 1);
+assert.ok(getContainScale(1600, 900, 220, 180, 0) < getContainScale(1600, 900, 220, 180, 0) * getFillZoom(1600, 900, 220, 180, 0));
+assert.strictEqual(Number((getContainScale(1000, 1000, 200, 200) * getFillZoom(1000, 1000, 200, 200)).toFixed(3)), 0.2);
 
 const best = estimatePrintPpi({ imageWidth: 4000, imageHeight: 6000, printWidth: 12, printHeight: 18, unit: 'inch', zoom: 1 });
 assert.strictEqual(best, 333);

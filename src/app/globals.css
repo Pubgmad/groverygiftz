@@ -316,3 +316,4 @@ button, a, input, select, textarea {
 .review-scroll { scrollbar-width: thin; -webkit-overflow-scrolling: touch; contain: layout paint; }
 .review-scroll > * { max-width: none; }
 .product-mobile-safe, .product-mobile-safe * { min-width: 0; }
+body.photo-editor-open [data-whatsapp-float] { display: none; }

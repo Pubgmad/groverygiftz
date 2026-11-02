@@ -13,10 +13,11 @@ import { FiMinus, FiPlus, FiX, FiTruck, FiShield, FiClock, FiShoppingCart, FiZap
 import toast from 'react-hot-toast';
 import { startNavigationFeedback } from '@/components/layout/NavigationFeedback';
 import { appendImageUpload, attachLocalPreview, prepareImageUpload } from '@/lib/clientImageUpload';
-import { alignPhotoSlots, clearPhotoSlot, filledPhotoCount, filledPhotos, firstEmptyPhotoSlot, removeListPhotoByUrl, setPhotoSlot } from '@/lib/photoSlots';
+import { alignPhotoSlots, clearPhotoSlot, filledPhotoCount, filledPhotos, planPhotoUploads, removeListPhotoByUrl, setPhotoSlot } from '@/lib/photoSlots';
 import { adjustmentsForUploadedPhoto, formatFrameSizeLabel, getFrameSize, orientationCaption } from '@/lib/photoEditor';
 import PhotoUploadCard from '@/components/product/PhotoUploadCard';
 import PhotoAdjuster from '@/components/product/PhotoAdjuster';
+import PhotoLimitDialog from '@/components/product/PhotoLimitDialog';
 const INDIAN_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
   'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh',
@@ -42,6 +43,8 @@ export default function ProductDetail({ product }) {
   const [uploadingCustomerPhotos, setUploadingCustomerPhotos] = useState(false);
   const [uploadingPhotoSlots, setUploadingPhotoSlots] = useState({});
   const [editorSlotKey, setEditorSlotKey] = useState(null);
+  const [photoLimitPlan, setPhotoLimitPlan] = useState(null);
+  const photoUploadTokenRef = useRef({});
   const [activePreviewSlot, setActivePreviewSlot] = useState(0);
   const [collageUploads, setCollageUploads] = useState({});
   const [uploadingCollageLabels, setUploadingCollageLabels] = useState({});
@@ -224,7 +227,7 @@ export default function ProductDetail({ product }) {
   const googleReviewImages = visibleGoogleReviews.flatMap((review) => Array.isArray(review?.images) ? review.images : []).slice(0, 8);
   const googleReviewTopics = Array.isArray(googleReviews?.topics) ? googleReviews.topics.filter((topic) => topic?.keyword).slice(0, 3) : [];
   const googleBusinessName = googleReviews?.title || 'Grovery giftz - Customized Photo Frames';
-  const uploadCardGridClass = 'grid grid-cols-2 gap-3 xl:grid-cols-3';
+  const uploadCardGridClass = 'grid grid-cols-1 gap-2 sm:grid-cols-2';
   const getAreaAdjustments = (idx) => ({ ...getDefaultPreviewAdjustments(), ...(previewAdjustments[idx] || {}) });
   const areaSizeLabel = (area, idx) => formatFrameSizeLabel(area, getAreaAdjustments(idx).orientation);
   const variantAreaFromSelected = (selected) => ({
@@ -549,33 +552,19 @@ export default function ProductDetail({ product }) {
   const handleCustomerPhotoUpload = async (files, slotIndex = null) => {
     const selectedFiles = Array.from(files || []);
     if (selectedFiles.length === 0) return;
-    const slots = alignPhotoSlots(customerPhotos, photoSlotCount);
-    const jobs = [];
-    if (Number.isInteger(slotIndex) && slotIndex >= 0) {
-      jobs.push({ index: slotIndex, file: selectedFiles[0] });
-    } else {
-      let cursor = firstEmptyPhotoSlot(slots);
-      if (cursor < 0) {
-        toast.error(`Maximum ${photoSlotCount} photos allowed for this product`);
-        return;
-      }
-      for (const file of selectedFiles) {
-        while (cursor < slots.length && slots[cursor]?.url) cursor += 1;
-        if (cursor >= slots.length) break;
-        jobs.push({ index: cursor, file });
-        cursor += 1;
-      }
-      if (jobs.length === 0) {
-        toast.error(`Maximum ${photoSlotCount} photos allowed for this product`);
-        return;
-      }
-      if (jobs.length < selectedFiles.length) {
-        toast.error(`Added ${jobs.length} photo${jobs.length === 1 ? '' : 's'}. Extra images were not uploaded because all frames are filled.`);
-      }
+    const plan = planPhotoUploads(customerPhotos, selectedFiles, slotIndex, photoSlotCount);
+    if (plan.blocked) {
+      setPhotoLimitPlan(plan);
+      return;
     }
+    const jobs = plan.jobs;
+    if (jobs.length === 0) return;
+    const openEditor = selectedFiles.length === 1 && jobs.length === 1;
     setUploadingCustomerPhotos(true);
     try {
       for (const job of jobs) {
+        const token = (photoUploadTokenRef.current[job.index] || 0) + 1;
+        photoUploadTokenRef.current[job.index] = token;
         setUploadingPhotoSlots((prev) => ({ ...prev, [job.index]: true }));
         const prepared = await prepareImageUpload(job.file);
         const formData = new FormData();
@@ -583,6 +572,7 @@ export default function ProductDetail({ product }) {
         const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || `Failed to upload ${job.file.name}`);
+        if (photoUploadTokenRef.current[job.index] !== token) continue;
         const uploadedFile = attachLocalPreview(data, prepared);
         const adjustments = adjustmentsForUploadedPhoto(prepared.width, prepared.height);
         setActivePreviewSlot(job.index);
@@ -590,12 +580,17 @@ export default function ProductDetail({ product }) {
         setPreviewAdjustments((prev) => ({ ...prev, [job.index]: adjustments }));
         setCustomerPhotos((prev) => setPhotoSlot(alignPhotoSlots(prev, photoSlotCount), job.index, uploadedFile));
         setUploadingPhotoSlots((prev) => ({ ...prev, [job.index]: false }));
+        if (openEditor) setEditorSlotKey(job.index);
       }
       toast.success(jobs.length === 1 ? 'Photo uploaded' : `${jobs.length} photos uploaded`);
       trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'customer_photos', photo_count: jobs.length }));
     } catch (error) {
       toast.error(error.message || 'Failed to upload photos');
-      setUploadingPhotoSlots({});
+      setUploadingPhotoSlots((prev) => {
+        const next = { ...prev };
+        jobs.forEach((job) => { next[job.index] = false; });
+        return next;
+      });
     } finally {
       setUploadingCustomerPhotos(false);
     }
@@ -629,6 +624,7 @@ export default function ProductDetail({ product }) {
       editPreviewArea(`variant-${label}`);
       setPreviewAdjustments((prev) => ({ ...prev, [`variant-${label}`]: adjustmentsForUploadedPhoto(prepared.width, prepared.height) }));
       setVariantLabelUploads((prev) => ({ ...prev, [label]: { ...uploadedFile, label } }));
+      setEditorSlotKey(`variant-${label}`);
       toast.success(`${label} image uploaded`);
       trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'variant_label_upload', field_label: label, file_type: data.type || file.type || '' }));
     } catch (error) {
@@ -1123,7 +1119,8 @@ export default function ProductDetail({ product }) {
                     aspectWidth={oriented.width}
                     aspectHeight={oriented.height}
                     fitMode={adjustments.fitMode}
-                    onUpload={(files) => handleCustomerPhotoUpload(files, idx)}
+                    multiple={!photo?.url && photoSlotCount > 1}
+                    onUpload={(files) => handleCustomerPhotoUpload(files, files.length === 1 ? idx : null)}
                     onRemove={() => removeCustomerPhoto(idx)}
                     onEdit={photo?.url ? () => setEditorSlotKey(idx) : undefined}
                     instructions={area?.instructions || ''}
@@ -1224,7 +1221,7 @@ export default function ProductDetail({ product }) {
           <span className="text-sm text-gray-500">{quantity > 1 ? `${quantity} x ${formatPrice(finalUnitPrice)}` : ''}</span>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-3">
+        <div className="mb-16 flex flex-col gap-3 pb-4 sm:mb-0 sm:flex-row">
           <button onClick={handleAddToCart} disabled={isSoldOut || Boolean(actionLoading)}
             className={`btn-primary flex-1 flex items-center justify-center gap-2 text-center ${isSoldOut || actionLoading ? 'opacity-60 cursor-not-allowed' : ''}`}>
             {actionLoading === 'cart' ? <><FiLoader size={18} className="animate-spin" /> Adding...</> : <><FiShoppingCart size={18} /> {isSoldOut ? 'Sold Out' : product.isQuoteOnly ? 'Contact for Price' : 'Add To Cart'}</>}
@@ -1369,6 +1366,7 @@ export default function ProductDetail({ product }) {
         photoUrl={editorPhotoUrl}
         baseline={getAreaAdjustments(editorSlotKey || 0)}
         saving={Boolean(savingPreviewAreas[editorSlotKey])}
+        replacing={Boolean(Number.isInteger(editorSlotKey) ? uploadingPhotoSlots[editorSlotKey] : uploadingVariantLabels[editorVariantLabel])}
         onClose={() => setEditorSlotKey(null)}
         onApply={async (draft) => {
           const saved = await savePreviewArea(editorSlotKey, draft);
@@ -1377,6 +1375,19 @@ export default function ProductDetail({ product }) {
         onReplace={(file) => {
           if (editorIsVariant) handleVariantLabelUpload(editorVariantLabel, file);
           else handleCustomerPhotoUpload([file], editorSlotKey);
+        }}
+      />
+      <PhotoLimitDialog
+        open={Boolean(photoLimitPlan?.blocked)}
+        max={photoLimitPlan?.max || photoSlotCount}
+        used={photoLimitPlan?.used || uploadedPhotoCount}
+        remaining={photoLimitPlan?.remaining || 0}
+        selectedCount={photoLimitPlan?.selectedCount || 0}
+        files={photoLimitPlan?.files || []}
+        onCancel={() => setPhotoLimitPlan(null)}
+        onUpload={(chosen) => {
+          setPhotoLimitPlan(null);
+          handleCustomerPhotoUpload(chosen);
         }}
       />
       {lightboxOpen && product.images?.length > 0 && (
