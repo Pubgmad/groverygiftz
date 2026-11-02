@@ -20,6 +20,7 @@ import {
 import { FiBarChart2, FiRefreshCw } from 'react-icons/fi';
 import { formatPrice } from '@/lib/utils';
 import { DATE_PRESETS } from '@/lib/revenueAnalytics';
+import BuyerDrillDown from '@/components/admin/BuyerDrillDown';
 
 const STATUS_LABELS = {
   ordered: 'Ordered',
@@ -55,14 +56,19 @@ function ChartTooltip({ active, payload, label }) {
   );
 }
 
-function Kpi({ label, value, hint }) {
-  return (
-    <div className="min-w-0 rounded-2xl border bg-white p-4">
+function Kpi({ label, value, hint, onClick }) {
+  const className = `min-w-0 rounded-2xl border bg-white p-4 text-left ${onClick ? 'cursor-pointer hover:border-primary-300 hover:shadow-sm' : ''}`;
+  const inner = (
+    <>
       <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</p>
       <p className="mt-2 break-words text-xl font-bold leading-tight text-gray-950 sm:text-2xl">{value}</p>
       {hint ? <p className="mt-1 text-xs leading-5 text-gray-500">{hint}</p> : null}
-    </div>
+    </>
   );
+  if (onClick) {
+    return <button type="button" onClick={onClick} className={`w-full ${className}`}>{inner}</button>;
+  }
+  return <div className={className}>{inner}</div>;
 }
 
 function Panel({ title, children, action }) {
@@ -77,7 +83,7 @@ function Panel({ title, children, action }) {
   );
 }
 
-const EMPTY_FILTER_OPTIONS = { states: [], cities: [], methods: [], products: [], collections: [] };
+const EMPTY_FILTER_OPTIONS = { states: [], cities: [], methods: [], products: [], collections: [], variants: [] };
 const selectClass = 'w-full min-w-0 rounded-lg border bg-white px-3 py-2.5 text-sm';
 
 function FilterSelect({ label, value, onChange, placeholder, loadingLabel, options, loading, optionKey }) {
@@ -110,6 +116,9 @@ export default function RevenueAnalyticsPage() {
   const [city, setCity] = useState('');
   const [product, setProduct] = useState('');
   const [collection, setCollection] = useState('');
+  const [variant, setVariant] = useState('');
+  const [buyerKind, setBuyerKind] = useState('');
+  const [profitProduct, setProfitProduct] = useState(null);
   const [sortProducts, setSortProducts] = useState('revenue');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -132,8 +141,9 @@ export default function RevenueAnalyticsPage() {
     if (city) params.set('city', city);
     if (product) params.set('product', product);
     if (collection) params.set('collection', collection);
+    if (variant) params.set('variant', variant);
     return params.toString();
-  }, [preset, granularity, from, to, paymentMethod, status, state, city, product, collection]);
+  }, [preset, granularity, from, to, paymentMethod, status, state, city, product, collection, variant]);
 
   const optionsQuery = useMemo(() => {
     const params = new URLSearchParams();
@@ -154,6 +164,7 @@ export default function RevenueAnalyticsPage() {
       methods: next.methods || [],
       products: next.products || [],
       collections: next.collections || [],
+      variants: next.variants || [],
     });
   }, []);
 
@@ -202,6 +213,7 @@ export default function RevenueAnalyticsPage() {
     setCity('');
     setProduct('');
     setCollection('');
+    setVariant('');
     setSortProducts('revenue');
   };
 
@@ -215,6 +227,7 @@ export default function RevenueAnalyticsPage() {
   const cityOptions = (filterOptions.cities || []).map((item) => ({ value: item, label: item }));
   const productOptions = (filterOptions.products || []).filter((item) => item.id).map((item) => ({ value: item.id, label: item.title }));
   const collectionOptions = (filterOptions.collections || []).map((item) => ({ value: item.id, label: item.name }));
+  const variantOptions = (filterOptions.variants || []).map((item) => ({ value: item, label: item }));
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-7xl space-y-4">
@@ -313,6 +326,16 @@ export default function RevenueAnalyticsPage() {
             loading={optionsLoading}
             optionKey={collectionOptions.map((item) => item.value).join('|')}
           />
+          <FilterSelect
+            label="Variant"
+            value={variant}
+            onChange={(e) => setVariant(e.target.value)}
+            placeholder="All variants"
+            loadingLabel="Loading variants…"
+            options={variantOptions}
+            loading={optionsLoading}
+            optionKey={variantOptions.map((item) => item.value).join('|')}
+          />
         </div>
         <button type="button" onClick={reset} className="mt-4 inline-flex min-h-[44px] items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold">
           <FiRefreshCw /> Reset filters
@@ -336,6 +359,21 @@ export default function RevenueAnalyticsPage() {
             <Kpi label="Top product" value={kpis.topProduct?.title || '—'} hint={kpis.topProduct ? `${kpis.topProduct.units} sold · ${money(kpis.topProduct.revenue)}` : 'No paid items in this period'} />
           </div>
 
+          <Panel title="Product gross profit">
+            <p className="mb-4 text-xs leading-5 text-gray-500">This is product gross profit from actual order-item prices minus applicable making cost. It is not net business profit. Shipping, payment fees, packaging, taxes, marketing, and operating expenses are not stored. Missing making cost is unknown, never ₹0.</p>
+            <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <Kpi label="Product sales" value={money(kpis.productSales)} hint="Line-item revenue, excludes shipping" />
+              <Kpi label="Known making cost" value={money(kpis.makingCostKnown)} hint={`${kpis.costCoveragePct || 0}% of product revenue has a known cost`} />
+              <Kpi label="Product gross profit" value={kpis.profitComplete || kpis.productSales ? money(kpis.productGrossProfit) : 'Unavailable'} hint={kpis.profitComplete ? 'All sold items have a known making cost' : `${money(kpis.unknownCostRevenue)} revenue still has unknown cost`} />
+              <Kpi label="Gross margin" value={kpis.grossMarginPct === null || kpis.grossMarginPct === undefined ? '—' : `${kpis.grossMarginPct}%`} hint="Gross profit ÷ revenue with known cost" />
+              <Kpi label="Avg gross profit / order" value={money(kpis.averageGrossProfitPerOrder)} hint="Known gross profit ÷ paid orders" />
+              <Kpi label="Profit vs previous" value={kpis.profitGrowthPct === null ? '—' : `${kpis.profitGrowthPct}%`} hint={kpis.profitGrowthPct === null ? 'Previous period had zero known gross profit' : `Previous ${money(kpis.previousProductGrossProfit)}`} />
+              <Kpi label="Most profitable product" value={kpis.mostProfitableProduct?.title || '—'} hint={kpis.mostProfitableProduct ? money(kpis.mostProfitableProduct.grossProfit) : 'Needs known making cost'} onClick={() => kpis.mostProfitableProduct && setProfitProduct(kpis.mostProfitableProduct.title)} />
+              <Kpi label="Least profitable product" value={kpis.leastProfitableProduct?.title || '—'} hint={kpis.leastProfitableProduct ? money(kpis.leastProfitableProduct.grossProfit) : 'Needs known making cost'} />
+              <Kpi label="Orders with missing cost" value={kpis.unknownCostUnits || 0} hint="Units whose making cost is unknown" />
+            </div>
+          </Panel>
+
           <Panel title="Revenue trend">
             {data.trend.length === 0 ? <p className="text-sm text-gray-500">No paid orders in this range.</p> : (
               <div className="h-64 w-full min-w-0 sm:h-80">
@@ -347,6 +385,7 @@ export default function RevenueAnalyticsPage() {
                     <Tooltip content={<ChartTooltip />} />
                     <Legend />
                     <Area type="monotone" dataKey="collected" name="Collected revenue" stroke="#2456D8" fill="#DCE7FF" />
+                    <Area type="monotone" dataKey="grossProfit" name="Product gross profit" stroke="#059669" fill="#D1FAE5" />
                     <Area type="monotone" dataKey="orders" name="Orders" stroke="#F47920" fill="#FFE8CC" />
                   </AreaChart>
                 </ResponsiveContainer>
@@ -439,6 +478,26 @@ export default function RevenueAnalyticsPage() {
             </div>
           </Panel>
 
+          <Panel title="Revenue vs making cost vs profit">
+            {data.trend.length === 0 ? <p className="text-sm text-gray-500">No paid orders in this range.</p> : (
+              <div className="h-64 w-full min-w-0 sm:h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={data.trend} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                    <XAxis dataKey="label" tick={{ fontSize: 11 }} minTickGap={16} />
+                    <YAxis tick={{ fontSize: 11 }} width={56} />
+                    <Tooltip content={<ChartTooltip />} />
+                    <Legend />
+                    <Bar dataKey="productSales" name="Product sales" fill="#2456D8" />
+                    <Bar dataKey="makingCost" name="Known making cost" fill="#F47920" />
+                    <Bar dataKey="grossProfit" name="Product gross profit" fill="#059669" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+            {kpis.peakProfitDay?.label ? <p className="mt-3 text-sm text-gray-600">Highest-profit bucket in this grouping: {kpis.peakProfitDay.label} · {money(kpis.peakProfitDay.grossProfit)}</p> : null}
+          </Panel>
+
           <Panel
             title="Best-selling products"
             action={(
@@ -451,14 +510,14 @@ export default function RevenueAnalyticsPage() {
             <p className="mb-3 text-xs leading-5 text-gray-500">Ranked from actual order items, not the admin Best Seller flag. Historical titles and prices are kept even if a product is later edited.</p>
             <div className="space-y-3">
               {products.slice(0, 10).map((row, index) => (
-                <button key={`${row.id}-${row.title}`} type="button" onClick={() => row.id && setProduct(row.id)} className="flex w-full min-w-0 items-center gap-3 rounded-2xl border p-3 text-left">
+                <button key={`${row.id}-${row.title}`} type="button" onClick={() => { if (row.id) setProduct(row.id); setProfitProduct(row.title); }} className="flex w-full min-w-0 items-center gap-3 rounded-2xl border p-3 text-left">
                   <span className="w-6 shrink-0 text-sm font-bold text-gray-400">{index + 1}</span>
                   {row.image ? <img src={row.image} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" /> : <span className="h-12 w-12 shrink-0 rounded-lg bg-gray-100" />}
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold">{row.title}</span>
-                    <span className="text-xs text-gray-500">{row.units} sold · {row.orders} orders · avg {money(row.averagePrice)}</span>
+                    <span className="text-xs text-gray-500">{row.units} sold · {row.orders} orders · avg {money(row.averagePrice)}{row.marginPct === null || row.marginPct === undefined ? '' : ` · margin ${row.marginPct}%`}</span>
                   </span>
-                  <span className="shrink-0 text-sm font-bold">{money(row.revenue)}</span>
+                  <span className="shrink-0 text-right text-sm font-bold">{money(row.revenue)}<span className="block text-xs font-medium text-emerald-700">{row.grossProfit || row.grossProfit === 0 ? money(row.grossProfit) : 'Profit unknown'}</span></span>
                 </button>
               ))}
               {products.length === 0 && <p className="text-sm text-gray-500">No product sales in this period.</p>}
@@ -471,7 +530,7 @@ export default function RevenueAnalyticsPage() {
                 {data.variants.slice(0, 12).map((row) => (
                   <div key={`${row.title}-${row.variant}`} className="flex min-w-0 items-center justify-between gap-2 rounded-xl bg-gray-50 px-3 py-2 text-sm">
                     <span className="min-w-0 truncate">{row.title} · {row.variant}</span>
-                    <span className="shrink-0 text-xs text-gray-600">{row.units} sold · {money(row.revenue)}</span>
+                    <span className="shrink-0 text-xs text-gray-600">{row.units} sold · {money(row.revenue)}{row.grossProfit || row.grossProfit === 0 ? ` · ${money(row.grossProfit)} profit` : ''}</span>
                   </div>
                 ))}
               </div>
@@ -519,12 +578,13 @@ export default function RevenueAnalyticsPage() {
 
           <div className="grid min-w-0 gap-4 xl:grid-cols-2">
             <Panel title="Customers in this period">
-              <div className="grid grid-cols-2 gap-3">
-                <Kpi label="Unique buyers" value={data.customers?.unique || 0} />
-                <Kpi label="Repeat in period" value={`${data.customers?.repeatRate || 0}%`} hint={`${data.customers?.repeatInPeriod || 0} buyers with 2+ paid orders`} />
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <Kpi label="Unique buyers" value={data.customers?.unique || 0} hint="Click to see who they are" onClick={() => setBuyerKind('unique')} />
+                <Kpi label="Repeat in period" value={data.customers?.repeatInPeriod || 0} hint={`${data.customers?.repeatRate || 0}% of unique buyers · two or more orders in this range`} onClick={() => setBuyerKind('repeat')} />
+                <Kpi label="Returning buyers" value={data.customers?.returningInPeriod || 0} hint="Purchased in this range and also before it" onClick={() => setBuyerKind('returning')} />
               </div>
-              <p className="mt-3 text-sm text-gray-600">Revenue from repeat buyers: {money(data.customers?.revenueFromRepeat)}</p>
-              <p className="mt-2 text-xs leading-5 text-gray-500">Buyers are matched by customer account, then guest/shipping email. Phone-only guests without email are excluded from this count.</p>
+              <p className="mt-3 text-sm text-gray-600">Revenue from repeat buyers in period: {money(data.customers?.revenueFromRepeat)}</p>
+              <p className="mt-2 text-xs leading-5 text-gray-500">Unique buyers use the customer account, then email. Repeat buyers in period are not the same as returning buyers. Phone-only records without email are excluded.</p>
             </Panel>
             <Panel title="Collection contribution">
               {data.collections?.length ? data.collections.slice(0, 8).map((row) => (
@@ -545,6 +605,35 @@ export default function RevenueAnalyticsPage() {
               {(data.limitations || []).map((note) => <p key={note}>{note}</p>)}
             </div>
           </Panel>
+          <BuyerDrillDown
+            open={!!buyerKind}
+            kind={buyerKind}
+            query={query}
+            range={data.range}
+            onClose={() => setBuyerKind('')}
+          />
+          {profitProduct && (
+            <div className="fixed inset-0 z-50 flex items-end bg-black/40 sm:items-center sm:justify-center">
+              <div className="max-h-[90vh] w-full overflow-y-auto rounded-t-3xl bg-white p-4 sm:max-w-lg sm:rounded-3xl sm:p-6">
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <h2 className="text-lg font-bold">{profitProduct}</h2>
+                  <button type="button" onClick={() => setProfitProduct(null)} className="min-h-[44px] rounded-lg border px-3">Close</button>
+                </div>
+                {(products.filter((row) => row.title === profitProduct)[0] ? [products.filter((row) => row.title === profitProduct)[0]] : []).map((row) => (
+                  <div key={row.id || row.title} className="space-y-2 text-sm">
+                    <p>Units sold: {row.units}</p>
+                    <p>Revenue: {money(row.revenue)}</p>
+                    <p>Known making cost: {money(row.makingCost)}</p>
+                    <p>Product gross profit: {money(row.grossProfit)}</p>
+                    <p>Gross margin: {row.marginPct === null || row.marginPct === undefined ? 'Unavailable' : `${row.marginPct}%`}</p>
+                    <p>Unknown-cost revenue: {money(row.unknownRevenue)}</p>
+                    <button type="button" onClick={() => { if (row.id) setProduct(row.id); setProfitProduct(null); }} className="mt-3 min-h-[44px] w-full rounded-xl border font-semibold">Filter analytics to this product</button>
+                  </div>
+                ))}
+                <p className="mt-3 text-xs text-gray-500">Order details stay on the Orders page. This panel does not change orders.</p>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>

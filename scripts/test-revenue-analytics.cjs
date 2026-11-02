@@ -36,12 +36,24 @@ assert.strictEqual(growthPercent(150, 100), 50);
 assert.strictEqual(growthPercent(0, 0), 0);
 assert.strictEqual(growthPercent(10, 0), null);
 
-const kpis = shapeKpis({ collected: 1000, productSales: 900, shipping: 100, orders: 4, units: 7 }, { collected: 500, orders: 2 }, { amount: 200, orders: 1 });
+const kpis = shapeKpis(
+  { collected: 1000, productSales: 900, shipping: 100, orders: 4, units: 7 },
+  { collected: 500, orders: 2 },
+  { amount: 200, orders: 1 },
+  { productGrossProfit: 400, makingCostKnown: 500, knownCostRevenue: 900, unknownCostRevenue: 0, costCoveragePct: 100, complete: true, grossMarginPct: 44.4 },
+  { productGrossProfit: 200 },
+);
 assert.strictEqual(kpis.collectedRevenue, 1000);
 assert.strictEqual(kpis.averageOrderValue, 250);
 assert.strictEqual(kpis.refundedAmount, 200);
 assert.strictEqual(kpis.revenueGrowthPct, 100);
+assert.strictEqual(kpis.productGrossProfit, 400);
+assert.strictEqual(kpis.makingCostKnown, 500);
+assert.strictEqual(kpis.profitGrowthPct, 100);
 assert.ok(!String(REVENUE_DEFINITIONS.profit).toLowerCase().includes('₹'));
+assert.ok(String(REVENUE_DEFINITIONS.profit).toLowerCase().includes('not net business profit'));
+assert.ok(String(REVENUE_DEFINITIONS.uniqueBuyers).toLowerCase().includes('one buyer'));
+assert.ok(String(REVENUE_DEFINITIONS.repeatBuyers).toLowerCase().includes('two'));
 assert.ok(DATE_PRESETS.some((item) => item.id === 'last30'));
 assert.ok(!REVENUE_DEFINITIONS.district.includes('inferred') || REVENUE_DEFINITIONS.district.includes('not inferred') || REVENUE_DEFINITIONS.district.includes('not recorded'));
 

@@ -15,7 +15,11 @@ export const REVENUE_DEFINITIONS = {
   refundedAmount: 'Sum of order.total where paymentStatus is refunded. Partial refund amounts are not stored, so a refunded order contributes its full recorded total.',
   eventAt: 'Successful payment time (paidAt), falling back to createdAt when paidAt is missing. All buckets use Asia/Kolkata.',
   district: 'Orders store city, state, and pincode only. District is not recorded and is not inferred.',
-  profit: 'Product cost is not stored, so profit is not calculated.',
+  profit: 'Product gross profit is net item revenue minus applicable making cost for items whose cost is known. It is not net business profit: shipping cost, payment fees, packaging, taxes, marketing, and operating expenses are not stored.',
+  makingCost: 'Making cost is the admin-entered production cost. Missing cost is unknown, never treated as ₹0. New paid orders snapshot the current cost at checkout. Historical orders only use a cost if a history row applies on or before payment time.',
+  uniqueBuyers: 'Unique buyers are identifiable customers with at least one qualifying paid, non-cancelled order in the selected period. One customer with three orders counts as one buyer. Identity uses the customer account id, then guest/shipping email. Phone-only records without email are excluded.',
+  repeatBuyers: 'Repeat buyers in period placed at least two qualifying orders inside the selected date range.',
+  returningBuyers: 'Returning buyers purchased in the selected period and also had an earlier qualifying purchase before that period.',
   collections: 'Collection performance uses current product membership. Historical collection assignment at purchase time is not stored.',
 };
 
@@ -144,7 +148,22 @@ function statusAlias(status) {
   return STATUS_GROUPS[status] || [status];
 }
 
-export function buildRevenueMatch({ from, to, paymentMethod, status, state, city, productId }) {
+export function buyerIdentityExpr() {
+  return {
+    $cond: [
+      { $ifNull: ['$customer', false] },
+      { $concat: ['id:', { $toString: '$customer' }] },
+      {
+        $let: {
+          vars: { email: { $toLower: { $trim: { input: { $ifNull: ['$guestEmail', { $ifNull: ['$shippingAddress.email', ''] }] } } } } },
+          in: { $cond: [{ $gt: [{ $strLenCP: '$$email' }, 3] }, { $concat: ['email:', '$$email'] }, 'unknown'] },
+        },
+      },
+    ],
+  };
+}
+
+export function buildRevenueMatch({ from, to, paymentMethod, status, state, city, productId, variant }) {
   const match = {
     paymentStatus: 'paid',
     status: { $nin: ['cancelled'] },
@@ -155,6 +174,7 @@ export function buildRevenueMatch({ from, to, paymentMethod, status, state, city
   if (state) match['shippingAddress.state'] = { $regex: `^${escapeRegex(state)}$`, $options: 'i' };
   if (city) match['shippingAddress.city'] = { $regex: `^${escapeRegex(city)}$`, $options: 'i' };
   if (productId) match['items.product'] = productId;
+  if (variant) match['items.variant'] = { $regex: escapeRegex(variant), $options: 'i' };
   return [
     { $match: match },
     { $addFields: { eventAt: { $ifNull: ['$paidAt', '$createdAt'] } } },
@@ -305,18 +325,7 @@ export function revenuePipeline({ from, to, paymentMethod, status, state, city, 
         customers: [
           {
             $group: {
-              _id: {
-                $cond: [
-                  { $ifNull: ['$customer', false] },
-                  { $concat: ['id:', { $toString: '$customer' }] },
-                  {
-                    $let: {
-                      vars: { email: { $toLower: { $trim: { input: { $ifNull: ['$guestEmail', { $ifNull: ['$shippingAddress.email', ''] }] } } } } },
-                      in: { $cond: [{ $gt: [{ $strLenCP: '$$email' }, 3] }, { $concat: ['email:', '$$email'] }, 'unknown'] },
-                    },
-                  },
-                ],
-              },
+              _id: buyerIdentityExpr(),
               orders: { $sum: 1 },
               collected: { $sum: { $ifNull: ['$total', 0] } },
             },
@@ -382,8 +391,61 @@ export function filterOptionPipeline({ from, to }) {
           { $sort: { title: 1 } },
           { $limit: 300 },
         ],
+        variants: [
+          { $unwind: { path: '$items', preserveNullAndEmptyArrays: false } },
+          { $match: { 'items.variant': { $nin: ['', null] } } },
+          { $group: { _id: '$items.variant' } },
+          { $sort: { _id: 1 } },
+          { $limit: 200 },
+        ],
       },
     },
+  ];
+}
+
+export function profitItemPipeline(filters) {
+  return [
+    ...buildRevenueMatch(filters),
+    { $unwind: '$items' },
+    {
+      $project: {
+        orderId: '$_id',
+        eventAt: 1,
+        product: '$items.product',
+        title: '$items.title',
+        image: '$items.image',
+        variant: '$items.variant',
+        quantity: '$items.quantity',
+        price: '$items.price',
+        snapshotCost: '$items.makingCost',
+        snapshotStatus: '$items.makingCostStatus',
+        snapshotSource: '$items.makingCostSource',
+        state: '$shippingAddress.state',
+        city: '$shippingAddress.city',
+      },
+    },
+  ];
+}
+
+export function buyerListPipeline(filters) {
+  return [
+    ...buildRevenueMatch(filters),
+    {
+      $group: {
+        _id: buyerIdentityExpr(),
+        customerId: { $first: '$customer' },
+        email: { $first: { $toLower: { $trim: { input: { $ifNull: ['$guestEmail', { $ifNull: ['$shippingAddress.email', ''] }] } } } } },
+        name: { $first: { $ifNull: ['$shippingAddress.fullName', ''] } },
+        phone: { $first: { $ifNull: ['$shippingAddress.phone', { $ifNull: ['$shippingAddress.whatsappNumber', ''] }] } },
+        orders: { $sum: 1 },
+        collected: { $sum: { $ifNull: ['$total', 0] } },
+        firstAt: { $min: '$eventAt' },
+        lastAt: { $max: '$eventAt' },
+        orderIds: { $addToSet: '$_id' },
+        itemTitles: { $push: { $ifNull: ['$items.title', []] } },
+      },
+    },
+    { $match: { _id: { $ne: 'unknown' } } },
   ];
 }
 
@@ -400,13 +462,17 @@ export function shapeFilterOptions(options = {}, collections = []) {
       }))
       .sort((a, b) => a.title.localeCompare(b.title, 'en-IN')),
     collections: collections.map((row) => ({ id: String(row._id), name: row.name })),
+    variants: uniquePlaceLabels((options.variants || []).map((row) => row._id)),
   };
 }
 
-export function shapeKpis(row = {}, previous = {}, refund = {}) {
+export function shapeKpis(row = {}, previous = {}, refund = {}, profit = {}, previousProfit = {}) {
   const collected = Number(row.collected || 0);
   const previousCollected = Number(previous.collected || 0);
   const orders = Number(row.orders || 0);
+  const productGrossProfit = Number(profit.productGrossProfit || 0);
+  const previousGrossProfit = Number(previousProfit.productGrossProfit || 0);
+  const knownCostRevenue = Number(profit.knownCostRevenue || 0);
   return {
     collectedRevenue: collected,
     productSales: Number(row.productSales || 0),
@@ -420,6 +486,21 @@ export function shapeKpis(row = {}, previous = {}, refund = {}) {
     revenueGrowthPct: growthPercent(collected, previousCollected),
     previousPaidOrders: Number(previous.orders || 0),
     orderGrowthPct: growthPercent(orders, previous.orders || 0),
+    makingCostKnown: Number(profit.makingCostKnown || 0),
+    knownCostRevenue,
+    unknownCostRevenue: Number(profit.unknownCostRevenue || 0),
+    unknownCostUnits: Number(profit.unknownCostUnits || 0),
+    productGrossProfit,
+    previousProductGrossProfit: previousGrossProfit,
+    grossMarginPct: profit.grossMarginPct === undefined ? (knownCostRevenue ? Math.round((productGrossProfit / knownCostRevenue) * 1000) / 10 : null) : profit.grossMarginPct,
+    costCoveragePct: profit.costCoveragePct === undefined ? 0 : profit.costCoveragePct,
+    profitComplete: profit.complete === true,
+    averageGrossProfitPerOrder: orders ? productGrossProfit / orders : 0,
+    profitGrowthPct: growthPercent(productGrossProfit, previousGrossProfit),
+    mostProfitableProduct: profit.mostProfitableProduct || null,
+    leastProfitableProduct: profit.leastProfitableProduct || null,
+    peakProfitDay: profit.peakProfitDay || null,
+    peakProfitProduct: profit.peakProfitProduct || null,
   };
 }
 
@@ -431,6 +512,9 @@ export function shapeTrend(rows = []) {
     orders: Number(row.orders || 0),
     units: Number(row.units || 0),
     productSales: Number(row.productSales || 0),
+    makingCost: Number(row.makingCost || 0),
+    grossProfit: Number(row.grossProfit || 0),
+    unknownCostRevenue: Number(row.unknownCostRevenue || 0),
   }));
 }
 
@@ -451,6 +535,9 @@ export function shapePlaces(rows = [], type) {
     orders: Number(row.orders || 0),
     units: Number(row.units || 0),
     averageOrderValue: row.orders ? Number(row.collected || 0) / Number(row.orders) : 0,
+    makingCost: Number(row.makingCost || 0),
+    grossProfit: Number(row.grossProfit || 0),
+    unknownRevenue: Number(row.unknownRevenue || 0),
   })), 'collected');
 }
 
@@ -501,6 +588,11 @@ export function shapeProducts(rows = []) {
     revenue: Number(row.revenue || 0),
     orders: Number(row.orders || 0),
     averagePrice: row.units ? Number(row.revenue || 0) / Number(row.units) : 0,
+    makingCost: Number(row.makingCost || 0),
+    grossProfit: Number(row.grossProfit || 0),
+    marginPct: row.marginPct === undefined || row.marginPct === null ? null : Number(row.marginPct),
+    unknownRevenue: Number(row.unknownRevenue || 0),
+    costCoveragePct: row.costCoveragePct === undefined ? null : Number(row.costCoveragePct),
   })), 'revenue');
 }
 
@@ -519,9 +611,38 @@ export function shapeInsights({ kpis, trend, states, hours, weekdays, products }
   if (topWeekday) notes.push(`Busiest weekday: ${topWeekday.weekday}.`);
   if (topState?.label) notes.push(`Highest-revenue state: ${topState.label}.`);
   if (topProduct?.title) notes.push(`Highest-revenue product: ${topProduct.title}.`);
+  if (kpis.mostProfitableProduct?.title) notes.push(`Highest product gross profit: ${kpis.mostProfitableProduct.title}.`);
+  if (kpis.leastProfitableProduct?.title && kpis.leastProfitableProduct.title !== kpis.mostProfitableProduct?.title) {
+    notes.push(`Lowest product gross profit among known-cost items: ${kpis.leastProfitableProduct.title}.`);
+  }
+  if (kpis.profitComplete === false) notes.push(`Making-cost coverage is ${kpis.costCoveragePct || 0}% of product revenue. Unknown-cost items are excluded from product gross profit.`);
   if (kpis.revenueGrowthPct === null) notes.push('Revenue growth is omitted because the previous period had zero collected revenue.');
   else notes.push(`Collected revenue changed ${kpis.revenueGrowthPct}% versus the previous equivalent period.`);
   return notes;
+}
+
+export function mergeProfitIntoTrend(trend = [], profitRows = []) {
+  const byLabel = Object.fromEntries(profitRows.map((row) => [row.label, row]));
+  return trend.map((row) => ({
+    ...row,
+    makingCost: Number(byLabel[row.label]?.makingCost || 0),
+    grossProfit: Number(byLabel[row.label]?.grossProfit || 0),
+    unknownCostRevenue: Number(byLabel[row.label]?.unknownRevenue || 0),
+  }));
+}
+
+export function istBucketLabel(date, granularity = 'day') {
+  const day = formatIstDateInput(date);
+  if (granularity === 'year') return day.slice(0, 4);
+  if (granularity === 'month') return day.slice(0, 7);
+  if (granularity === 'week') {
+    const current = new Date(`${day}T12:00:00.000+05:30`);
+    const weekday = new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: IST }).format(current);
+    const offset = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 }[weekday] || 0;
+    current.setUTCDate(current.getUTCDate() - offset);
+    return formatIstDateInput(current);
+  }
+  return day;
 }
 
 export { IST, WEEKDAYS, STATUS_GROUPS };

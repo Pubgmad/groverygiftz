@@ -1,13 +1,14 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { FiHome, FiPackage, FiGrid, FiTruck, FiShoppingCart, FiUsers, FiImage, FiFileText, FiBookOpen, FiMail, FiMessageSquare, FiSettings, FiX, FiStar, FiGift, FiClock, FiShield, FiBarChart2 } from 'react-icons/fi';
+import { FiHome, FiPackage, FiGrid, FiTruck, FiShoppingCart, FiUsers, FiImage, FiFileText, FiBookOpen, FiMail, FiMessageSquare, FiSettings, FiX, FiStar, FiGift, FiClock, FiShield, FiBarChart2, FiTool } from 'react-icons/fi';
 import useAdminAccess from '@/hooks/useAdminAccess';
 import { ADMIN_BASE_PATH } from '@/lib/adminPermissions';
 
 const iconMap = {
   dashboard: FiHome,
   products: FiPackage,
+  'making-cost': FiTool,
   collections: FiGrid,
   shipping: FiTruck,
   'estimated-delivery': FiClock,
@@ -27,6 +28,7 @@ const iconMap = {
 const navItems = [
   { id: 'dashboard', href: ADMIN_BASE_PATH, label: 'Dashboard' },
   { id: 'products', href: `${ADMIN_BASE_PATH}/products`, label: 'Products' },
+  { id: 'making-cost', href: `${ADMIN_BASE_PATH}/making-cost`, label: 'Making Cost' },
   { id: 'collections', href: `${ADMIN_BASE_PATH}/collections`, label: 'Collections' },
   { id: 'shipping', href: `${ADMIN_BASE_PATH}/shipping`, label: 'Shipping Templates' },
   { id: 'estimated-delivery', href: `${ADMIN_BASE_PATH}/estimated-delivery`, label: 'Estimated Delivery Days' },

@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { FiPackage, FiShoppingCart, FiUsers, FiGrid, FiDollarSign, FiMail, FiMessageSquare, FiBookOpen } from 'react-icons/fi';
+import { FiPackage, FiShoppingCart, FiUsers, FiGrid, FiDollarSign, FiMail, FiMessageSquare, FiBookOpen, FiTool } from 'react-icons/fi';
 import { formatPrice } from '@/lib/utils';
 import Link from 'next/link';
 import useAdminAccess from '@/hooks/useAdminAccess';
@@ -21,6 +21,7 @@ export default function AdminDashboard() {
 
   const cards = [
     { module: 'products', label: 'Products', value: stats?.products || 0, icon: FiPackage, color: 'bg-blue-500', href: '/account/manage/products' },
+    { module: 'making-cost', label: 'Making Cost missing', value: stats?.missingMakingCosts ?? '—', icon: FiTool, color: 'bg-orange-500', href: '/account/manage/making-cost' },
     { module: 'orders', label: 'Orders', value: stats?.orders || 0, icon: FiShoppingCart, color: 'bg-green-500', href: '/account/manage/orders' },
     { module: 'revenue', label: 'Revenue', value: formatPrice(stats?.revenue || 0), icon: FiDollarSign, color: 'bg-yellow-500', href: '/account/manage/revenue' },
     { module: 'customers', label: 'Customers', value: stats?.customers || 0, icon: FiUsers, color: 'bg-purple-500', href: '/account/manage/customers' },

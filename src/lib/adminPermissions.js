@@ -3,6 +3,7 @@ export const ADMIN_BASE_PATH = '/account/manage';
 export const ADMIN_MODULES = [
   { id: 'dashboard', label: 'Dashboard', href: ADMIN_BASE_PATH, writeSupported: false, description: 'Store overview and recent paid-order summary.' },
   { id: 'products', label: 'Products', href: `${ADMIN_BASE_PATH}/products`, writeSupported: true, description: 'Catalog, variants, stock, images, and product pages.' },
+  { id: 'making-cost', label: 'Making Cost', href: `${ADMIN_BASE_PATH}/making-cost`, writeSupported: true, description: 'Product and variant making costs used for product gross profit. Separate from catalog editing.' },
   { id: 'collections', label: 'Collections', href: `${ADMIN_BASE_PATH}/collections`, writeSupported: true, description: 'Storefront collections and featured grouping.' },
   { id: 'shipping', label: 'Shipping Templates', href: `${ADMIN_BASE_PATH}/shipping`, writeSupported: true, description: 'State shipping templates used at checkout.' },
   { id: 'estimated-delivery', label: 'Estimated Delivery Days', href: `${ADMIN_BASE_PATH}/estimated-delivery`, writeSupported: true, description: 'Central Tamil Nadu and other-state delivery estimates.' },

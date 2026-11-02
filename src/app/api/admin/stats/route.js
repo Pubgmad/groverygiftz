@@ -8,6 +8,7 @@ import Banner from '@/models/Banner';
 import Blog from '@/models/Blog';
 import Contact from '@/models/Contact';
 import Newsletter from '@/models/Newsletter';
+import MakingCost from '@/models/MakingCost';
 
 export async function GET() {
   const { requireAdminPermission } = await import('@/lib/adminAccess');
@@ -16,7 +17,7 @@ export async function GET() {
 
   await dbConnect();
 
-  const [products, orders, customers, collections, banners, blogs, messages, subscribers, revenue, recentOrders] = await Promise.all([
+  const [products, orders, customers, collections, banners, blogs, messages, subscribers, revenue, recentOrders, configuredProductIds] = await Promise.all([
     Product.countDocuments(),
     Order.countDocuments({ paymentStatus: 'paid' }),
     Customer.countDocuments(),
@@ -27,6 +28,7 @@ export async function GET() {
     Newsletter.countDocuments(),
     Order.aggregate([{ $match: { paymentStatus: 'paid', status: { $ne: 'cancelled' } } }, { $group: { _id: null, total: { $sum: '$total' } } }]),
     Order.find({ paymentStatus: 'paid' }).sort({ paidAt: -1, createdAt: -1 }).limit(5).lean(),
+    MakingCost.distinct('product'),
   ]);
 
   return NextResponse.json({
@@ -34,5 +36,6 @@ export async function GET() {
     unreadMessages: messages, subscribers,
     revenue: revenue[0]?.total || 0,
     recentOrders,
+    missingMakingCosts: Math.max(0, products - (configuredProductIds?.length || 0)),
   });
 }

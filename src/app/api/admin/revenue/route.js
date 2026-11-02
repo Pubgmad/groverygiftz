@@ -9,8 +9,10 @@ import Collection from '@/models/Collection';
 import {
   DATE_PRESETS,
   REVENUE_DEFINITIONS,
+  buyerIdentityExpr,
   filterOptionPipeline,
   kpiPipeline,
+  mergeProfitIntoTrend,
   paymentOutcomePipeline,
   presetToRange,
   previousEquivalentRange,
@@ -26,6 +28,7 @@ import {
   shapeTrend,
   shapeWeekdays,
 } from '@/lib/revenueAnalytics';
+import { attributeProfitForFilters } from '@/lib/profitAttribution';
 
 function emptyAnalytics(range, preset, granularity, options, insights) {
   return {
@@ -44,7 +47,7 @@ function emptyAnalytics(range, preset, granularity, options, insights) {
     payments: [],
     statuses: [],
     paymentOutcomes: [],
-    customers: { unique: 0, repeatInPeriod: 0, repeatRate: 0, revenueFromRepeat: 0 },
+    customers: { unique: 0, repeatInPeriod: 0, returningInPeriod: 0, repeatRate: 0, revenueFromRepeat: 0 },
     collections: [],
     insights,
     options,
@@ -73,6 +76,7 @@ export async function GET(req) {
   const city = searchParams.get('city') || '';
   const product = searchParams.get('product') || '';
   const collection = searchParams.get('collection') || '';
+  const variant = searchParams.get('variant') || '';
   const range = presetToRange(preset, searchParams.get('from'), searchParams.get('to'));
   if (!range) return NextResponse.json({ error: 'Choose a valid date range' }, { status: 400 });
   if (!DATE_PRESETS.some((item) => item.id === preset) && preset !== 'custom') {
@@ -116,6 +120,7 @@ export async function GET(req) {
     state: state || undefined,
     city: city || undefined,
     productId: productIds.length === 1 ? productIds[0] : undefined,
+    variant: variant || undefined,
     granularity,
   };
 
@@ -128,17 +133,66 @@ export async function GET(req) {
   const [previousKpi] = previous ? await Order.aggregate(kpiPipeline(previous)).allowDiskUse(true) : [{}];
   const [refund] = await Order.aggregate(refundPipeline(range)).allowDiskUse(true);
   const paymentOutcomes = await Order.aggregate(paymentOutcomePipeline(range)).allowDiskUse(true);
+  const profit = await attributeProfitForFilters(filters, matchExtra);
+  const previousProfit = previous ? await attributeProfitForFilters({ ...previous, granularity }) : { summary: {} };
 
-  const kpis = shapeKpis(facet?.kpis?.[0], previousKpi, refund);
-  const products = shapeProducts(facet?.products || []);
-  const states = shapePlaces(facet?.states || [], 'state');
-  const cities = shapePlaces(facet?.cities || [], 'city');
+  const kpis = shapeKpis(facet?.kpis?.[0], previousKpi, refund, {
+    ...profit.summary,
+    mostProfitableProduct: profit.mostProfitableProduct,
+    leastProfitableProduct: profit.leastProfitableProduct,
+    peakProfitDay: profit.peakProfitDay ? { label: profit.peakProfitDay.label, grossProfit: profit.peakProfitDay.grossProfit } : null,
+    peakProfitProduct: profit.mostProfitableProduct,
+  }, previousProfit.summary);
+  const products = shapeProducts(profit.productRows.length ? profit.productRows.map((row) => ({
+    productId: row.id,
+    title: row.label,
+    image: row.image,
+    units: row.units,
+    revenue: row.revenue,
+    orders: row.orders,
+    makingCost: row.makingCost,
+    grossProfit: row.grossProfit,
+    marginPct: row.marginPct,
+    unknownRevenue: row.unknownRevenue,
+    costCoveragePct: row.costCoveragePct,
+  })) : (facet?.products || []));
+  const states = shapePlaces((profit.stateRows.length ? profit.stateRows.map((row) => ({
+    label: row.label,
+    collected: row.revenue,
+    orders: row.orders,
+    units: row.units,
+    makingCost: row.makingCost,
+    grossProfit: row.grossProfit,
+    unknownRevenue: row.unknownRevenue,
+  })) : (facet?.states || [])), 'state');
+  const cities = shapePlaces((profit.cityRows.length ? profit.cityRows.map((row) => ({
+    city: row.label,
+    state: row.state,
+    collected: row.revenue,
+    orders: row.orders,
+    units: row.units,
+    makingCost: row.makingCost,
+    grossProfit: row.grossProfit,
+    unknownRevenue: row.unknownRevenue,
+  })) : (facet?.cities || [])), 'city');
   const hours = shapeHours(facet?.hours || []);
   const weekdays = shapeWeekdays(facet?.weekdays || []);
-  const trend = shapeTrend(facet?.trend || []);
+  const trend = mergeProfitIntoTrend(shapeTrend(facet?.trend || []), profit.trendRows);
   const customerRows = (facet?.customers || []).filter((row) => row._id && row._id !== 'unknown');
   const unique = customerRows.length;
   const repeatRows = customerRows.filter((row) => Number(row.orders || 0) > 1);
+  const buyerKeys = customerRows.map((row) => row._id);
+  const earlierBuyers = buyerKeys.length
+    ? await Order.aggregate([
+      { $match: { paymentStatus: 'paid', status: { $nin: ['cancelled'] } } },
+      { $addFields: { eventAt: { $ifNull: ['$paidAt', '$createdAt'] } } },
+      { $match: { eventAt: { $lt: range.from } } },
+      { $group: { _id: buyerIdentityExpr() } },
+      { $match: { _id: { $in: buyerKeys } } },
+    ]).allowDiskUse(true)
+    : [];
+  const returningKeys = new Set(earlierBuyers.map((row) => row._id));
+  const returningRows = customerRows.filter((row) => returningKeys.has(row._id));
   const topProduct = products[0] || null;
   kpis.topProduct = topProduct ? { title: topProduct.title, units: topProduct.units, revenue: topProduct.revenue } : null;
 
@@ -173,11 +227,15 @@ export async function GET(req) {
     weekdays,
     heatmap: shapeHeatmap(facet?.heatmap || []),
     products,
-    variants: (facet?.variants || []).map((row) => ({
-      title: row._id?.title || 'Product',
-      variant: row._id?.variant || '',
+    variants: (profit.variantRows.length ? profit.variantRows : (facet?.variants || [])).map((row) => ({
+      title: row.label ? String(row.label).split(' · ')[0] : (row._id?.title || 'Product'),
+      variant: row.variant || row._id?.variant || String(row.label || '').split(' · ').slice(1).join(' · '),
       units: Number(row.units || 0),
       revenue: Number(row.revenue || 0),
+      makingCost: Number(row.makingCost || 0),
+      grossProfit: Number(row.grossProfit || 0),
+      marginPct: row.marginPct === undefined ? null : row.marginPct,
+      unknownRevenue: Number(row.unknownRevenue || 0),
     })),
     payments: (facet?.payments || []).map((row) => ({
       method: row._id || 'Cashfree',
@@ -197,6 +255,7 @@ export async function GET(req) {
     customers: {
       unique,
       repeatInPeriod: repeatRows.length,
+      returningInPeriod: returningRows.length,
       repeatRate: unique ? Math.round((repeatRows.length / unique) * 1000) / 10 : 0,
       revenueFromRepeat: repeatRows.reduce((sum, row) => sum + Number(row.collected || 0), 0),
     },
@@ -205,10 +264,15 @@ export async function GET(req) {
     options: filterOptions,
     limitations: [
       'District is not stored on orders and is not inferred from pincode or city.',
-      'Profit is not shown because product cost is not stored.',
+      REVENUE_DEFINITIONS.profit,
+      REVENUE_DEFINITIONS.makingCost,
+      'Refunded orders are excluded from collected revenue and product gross profit. Whether a refunded item was already manufactured is not stored, so that production cost is not treated as recovered or as a recorded loss.',
+      'Cancelled and unpaid orders are excluded. Partial refund amounts are not stored.',
       'No Razorpay or COD orders exist in the current checkout flow; payment method is recorded from the order document, usually Cashfree.',
       'Collection totals can overlap when a product belongs to more than one collection. Those totals are contribution views, not additive revenue.',
-      'Repeat-customer rate counts buyers with two or more paid orders inside the selected period only.',
+      REVENUE_DEFINITIONS.uniqueBuyers,
+      REVENUE_DEFINITIONS.repeatBuyers,
+      REVENUE_DEFINITIONS.returningBuyers,
     ],
   }, { headers: { 'Cache-Control': 'no-store' } });
 }

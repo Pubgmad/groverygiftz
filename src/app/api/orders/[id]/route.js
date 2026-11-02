@@ -4,6 +4,7 @@ import Order from '@/models/Order';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { can, getRequestAdminAccess, requireAdminPermission } from '@/lib/adminAccess';
+import { stripMakingCostFromOrder } from '@/lib/makingCost';
 
 export async function GET(req, { params }) {
   const session = await getServerSession(authOptions);
@@ -22,7 +23,7 @@ export async function GET(req, { params }) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  return NextResponse.json(order);
+  return NextResponse.json(session.user.type === 'admin' ? order : stripMakingCostFromOrder(order));
 }
 
 export async function PUT(req, { params }) {

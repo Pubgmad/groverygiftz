@@ -13,6 +13,8 @@ import { captureMetaOrderAttribution } from '@/lib/metaAttributionServer';
 import { assertOrderPricing } from '@/lib/orderPricing';
 import { randomUUID } from 'node:crypto';
 import { PAYMENT_RETURN_PATH } from '@/lib/checkoutPayment';
+import MakingCost from '@/models/MakingCost';
+import { snapshotOrderItemCost } from '@/lib/makingCost';
 
 const CASHFREE_VERSION = '2025-01-01';
 const endpointFor = (environment) => environment === 'production'
@@ -138,6 +140,15 @@ export async function POST(req) {
     const products = await Product.find({ _id: { $in: productIds } }).select('title stock variants delivery isActive regularPrice salePrice offerStartsAt offerEndsAt giftWrap').lean();
     await hydrateProductShippingTemplates(products, settings);
     const productsById = Object.fromEntries(products.map((product) => [String(product._id), product]));
+    const costDocs = productIds.length
+      ? await MakingCost.find({ product: { $in: productIds } }).lean()
+      : [];
+    const costsByProduct = costDocs.reduce((map, row) => {
+      const key = String(row.product);
+      if (!map[key]) map[key] = [];
+      map[key].push(row);
+      return map;
+    }, {});
     assertStockAvailable(getGroupedStockRequests(orderItems, productsById));
     assertOrderPricing(orderItems, productsById);
     const subtotal = orderItems.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 1), 0);
@@ -184,7 +195,11 @@ export async function POST(req) {
       orderNumber: pendingOrderNumber,
       customer: session.user.id,
       guestEmail: shippingAddress?.email || session.user.email || null,
-      items: orderItems,
+      items: orderItems.map((item) => {
+        const product = productsById[String(item.product || item.productId || '')];
+        const snapshot = snapshotOrderItemCost(item, product, costsByProduct[String(item.product || item.productId || '')] || []);
+        return { ...item, ...snapshot };
+      }),
       shippingAddress,
       subtotal,
       shippingCost,

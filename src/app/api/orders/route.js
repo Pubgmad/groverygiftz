@@ -7,6 +7,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { can, getRequestAdminAccess } from '@/lib/adminAccess';
 import { getOrderDeliveryEstimate } from '@/lib/orderDeliveryEstimate';
+import { stripMakingCostFromOrder } from '@/lib/makingCost';
 
 const escapeRegex = (value = '') => String(value).split('').map((char) => '\\^$*+?.()|{}[]'.includes(char) ? '\\' + char : char).join('');
 
@@ -88,10 +89,13 @@ export async function GET(req) {
   ]);
   const settings = await Settings.findOne().select('deliveryHolidays').lean();
   const deliveryHolidays = settings?.deliveryHolidays || [];
-  const displayOrders = orders.map((order) => ({
-    ...order,
-    deliveryEstimate: getOrderDeliveryEstimate(order, deliveryHolidays) || order.deliveryEstimate,
-  }));
+  const displayOrders = orders.map((order) => {
+    const next = {
+      ...order,
+      deliveryEstimate: getOrderDeliveryEstimate(order, deliveryHolidays) || order.deliveryEstimate,
+    };
+    return session.user.type === 'admin' ? next : stripMakingCostFromOrder(next);
+  });
 
   return NextResponse.json({ orders: displayOrders, total, page, limit, pages: Math.ceil(total / limit) });
 }

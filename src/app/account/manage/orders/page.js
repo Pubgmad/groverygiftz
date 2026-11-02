@@ -251,6 +251,7 @@ export default function AdminOrdersPage() {
     setDateFrom(params.get('dateFrom') || '');
     setDateTo(params.get('dateTo') || '');
     setStatusFilter(params.get('status') || '');
+    setOrderFilter(params.get('orderId') || params.get('orderNumber') || '');
     setFiltersReady(true);
   }, []);
 

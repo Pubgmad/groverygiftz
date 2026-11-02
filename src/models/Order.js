@@ -16,6 +16,9 @@ const OrderSchema = new mongoose.Schema({
     giftWrap: Boolean,
     giftMessage: String,
     customizationPreview: mongoose.Schema.Types.Mixed,
+    makingCost: Number,
+    makingCostStatus: { type: String, enum: ['known', 'unknown'] },
+    makingCostSource: { type: String, enum: ['snapshot', 'variant', 'product', 'history'] },
   }],
   shippingAddress: {
     fullName: String,

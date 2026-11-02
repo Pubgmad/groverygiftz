@@ -1,0 +1,106 @@
+export const dynamic = 'force-dynamic';
+
+import { NextResponse } from 'next/server';
+import dbConnect from '@/lib/db';
+import Product from '@/models/Product';
+import MakingCost from '@/models/MakingCost';
+import { makingCostStatusForProduct, variantCostKey } from '@/lib/makingCost';
+
+function escapeRegex(value = '') {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export async function GET(req) {
+  const { requireAdminPermission } = await import('@/lib/adminAccess');
+  const { error } = await requireAdminPermission('making-cost', 'read');
+  if (error) return error;
+
+  const { searchParams } = new URL(req.url);
+  const search = String(searchParams.get('search') || '').trim();
+  const status = searchParams.get('status') || 'all';
+  const page = Math.max(1, Number(searchParams.get('page') || 1));
+  const limit = Math.min(50, Math.max(1, Number(searchParams.get('limit') || 20)));
+
+  await dbConnect();
+  const query = {};
+  if (search) {
+    const or = [{ title: { $regex: escapeRegex(search), $options: 'i' } }];
+    if (/^[a-fA-F0-9]{24}$/.test(search)) or.push({ _id: search });
+    query.$or = or;
+  }
+
+  const products = await Product.find(query)
+    .select('title slug images regularPrice salePrice variants collections isActive updatedAt')
+    .populate('collections', 'name')
+    .sort({ updatedAt: -1 })
+    .lean();
+
+  const costs = await MakingCost.find({ product: { $in: products.map((row) => row._id) } }).lean();
+  const costsByProduct = new Map();
+  costs.forEach((row) => {
+    const key = String(row.product);
+    if (!costsByProduct.has(key)) costsByProduct.set(key, []);
+    costsByProduct.get(key).push(row);
+  });
+
+  const rows = products.map((product) => {
+    const productCosts = costsByProduct.get(String(product._id)) || [];
+    const productCost = productCosts.find((row) => !row.variantKey);
+    const variantOptions = (product.variants || []).flatMap((variant) => (variant.options || []).map((option) => {
+      const key = variantCostKey(variant.name, option.label);
+      const cost = productCosts.find((row) => String(row.variantKey || '') === key);
+      return {
+        variantName: variant.name || '',
+        optionLabel: option.label || '',
+        variantKey: key,
+        regularPrice: option.useOwnPrice ? option.regularPrice : product.regularPrice,
+        salePrice: option.useOwnPrice ? option.salePrice : product.salePrice,
+        makingCost: cost ? Number(cost.amount) : null,
+        configured: !!cost,
+        updatedAt: cost?.updatedAt || null,
+      };
+    }));
+    const costStatus = makingCostStatusForProduct(product, productCosts);
+    const latest = productCosts.reduce((max, row) => {
+      const time = new Date(row.updatedAt || 0).getTime();
+      return time > max ? time : max;
+    }, 0);
+    return {
+      id: String(product._id),
+      title: product.title,
+      slug: product.slug,
+      image: product.images?.[0] || '',
+      regularPrice: Number(product.regularPrice || 0),
+      salePrice: Number(product.salePrice || 0),
+      isActive: product.isActive !== false,
+      collections: (product.collections || []).map((row) => row.name).filter(Boolean),
+      makingCost: productCost ? Number(productCost.amount) : null,
+      costStatus,
+      variants: variantOptions,
+      lastUpdated: latest ? new Date(latest).toISOString() : (product.updatedAt ? new Date(product.updatedAt).toISOString() : null),
+    };
+  }).filter((row) => {
+    if (status === 'missing') return row.costStatus === 'missing';
+    if (status === 'partial') return row.costStatus === 'partial';
+    if (status === 'configured') return row.costStatus === 'configured';
+    return true;
+  });
+
+  const total = rows.length;
+  const pages = Math.max(1, Math.ceil(total / limit));
+  const paged = rows.slice((page - 1) * limit, page * limit);
+  const missing = rows.filter((row) => row.costStatus !== 'configured').length;
+
+  return NextResponse.json({
+    products: paged,
+    total,
+    pages,
+    page,
+    missing,
+    definitions: {
+      unknown: 'Missing making cost is unknown, never treated as ₹0.',
+      fallback: 'If a purchased variant has no variant making cost, the product-level making cost is used. If that is also missing, profit for that item is unknown.',
+      history: 'Saving a cost records when it starts applying. Orders paid before that date stay unknown unless an earlier history row exists.',
+    },
+  }, { headers: { 'Cache-Control': 'no-store' } });
+}
