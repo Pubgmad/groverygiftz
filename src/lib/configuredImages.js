@@ -7,7 +7,8 @@ const customerFileUrlFromOriginal = (url = '') => {
   const encodedPath = raw.slice(index + marker.length).split('?')[0];
   return encodedPath ? `/api/customization-upload/customer-file/${encodedPath}` : '';
 };
-const displayUrlFor = (asset) => asset?.previewUrl || asset?.displayUrl || customerFileUrlFromOriginal(asset?.url) || asset?.url;
+// Prefer durable displayUrl over ephemeral blob previewUrl (which dies after refresh / revoke).
+const displayUrlFor = (asset) => asset?.displayUrl || asset?.previewUrl || customerFileUrlFromOriginal(asset?.url) || asset?.url;
 const linkUrlFor = (asset) => asset?.originalUrl || asset?.url || asset?.displayUrl || asset?.previewUrl;
 
 export const isConfiguredImageAsset = (value) => hasUrl(value);

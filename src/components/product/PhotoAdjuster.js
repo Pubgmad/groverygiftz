@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { FiLoader, FiRefreshCw, FiRotateCcw, FiRotateCw, FiX } from 'react-icons/fi';
-import { estimatePrintPpi, formatFrameSubtitle, getContainScale, getFillZoom, getFrameSize, qualityGuidance } from '@/lib/photoEditor';
+import { estimatePrintPpi, fitFrameInBox, formatFrameSubtitle, getContainScale, getFillZoom, getFrameSize, qualityGuidance } from '@/lib/photoEditor';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -23,18 +23,21 @@ export default function PhotoAdjuster({
   const [draft, setDraft] = useState(baseline);
   const [openedBaseline, setOpenedBaseline] = useState(baseline);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
-  const [framePx, setFramePx] = useState({ width: 0, height: 0 });
+  const [boxPx, setBoxPx] = useState({ width: 0, height: 0 });
   const [imageReady, setImageReady] = useState(false);
   const [imageError, setImageError] = useState('');
+  const [activeSrc, setActiveSrc] = useState(photoUrl || '');
   const dragRef = useRef(null);
   const pointersRef = useRef(new Map());
   const pinchRef = useRef(null);
   const frameRef = useRef(null);
+  const stageRef = useRef(null);
   const fileRef = useRef(null);
   const draftRef = useRef(draft);
   const baselineRef = useRef(baseline);
   const closeRef = useRef(onClose);
   const savingRef = useRef(saving);
+  const triedFallbackRef = useRef(false);
   closeRef.current = onClose;
   savingRef.current = saving;
   baselineRef.current = baseline;
@@ -48,6 +51,8 @@ export default function PhotoAdjuster({
     setImageReady(false);
     setImageError('');
     setImageSize({ width: 0, height: 0 });
+    setActiveSrc(photoUrl || '');
+    triedFallbackRef.current = false;
     document.body.classList.add('photo-editor-open');
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -60,8 +65,7 @@ export default function PhotoAdjuster({
     };
   }, [open]);
 
-  // When the photo is replaced while the editor stays open, reset draft from the
-  // latest baseline (ProductDetail updates adjustments before/with the new URL).
+  // When the photo is replaced while the editor stays open, reset from latest baseline.
   useEffect(() => {
     if (!open || !photoUrl) return;
     const next = baselineRef.current;
@@ -70,14 +74,24 @@ export default function PhotoAdjuster({
     setImageReady(false);
     setImageError('');
     setImageSize({ width: 0, height: 0 });
+    setActiveSrc(photoUrl);
+    triedFallbackRef.current = false;
   }, [open, photoUrl]);
 
   useEffect(() => {
-    const node = frameRef.current;
+    if (replacing) {
+      setImageError('');
+      setImageReady(false);
+    }
+  }, [replacing]);
+
+  // Observe the stage box (parent), not the frame — then size the frame with an exact aspect ratio.
+  useEffect(() => {
+    const node = stageRef.current;
     if (!open || !node) return undefined;
     const update = () => {
       const rect = node.getBoundingClientRect();
-      setFramePx({ width: rect.width, height: rect.height });
+      setBoxPx({ width: rect.width, height: rect.height });
     };
     update();
     const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(update) : null;
@@ -87,9 +101,13 @@ export default function PhotoAdjuster({
       observer?.disconnect();
       window.removeEventListener('resize', update);
     };
-  }, [open, imageReady, draft.orientation]);
+  }, [open, draft.orientation]);
 
   const frame = getFrameSize(area, draft.orientation);
+  const framePx = useMemo(
+    () => fitFrameInBox(frame.width, frame.height, boxPx.width, boxPx.height),
+    [frame.width, frame.height, boxPx.width, boxPx.height]
+  );
   const fillZoom = useMemo(
     () => getFillZoom(imageSize.width, imageSize.height, frame.width, frame.height, draft.rotation),
     [imageSize.width, imageSize.height, frame.width, frame.height, draft.rotation]
@@ -111,7 +129,9 @@ export default function PhotoAdjuster({
   const guidance = qualityGuidance(ppi);
   const sizeSubtitle = formatFrameSubtitle(area, draft.orientation, extraLabel);
   const displayScale = containScale * Math.max(0.1, Number(draft.zoom || 1));
-  const busy = saving || replacing || !imageReady;
+  const loadBusy = saving || replacing || (!imageReady && !imageError);
+  const replaceBusy = saving || replacing;
+  const editBusy = saving || replacing || !imageReady || Boolean(imageError);
 
   useEffect(() => {
     if (!open || draft.fitMode !== 'fill' || !(fillZoom > 0) || !(imageSize.width > 0)) return;
@@ -121,7 +141,7 @@ export default function PhotoAdjuster({
 
   useEffect(() => {
     const node = frameRef.current;
-    if (!open || !node) return undefined;
+    if (!open || !node || !imageReady) return undefined;
     const handleWheel = (event) => {
       event.preventDefault();
       const current = draftRef.current;
@@ -156,7 +176,7 @@ export default function PhotoAdjuster({
   };
 
   const onPointerDown = (event) => {
-    if (busy) return;
+    if (editBusy) return;
     event.currentTarget.setPointerCapture?.(event.pointerId);
     pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (pointersRef.current.size === 1) {
@@ -197,11 +217,36 @@ export default function PhotoAdjuster({
     if (pointersRef.current.size === 0) dragRef.current = null;
   };
 
+  const handleImageError = () => {
+    // If blob: failed, try durable display URL once (photoUrl may already be displayUrl).
+    if (!triedFallbackRef.current && activeSrc?.startsWith('blob:') && photoUrl && photoUrl !== activeSrc && !photoUrl.startsWith('blob:')) {
+      triedFallbackRef.current = true;
+      setImageReady(false);
+      setImageError('');
+      setActiveSrc(photoUrl);
+      return;
+    }
+    setImageReady(false);
+    setImageError('This photo could not be loaded. Please choose another image.');
+  };
+
+  const statusText = replacing
+    ? 'Preparing your photo…'
+    : imageError
+      ? 'Photo failed to load'
+      : imageReady
+        ? `${imageSize.width} × ${imageSize.height} px`
+        : 'Preparing your photo…';
+
   if (!open || typeof document === 'undefined') return null;
 
+  const showLoading = replacing || (!imageReady && !imageError);
+  // Ignore collapsed stage measurements (md:h-auto / first paint) so landscape never snaps to a tiny wrong box.
+  const frameReady = framePx.width >= 48 && framePx.height >= 48;
+
   return createPortal(
-    <div className="fixed inset-0 z-[90] flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-white text-gray-950 md:bg-gray-950/50 md:p-4 md:items-center md:justify-center" style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top)' }} role="dialog" aria-modal="true" aria-labelledby="photo-adjuster-title">
-      <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-white md:h-auto md:max-h-[95dvh] md:max-w-lg md:rounded-3xl md:shadow-xl">
+    <div className="fixed inset-0 z-[90] flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-white text-gray-950 md:items-center md:justify-center md:bg-gray-950/50 md:p-4" style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top)' }} role="dialog" aria-modal="true" aria-labelledby="photo-adjuster-title">
+      <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-white md:h-[min(92dvh,760px)] md:max-h-[95dvh] md:max-w-lg md:rounded-3xl md:shadow-xl">
         <header className="grid shrink-0 grid-cols-[44px_1fr_auto] items-center gap-2 border-b border-gray-100 px-3 py-2.5">
           <button type="button" onClick={onClose} disabled={saving} className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-gray-100 text-gray-800" aria-label="Close photo editor">
             <FiX size={20} />
@@ -210,19 +255,21 @@ export default function PhotoAdjuster({
             <h2 id="photo-adjuster-title" className="truncate font-display text-base font-bold">Edit Photo</h2>
             <p className="truncate text-xs text-gray-500">{sizeSubtitle || label}</p>
           </div>
-          <button type="button" onClick={() => setDraft(openedBaseline)} disabled={busy} className="inline-flex min-h-11 items-center gap-1 rounded-full bg-gray-100 px-3 text-sm font-semibold text-gray-800">
+          <button type="button" onClick={() => setDraft(openedBaseline)} disabled={editBusy} className="inline-flex min-h-11 items-center gap-1 rounded-full bg-gray-100 px-3 text-sm font-semibold text-gray-800 disabled:opacity-60">
             <FiRefreshCw size={14} /> Reset
           </button>
         </header>
 
-        <div className="flex min-h-0 flex-1 items-center justify-center bg-gray-100 px-4 py-3">
+        <div ref={stageRef} className="flex min-h-[240px] flex-1 items-center justify-center bg-gray-100 px-4 py-3">
           <div
             ref={frameRef}
-            className="relative max-h-full max-w-full overflow-hidden border-4 border-gray-900 bg-white shadow-sm"
+            className="relative overflow-hidden border-4 border-gray-900 bg-white shadow-sm"
             style={{
-              aspectRatio: `${frame.width} / ${frame.height}`,
-              height: '100%',
-              width: 'auto',
+              width: frameReady ? `${framePx.width}px` : '100%',
+              height: frameReady ? `${framePx.height}px` : undefined,
+              aspectRatio: frameReady ? undefined : `${frame.width} / ${frame.height}`,
+              maxWidth: '100%',
+              maxHeight: '100%',
               touchAction: 'none',
             }}
             onPointerDown={onPointerDown}
@@ -230,19 +277,30 @@ export default function PhotoAdjuster({
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
           >
-            {(!imageReady && !imageError) || replacing ? (
-              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white/90 px-3 text-center">
+            {showLoading ? (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white px-3 text-center">
                 <FiLoader className="animate-spin text-primary-600" size={28} />
-                <p className="mt-2 text-sm font-semibold text-gray-700">{replacing ? 'Preparing your photo…' : 'Loading photo…'}</p>
+                <p className="mt-2 text-sm font-semibold text-gray-700">{replacing ? 'Preparing your photo…' : 'Preparing your photo…'}</p>
               </div>
             ) : null}
-            {imageError ? (
-              <p className="absolute inset-0 flex items-center justify-center bg-white p-4 text-center text-sm text-red-600">{imageError}</p>
-            ) : (
+            {imageError && !replacing ? (
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-white p-4 text-center">
+                <p className="text-sm text-red-600">{imageError}</p>
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={replaceBusy}
+                  className="min-h-10 rounded-xl border border-primary-200 px-4 text-sm font-semibold text-primary-800 disabled:opacity-60"
+                >
+                  Choose Another Photo
+                </button>
+              </div>
+            ) : null}
+            {!imageError ? (
               <div className="absolute inset-0 overflow-hidden bg-white">
                 <img
-                  key={photoUrl}
-                  src={photoUrl}
+                  key={activeSrc}
+                  src={activeSrc}
                   alt=""
                   draggable={false}
                   onLoad={(event) => {
@@ -250,10 +308,7 @@ export default function PhotoAdjuster({
                     setImageReady(true);
                     setImageError('');
                   }}
-                  onError={() => {
-                    setImageReady(false);
-                    setImageError('This photo could not be loaded. Please choose another image.');
-                  }}
+                  onError={handleImageError}
                   style={{
                     position: 'absolute',
                     left: '50%',
@@ -268,23 +323,23 @@ export default function PhotoAdjuster({
                   }}
                 />
               </div>
-            )}
+            ) : null}
           </div>
         </div>
 
-        <div className="min-h-0 max-h-[42%] shrink-0 space-y-2 overflow-y-auto border-t border-gray-100 px-4 py-3">
+        <div className="max-h-[42%] min-h-0 shrink-0 space-y-2 overflow-y-auto border-t border-gray-100 px-4 py-3">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              {ppi ? (
+              {ppi && imageReady && !imageError ? (
                 <p className="text-sm font-bold">
                   <span className={ppi >= 150 ? 'text-emerald-700' : ppi >= 100 ? 'text-amber-700' : 'text-red-600'}>{guidance.label}</span>
                   <span className="ml-2 text-gray-600">{ppi} PPI</span>
                 </p>
               ) : (
-                <p className="text-xs text-gray-500">{replacing ? 'Preparing your photo…' : imageReady ? `${imageSize.width} × ${imageSize.height} px` : 'Loading photo…'}</p>
+                <p className={`text-xs ${imageError ? 'font-semibold text-red-600' : 'text-gray-500'}`}>{statusText}</p>
               )}
             </div>
-            <button type="button" onClick={() => fileRef.current?.click()} disabled={busy} className="min-h-10 shrink-0 rounded-xl border border-primary-200 px-3 text-sm font-semibold text-primary-800">
+            <button type="button" onClick={() => fileRef.current?.click()} disabled={replaceBusy} className="min-h-10 shrink-0 rounded-xl border border-primary-200 px-3 text-sm font-semibold text-primary-800 disabled:cursor-not-allowed disabled:opacity-60">
               {replacing ? 'Updating…' : 'Change Photo'}
             </button>
             <input ref={fileRef} type="file" accept="image/*,.heic,.heif" className="sr-only" onChange={(event) => {
@@ -299,9 +354,9 @@ export default function PhotoAdjuster({
               <button
                 key={value}
                 type="button"
-                disabled={busy}
+                disabled={editBusy}
                 onClick={() => setOrientation(value)}
-                className={`min-h-10 rounded-xl px-2 text-xs font-semibold ${draft.orientation === value ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+                className={`min-h-10 rounded-xl px-2 text-xs font-semibold disabled:opacity-60 ${draft.orientation === value ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700'}`}
               >
                 {text}
               </button>
@@ -309,12 +364,11 @@ export default function PhotoAdjuster({
           </div>
 
           <div className="grid grid-cols-4 gap-2">
-            <button type="button" disabled={busy} onClick={() => rotateBy(-90)} className="flex min-h-10 items-center justify-center rounded-xl bg-gray-100 text-gray-800" aria-label="Rotate left"><FiRotateCcw size={18} /></button>
-            <button type="button" disabled={busy} onClick={() => rotateBy(90)} className="flex min-h-10 items-center justify-center rounded-xl bg-gray-100 text-gray-800" aria-label="Rotate right"><FiRotateCw size={18} /></button>
-            <button type="button" disabled={busy} onClick={applyFit} className={`flex min-h-10 items-center justify-center rounded-xl text-sm font-semibold ${draft.fitMode === 'fit' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-800'}`}>Fit</button>
-            <button type="button" disabled={busy} onClick={applyFill} className={`flex min-h-10 items-center justify-center rounded-xl text-sm font-semibold ${draft.fitMode === 'fill' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-800'}`}>Fill</button>
+            <button type="button" disabled={editBusy} onClick={() => rotateBy(-90)} className="flex min-h-10 items-center justify-center rounded-xl bg-gray-100 text-gray-800 disabled:opacity-60" aria-label="Rotate left"><FiRotateCcw size={18} /></button>
+            <button type="button" disabled={editBusy} onClick={() => rotateBy(90)} className="flex min-h-10 items-center justify-center rounded-xl bg-gray-100 text-gray-800 disabled:opacity-60" aria-label="Rotate right"><FiRotateCw size={18} /></button>
+            <button type="button" disabled={editBusy} onClick={applyFit} className={`flex min-h-10 items-center justify-center rounded-xl text-sm font-semibold disabled:opacity-60 ${draft.fitMode === 'fit' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-800'}`}>Fit</button>
+            <button type="button" disabled={editBusy} onClick={applyFill} className={`flex min-h-10 items-center justify-center rounded-xl text-sm font-semibold disabled:opacity-60 ${draft.fitMode === 'fill' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-800'}`}>Fill</button>
           </div>
-
         </div>
 
         <div className="shrink-0 border-t border-gray-100 px-4 pt-2">
@@ -322,7 +376,7 @@ export default function PhotoAdjuster({
             <span className="font-semibold text-gray-800">Zoom</span>
             <span className="text-gray-500">{Number(draft.zoom || 1).toFixed(2)}x</span>
           </div>
-          <input type="range" min="1" max={maxZoom} step="0.05" value={draft.zoom || 1} disabled={busy} onChange={(event) => updateDraft({ zoom: Number(event.target.value), fitMode: 'custom' })} className="w-full accent-primary-600" />
+          <input type="range" min="1" max={maxZoom} step="0.05" value={draft.zoom || 1} disabled={editBusy} onChange={(event) => updateDraft({ zoom: Number(event.target.value), fitMode: 'custom' })} className="w-full accent-primary-600 disabled:opacity-60" />
         </div>
 
         <div className="grid shrink-0 grid-cols-2 gap-2 border-t border-gray-100 bg-white px-4 pt-3" style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}>
@@ -331,7 +385,7 @@ export default function PhotoAdjuster({
           </button>
           <button
             type="button"
-            disabled={busy}
+            disabled={editBusy || loadBusy}
             onClick={() => onApply?.(draft)}
             className="flex min-h-12 items-center justify-center rounded-2xl bg-accent-500 text-sm font-bold text-white disabled:opacity-60"
           >

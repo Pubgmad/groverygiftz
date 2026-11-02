@@ -14,10 +14,35 @@ export function getFrameSize(area, orientation = 'auto') {
   return { width, height };
 }
 
+/**
+ * Fit a frame aspect ratio inside a CSS pixel box without distorting it.
+ * Prevents height:100% + max-width clamping from collapsing landscape frames toward square.
+ */
+export function fitFrameInBox(frameWidth, frameHeight, boxWidth, boxHeight) {
+  const ratioW = Math.max(0.01, Number(frameWidth) || 1);
+  const ratioH = Math.max(0.01, Number(frameHeight) || 1);
+  const boxW = Math.max(0, Number(boxWidth) || 0);
+  const boxH = Math.max(0, Number(boxHeight) || 0);
+  if (!(boxW > 0) || !(boxH > 0)) return { width: 0, height: 0 };
+  const scale = Math.min(boxW / ratioW, boxH / ratioH);
+  return {
+    width: Math.max(1, ratioW * scale),
+    height: Math.max(1, ratioH * scale),
+  };
+}
+
 export function adjustmentsForUploadedPhoto(imageWidth, imageHeight, area = null, rotation = 0) {
-  const orientation = detectPhotoOrientation(imageWidth, imageHeight, rotation);
+  let orientation = detectPhotoOrientation(imageWidth, imageHeight, rotation);
+  // Only fall back to area aspect when image dimensions are unavailable (decode failure).
+  if ((!(Number(imageWidth) > 0) || !(Number(imageHeight) > 0))
+    && area
+    && Number(area.width) > 0
+    && Number(area.height) > 0
+    && Number(area.width) !== Number(area.height)) {
+    orientation = Number(area.width) > Number(area.height) ? 'landscape' : 'portrait';
+  }
   const frame = area ? getFrameSize(area, orientation) : null;
-  const zoom = frame
+  const zoom = frame && Number(imageWidth) > 0 && Number(imageHeight) > 0
     ? getFillZoom(imageWidth, imageHeight, frame.width, frame.height, rotation)
     : 1;
   return {

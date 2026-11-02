@@ -7,11 +7,12 @@ const source = fs.readFileSync(path.join(__dirname, '../src/lib/photoEditor.js')
 const context = { module: { exports: {} }, exports: {}, console };
 vm.createContext(context);
 vm.runInContext(`${source}
-module.exports = { detectPhotoOrientation, getFrameSize, getFillZoom, getContainScale, estimatePrintPpi, qualityLabel, qualityGuidance, adjustmentsForUploadedPhoto, formatFrameSizeLabel, formatFrameSubtitle };
+module.exports = { detectPhotoOrientation, getFrameSize, fitFrameInBox, getFillZoom, getContainScale, estimatePrintPpi, qualityLabel, qualityGuidance, adjustmentsForUploadedPhoto, formatFrameSizeLabel, formatFrameSubtitle };
 `, context);
 const {
   detectPhotoOrientation,
   getFrameSize,
+  fitFrameInBox,
   getFillZoom,
   getContainScale,
   estimatePrintPpi,
@@ -49,6 +50,21 @@ assert.strictEqual(portraitUpload.orientation, 'portrait');
 assert.strictEqual(portraitUpload.fitMode, 'fill');
 assert.deepStrictEqual(JSON.parse(JSON.stringify(getFrameSize({ width: 10, height: 12 }, portraitUpload.orientation))), { width: 10, height: 12 });
 assert.deepStrictEqual(JSON.parse(JSON.stringify(getFrameSize({ width: 10, height: 12 }, 'landscape'))), { width: 12, height: 10 });
+
+// Landscape must keep rectangular ratio — never collapse toward square when boxed.
+const landscape86 = getFrameSize({ width: 6, height: 8 }, 'landscape');
+assert.strictEqual(Number((landscape86.width / landscape86.height).toFixed(4)), 1.3333);
+const fittedBox = fitFrameInBox(landscape86.width, landscape86.height, 320, 480);
+assert.ok(Math.abs((fittedBox.width / fittedBox.height) - (8 / 6)) < 0.001);
+assert.ok(fittedBox.width <= 320 + 0.01);
+assert.ok(fittedBox.height <= 480 + 0.01);
+// Narrow mobile width must still preserve 8:6 (not become square via height:100% clamp).
+const narrow = fitFrameInBox(8, 6, 280, 500);
+assert.ok(Math.abs((narrow.width / narrow.height) - (8 / 6)) < 0.001);
+const portraitFit = fitFrameInBox(6, 8, 280, 500);
+assert.ok(Math.abs((portraitFit.width / portraitFit.height) - (6 / 8)) < 0.001);
+assert.deepStrictEqual(JSON.parse(JSON.stringify(getFrameSize({ width: 12, height: 18 }, 'landscape'))), { width: 18, height: 12 });
+assert.deepStrictEqual(JSON.parse(JSON.stringify(getFrameSize({ width: 20, height: 30 }, 'landscape'))), { width: 30, height: 20 });
 
 assert.strictEqual(Number(getFillZoom(4000, 3000, 1, 1).toFixed(3)), 1.333);
 assert.ok(getFillZoom(1000, 1000, 12, 18) > 1);

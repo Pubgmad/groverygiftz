@@ -68,6 +68,23 @@ const inspectImageHeader = async (file) => {
   return '';
 };
 
+/** Probe decode without revoking the URL — safe to retry / fall through. */
+function probeImageDecode(url) {
+  return new Promise((resolve) => {
+    const image = new Image();
+    const timer = setTimeout(() => finish(null), 30000);
+    const finish = (result) => {
+      clearTimeout(timer);
+      image.onload = null;
+      image.onerror = null;
+      resolve(result);
+    };
+    image.onload = () => finish(image.naturalWidth > 0 && image.naturalHeight > 0 ? image : null);
+    image.onerror = () => finish(null);
+    image.src = url;
+  });
+}
+
 export async function prepareImageUpload(file) {
   if (!file) return { previewUrl: '', previewFile: null };
 
@@ -96,26 +113,27 @@ export async function prepareImageUpload(file) {
   const previewBlob = detectedMime && file.type !== detectedMime ? file.slice(0, file.size, detectedMime) : file;
   const previewUrl = browserImage ? URL.createObjectURL(previewBlob) : '';
 
-  // Prefer createImageBitmap with EXIF orientation applied — deterministic across browsers.
+  // Prefer createImageBitmap with EXIF orientation — do not revoke the blob on probe failure.
   if (previewUrl && typeof createImageBitmap === 'function') {
     try {
       const bitmap = await createImageBitmap(previewBlob, { imageOrientation: 'from-image' });
       const width = bitmap.width;
       const height = bitmap.height;
       bitmap.close?.();
-      // Still decode via <img> so blob URL is validated for later previews.
-      await verifyImageDecode(previewUrl);
-      return { previewUrl, previewFile: null, previewName: '', width, height };
+      if (width > 0 && height > 0) {
+        const probed = await probeImageDecode(previewUrl);
+        if (probed) return { previewUrl, previewFile: null, previewName: '', width, height };
+        // Bitmap succeeded; use its dims even if <img> probe flaked.
+        return { previewUrl, previewFile: null, previewName: '', width, height };
+      }
     } catch {
-      // Fall through to Image + EXIF heuristic.
+      // Fall through to Image + EXIF heuristic without having revoked previewUrl.
     }
   }
 
   const image = previewUrl ? await verifyImageDecode(previewUrl) : null;
   let width = image?.naturalWidth || 0;
   let height = image?.naturalHeight || 0;
-  // Fallback for engines that ignore EXIF on naturalWidth: swap only when the file
-  // tag says 90/270 and the reported aspect still matches the unrotated file.
   if (signature === 'jpeg' && width > 0 && height > 0) {
     const orientation = await readJpegExifOrientation(file);
     if (orientation >= 5 && orientation <= 8) {
@@ -136,7 +154,7 @@ export async function prepareImageUpload(file) {
   };
 }
 
-export function verifyImageDecode(url) {
+export function verifyImageDecode(url, { revokeOnError = true } = {}) {
   return new Promise((resolve, reject) => {
     const image = new Image();
     const timer = setTimeout(() => finish(new Error('Image loading timed out. Please try again.')), 30000);
@@ -144,8 +162,12 @@ export function verifyImageDecode(url) {
       clearTimeout(timer);
       image.onload = null;
       image.onerror = null;
-      if (error) { URL.revokeObjectURL(url); reject(error); }
-      else resolve(image);
+      if (error) {
+        if (revokeOnError && String(url || '').startsWith('blob:')) {
+          try { URL.revokeObjectURL(url); } catch {}
+        }
+        reject(error);
+      } else resolve(image);
     };
     image.onload = () => finish(image.naturalWidth > 0 && image.naturalHeight > 0 ? null : new Error('This image could not be decoded. Please choose a valid image.'));
     image.onerror = () => finish(new Error('This image could not be decoded. Please export it as JPG or PNG and try again.'));
@@ -161,8 +183,15 @@ export function appendImageUpload(formData, file, prepared) {
 export function attachLocalPreview(upload, prepared) {
   return {
     ...upload,
+    // Keep blob for instant UI, but prefer durable displayUrl when callers choose.
     previewUrl: prepared?.previewUrl || upload?.previewUrl || upload?.displayUrl || upload?.url || '',
     width: prepared?.width || upload?.width || 0,
     height: prepared?.height || upload?.height || 0,
   };
+}
+
+/** Prefer signed/durable display URLs so the editor never depends on a revoked blob. */
+export function stableUploadUrl(upload) {
+  if (!upload) return '';
+  return upload.displayUrl || upload.previewUrl || upload.url || '';
 }

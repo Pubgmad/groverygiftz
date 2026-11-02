@@ -12,7 +12,7 @@ import { GOOGLE_CONSENT_SYNC_EVENT } from '@/lib/googleConsent';
 import { FiMinus, FiPlus, FiX, FiTruck, FiShield, FiClock, FiShoppingCart, FiZap, FiUpload, FiImage, FiChevronLeft, FiChevronRight, FiStar, FiLoader } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { startNavigationFeedback } from '@/components/layout/NavigationFeedback';
-import { appendImageUpload, attachLocalPreview, prepareImageUpload } from '@/lib/clientImageUpload';
+import { appendImageUpload, attachLocalPreview, prepareImageUpload, stableUploadUrl } from '@/lib/clientImageUpload';
 import { alignPhotoSlots, clearPhotoSlot, filledPhotoCount, filledPhotos, planPhotoUploads, removeListPhotoByUrl, setPhotoSlot } from '@/lib/photoSlots';
 import { adjustmentsForUploadedPhoto, formatFrameSizeLabel, getFrameSize, orientationCaption } from '@/lib/photoEditor';
 import PhotoUploadCard from '@/components/product/PhotoUploadCard';
@@ -29,7 +29,8 @@ const INDIAN_STATES = [
 const isTamilNadu = (state) => String(state || '').trim().toLowerCase() === 'tamil nadu';
 const getStateOverride = (delivery, state) => (delivery?.stateOverrides || []).find((row) => String(row.state || '').trim().toLowerCase() === String(state || '').trim().toLowerCase());
 
-const displayUploadUrl = (upload) => upload?.previewUrl || upload?.displayUrl || upload?.url || '';
+// Prefer durable signed displayUrl so the editor never depends on a revoked blob: URL.
+const displayUploadUrl = (upload) => stableUploadUrl(upload);
 const getDefaultPreviewAdjustments = () => ({ zoom: 1, x: 0, y: 0, orientation: 'auto', rotation: 0, fitMode: 'fit' });
 
 export default function ProductDetail({ product }) {

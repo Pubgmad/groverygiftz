@@ -37,11 +37,14 @@ export default function PhotoUploadCard({
         missingRequired ? 'border-red-400 ring-2 ring-red-100' : 'border-gray-200'
       }`}
     >
-      <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-dashed border-gray-200 bg-gray-50">
-        <div className="flex h-full w-full items-center justify-center bg-white" style={{ aspectRatio: `${ratioW} / ${ratioH}` }}>
+      <div
+        className="relative w-20 shrink-0 overflow-hidden rounded-xl border border-dashed border-gray-200 bg-gray-50"
+        style={{ aspectRatio: `${ratioW} / ${ratioH}`, maxHeight: '5.5rem' }}
+      >
+        <div className="flex h-full w-full items-center justify-center bg-white">
           {hasPhoto ? (
             <button type="button" onClick={() => onEdit?.()} className="h-full w-full bg-white" aria-label={`Edit ${label}`}>
-              <img src={photoUrl} alt="" className={`h-full w-full ${fitMode === 'fill' ? 'object-cover' : 'object-contain'}`} />
+              <img src={photoUrl} alt="" className={`h-full w-full ${fitMode === 'fill' ? 'object-cover' : 'object-contain'}`} onError={(event) => { event.currentTarget.style.visibility = 'hidden'; }} />
             </button>
           ) : (
             <label className={`flex h-full w-full cursor-pointer flex-col items-center justify-center gap-0.5 px-1 text-center ${uploading || disabled ? 'pointer-events-none opacity-70' : ''}`}>
