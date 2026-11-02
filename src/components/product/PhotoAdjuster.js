@@ -3,14 +3,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { FiLoader, FiRefreshCw, FiRotateCcw, FiRotateCw, FiX } from 'react-icons/fi';
-import { estimatePrintPpi, getFillZoom, getFrameSize, qualityLabel } from '@/lib/photoEditor';
+import { estimatePrintPpi, formatFrameSubtitle, getFillZoom, getFrameSize, qualityLabel } from '@/lib/photoEditor';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
-export default function DesignEditor({
+export default function PhotoAdjuster({
   open,
   label,
-  subtitle,
+  extraLabel = '',
   area,
   photoUrl,
   baseline,
@@ -52,7 +52,6 @@ export default function DesignEditor({
       document.body.style.overflow = previous;
       window.removeEventListener('keydown', onKey);
     };
-    // baseline is captured when the editor opens or the photo changes, not on every parent render.
   }, [open, photoUrl]);
 
   useEffect(() => {
@@ -84,6 +83,7 @@ export default function DesignEditor({
     rotation: draft.rotation,
   });
   const ppiLabel = qualityLabel(ppi);
+  const sizeSubtitle = formatFrameSubtitle(area, draft.orientation, extraLabel);
 
   const updateDraft = (updates) => {
     setDraft((prev) => ({ ...prev, ...updates }));
@@ -92,6 +92,14 @@ export default function DesignEditor({
   const applyFit = () => updateDraft({ zoom: 1, x: 0, y: 0, fitMode: 'fit' });
   const applyFill = () => updateDraft({ zoom: fillZoom, x: 0, y: 0, fitMode: 'fill' });
   const rotateBy = (amount) => updateDraft({ rotation: ((Number(draft.rotation || 0) + amount) % 360 + 360) % 360 });
+  const setOrientation = (orientation) => {
+    const nextFrame = getFrameSize(area, orientation);
+    const nextFill = getFillZoom(imageSize.width, imageSize.height, nextFrame.width, nextFrame.height, draft.rotation);
+    updateDraft({
+      orientation,
+      ...(draft.fitMode === 'fill' ? { zoom: nextFill, x: 0, y: 0 } : {}),
+    });
+  };
 
   const onPointerDown = (event) => {
     if (saving || !imageReady) return;
@@ -138,14 +146,14 @@ export default function DesignEditor({
   if (!open || typeof document === 'undefined') return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[90] flex flex-col overflow-hidden bg-[#16161c] text-white" style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }} role="dialog" aria-modal="true" aria-labelledby="design-editor-title">
+    <div className="fixed inset-0 z-[90] flex flex-col overflow-hidden bg-[#16161c] text-white" style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }} role="dialog" aria-modal="true" aria-labelledby="photo-adjuster-title">
       <header className="grid shrink-0 grid-cols-[44px_1fr_auto] items-center gap-2 px-3 py-3">
-        <button type="button" onClick={onClose} disabled={saving} className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-white/10" aria-label="Close design editor">
+        <button type="button" onClick={onClose} disabled={saving} className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-white/10" aria-label="Close photo adjuster">
           <FiX size={20} />
         </button>
         <div className="min-w-0 text-center">
-          <h2 id="design-editor-title" className="truncate text-base font-semibold">Design Editor</h2>
-          <p className="truncate text-xs text-white/60">{subtitle || label}</p>
+          <h2 id="photo-adjuster-title" className="truncate text-base font-semibold">Adjust photo</h2>
+          <p className="truncate text-xs text-white/60">{sizeSubtitle || label}</p>
         </div>
         <button type="button" onClick={() => setDraft(openedBaseline)} disabled={saving} className="inline-flex min-h-11 items-center gap-1 rounded-full bg-white/10 px-3 text-sm font-semibold">
           <FiRefreshCw size={14} /> Reset
@@ -230,6 +238,22 @@ export default function DesignEditor({
           }} />
         </div>
 
+        <div>
+          <p className="mb-1 text-sm font-medium">Frame direction</p>
+          <div className="grid grid-cols-3 gap-2">
+            {[['auto', 'Admin size'], ['portrait', 'Portrait'], ['landscape', 'Landscape']].map(([value, text]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setOrientation(value)}
+                className={`min-h-11 rounded-2xl px-2 text-xs font-semibold ${draft.orientation === value ? 'bg-white text-gray-950' : 'bg-white/10'}`}
+              >
+                {text}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="grid grid-cols-4 gap-2">
           <button type="button" onClick={() => rotateBy(-90)} className="flex min-h-12 flex-col items-center justify-center rounded-2xl bg-white/10 text-xs font-semibold" aria-label="Rotate left"><FiRotateCcw size={18} /></button>
           <button type="button" onClick={() => rotateBy(90)} className="flex min-h-12 flex-col items-center justify-center rounded-2xl bg-white/10 text-xs font-semibold" aria-label="Rotate right"><FiRotateCw size={18} /></button>
@@ -243,16 +267,16 @@ export default function DesignEditor({
             <span className="text-white/60">{Number(draft.zoom || 1).toFixed(2)}x</span>
           </div>
           <input type="range" min="1" max={maxZoom} step="0.05" value={draft.zoom || 1} onChange={(event) => updateDraft({ zoom: Number(event.target.value), fitMode: 'custom' })} className="w-full accent-orange-500" />
-          <p className="mt-2 text-center text-[11px] leading-4 text-white/55">Tip: drag to move · pinch or scroll to zoom. Shaded edge = covered by the frame.</p>
+          <p className="mt-2 text-center text-[11px] leading-4 text-white/55">Drag to move the photo. Pinch or scroll to zoom. Empty edges stay outside the frame.</p>
         </div>
 
         <button
           type="button"
           disabled={saving || !imageReady}
           onClick={() => onApply?.(draft)}
-          className="flex min-h-12 w-full items-center justify-center rounded-2xl bg-orange-500 text-base font-bold text-white disabled:opacity-60"
+          className="flex min-h-12 w-full items-center justify-center rounded-2xl bg-accent-600 text-base font-bold text-white disabled:opacity-60"
         >
-          {saving ? 'Applying…' : 'Apply to this frame →'}
+          {saving ? 'Saving…' : 'Save to this frame'}
         </button>
       </div>
     </div>,

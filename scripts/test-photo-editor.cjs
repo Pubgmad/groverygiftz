@@ -14,6 +14,10 @@ const { getFrameSize, getFillZoom, estimatePrintPpi, qualityLabel } = context.mo
 assert.deepStrictEqual(JSON.parse(JSON.stringify(getFrameSize({ width: 12, height: 18 }, 'auto'))), { width: 12, height: 18 });
 assert.deepStrictEqual(JSON.parse(JSON.stringify(getFrameSize({ width: 12, height: 18 }, 'portrait'))), { width: 12, height: 18 });
 assert.deepStrictEqual(JSON.parse(JSON.stringify(getFrameSize({ width: 12, height: 18 }, 'landscape'))), { width: 18, height: 12 });
+assert.deepStrictEqual(JSON.parse(JSON.stringify(getFrameSize({ width: 4, height: 4 }, 'auto'))), { width: 4, height: 4 });
+assert.deepStrictEqual(JSON.parse(JSON.stringify(getFrameSize({ width: 4, height: 4 }, 'portrait'))), { width: 4, height: 4 });
+assert.deepStrictEqual(JSON.parse(JSON.stringify(getFrameSize({ width: 4, height: 4 }, 'landscape'))), { width: 4, height: 4 });
+assert.deepStrictEqual(JSON.parse(JSON.stringify(getFrameSize({ width: 9, height: 10.99 }, 'auto'))), { width: 9, height: 10.99 });
 
 assert.strictEqual(Number(getFillZoom(4000, 3000, 1, 1).toFixed(3)), 1.333);
 assert.ok(getFillZoom(1000, 1000, 12, 18) > 1);

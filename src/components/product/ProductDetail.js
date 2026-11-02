@@ -15,8 +15,7 @@ import { startNavigationFeedback } from '@/components/layout/NavigationFeedback'
 import { appendImageUpload, attachLocalPreview, prepareImageUpload } from '@/lib/clientImageUpload';
 import { alignPhotoSlots, clearPhotoSlot, filledPhotoCount, filledPhotos, firstEmptyPhotoSlot, removeListPhotoByUrl, setPhotoSlot } from '@/lib/photoSlots';
 import PhotoUploadCard from '@/components/product/PhotoUploadCard';
-import DesignEditor from '@/components/product/DesignEditor';
-import { formatFrameSubtitle } from '@/lib/photoEditor';
+import PhotoAdjuster from '@/components/product/PhotoAdjuster';
 const INDIAN_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
   'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh',
@@ -408,7 +407,7 @@ export default function ProductDetail({ product }) {
       setPreviewAdjustments((prev) => ({ ...prev, [idx]: adjustmentsObj }));
       if (previewEnabled || variant) {
         const rendered = await renderFinalPreviewImage(area, idx, upload, adjustmentsObj);
-        const file = await uploadRenderedPreviewImage(rendered, area.label, idx);
+      const file = await uploadRenderedPreviewImage(rendered, area.label, idx);
         savedPreviewFilesRef.current[idx] = { file, sourceUrl: upload.url, adjustments: JSON.stringify(adjustmentsObj) };
       }
       setSavedPreviewAreas((prev) => ({ ...prev, [idx]: true }));
@@ -551,8 +550,8 @@ export default function ProductDetail({ product }) {
       let cursor = firstEmptyPhotoSlot(slots);
       if (cursor < 0) {
         toast.error(`Maximum ${photoSlotCount} photos allowed for this product`);
-        return;
-      }
+      return;
+    }
       for (const file of selectedFiles) {
         while (cursor < slots.length && slots[cursor]?.url) cursor += 1;
         if (cursor >= slots.length) break;
@@ -561,8 +560,8 @@ export default function ProductDetail({ product }) {
       }
       if (jobs.length === 0) {
         toast.error(`Maximum ${photoSlotCount} photos allowed for this product`);
-        return;
-      }
+      return;
+    }
       if (jobs.length < selectedFiles.length) {
         toast.error(`Please upload exactly the requested photos. You can add ${jobs.length} more photo${jobs.length === 1 ? '' : 's'} for this product.`);
         return;
@@ -1020,11 +1019,11 @@ export default function ProductDetail({ product }) {
               <p className="mt-1 text-xs text-gray-500">Upload the required image for each selected option label. These are saved label-wise for admin production.</p>
             </div>
             <div className={uploadCardGridClass}>
-              {selectedVariantUploadOptions.map((selected) => {
-                const upload = variantLabelUploads[selected.label];
-                const isUploading = !!uploadingVariantLabels[selected.label];
-                const previewKey = `variant-${selected.label}`;
-                return (
+            {selectedVariantUploadOptions.map((selected) => {
+              const upload = variantLabelUploads[selected.label];
+              const isUploading = !!uploadingVariantLabels[selected.label];
+                    const previewKey = `variant-${selected.label}`;
+                    return (
                   <PhotoUploadCard
                     key={selected.label}
                     label={selected.label}
@@ -1040,8 +1039,8 @@ export default function ProductDetail({ product }) {
                     onEdit={upload?.url ? () => setEditorSlotKey(previewKey) : undefined}
                     instructions={selected.previewInstructions || ''}
                   />
-                );
-              })}
+              );
+            })}
             </div>
           </div>
         )}
@@ -1054,7 +1053,7 @@ export default function ProductDetail({ product }) {
                   {requiredPhotoCount > 0
                     ? `Please upload ${requiredPhotoCount} photo${requiredPhotoCount === 1 ? '' : 's'} for this product.`
                     : `You can upload up to ${maxPhotoCount} photo${maxPhotoCount === 1 ? '' : 's'} for this product.`}
-                  {' The Design Editor opens automatically after each upload so you can fit the photo in its frame.'}
+                  {' After you upload a photo, you can adjust how it sits in that frame.'}
                 </p>
               </div>
               <span className="self-start rounded-full border border-accent-100 bg-white px-3 py-1 text-xs font-bold text-accent-700">
@@ -1085,13 +1084,13 @@ export default function ProductDetail({ product }) {
                   />
                 );
               })}
-            </div>
+                  </div>
           </div>
         )}
 
         {needsCollageUploads && (
           <div className="mb-5 space-y-4 rounded-2xl border border-primary-100 bg-primary-50/20 p-4">
-            <p className="text-sm font-bold text-gray-900">Collage photo uploads</p>
+              <p className="text-sm font-bold text-gray-900">Collage photo uploads</p>
             {collageTemplates.map((template) => {
               const label = template.label;
               const photos = collageUploads[label] || [];
@@ -1111,7 +1110,7 @@ export default function ProductDetail({ product }) {
                     <span className={`self-start rounded-full border px-3 py-1 text-xs font-bold ${belowMin || photos.length > max ? 'border-red-100 bg-red-50 text-red-700' : 'border-emerald-100 bg-emerald-50 text-emerald-700'}`}>{photos.length}/{min}-{max}</span>
                   </div>
                   <div className={uploadCardGridClass}>
-                    {photos.map((photo, idx) => (
+                      {photos.map((photo, idx) => (
                       <PhotoUploadCard
                         key={`${label}-${idx}-${photo.url || 'photo'}`}
                         label={`${label} ${idx + 1}`}
@@ -1134,7 +1133,7 @@ export default function ProductDetail({ product }) {
                         onUpload={(file) => handleCollageUpload(label, [file])}
                       />
                     ) : null}
-                  </div>
+                    </div>
                 </div>
               );
             })}
@@ -1142,9 +1141,9 @@ export default function ProductDetail({ product }) {
         )}
         {previewEnabled && previewConfig.instructions ? (
           <div className="mb-5 rounded-2xl border border-primary-100 bg-white p-4">
-            <p className="text-sm font-bold text-gray-900">{previewConfig.title || 'Preview your personalized gift'}</p>
+                <p className="text-sm font-bold text-gray-900">{previewConfig.title || 'Preview your personalized gift'}</p>
             <p className="mt-2 rounded-lg bg-primary-50 px-3 py-2 text-xs text-primary-700">{previewConfig.instructions}</p>
-          </div>
+              </div>
         ) : null}
         {/* Gift Wrap */}
         {product.giftWrap?.enabled && (
@@ -1321,11 +1320,10 @@ export default function ProductDetail({ product }) {
         </div>
       )}
 
-      {/* Image Lightbox Modal */}
-      <DesignEditor
+      <PhotoAdjuster
         open={editorSlotKey !== null && Boolean(editorPhotoUrl)}
         label={editorArea?.label || 'Photo'}
-        subtitle={formatFrameSubtitle(editorArea, getAreaAdjustments(editorSlotKey || 0).orientation, selectedVariantLabel)}
+        extraLabel={selectedVariantLabel}
         area={editorArea}
         photoUrl={editorPhotoUrl}
         baseline={getAreaAdjustments(editorSlotKey || 0)}
