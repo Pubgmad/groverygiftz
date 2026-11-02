@@ -13,6 +13,8 @@ import { FiMinus, FiPlus, FiX, FiTruck, FiShield, FiClock, FiShoppingCart, FiZap
 import toast from 'react-hot-toast';
 import { startNavigationFeedback } from '@/components/layout/NavigationFeedback';
 import { appendImageUpload, attachLocalPreview, prepareImageUpload } from '@/lib/clientImageUpload';
+import { alignPhotoSlots, clearPhotoSlot, filledPhotoCount, filledPhotos, firstEmptyPhotoSlot, removeListPhotoByUrl, setPhotoSlot } from '@/lib/photoSlots';
+import PhotoUploadCard from '@/components/product/PhotoUploadCard';
 const INDIAN_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
   'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh',
@@ -23,15 +25,6 @@ const INDIAN_STATES = [
 
 const isTamilNadu = (state) => String(state || '').trim().toLowerCase() === 'tamil nadu';
 const getStateOverride = (delivery, state) => (delivery?.stateOverrides || []).find((row) => String(row.state || '').trim().toLowerCase() === String(state || '').trim().toLowerCase());
-
-function UploadSpinner({ label = 'Uploading...' }) {
-  return (
-    <span className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-xl bg-white/85 text-xs font-bold text-primary-700">
-      <FiLoader size={28} className="animate-spin" />
-      {label}
-    </span>
-  );
-}
 
 const displayUploadUrl = (upload) => upload?.previewUrl || upload?.displayUrl || upload?.url || '';
 const getDefaultPreviewAdjustments = () => ({ zoom: 1, x: 0, y: 0, orientation: 'auto' });
@@ -46,6 +39,9 @@ export default function ProductDetail({ product }) {
   const [variantLabelUploads, setVariantLabelUploads] = useState({});
   const [uploadingVariantLabels, setUploadingVariantLabels] = useState({});
   const [uploadingCustomerPhotos, setUploadingCustomerPhotos] = useState(false);
+  const [uploadingPhotoSlots, setUploadingPhotoSlots] = useState({});
+  const [previewStage, setPreviewStage] = useState('product');
+  const [activePreviewSlot, setActivePreviewSlot] = useState(0);
   const [collageUploads, setCollageUploads] = useState({});
   const [uploadingCollageLabels, setUploadingCollageLabels] = useState({});
   const [uploadingFields, setUploadingFields] = useState({});
@@ -76,6 +72,14 @@ export default function ProductDetail({ product }) {
   useEffect(() => {
     setSelectedImage(0);
     setLightboxOpen(false);
+    setPreviewStage('product');
+    setActivePreviewSlot(0);
+    setCustomerPhotos([]);
+    setVariantLabelUploads({});
+    setCollageUploads({});
+    setPreviewAdjustments({});
+    setSavedPreviewAreas({});
+    savedPreviewFilesRef.current = {};
     galleryTouchRef.current = { startX: 0, endX: 0 };
     lightboxTouchRef.current = { startX: 0, endX: 0 };
   }, [product._id, product.slug]);
@@ -116,6 +120,11 @@ export default function ProductDetail({ product }) {
   const requiredPhotoCount = Math.max(0, previewAreas.filter((area) => area.required !== false).length || Number(previewConfig.requiredImageCount || 0));
   const maxPhotoCount = Math.max(requiredPhotoCount, previewAreas.length || Number(previewConfig.maxImageCount || requiredPhotoCount || 0));
   const needsCustomerPhotos = requiredPhotoCount > 0 || maxPhotoCount > 0;
+  const photoSlotCount = previewAreas.length > 0 ? previewAreas.length : maxPhotoCount;
+  const uploadedPhotoCount = filledPhotoCount(customerPhotos);
+  useEffect(() => {
+    setCustomerPhotos((prev) => alignPhotoSlots(prev, photoSlotCount));
+  }, [photoSlotCount]);
   const collageTemplates = product.collageEnabled ? (product.collageTemplates || []).filter((template) => template?.label && template.isActive !== false) : [];
   const needsCollageUploads = collageTemplates.length > 0;
   const getOptionExtraPrice = (opt) => opt?.useOwnPrice ? 0 : Number(opt?.priceAdjustment ?? opt?.price ?? 0);
@@ -216,6 +225,12 @@ export default function ProductDetail({ product }) {
   const googleReviewImages = visibleGoogleReviews.flatMap((review) => Array.isArray(review?.images) ? review.images : []).slice(0, 8);
   const googleReviewTopics = Array.isArray(googleReviews?.topics) ? googleReviews.topics.filter((topic) => topic?.keyword).slice(0, 3) : [];
   const googleBusinessName = googleReviews?.title || 'Grovery giftz - Customized Photo Frames';
+  const formatPreviewSize = (width, height, unit = 'inch') => {
+    if (width === undefined && height === undefined) return '';
+    if (!width && !height) return '';
+    return `${width || '-'} × ${height || '-'} ${unit || 'inch'}`;
+  };
+  const uploadCardGridClass = 'grid grid-cols-2 gap-3 xl:grid-cols-3';
   const getAreaAspectRatio = (area, orientation = 'auto') => {
     const rawWidth = Math.max(1, Number(area?.width || 1));
     const rawHeight = Math.max(1, Number(area?.height || 1));
@@ -486,11 +501,11 @@ export default function ProductDetail({ product }) {
         return false;
       }
     }
-    if (needsCustomerPhotos && customerPhotos.length < requiredPhotoCount) {
+    if (needsCustomerPhotos && uploadedPhotoCount < requiredPhotoCount) {
       toast.error(`Please upload ${requiredPhotoCount} customer photo${requiredPhotoCount === 1 ? '' : 's'} for this product`);
       return false;
     }
-    if (maxPhotoCount > 0 && customerPhotos.length > maxPhotoCount) {
+    if (maxPhotoCount > 0 && uploadedPhotoCount > maxPhotoCount) {
       toast.error(`Please upload no more than ${maxPhotoCount} photo${maxPhotoCount === 1 ? '' : 's'}`);
       return false;
     }
@@ -541,40 +556,70 @@ export default function ProductDetail({ product }) {
       setUploadingFields((prev) => ({ ...prev, [fieldLabel]: false }));
     }
   };
-const handleCustomerPhotoUpload = async (files) => {
+  const handleCustomerPhotoUpload = async (files, slotIndex = null) => {
     const selectedFiles = Array.from(files || []);
     if (selectedFiles.length === 0) return;
-    const remainingSlots = maxPhotoCount > 0 ? maxPhotoCount - customerPhotos.length : selectedFiles.length;
-    if (remainingSlots <= 0) {
-      toast.error(`Maximum ${maxPhotoCount} photos allowed for this product`);
-      return;
+    const slots = alignPhotoSlots(customerPhotos, photoSlotCount);
+    const jobs = [];
+    if (Number.isInteger(slotIndex) && slotIndex >= 0) {
+      jobs.push({ index: slotIndex, file: selectedFiles[0] });
+    } else {
+      let cursor = firstEmptyPhotoSlot(slots);
+      if (cursor < 0) {
+        toast.error(`Maximum ${photoSlotCount} photos allowed for this product`);
+        return;
+      }
+      for (const file of selectedFiles) {
+        while (cursor < slots.length && slots[cursor]?.url) cursor += 1;
+        if (cursor >= slots.length) break;
+        jobs.push({ index: cursor, file });
+        cursor += 1;
+      }
+      if (jobs.length === 0) {
+        toast.error(`Maximum ${photoSlotCount} photos allowed for this product`);
+        return;
+      }
+      if (jobs.length < selectedFiles.length) {
+        toast.error(`Please upload exactly the requested photos. You can add ${jobs.length} more photo${jobs.length === 1 ? '' : 's'} for this product.`);
+        return;
+      }
     }
-    if (maxPhotoCount > 0 && selectedFiles.length > remainingSlots) {
-      toast.error(`Please upload exactly the requested photos. You can add ${remainingSlots} more photo${remainingSlots === 1 ? '' : 's'} for this product.`);
-      return;
-    }
-    const filesToUpload = selectedFiles;
     setUploadingCustomerPhotos(true);
     try {
-      const uploaded = [];
-      for (const file of filesToUpload) {
-        const prepared = await prepareImageUpload(file);
+      for (const job of jobs) {
+        setUploadingPhotoSlots((prev) => ({ ...prev, [job.index]: true }));
+        const prepared = await prepareImageUpload(job.file);
         const formData = new FormData();
-        appendImageUpload(formData, file, prepared);
+        appendImageUpload(formData, job.file, prepared);
         const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || `Failed to upload ${file.name}`);
+        if (!res.ok) throw new Error(data.error || `Failed to upload ${job.file.name}`);
         const uploadedFile = attachLocalPreview(data, prepared);
-        uploaded.push(uploadedFile);
-        setCustomerPhotos((prev) => [...prev, uploadedFile]);
+        setActivePreviewSlot(job.index);
+        editPreviewArea(job.index);
+        setCustomerPhotos((prev) => setPhotoSlot(alignPhotoSlots(prev, photoSlotCount), job.index, uploadedFile));
+        setUploadingPhotoSlots((prev) => ({ ...prev, [job.index]: false }));
       }
-      toast.success(`${uploaded.length} photo${uploaded.length === 1 ? '' : 's'} uploaded`);
-      trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'customer_photos', photo_count: uploaded.length }));
+      toast.success(jobs.length === 1 ? 'Photo uploaded' : `${jobs.length} photos uploaded`);
+      trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'customer_photos', photo_count: jobs.length }));
     } catch (error) {
       toast.error(error.message || 'Failed to upload photos');
+      setUploadingPhotoSlots({});
     } finally {
       setUploadingCustomerPhotos(false);
     }
+  };
+
+  const removeCustomerPhoto = (slotIndex) => {
+    setCustomerPhotos((prev) => {
+      const previewUrl = prev[slotIndex]?.previewUrl;
+      if (typeof previewUrl === 'string' && previewUrl.startsWith('blob:')) URL.revokeObjectURL(previewUrl);
+      return clearPhotoSlot(prev, slotIndex);
+    });
+    setActivePreviewSlot(slotIndex);
+    delete savedPreviewFilesRef.current[slotIndex];
+    setSavedPreviewAreas((prev) => ({ ...prev, [slotIndex]: false }));
+    setPreviewAdjustments((prev) => ({ ...prev, [slotIndex]: getDefaultPreviewAdjustments() }));
   };
 
 
@@ -638,10 +683,42 @@ const handleCustomerPhotoUpload = async (files) => {
     }
   };
 
-  const removeCollagePhoto = (label, idx) => setCollageUploads((prev) => ({
+  const handleCollageReplace = async (label, index, file) => {
+    if (!label || !file || index < 0) return;
+    setUploadingCollageLabels((prev) => ({ ...prev, [label]: true }));
+    try {
+      const prepared = await prepareImageUpload(file);
+      const formData = new FormData();
+      appendImageUpload(formData, file, prepared);
+      const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Failed to upload ${file.name}`);
+      const uploadedFile = attachLocalPreview(data, prepared);
+      setCollageUploads((prev) => {
+        const current = [...(prev[label] || [])];
+        if (index >= current.length) return prev;
+        current[index] = uploadedFile;
+        return { ...prev, [label]: current };
+      });
+      toast.success(`${label}: photo replaced`);
+    } catch (error) {
+      toast.error(error.message || `${label}: failed to replace image`);
+    } finally {
+      setUploadingCollageLabels((prev) => ({ ...prev, [label]: false }));
+    }
+  };
+  const removeCollagePhoto = (label, url) => setCollageUploads((prev) => ({
     ...prev,
-    [label]: (prev[label] || []).filter((_, photoIdx) => photoIdx !== idx),
+    [label]: removeListPhotoByUrl(prev[label] || [], url),
   }));
+  const removeVariantLabelUpload = (label) => {
+    setVariantLabelUploads((prev) => {
+      const next = { ...prev };
+      delete next[label];
+      return next;
+    });
+    editPreviewArea(`variant-${label}`);
+  };
   const addConfiguredProductToCart = async ({ openCart = true } = {}) => {
     if (uploadingCustomerPhotos || Object.values(uploadingFields).some(Boolean) || Object.values(uploadingVariantLabels).some(Boolean) || Object.values(uploadingCollageLabels).some(Boolean) || previewSaveLocksRef.current.size > 0) {
       toast.error('Please wait for your images and previews to finish saving.');
@@ -667,7 +744,8 @@ const handleCustomerPhotoUpload = async (files) => {
     })).filter((group) => group.images.length > 0);
     const variantUploads = Object.fromEntries(Object.entries(variantLabelUploads).filter(([, value]) => value?.url));
     const productCustomerNote = customerNotesEnabled ? customerNote.trim() : '';
-    const allCustomFields = { ...customFieldValues, ...(productCustomerNote ? { 'Customer Note': productCustomerNote } : {}), ...(customerPhotos.length > 0 ? { 'Customer Photos': customerPhotos } : {}), ...(Object.keys(variantUploads).length > 0 ? { 'Variant Label Uploads': variantUploads } : {}) };
+    const uploadedCustomerPhotos = filledPhotos(customerPhotos);
+    const allCustomFields = { ...customFieldValues, ...(productCustomerNote ? { 'Customer Note': productCustomerNote } : {}), ...(uploadedCustomerPhotos.length > 0 ? { 'Customer Photos': uploadedCustomerPhotos } : {}), ...(Object.keys(variantUploads).length > 0 ? { 'Variant Label Uploads': variantUploads } : {}) };
 
     const customizationPreviewPayload = await buildCustomizationPreviewPayload();
     const hasConfiguredAssets = Object.keys(allCustomFields).length > 0 || collageGroups.length > 0 || Boolean(customizationPreviewPayload) || giftWrap || Boolean(giftMessage.trim());
@@ -734,6 +812,92 @@ const handleCustomerPhotoUpload = async (files) => {
     <div className="product-mobile-safe grid max-w-full grid-cols-1 gap-8 md:grid-cols-2 md:gap-12">
       {/* Product Media Gallery */}
       <div>
+        {previewEnabled && (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {[['product', 'Product view'], ['closeup', 'Close-up']].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setPreviewStage(value)}
+                aria-pressed={previewStage === value}
+                className={`min-h-[40px] rounded-full border px-4 text-sm font-semibold ${previewStage === value ? 'border-primary-600 bg-primary-50 text-primary-800' : 'border-gray-200 bg-white text-gray-600'}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+        {previewEnabled && previewStage === 'closeup' ? (
+          <div className="mb-4 rounded-2xl border bg-white p-3 sm:p-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {previewAreas.map((area, idx) => {
+                const photo = customerPhotos[idx];
+                const adjustments = getAreaAdjustments(idx);
+                const areaLabel = area.label || `Photo ${idx + 1}`;
+                return (
+                  <button
+                    key={`closeup-${areaLabel}-${idx}`}
+                    type="button"
+                    onClick={() => setActivePreviewSlot(idx)}
+                    className={`min-w-0 overflow-hidden rounded-xl border p-2 text-left ${activePreviewSlot === idx ? 'border-primary-600 ring-2 ring-primary-100' : area.required !== false && !photo?.url ? 'border-red-400' : 'border-gray-200'}`}
+                  >
+                    <p className="mb-1 truncate text-[11px] font-bold text-gray-800">{areaLabel}</p>
+                    <div className="relative mx-auto w-full overflow-hidden rounded-lg border bg-white" style={{ aspectRatio: getAreaAspectRatio(area, adjustments.orientation) }}>
+                      {photo?.url ? (
+                        <>
+                          <img src={displayUploadUrl(photo)} alt="" className="absolute inset-0 h-full w-full object-contain" style={{ transform: `translate(${adjustments.x}px, ${adjustments.y}px) scale(${adjustments.zoom})`, transformOrigin: 'center' }} />
+                          {area.frameImage ? <img src={area.frameImage} alt="" className="pointer-events-none absolute inset-0 h-full w-full object-contain" /> : null}
+                        </>
+                      ) : (
+                        <span className="flex h-full min-h-[72px] items-center justify-center bg-gray-50 text-[11px] font-semibold text-gray-400">Empty</span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            {previewAreas[activePreviewSlot] && customerPhotos[activePreviewSlot]?.url ? (
+              <div className="mt-4 space-y-3 border-t pt-4">
+                <p className="text-sm font-bold text-gray-900">Adjust {previewAreas[activePreviewSlot].label || `Photo ${activePreviewSlot + 1}`}</p>
+                <div
+                  ref={(node) => { if (node) previewFrameRefs.current[activePreviewSlot] = node; }}
+                  className="relative mx-auto w-full max-w-sm overflow-hidden rounded-lg border-2 border-gray-950 bg-white"
+                  style={{ aspectRatio: getAreaAspectRatio(previewAreas[activePreviewSlot], getAreaAdjustments(activePreviewSlot).orientation), touchAction: 'none' }}
+                  onPointerDown={(e) => !savedPreviewAreas[activePreviewSlot] && startPreviewDrag(activePreviewSlot, e)}
+                  onPointerMove={movePreviewDrag}
+                  onPointerUp={stopPreviewDrag}
+                  onPointerCancel={stopPreviewDrag}
+                >
+                  <div className="absolute inset-0 flex items-center justify-center overflow-hidden bg-white">
+                    <img src={displayUploadUrl(customerPhotos[activePreviewSlot])} alt="" className="max-h-full max-w-full object-contain" style={{ transform: `translate(${getAreaAdjustments(activePreviewSlot).x}px, ${getAreaAdjustments(activePreviewSlot).y}px) scale(${getAreaAdjustments(activePreviewSlot).zoom})`, transformOrigin: 'center' }} />
+                  </div>
+                  {previewAreas[activePreviewSlot].frameImage ? <img src={previewAreas[activePreviewSlot].frameImage} alt="" className="pointer-events-none absolute inset-0 h-full w-full object-contain" /> : null}
+                  {savedPreviewAreas[activePreviewSlot] && <div className="absolute right-2 top-2 rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-bold text-white">Saved</div>}
+                </div>
+                <p className="text-xs text-gray-500">Drag the photo inside the frame, or use the sliders for exact alignment.</p>
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-gray-600">Frame direction</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[['auto', 'Auto'], ['portrait', 'Portrait'], ['landscape', 'Landscape']].map(([value, text]) => (
+                      <button key={value} type="button" onClick={() => updateAreaAdjustment(activePreviewSlot, 'orientation', value)} className={`min-h-[36px] rounded-lg border px-2 text-xs font-bold ${getAreaAdjustments(activePreviewSlot).orientation === value ? 'border-primary-600 bg-primary-50 text-primary-700' : 'border-gray-200 bg-white text-gray-600'}`}>{text}</button>
+                    ))}
+                  </div>
+                </div>
+                <div><label className="mb-1 block text-xs font-bold text-gray-600">Zoom</label><input type="range" min="1" max="3" step="0.05" value={getAreaAdjustments(activePreviewSlot).zoom} onChange={(e) => updateAreaAdjustment(activePreviewSlot, 'zoom', Number(e.target.value))} className="w-full" /></div>
+                <div><label className="mb-1 block text-xs font-bold text-gray-600">Move left / right</label><input type="range" min="-160" max="160" value={getAreaAdjustments(activePreviewSlot).x} onChange={(e) => updateAreaAdjustment(activePreviewSlot, 'x', Number(e.target.value))} className="w-full" /></div>
+                <div><label className="mb-1 block text-xs font-bold text-gray-600">Move up / down</label><input type="range" min="-160" max="160" value={getAreaAdjustments(activePreviewSlot).y} onChange={(e) => updateAreaAdjustment(activePreviewSlot, 'y', Number(e.target.value))} className="w-full" /></div>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" disabled={savingPreviewAreas[activePreviewSlot]} onClick={() => savePreviewArea(activePreviewSlot)} className="rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">{savingPreviewAreas[activePreviewSlot] ? 'Saving...' : 'Save Preview'}</button>
+                  <button type="button" disabled={savingPreviewAreas[activePreviewSlot]} onClick={() => editPreviewArea(activePreviewSlot)} className="rounded-lg border px-3 py-2 text-sm font-semibold text-gray-700">Edit Again</button>
+                  <button type="button" disabled={savingPreviewAreas[activePreviewSlot]} onClick={() => resetPreviewArea(activePreviewSlot)} className="rounded-lg border px-3 py-2 text-sm font-semibold text-gray-700">Reset alignment</button>
+                </div>
+              </div>
+            ) : previewAreas[activePreviewSlot] ? (
+              <p className="mt-4 text-sm text-gray-500">Upload a photo in {previewAreas[activePreviewSlot].label || `Photo ${activePreviewSlot + 1}`} to adjust this close-up.</p>
+            ) : null}
+          </div>
+        ) : (
+        <>
         <div className="relative rounded-2xl overflow-hidden bg-white mb-4 cursor-pointer" onClick={() => currentMedia?.type === 'image' && setLightboxOpen(true)} onTouchStart={handleGalleryTouchStart} onTouchMove={handleGalleryTouchMove} onTouchEnd={handleGalleryTouchEnd}>
           {currentMedia?.type === 'video' ? (
             <video src={currentMedia.url} controls className="w-full max-h-[70vh] object-contain bg-black" />
@@ -765,6 +929,8 @@ const handleCustomerPhotoUpload = async (files) => {
               </button>
             ))}
           </div>
+        )}
+        </>
         )}
       </div>
 
@@ -936,220 +1102,174 @@ const handleCustomerPhotoUpload = async (files) => {
 
 
         {selectedVariantUploadOptions.length > 0 && (
-          <div className="mb-5 rounded-2xl border-2 border-dashed border-primary-200 bg-primary-50/30 p-4 space-y-4">
-            <div>
+          <div className="mb-5 rounded-2xl border border-primary-100 bg-primary-50/20 p-4">
+            <div className="mb-3">
               <p className="text-sm font-bold text-gray-900">Selected variant image uploads</p>
               <p className="mt-1 text-xs text-gray-500">Upload the required image for each selected option label. These are saved label-wise for admin production.</p>
             </div>
+            <div className={uploadCardGridClass}>
+              {selectedVariantUploadOptions.map((selected) => {
+                const upload = variantLabelUploads[selected.label];
+                const isUploading = !!uploadingVariantLabels[selected.label];
+                const previewKey = `variant-${selected.label}`;
+                return (
+                  <PhotoUploadCard
+                    key={selected.label}
+                    label={selected.label}
+                    sizeLabel={formatPreviewSize(selected.previewWidth, selected.previewHeight, selected.previewUnit)}
+                    required
+                    missingRequired={!upload?.url}
+                    photo={upload}
+                    photoUrl={displayUploadUrl(upload)}
+                    uploading={isUploading}
+                    disabled={Boolean(actionLoading) || savingPreviewAreas[previewKey]}
+                    orientation={getAreaAdjustments(previewKey).orientation}
+                    onOrientation={(value) => updateAreaAdjustment(previewKey, 'orientation', value)}
+                    onUpload={(file) => handleVariantLabelUpload(selected.label, file)}
+                    onRemove={() => removeVariantLabelUpload(selected.label)}
+                    instructions={selected.previewInstructions || ''}
+                  />
+                );
+              })}
+            </div>
             {selectedVariantUploadOptions.map((selected) => {
               const upload = variantLabelUploads[selected.label];
-              const isUploading = !!uploadingVariantLabels[selected.label];
+              if (!upload?.url) return null;
+              const previewKey = `variant-${selected.label}`;
+              const area = { label: selected.label, width: selected.previewWidth || 1, height: selected.previewHeight || 1, unit: selected.previewUnit || 'inch', frameImage: selected.previewFrameImage || '', instructions: selected.previewInstructions || '' };
+              const adjustments = getAreaAdjustments(previewKey);
               return (
-                <div key={selected.label} className="rounded-2xl border bg-white p-3 sm:p-4">
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <div><p className="text-sm font-extrabold text-gray-900">{selected.label}</p><p className="text-xs text-gray-500">Required image and preview</p></div>
-                    <span className={`rounded-full px-3 py-1 text-xs font-bold ${upload?.url ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{upload?.url ? 'Uploaded' : 'Required'}</span>
+                <div key={`preview-${selected.label}`} className="mt-4 rounded-2xl border bg-white p-3">
+                  <p className="mb-2 text-xs font-bold text-gray-800">Preview for {selected.label}</p>
+                  <div
+                    ref={(node) => { if (node) previewFrameRefs.current[previewKey] = node; }}
+                    className="relative mx-auto w-full max-w-xs overflow-hidden rounded-lg border-2 border-gray-950 bg-white"
+                    style={{ aspectRatio: getAreaAspectRatio(area, adjustments.orientation), touchAction: 'none' }}
+                    onPointerDown={(e) => !savedPreviewAreas[previewKey] && startPreviewDrag(previewKey, e)} onPointerMove={movePreviewDrag} onPointerUp={stopPreviewDrag} onPointerCancel={stopPreviewDrag}
+                  >
+                    <div className="absolute inset-0 flex items-center justify-center overflow-hidden bg-white">
+                      <img src={displayUploadUrl(upload)} alt={`${selected.label} preview`} className="max-h-full max-w-full object-contain" style={{ transform: `translate(${adjustments.x}px, ${adjustments.y}px) scale(${adjustments.zoom})`, transformOrigin: 'center' }} />
+                    </div>
+                    {area.frameImage ? <img src={area.frameImage} alt="" className="pointer-events-none absolute inset-0 h-full w-full object-contain" /> : null}
+                    {savedPreviewAreas[previewKey] ? <div className="absolute right-2 top-2 rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-bold text-white">Saved</div> : null}
                   </div>
-                  <label className={`relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-primary-100 bg-primary-50/50 px-4 py-5 text-center transition-colors hover:bg-primary-50 ${isUploading ? 'pointer-events-none opacity-80' : ''}`}>
-                    {isUploading ? <FiLoader size={28} className="animate-spin text-primary-600" /> : <FiUpload size={22} className="text-primary-600" />}
-                    <span className="text-sm font-semibold text-gray-800">{isUploading ? 'Uploading image...' : `Upload image for ${selected.label}`}</span>
-                    <input type="file" accept="image/*,.heic,.heif" className="sr-only" disabled={isUploading || Boolean(actionLoading) || savingPreviewAreas[`variant-${selected.label}`]} onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; handleVariantLabelUpload(selected.label, file); }} />
-                    {isUploading && <UploadSpinner label="Uploading original image..." />}
-                  </label>
-                  {upload?.url && (() => {
-                    const previewKey = `variant-${selected.label}`;
-                    const area = { label: selected.label, width: selected.previewWidth || 1, height: selected.previewHeight || 1, unit: selected.previewUnit || 'inch', frameImage: selected.previewFrameImage || '', instructions: selected.previewInstructions || '' };
-                    const adjustments = getAreaAdjustments(previewKey);
-                    return (
-                      <div className="mt-3 grid gap-4 md:grid-cols-2 md:items-start">
-                        <div className="rounded-2xl bg-gray-50 p-3">
-                          <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-                            <div><p className="text-xs font-bold text-gray-800">Preview for {selected.label}</p><p className="text-[11px] text-gray-500">Size: {area.width || '-'} x {area.height || '-'} {area.unit}</p></div>
-                            {area.instructions && <p className="max-w-xs text-[11px] text-primary-700 sm:text-right">{area.instructions}</p>}
-                          </div>
-                          <div
-                            ref={(node) => { if (node) previewFrameRefs.current[previewKey] = node; }}
-                            className="relative mx-auto w-full max-w-xs overflow-hidden rounded-lg border-2 border-gray-950 bg-white"
-                            style={{ aspectRatio: getAreaAspectRatio(area, adjustments.orientation), touchAction: 'none' }}
-                            onPointerDown={(e) => !savedPreviewAreas[previewKey] && startPreviewDrag(previewKey, e)} onPointerMove={movePreviewDrag} onPointerUp={stopPreviewDrag} onPointerCancel={stopPreviewDrag}
-                          >
-                            <div className="absolute inset-0 flex items-center justify-center overflow-hidden bg-white">
-                              <img src={displayUploadUrl(upload)} alt={`${selected.label} preview`} className="max-h-full max-w-full object-contain" style={{ transform: `translate(${adjustments.x}px, ${adjustments.y}px) scale(${adjustments.zoom})`, transformOrigin: 'center' }} />
-                            </div>
-                            {area.frameImage && <img src={area.frameImage} alt="Preview frame" className="absolute inset-0 h-full w-full object-contain pointer-events-none" />}
-                            <div className="pointer-events-none absolute inset-0 border-2 border-gray-950" />
-                            {savedPreviewAreas[previewKey] && <div className="absolute right-2 top-2 rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-bold text-white">Saved</div>}
-                          </div>
-                        </div>
-                        <div className="space-y-3">
-                          <a href={displayUploadUrl(upload)} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-primary-600">Open original uploaded image</a>
-                          <div><label className="block text-xs font-bold text-gray-600 mb-1">Frame direction</label><div className="grid grid-cols-3 gap-2">{[['auto', 'Admin size'], ['portrait', 'Portrait'], ['landscape', 'Landscape']].map(([value, label]) => (<button key={value} type="button" onClick={() => updateAreaAdjustment(previewKey, 'orientation', value)} className={`rounded-lg border px-2 py-2 text-xs font-bold ${adjustments.orientation === value ? 'border-primary-600 bg-primary-50 text-primary-700' : 'border-gray-200 bg-white text-gray-600'}`}>{label}</button>))}</div></div>
-                          <div><label className="block text-xs font-bold text-gray-600 mb-1">Zoom</label><input type="range" min="1" max="3" step="0.05" value={adjustments.zoom} onChange={e => updateAreaAdjustment(previewKey, 'zoom', Number(e.target.value))} className="w-full" /></div>
-                          <div><label className="block text-xs font-bold text-gray-600 mb-1">Move left / right</label><input type="range" min="-160" max="160" value={adjustments.x} onChange={e => updateAreaAdjustment(previewKey, 'x', Number(e.target.value))} className="w-full" /></div>
-                          <div><label className="block text-xs font-bold text-gray-600 mb-1">Move up / down</label><input type="range" min="-160" max="160" value={adjustments.y} onChange={e => updateAreaAdjustment(previewKey, 'y', Number(e.target.value))} className="w-full" /></div>
-                          <div className="flex flex-wrap gap-2"><button type="button" disabled={savingPreviewAreas[previewKey]} onClick={() => savePreviewArea(previewKey)} className="rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">{savingPreviewAreas[previewKey] ? 'Saving...' : 'Save Preview'}</button><button type="button" disabled={savingPreviewAreas[previewKey]} onClick={() => editPreviewArea(previewKey)} className="rounded-lg border px-3 py-2 text-sm font-semibold text-gray-700 hover:border-primary-200 hover:text-primary-700">Edit Again</button><button type="button" disabled={savingPreviewAreas[previewKey]} onClick={() => resetPreviewArea(previewKey)} className="rounded-lg border px-3 py-2 text-sm font-semibold text-gray-700 hover:border-primary-200 hover:text-primary-700">Reset alignment</button></div>
-                        </div>
-                      </div>
-                    );
-                  })()}
+                  <div className="mt-3 space-y-2">
+                    <div><label className="mb-1 block text-xs font-bold text-gray-600">Zoom</label><input type="range" min="1" max="3" step="0.05" value={adjustments.zoom} onChange={(e) => updateAreaAdjustment(previewKey, 'zoom', Number(e.target.value))} className="w-full" /></div>
+                    <div><label className="mb-1 block text-xs font-bold text-gray-600">Move left / right</label><input type="range" min="-160" max="160" value={adjustments.x} onChange={(e) => updateAreaAdjustment(previewKey, 'x', Number(e.target.value))} className="w-full" /></div>
+                    <div><label className="mb-1 block text-xs font-bold text-gray-600">Move up / down</label><input type="range" min="-160" max="160" value={adjustments.y} onChange={(e) => updateAreaAdjustment(previewKey, 'y', Number(e.target.value))} className="w-full" /></div>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" disabled={savingPreviewAreas[previewKey]} onClick={() => savePreviewArea(previewKey)} className="rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">{savingPreviewAreas[previewKey] ? 'Saving...' : 'Save Preview'}</button>
+                      <button type="button" disabled={savingPreviewAreas[previewKey]} onClick={() => editPreviewArea(previewKey)} className="rounded-lg border px-3 py-2 text-sm font-semibold text-gray-700">Edit Again</button>
+                      <button type="button" disabled={savingPreviewAreas[previewKey]} onClick={() => resetPreviewArea(previewKey)} className="rounded-lg border px-3 py-2 text-sm font-semibold text-gray-700">Reset alignment</button>
+                    </div>
+                  </div>
                 </div>
               );
             })}
           </div>
         )}
         {needsCustomerPhotos && (
-          <div className="mb-5 rounded-2xl border-2 border-dashed border-accent-200 bg-accent-50/30 p-4">
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-3">
+          <div className="mb-5 rounded-2xl border border-accent-100 bg-accent-50/20 p-4">
+            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <p className="text-sm font-bold text-gray-900">Customer photo areas</p>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="mt-1 text-xs text-gray-500">
                   {requiredPhotoCount > 0
                     ? `Please upload ${requiredPhotoCount} photo${requiredPhotoCount === 1 ? '' : 's'} for this product.`
                     : `You can upload up to ${maxPhotoCount} photo${maxPhotoCount === 1 ? '' : 's'} for this product.`}
+                  {previewEnabled ? ' Use Close-up preview to align each photo in its frame.' : ''}
                 </p>
               </div>
-              <span className="self-start rounded-full bg-white px-3 py-1 text-xs font-bold text-accent-700 border border-accent-100">
-                {customerPhotos.length}/{requiredPhotoCount || maxPhotoCount}
+              <span className="self-start rounded-full border border-accent-100 bg-white px-3 py-1 text-xs font-bold text-accent-700">
+                {uploadedPhotoCount}/{requiredPhotoCount || maxPhotoCount}
               </span>
             </div>
-            <label className={`relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl bg-white px-4 py-5 text-center transition-colors hover:bg-accent-50 border border-accent-100 ${uploadingCustomerPhotos ? 'pointer-events-none opacity-80' : ''}`}>
-              {uploadingCustomerPhotos ? <FiLoader size={28} className="animate-spin text-accent-600" /> : <FiUpload size={24} className="text-accent-600" />}
-              <span className="text-sm font-semibold text-gray-800">{uploadingCustomerPhotos ? 'Uploading photos...' : 'Upload customer photos'}</span>
-              <span className="text-xs text-gray-500">Upload in the same order as the photo areas shown below</span>
-              <input type="file" multiple accept="image/*,.heic,.heif" className="sr-only" disabled={uploadingCustomerPhotos || Boolean(actionLoading)} onChange={e => { const files = Array.from(e.target.files || []); e.target.value = ''; handleCustomerPhotoUpload(files); }} />
-            {uploadingCustomerPhotos && <UploadSpinner label="Uploading original photos..." />}
-            </label>
-
-            {customerPhotos.length > 0 && (
-              <div className="mt-4 grid grid-cols-3 sm:grid-cols-4 gap-2">
-                {customerPhotos.map((photo, idx) => (
-                  <div key={photo.url || idx} className="relative overflow-hidden rounded-xl border bg-white aspect-square">
-                    <img src={displayUploadUrl(photo)} alt={`Uploaded photo ${idx + 1}`} className="h-full w-full object-cover" />
-                    <button type="button" disabled={previewSaveLocksRef.current.size > 0 || Boolean(actionLoading) || uploadingCustomerPhotos} onClick={() => { savedPreviewFilesRef.current = {}; setSavedPreviewAreas({}); setCustomerPhotos(prev => prev.filter((_, i) => i !== idx)); }} className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-white/95 text-red-500 shadow-sm disabled:opacity-50" aria-label="Remove uploaded photo">
-                      <FiX size={14} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+            <div className={uploadCardGridClass}>
+              {Array.from({ length: photoSlotCount }, (_, idx) => {
+                const area = previewAreas[idx];
+                const photo = customerPhotos[idx];
+                const slotRequired = area ? area.required !== false : idx < requiredPhotoCount;
+                const label = area?.label || `Photo ${idx + 1}`;
+                return (
+                  <PhotoUploadCard
+                    key={`photo-slot-${idx}`}
+                    label={label}
+                    sizeLabel={area ? formatPreviewSize(area.width, area.height, area.unit) : ''}
+                    required={slotRequired}
+                    missingRequired={slotRequired && !photo?.url}
+                    photo={photo}
+                    photoUrl={displayUploadUrl(photo)}
+                    uploading={!!uploadingPhotoSlots[idx]}
+                    disabled={previewSaveLocksRef.current.size > 0 || Boolean(actionLoading) || uploadingCustomerPhotos}
+                    orientation={previewEnabled ? getAreaAdjustments(idx).orientation : undefined}
+                    onOrientation={previewEnabled ? (value) => { setActivePreviewSlot(idx); updateAreaAdjustment(idx, 'orientation', value); } : undefined}
+                    onUpload={(file) => handleCustomerPhotoUpload([file], idx)}
+                    onRemove={() => removeCustomerPhoto(idx)}
+                    instructions={area?.instructions || ''}
+                  />
+                );
+              })}
+            </div>
           </div>
         )}
 
         {needsCollageUploads && (
-          <div className="mb-5 rounded-2xl border-2 border-dashed border-primary-200 bg-primary-50/30 p-4 space-y-4">
-            <div>
-              <p className="text-sm font-bold text-gray-900">Collage photo uploads</p>
-            </div>
+          <div className="mb-5 space-y-4 rounded-2xl border border-primary-100 bg-primary-50/20 p-4">
+            <p className="text-sm font-bold text-gray-900">Collage photo uploads</p>
             {collageTemplates.map((template) => {
               const label = template.label;
               const photos = collageUploads[label] || [];
               const min = Math.max(0, Number(template.minImages || 0));
               const max = Math.max(min, Number(template.maxImages || min || 0));
               const isUploading = !!uploadingCollageLabels[label];
+              const belowMin = photos.length < min;
               return (
-                <div key={label} className="rounded-2xl border bg-white p-3 sm:p-4">
+                <div key={label} className={`rounded-2xl border bg-white p-3 sm:p-4 ${belowMin ? 'border-red-400 ring-2 ring-red-100' : 'border-gray-200'}`}>
                   <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <p className="text-sm font-extrabold text-gray-900">{label}</p>
                       <p className="text-xs text-gray-500">Upload between {min} and {max} images.</p>
-                      {template.instructions && <p className="mt-1 text-xs text-primary-700">{template.instructions}</p>}
+                      {template.instructions ? <p className="mt-1 text-xs text-primary-700">{template.instructions}</p> : null}
+                      {belowMin ? <p className="mt-1 text-xs font-semibold text-red-600" role="alert">Photo required</p> : null}
                     </div>
-                    <span className={`self-start rounded-full px-3 py-1 text-xs font-bold border ${photos.length >= min && photos.length <= max ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>{photos.length}/{min}-{max}</span>
+                    <span className={`self-start rounded-full border px-3 py-1 text-xs font-bold ${belowMin || photos.length > max ? 'border-red-100 bg-red-50 text-red-700' : 'border-emerald-100 bg-emerald-50 text-emerald-700'}`}>{photos.length}/{min}-{max}</span>
                   </div>
-                  <label className={`relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-primary-100 bg-primary-50/50 px-4 py-5 text-center transition-colors hover:bg-primary-50 ${isUploading ? 'pointer-events-none opacity-80' : ''}`}>
-                    {isUploading ? <FiLoader size={28} className="animate-spin text-primary-600" /> : <FiUpload size={22} className="text-primary-600" />}
-                    <span className="text-sm font-semibold text-gray-800">{isUploading ? `Uploading ${label}...` : `Upload images for ${label}`}</span>
-                    <span className="text-xs text-gray-500">Images stay in upload order</span>
-                    <input type="file" multiple accept="image/*,.heic,.heif" className="sr-only" disabled={isUploading || Boolean(actionLoading)} onChange={e => { const files = Array.from(e.target.files || []); e.target.value = ''; handleCollageUpload(label, files); }} />
-                  {isUploading && <UploadSpinner label="Uploading original images..." />}
-                  </label>
-                  {isUploading && <p className="mt-2 text-xs font-semibold text-primary-700">Uploading {label} images...</p>}
-                  {photos.length > 0 && (
-                    <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
-                      {photos.map((photo, idx) => (
-                        <div key={photo.url || idx} className="relative aspect-square overflow-hidden rounded-xl border bg-gray-50">
-                          <img src={displayUploadUrl(photo)} alt={`${label} ${idx + 1}`} className="h-full w-full object-cover" />
-                          <span className="absolute left-1 top-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[10px] font-bold text-white">{idx + 1}</span>
-                          <button type="button" onClick={() => removeCollagePhoto(label, idx)} className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-white/95 text-red-500 shadow-sm" aria-label="Remove collage photo"><FiX size={14} /></button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <div className={uploadCardGridClass}>
+                    {photos.map((photo, idx) => (
+                      <PhotoUploadCard
+                        key={`${label}-${idx}-${photo.url || 'photo'}`}
+                        label={`${label} ${idx + 1}`}
+                        photo={photo}
+                        photoUrl={displayUploadUrl(photo)}
+                        uploading={isUploading}
+                        onUpload={(file) => handleCollageReplace(label, idx, file)}
+                        onRemove={() => removeCollagePhoto(label, photo.url)}
+                        disabled={isUploading || Boolean(actionLoading)}
+                      />
+                    ))}
+                    {photos.length < max ? (
+                      <PhotoUploadCard
+                        key={`${label}-add`}
+                        label={`${label} ${photos.length + 1}`}
+                        required={belowMin}
+                        missingRequired={belowMin}
+                        uploading={isUploading}
+                        disabled={isUploading || Boolean(actionLoading)}
+                        onUpload={(file) => handleCollageUpload(label, [file])}
+                      />
+                    ) : null}
+                  </div>
                 </div>
               );
             })}
           </div>
         )}
-        {/* Live Customization Preview */}
         {previewEnabled && (
-          <div className="mb-5 rounded-2xl border border-primary-100 bg-white p-4 shadow-sm">
-            <div className="flex items-start justify-between gap-3 mb-3">
-              <div>
-                <p className="text-sm font-bold text-gray-900">{previewConfig.title || 'Preview your personalized gift'}</p>
-                <p className="text-xs text-gray-500 mt-1">Each photo area follows the admin-defined size. Choose portrait or landscape, then fit and align the uploaded image before checkout.</p>
-              </div>
-            </div>
-            {previewConfig.instructions && <p className="text-xs text-primary-700 bg-primary-50 rounded-lg px-3 py-2 mb-3">{previewConfig.instructions}</p>}
-            <div className="space-y-4">
-              {previewAreas.map((area, idx) => {
-                const photo = customerPhotos[idx];
-                const adjustments = getAreaAdjustments(idx);
-                const areaLabel = area.label || `Photo ${idx + 1}`;
-                return (
-                  <div key={`${areaLabel}-${idx}`} className="rounded-2xl border bg-gray-50 p-3 sm:p-4">
-                    <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
-                        <p className="text-sm font-bold text-gray-900">{areaLabel}</p>
-                        <p className="text-xs text-gray-500">
-                          Size: {area.width || '-'} x {area.height || '-'} {area.unit || 'inch'}{area.required !== false ? ' | Required' : ' | Optional'}
-                        </p>
-                      </div>
-                      {area.instructions && <p className="max-w-sm text-xs text-primary-700 sm:text-right">{area.instructions}</p>}
-                    </div>
-                    {photo?.url ? (
-                      <div className="grid md:grid-cols-2 gap-4 items-start">
-                        <div className="rounded-2xl bg-white p-4">
-                          <div
-                            ref={(node) => { if (node) previewFrameRefs.current[idx] = node; }}
-                            className="relative mx-auto w-full max-w-sm overflow-hidden rounded-lg border-2 border-gray-950 bg-white"
-                            style={{ aspectRatio: getAreaAspectRatio(area, adjustments.orientation), touchAction: 'none' }} onPointerDown={(e) => !savedPreviewAreas[idx] && startPreviewDrag(idx, e)} onPointerMove={movePreviewDrag} onPointerUp={stopPreviewDrag} onPointerCancel={stopPreviewDrag}
-                          >
-                            <div className="absolute inset-0 flex items-center justify-center overflow-hidden bg-white">
-                              <img
-                                src={displayUploadUrl(photo)}
-                                alt={`${areaLabel} preview`}
-                                className="max-h-full max-w-full object-contain"
-                                style={{ transform: `translate(${adjustments.x}px, ${adjustments.y}px) scale(${adjustments.zoom})`, transformOrigin: 'center' }}
-                              />
-                            </div>
-                            {area.frameImage && <img src={area.frameImage} alt="Preview frame" className="absolute inset-0 h-full w-full object-contain pointer-events-none" />}
-                            <div className="pointer-events-none absolute inset-0 border-2 border-gray-950" />
-                            {savedPreviewAreas[idx] && <div className="absolute right-2 top-2 rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-bold text-white">Saved</div>}
-                          </div>
-                        </div>
-                        <div className="space-y-3">
-                          <div>
-                            <label className="block text-xs font-bold text-gray-600 mb-1">Frame direction</label>
-                            <div className="grid grid-cols-3 gap-2">
-                              {[['auto', 'Admin size'], ['portrait', 'Portrait'], ['landscape', 'Landscape']].map(([value, label]) => (
-                                <button key={value} type="button" onClick={() => updateAreaAdjustment(idx, 'orientation', value)} className={`rounded-lg border px-2 py-2 text-xs font-bold ${adjustments.orientation === value ? 'border-primary-600 bg-primary-50 text-primary-700' : 'border-gray-200 bg-white text-gray-600'}`}>{label}</button>
-                              ))}
-                            </div>
-                          </div>
-                          <p className="rounded-lg bg-white px-3 py-2 text-xs text-gray-500 border">Drag the photo inside the frame, or use the sliders below for exact alignment.</p>
-                          <div><label className="block text-xs font-bold text-gray-600 mb-1">Zoom</label><input type="range" min="1" max="3" step="0.05" value={adjustments.zoom} onChange={e => updateAreaAdjustment(idx, 'zoom', Number(e.target.value))} className="w-full" /></div>
-                          <div><label className="block text-xs font-bold text-gray-600 mb-1">Move left / right</label><input type="range" min="-160" max="160" value={adjustments.x} onChange={e => updateAreaAdjustment(idx, 'x', Number(e.target.value))} className="w-full" /></div>
-                          <div><label className="block text-xs font-bold text-gray-600 mb-1">Move up / down</label><input type="range" min="-160" max="160" value={adjustments.y} onChange={e => updateAreaAdjustment(idx, 'y', Number(e.target.value))} className="w-full" /></div>
-                          <div className="flex flex-wrap gap-2"><button type="button" disabled={savingPreviewAreas[idx]} onClick={() => savePreviewArea(idx)} className="rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">{savingPreviewAreas[idx] ? 'Saving...' : 'Save Preview'}</button><button type="button" disabled={savingPreviewAreas[idx]} onClick={() => editPreviewArea(idx)} className="rounded-lg border px-3 py-2 text-sm font-semibold text-gray-700 hover:border-primary-200 hover:text-primary-700">Edit Again</button><button type="button" disabled={savingPreviewAreas[idx]} onClick={() => resetPreviewArea(idx)} className="rounded-lg border px-3 py-2 text-sm font-semibold text-gray-700 hover:border-primary-200 hover:text-primary-700">Reset alignment</button></div>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-gray-500 bg-white rounded-xl px-4 py-4">Upload photo {idx + 1} to preview this area.</p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+          <div className="mb-5 rounded-2xl border border-primary-100 bg-white p-4">
+            <p className="text-sm font-bold text-gray-900">{previewConfig.title || 'Preview your personalized gift'}</p>
+            <p className="mt-1 text-xs text-gray-500">Switch to Close-up to inspect each frame, change portrait or landscape, and save alignment. Uploaded photos stay in their original slots.</p>
+            {previewConfig.instructions ? <p className="mt-2 rounded-lg bg-primary-50 px-3 py-2 text-xs text-primary-700">{previewConfig.instructions}</p> : null}
+            <button type="button" onClick={() => setPreviewStage('closeup')} className="mt-3 min-h-[40px] rounded-lg border border-primary-200 px-3 text-sm font-semibold text-primary-800">Open close-up preview</button>
           </div>
         )}
         {/* Gift Wrap */}
