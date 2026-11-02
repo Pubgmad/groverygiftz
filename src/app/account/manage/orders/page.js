@@ -6,6 +6,8 @@ import toast from 'react-hot-toast';
 import useAdminAccess from '@/hooks/useAdminAccess';
 import ReadOnlyBanner from '@/components/admin/ReadOnlyBanner';
 import AdminSelect from '@/components/admin/AdminSelect';
+import DownloadCsvButton from '@/components/admin/DownloadCsvButton';
+import { FiRefreshCw } from 'react-icons/fi';
 
 const statusOptions = [
   { value: 'ordered', label: 'Ordered' },
@@ -227,18 +229,32 @@ export default function AdminOrdersPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [deliveryHolidays, setDeliveryHolidays] = useState([]);
   const pageSize = 10;
+  const dateError = dateFrom && dateTo && dateFrom > dateTo ? 'From date cannot be after To date' : '';
 
-  const fetchOrders = async () => {
+  const filterQuery = () => {
     const query = new URLSearchParams();
-    query.set('page', String(currentPage));
-    query.set('limit', String(pageSize));
     if (orderFilter.trim()) query.set('orderId', orderFilter.trim());
     if (mobileFilter.trim()) query.set('mobile', mobileFilter.trim());
     if (statusFilter) query.set('status', statusFilter);
     if (dateFrom) query.set('dateFrom', dateFrom);
     if (dateTo) query.set('dateTo', dateTo);
-    const res = await fetch(`/api/orders${query.toString() ? `?${query.toString()}` : ''}`);
-    const data = await res.json();
+    return query;
+  };
+
+  const fetchOrders = async () => {
+    const query = filterQuery();
+    query.set('page', String(currentPage));
+    query.set('limit', String(pageSize));
+    const res = await fetch(`/api/orders?${query.toString()}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setOrders([]);
+      setTotalOrders(0);
+      setTotalPages(1);
+      setLoading(false);
+      if (data.error) toast.error(data.error);
+      return;
+    }
     const nextOrders = data.orders || [];
     setOrders(nextOrders);
     setTotalOrders(Number(data.total || 0));
@@ -258,8 +274,15 @@ export default function AdminOrdersPage() {
 
   useEffect(() => {
     if (!filtersReady) return;
+    if (dateError) {
+      setOrders([]);
+      setTotalOrders(0);
+      setTotalPages(1);
+      setLoading(false);
+      return;
+    }
     fetchOrders();
-  }, [filtersReady, currentPage, orderFilter, mobileFilter, statusFilter, dateFrom, dateTo]);
+  }, [filtersReady, currentPage, orderFilter, mobileFilter, statusFilter, dateFrom, dateTo, dateError]);
 
   useEffect(() => {
     fetch('/api/settings')
@@ -310,40 +333,62 @@ export default function AdminOrdersPage() {
   return (
     <div>
       <ReadOnlyBanner show={!writable} />
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between mb-6">
-        <div>
+      <div className="mb-6 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold">Orders</h1>
           <p className="text-sm text-gray-500">Dates are shown and filtered in Indian Standard Time (IST). Update production status and ST Couriers tracking from the selected order.</p>
+        </div>
+        <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row">
+          <button
+            type="button"
+            onClick={() => {
+              setOrderFilter('');
+              setMobileFilter('');
+              setStatusFilter('');
+              setDateFrom('');
+              setDateTo('');
+              setCurrentPage(1);
+            }}
+            className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold sm:w-auto"
+          >
+            <FiRefreshCw /> Reset filters
+          </button>
+          <DownloadCsvButton
+            href={`/api/admin/orders/export?${filterQuery().toString()}`}
+            fallbackName="orders.csv"
+            disabled={!!dateError}
+          />
         </div>
       </div>
 
       <div className={`grid gap-6 ${selected ? 'xl:grid-cols-3' : ''}`}>
         <div className={`${selected ? 'xl:col-span-2' : ''} bg-white rounded-xl border overflow-hidden`}>
-          <div className="grid gap-3 border-b bg-gray-50 p-4 sm:grid-cols-2 lg:grid-cols-5">
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1">Order ID</label>
-              <input value={orderFilter} onChange={(e) => { setOrderFilter(e.target.value); setCurrentPage(1); }} placeholder="Search GG0001" className="w-full rounded-lg border px-3 py-2 text-sm" />
+          <div className="grid min-w-0 gap-3 border-b bg-gray-50 p-4 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="min-w-0">
+              <label className="mb-1 block text-xs font-semibold text-gray-500">Order ID</label>
+              <input value={orderFilter} onChange={(e) => { setOrderFilter(e.target.value); setCurrentPage(1); }} placeholder="Search GG0001" className="min-h-[44px] w-full min-w-0 rounded-lg border px-3 py-2 text-sm" />
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1">Mobile Number</label>
-              <input value={mobileFilter} onChange={(e) => { setMobileFilter(e.target.value); setCurrentPage(1); }} placeholder="Search mobile" className="w-full rounded-lg border px-3 py-2 text-sm" />
+            <div className="min-w-0">
+              <label className="mb-1 block text-xs font-semibold text-gray-500">Mobile Number</label>
+              <input value={mobileFilter} onChange={(e) => { setMobileFilter(e.target.value); setCurrentPage(1); }} placeholder="Search mobile" className="min-h-[44px] w-full min-w-0 rounded-lg border px-3 py-2 text-sm" />
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1">Status</label>
+            <div className="min-w-0">
+              <label className="mb-1 block text-xs font-semibold text-gray-500">Status</label>
               <AdminSelect
                 value={statusFilter}
                 onChange={(next) => { setStatusFilter(next); setCurrentPage(1); }}
                 options={statusFilterOptions}
               />
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1">From Date</label>
-              <input type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setCurrentPage(1); }} className="w-full rounded-lg border px-3 py-2 text-sm" />
+            <div className="min-w-0">
+              <label className="mb-1 block text-xs font-semibold text-gray-500">From Date</label>
+              <input type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setCurrentPage(1); }} className="min-h-[44px] w-full min-w-0 rounded-lg border px-3 py-2 text-sm" />
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1">To Date</label>
-              <input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setCurrentPage(1); }} className="w-full rounded-lg border px-3 py-2 text-sm" />
+            <div className="min-w-0">
+              <label className="mb-1 block text-xs font-semibold text-gray-500">To Date</label>
+              <input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setCurrentPage(1); }} className="min-h-[44px] w-full min-w-0 rounded-lg border px-3 py-2 text-sm" />
             </div>
+            {dateError ? <p className="text-sm text-red-600 sm:col-span-2 lg:col-span-5">{dateError}</p> : null}
           </div>
 
           {loading ? <p className="p-6 text-center">Loading...</p> : (<>

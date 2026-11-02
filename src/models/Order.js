@@ -68,6 +68,7 @@ const OrderSchema = new mongoose.Schema({
 
 OrderSchema.index({ paymentStatus: 1, paidAt: -1 });
 OrderSchema.index({ paymentStatus: 1, createdAt: -1 });
+OrderSchema.index({ customer: 1, paymentStatus: 1, status: 1 });
 
 export default mongoose.models.Order || mongoose.model('Order', OrderSchema);
 
