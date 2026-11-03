@@ -80,11 +80,9 @@ export default function PhotoAdjuster({
     triedFallbackRef.current = false;
   }, [open, photoUrl]);
 
+  // Background original upload must not blank a working local preview (Genie-style editing).
   useEffect(() => {
-    if (replacing) {
-      setImageError('');
-      setImageReady(false);
-    }
+    if (replacing) setImageError('');
   }, [replacing]);
 
   // Observe the stage box (parent), not the frame — then size the frame with an exact aspect ratio.
@@ -139,9 +137,11 @@ export default function PhotoAdjuster({
   const guidance = qualityGuidance(ppi);
   const sizeSubtitle = formatFrameSubtitle(area, draft.orientation, extraLabel);
   const displayScale = containScale * Math.max(0.1, Number(draft.zoom || 1));
-  const loadBusy = saving || replacing || (!imageReady && !imageError);
+  // `replacing` only blocks UI when the image is not yet usable (no local blob decode yet).
+  const awaitingPhoto = replacing && !imageReady;
+  const loadBusy = saving || awaitingPhoto || (!imageReady && !imageError);
   const replaceBusy = saving || replacing;
-  const editBusy = saving || replacing || !imageReady || Boolean(imageError);
+  const editBusy = saving || awaitingPhoto || !imageReady || Boolean(imageError);
 
   useEffect(() => {
     if (!open || draft.fitMode !== 'fill' || !(fillZoom > 0) || !(imageSize.width > 0)) return;
@@ -255,17 +255,19 @@ export default function PhotoAdjuster({
     setImageError('This photo could not be loaded. Please choose another image.');
   };
 
-  const statusText = replacing
+  const statusText = awaitingPhoto
     ? 'Preparing your photo…'
-    : imageError
-      ? 'Photo failed to load'
-      : imageReady
-        ? `${imageSize.width} × ${imageSize.height} px`
-        : 'Preparing your photo…';
+    : replacing && imageReady
+      ? 'Saving original in background…'
+      : imageError
+        ? 'Photo failed to load'
+        : imageReady
+          ? `${imageSize.width} × ${imageSize.height} px`
+          : 'Preparing your photo…';
 
   if (!open || typeof document === 'undefined') return null;
 
-  const showLoading = replacing || (!imageReady && !imageError);
+  const showLoading = awaitingPhoto || (!imageReady && !imageError);
   // Ignore collapsed stage measurements (md:h-auto / first paint) so landscape never snaps to a tiny wrong box.
   const frameReady = framePx.width >= 48 && framePx.height >= 48;
 
@@ -312,10 +314,10 @@ export default function PhotoAdjuster({
             {showLoading ? (
               <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white px-3 text-center">
                 <FiLoader className="animate-spin text-primary-600" size={28} />
-                <p className="mt-2 text-sm font-semibold text-gray-700">{replacing ? 'Preparing your photo…' : 'Preparing your photo…'}</p>
+                <p className="mt-2 text-sm font-semibold text-gray-700">Preparing your photo…</p>
               </div>
             ) : null}
-            {imageError && !replacing ? (
+            {imageError && !awaitingPhoto ? (
               <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-white p-4 text-center">
                 <p className="text-sm text-red-600">{imageError}</p>
                 <button
@@ -421,7 +423,7 @@ export default function PhotoAdjuster({
             onClick={() => onApply?.(draft)}
             className="flex min-h-12 items-center justify-center rounded-2xl bg-accent-500 text-sm font-bold text-white disabled:opacity-60"
           >
-            {saving ? 'Saving…' : replacing ? 'Updating…' : 'Apply Changes'}
+            {saving ? 'Applying…' : 'Apply Changes'}
           </button>
         </div>
       </div>

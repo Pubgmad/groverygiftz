@@ -481,55 +481,109 @@ export default function ProductDetail({ product }) {
   };
   const savePreviewArea = async (idx, overrideAdjustments) => {
     if (previewSaveLocksRef.current.has(idx) || actionLockRef.current) return false;
-    previewSaveLocksRef.current.add(idx);
-    setSavingPreviewAreas((prev) => ({ ...prev, [idx]: true }));
-    try {
-      const variant = typeof idx === 'string' ? selectedVariantUploadOptions.find((option) => `variant-${option.label}` === idx) : null;
-      const area = variant ? { label: variant.label, width: variant.previewWidth || 1, height: variant.previewHeight || 1, unit: variant.previewUnit || 'inch', frameImage: variant.previewFrameImage || '' } : previewAreas[idx] || { label: `Photo ${Number(idx) + 1}`, width: 1, height: 1, unit: 'ratio' };
-      let upload = variant ? variantLabelUploadsRef.current[variant.label] : customerPhotosRef.current[idx];
-      const pendingUpload = photoUploadPromiseRef.current[idx];
-      if (pendingUpload) {
-        try {
-          const ready = await pendingUpload;
-          if (ready?.url) upload = ready;
-          else upload = variant ? variantLabelUploadsRef.current[variant.label] : customerPhotosRef.current[idx];
-        } catch (error) {
-          throw new Error(error.message || 'Photo upload did not finish. Please try again.');
-        }
-      }
-      if (!upload?.url) throw new Error('Please wait for the photo to finish uploading, then apply again.');
-      const adjustmentsObj = overrideAdjustments ? { ...getDefaultPreviewAdjustments(), ...overrideAdjustments } : getAreaAdjustments(idx);
-      setPreviewAdjustments((prev) => ({ ...prev, [idx]: adjustmentsObj }));
-      if (previewEnabled || variant) {
+    const variant = typeof idx === 'string' ? selectedVariantUploadOptions.find((option) => `variant-${option.label}` === idx) : null;
+    const area = variant
+      ? { label: variant.label, width: variant.previewWidth || 1, height: variant.previewHeight || 1, unit: variant.previewUnit || 'inch', frameImage: variant.previewFrameImage || '' }
+      : previewAreas[idx] || { label: `Photo ${Number(idx) + 1}`, width: 1, height: 1, unit: 'ratio' };
+    let upload = variant ? variantLabelUploadsRef.current[variant.label] : customerPhotosRef.current[idx];
+    if (!previewLoadUrls(upload).length) {
+      toast.error('Photo is still loading. Please try again in a moment.');
+      return false;
+    }
+
+    const adjustmentsObj = overrideAdjustments ? { ...getDefaultPreviewAdjustments(), ...overrideAdjustments } : getAreaAdjustments(idx);
+    setPreviewAdjustments((prev) => ({ ...prev, [idx]: adjustmentsObj }));
+
+    // Genie-style Apply: local preview only on the critical path; durable upload is background.
+    if (previewEnabled || variant) {
+      setSavingPreviewAreas((prev) => ({ ...prev, [idx]: true }));
+      try {
         imagePerfMark('apply:total:start');
         const rendered = await renderFinalPreviewImage(area, idx, upload, adjustmentsObj);
         let localPreviewUrl = '';
         if (rendered && typeof rendered !== 'string' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+          const previousLocal = savedPreviewFilesRef.current[idx]?.file?.previewUrl;
+          if (typeof previousLocal === 'string' && previousLocal.startsWith('blob:')) {
+            try { URL.revokeObjectURL(previousLocal); } catch {}
+          }
           localPreviewUrl = URL.createObjectURL(rendered);
-          // Update the card thumbnail immediately while persistence continues.
+          const sourceKey = upload?.url || liveBlobUrl(upload) || upload?.previewUrl || '';
           savedPreviewFilesRef.current[idx] = {
             file: { previewUrl: localPreviewUrl, type: 'image/jpeg', name: 'local-preview.jpg' },
-            sourceUrl: upload.url,
+            sourceUrl: sourceKey,
             adjustments: JSON.stringify(adjustmentsObj),
+            pending: true,
           };
           setSavedPreviewAreas((prev) => ({ ...prev, [idx]: true }));
+        } else {
+          throw new Error('Unable to generate the customized preview. Please try again.');
         }
-        const file = await uploadRenderedPreviewImage(rendered, area.label, idx, { localPreviewUrl });
-        imagePerfMeasure('apply:total', 'apply:total:start');
-        savedPreviewFilesRef.current[idx] = { file, sourceUrl: upload.url, adjustments: JSON.stringify(adjustmentsObj) };
+
+        // Close editor immediately after local card preview; persist in background.
+        previewSaveLocksRef.current.add(idx);
+        const persistToken = (photoUploadTokenRef.current[`persist-${idx}`] || 0) + 1;
+        photoUploadTokenRef.current[`persist-${idx}`] = persistToken;
+        const renderedBlob = rendered;
+        const localUrl = localPreviewUrl;
+        const adjustmentsSnapshot = JSON.stringify(adjustmentsObj);
+        void (async () => {
+          try {
+            let durableUpload = upload;
+            const pendingUpload = photoUploadPromiseRef.current[idx];
+            if (pendingUpload) {
+              const ready = await pendingUpload;
+              if (ready?.url) durableUpload = ready;
+              else durableUpload = variant ? variantLabelUploadsRef.current[variant.label] : customerPhotosRef.current[idx];
+            }
+            if (photoUploadTokenRef.current[`persist-${idx}`] !== persistToken) return;
+            if (!durableUpload?.url) throw new Error('Photo upload did not finish. Please try Apply again.');
+            const file = await uploadRenderedPreviewImage(renderedBlob, area.label, idx, { localPreviewUrl: localUrl });
+            if (photoUploadTokenRef.current[`persist-${idx}`] !== persistToken) return;
+            savedPreviewFilesRef.current[idx] = {
+              file,
+              sourceUrl: durableUpload.url,
+              adjustments: adjustmentsSnapshot,
+              pending: false,
+            };
+            setSavedPreviewAreas((prev) => ({ ...prev, [idx]: true }));
+            imagePerfMeasure('apply:total', 'apply:total:start');
+          } catch (error) {
+            if (photoUploadTokenRef.current[`persist-${idx}`] === persistToken) {
+              toast.error(error.message || 'Unable to save preview. Please try again.');
+            }
+          } finally {
+            if (photoUploadTokenRef.current[`persist-${idx}`] === persistToken) {
+              previewSaveLocksRef.current.delete(idx);
+              setSavingPreviewAreas((prev) => ({ ...prev, [idx]: false }));
+            }
+          }
+        })();
+      } catch (error) {
+        setSavingPreviewAreas((prev) => ({ ...prev, [idx]: false }));
+        toast.error(error.message || 'Unable to save preview. Please try again.');
+        return false;
+      } finally {
+        // Clear modal "Applying…" as soon as local bake finishes (background persist uses locks only).
+        setSavingPreviewAreas((prev) => ({ ...prev, [idx]: false }));
       }
+    } else {
       setSavedPreviewAreas((prev) => ({ ...prev, [idx]: true }));
-      toast.success('Photo updated for this frame');
-      return true;
-    } catch (error) {
-      toast.error(error.message || 'Unable to save preview. Please try again.');
-      return false;
-    } finally {
-      previewSaveLocksRef.current.delete(idx);
-      setSavingPreviewAreas((prev) => ({ ...prev, [idx]: false }));
     }
+
+    toast.success('Photo updated for this frame');
+    return true;
   };
-  const editPreviewArea = (idx) => { if (previewSaveLocksRef.current.has(idx)) return; delete savedPreviewFilesRef.current[idx]; setSavedPreviewAreas((prev) => ({ ...prev, [idx]: false })); };
+  const editPreviewArea = (idx) => {
+    photoUploadTokenRef.current[`persist-${idx}`] = (photoUploadTokenRef.current[`persist-${idx}`] || 0) + 1;
+    previewSaveLocksRef.current.delete(idx);
+    setSavingPreviewAreas((prev) => ({ ...prev, [idx]: false }));
+    const previousLocal = savedPreviewFilesRef.current[idx]?.file?.previewUrl;
+    if (typeof previousLocal === 'string' && previousLocal.startsWith('blob:')) {
+      try { URL.revokeObjectURL(previousLocal); } catch {}
+    }
+    delete savedPreviewFilesRef.current[idx];
+    setSavedPreviewAreas((prev) => ({ ...prev, [idx]: false }));
+  };
   const getProductPixelPayload = (extra = {}) => buildProductMetaPayload(product, {
     price: finalUnitPrice,
     quantity,
@@ -669,6 +723,7 @@ export default function ProductDetail({ product }) {
     if (jobs.length === 0) return;
     const openEditor = selectedFiles.length === 1 && jobs.length === 1;
     setUploadingCustomerPhotos(true);
+    const uploadPromises = [];
     try {
       for (const job of jobs) {
         const token = (photoUploadTokenRef.current[job.index] || 0) + 1;
@@ -676,7 +731,7 @@ export default function ProductDetail({ product }) {
         setUploadingPhotoSlots((prev) => ({ ...prev, [job.index]: true }));
         imagePerfMark('upload:job:start');
         const prepared = await prepareImageUpload(job.file);
-        // Show local blob under the uploading overlay before network completes (does not mark upload done).
+        // Instant local preview (Genie-style) — network continues in the background.
         const localPreview = {
           previewUrl: prepared.previewUrl || '',
           width: prepared.width || 0,
@@ -690,6 +745,8 @@ export default function ProductDetail({ product }) {
           setPreviewAdjustments((prev) => ({ ...prev, [job.index]: adjustmentsEarly }));
           setCustomerPhotos((prev) => setPhotoSlot(alignPhotoSlots(prev, photoSlotCount), job.index, localPreview));
         }
+        if (openEditor && localPreview.previewUrl) setEditorSlotKey(job.index);
+
         const uploadTask = (async () => {
           imagePerfMark('upload:network:start');
           const formData = new FormData();
@@ -699,50 +756,55 @@ export default function ProductDetail({ product }) {
           imagePerfMeasure('upload:network', 'upload:network:start');
           if (photoUploadTokenRef.current[job.index] !== token) return null;
           const uploadedFile = attachLocalPreview(data, prepared);
-          const area = previewAreas[job.index] || null;
-          const adjustments = adjustmentsForUploadedPhoto(prepared.width, prepared.height, area);
-          setActivePreviewSlot(job.index);
-          editPreviewArea(job.index);
-          setPreviewAdjustments((prev) => ({ ...prev, [job.index]: adjustments }));
+          // Preserve any edits already made in the editor — only attach durable URLs.
           setCustomerPhotos((prev) => setPhotoSlot(alignPhotoSlots(prev, photoSlotCount), job.index, uploadedFile));
           setUploadingPhotoSlots((prev) => ({ ...prev, [job.index]: false }));
           imagePerfMeasure('upload:job', 'upload:job:start');
           return uploadedFile;
         })();
         photoUploadPromiseRef.current[job.index] = uploadTask;
-        // Open the editor as soon as a local preview exists; Apply waits for persistence if needed.
-        if (openEditor && localPreview.previewUrl) setEditorSlotKey(job.index);
-        const uploadedFile = await uploadTask;
-        delete photoUploadPromiseRef.current[job.index];
-        if (!uploadedFile && photoUploadTokenRef.current[job.index] === token) {
-          throw new Error(`Failed to upload ${job.file.name}`);
-        }
-        if (openEditor && uploadedFile && !localPreview.previewUrl) setEditorSlotKey(job.index);
+        uploadPromises.push(
+          uploadTask
+            .then((uploadedFile) => {
+              delete photoUploadPromiseRef.current[job.index];
+              if (!uploadedFile && photoUploadTokenRef.current[job.index] === token) {
+                throw new Error(`Failed to upload ${job.file.name}`);
+              }
+              if (openEditor && uploadedFile && !localPreview.previewUrl) setEditorSlotKey(job.index);
+              return uploadedFile;
+            })
+            .catch((error) => {
+              delete photoUploadPromiseRef.current[job.index];
+              setUploadingPhotoSlots((prev) => ({ ...prev, [job.index]: false }));
+              setCustomerPhotos((prev) => {
+                const next = alignPhotoSlots(prev, photoSlotCount);
+                if (next[job.index] && !next[job.index].url) return clearPhotoSlot(next, job.index);
+                return next;
+              });
+              throw error;
+            })
+        );
       }
-      toast.success(jobs.length === 1 ? 'Photo uploaded' : `${jobs.length} photos uploaded`);
+      await Promise.all(uploadPromises);
+      toast.success(jobs.length === 1 ? 'Photo ready' : `${jobs.length} photos ready`);
       trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'customer_photos', photo_count: jobs.length }));
     } catch (error) {
       toast.error(error.message || 'Failed to upload photos');
-      setCustomerPhotos((prev) => {
-        let next = alignPhotoSlots(prev, photoSlotCount);
-        jobs.forEach((job) => {
-          if (next[job.index] && !next[job.index].url) next = clearPhotoSlot(next, job.index);
-        });
-        return next;
-      });
-      setUploadingPhotoSlots((prev) => {
-        const next = { ...prev };
-        jobs.forEach((job) => { next[job.index] = false; });
-        return next;
-      });
-      jobs.forEach((job) => { delete photoUploadPromiseRef.current[job.index]; });
-      if (openEditor) setEditorSlotKey(null);
+      if (openEditor) {
+        const stillLocal = jobs.some((job) => liveBlobUrl(customerPhotosRef.current[job.index]));
+        if (!stillLocal) setEditorSlotKey(null);
+      }
     } finally {
       setUploadingCustomerPhotos(false);
     }
   };
 
   const removeCustomerPhoto = (slotIndex) => {
+    photoUploadTokenRef.current[slotIndex] = (photoUploadTokenRef.current[slotIndex] || 0) + 1;
+    photoUploadTokenRef.current[`persist-${slotIndex}`] = (photoUploadTokenRef.current[`persist-${slotIndex}`] || 0) + 1;
+    delete photoUploadPromiseRef.current[slotIndex];
+    previewSaveLocksRef.current.delete(slotIndex);
+    setSavingPreviewAreas((prev) => ({ ...prev, [slotIndex]: false }));
     setCustomerPhotos((prev) => {
       const previewUrl = prev[slotIndex]?.previewUrl;
       if (typeof previewUrl === 'string' && previewUrl.startsWith('blob:')) URL.revokeObjectURL(previewUrl);
@@ -750,23 +812,24 @@ export default function ProductDetail({ product }) {
     });
     setActivePreviewSlot(slotIndex);
     if (editorSlotKey === slotIndex) setEditorSlotKey(null);
+    const previousLocal = savedPreviewFilesRef.current[slotIndex]?.file?.previewUrl;
+    if (typeof previousLocal === 'string' && previousLocal.startsWith('blob:')) {
+      try { URL.revokeObjectURL(previousLocal); } catch {}
+    }
     delete savedPreviewFilesRef.current[slotIndex];
     setSavedPreviewAreas((prev) => ({ ...prev, [slotIndex]: false }));
     setPreviewAdjustments((prev) => ({ ...prev, [slotIndex]: getDefaultPreviewAdjustments() }));
+    setUploadingPhotoSlots((prev) => ({ ...prev, [slotIndex]: false }));
   };
 
 
   const handleVariantLabelUpload = async (label, file) => {
     if (!label || !file) return;
+    const previewKey = `variant-${label}`;
     setUploadingVariantLabels((prev) => ({ ...prev, [label]: true }));
     try {
       const prepared = await prepareImageUpload(file);
-      const formData = new FormData();
-      appendImageUpload(formData, file, prepared);
-      const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
-      const data = await readJsonResponse(res, { fallbackError: 'Upload failed' });
-      const uploadedFile = attachLocalPreview(data, prepared);
-      editPreviewArea(`variant-${label}`);
+      editPreviewArea(previewKey);
       const variantArea = selectedVariantUploadOptions.find((entry) => entry.label === label)
         || { label, width: 1, height: 1, unit: 'inch' };
       const variantFrame = {
@@ -775,13 +838,39 @@ export default function ProductDetail({ product }) {
         height: Number(variantArea.previewHeight || variantArea.height || 1),
         unit: variantArea.previewUnit || variantArea.unit || 'inch',
       };
-      setPreviewAdjustments((prev) => ({ ...prev, [`variant-${label}`]: adjustmentsForUploadedPhoto(prepared.width, prepared.height, variantFrame) }));
+      const adjustments = adjustmentsForUploadedPhoto(prepared.width, prepared.height, variantFrame);
+      setPreviewAdjustments((prev) => ({ ...prev, [previewKey]: adjustments }));
+      const localPreview = {
+        previewUrl: prepared.previewUrl || '',
+        width: prepared.width || 0,
+        height: prepared.height || 0,
+        label,
+      };
+      if (localPreview.previewUrl) {
+        setVariantLabelUploads((prev) => ({ ...prev, [label]: localPreview }));
+        setEditorSlotKey(previewKey);
+      }
+      const formData = new FormData();
+      appendImageUpload(formData, file, prepared);
+      const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
+      const data = await readJsonResponse(res, { fallbackError: 'Upload failed' });
+      const uploadedFile = attachLocalPreview(data, prepared);
       setVariantLabelUploads((prev) => ({ ...prev, [label]: { ...uploadedFile, label } }));
-      setEditorSlotKey(`variant-${label}`);
-      toast.success(`${label} image uploaded`);
+      if (!localPreview.previewUrl) setEditorSlotKey(previewKey);
+      toast.success(`${label} photo ready`);
       trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'variant_label_upload', field_label: label, file_type: data.type || file.type || '' }));
     } catch (error) {
       toast.error(error.message || 'Failed to upload image');
+      setVariantLabelUploads((prev) => {
+        const current = prev[label];
+        if (current && !current.url) {
+          const next = { ...prev };
+          delete next[label];
+          return next;
+        }
+        return prev;
+      });
+      if (editorSlotKey === previewKey) setEditorSlotKey(null);
     } finally {
       setUploadingVariantLabels((prev) => ({ ...prev, [label]: false }));
     }
@@ -1200,18 +1289,18 @@ export default function ProductDetail({ product }) {
                         label={selected.label}
                         sizeLabel={areaSizeLabel(variantArea, previewKey)}
                         required
-                        missingRequired={!upload?.url}
+                        missingRequired={!upload?.url && !liveBlobUrl(upload)}
                         {...slotCardPhotoProps(upload, previewKey)}
-                        uploading={isUploading}
-                        disabled={Boolean(actionLoading) || savingPreviewAreas[previewKey]}
+                        uploading={isUploading && !liveBlobUrl(upload) && !upload?.url}
+                        disabled={Boolean(actionLoading)}
                         orientation={adjustments.orientation}
-                        orientationLabel={upload?.url ? orientationCaption(adjustments.orientation) : ''}
+                        orientationLabel={(upload?.url || liveBlobUrl(upload)) ? orientationCaption(adjustments.orientation) : ''}
                         aspectWidth={oriented.width}
                         aspectHeight={oriented.height}
                         fitMode={adjustments.fitMode}
                         onUpload={(files) => handleVariantLabelUpload(selected.label, files[0])}
                         onRemove={() => removeVariantLabelUpload(selected.label)}
-                        onEdit={upload?.url ? () => setEditorSlotKey(previewKey) : undefined}
+                        onEdit={(upload?.url || liveBlobUrl(upload) || upload?.previewUrl) ? () => setEditorSlotKey(previewKey) : undefined}
                         instructions={selected.previewInstructions || ''}
                       />
                     );
@@ -1253,19 +1342,19 @@ export default function ProductDetail({ product }) {
                         label={label}
                         sizeLabel={areaSizeLabel(area, idx)}
                         required={slotRequired}
-                        missingRequired={slotRequired && !photo?.url}
+                        missingRequired={slotRequired && !photo?.url && !liveBlobUrl(photo)}
                         {...slotCardPhotoProps(photo, idx)}
-                        uploading={!!uploadingPhotoSlots[idx]}
-                        disabled={previewSaveLocksRef.current.size > 0 || Boolean(actionLoading) || uploadingCustomerPhotos}
+                        uploading={!!uploadingPhotoSlots[idx] && !liveBlobUrl(photo) && !photo?.url}
+                        disabled={Boolean(actionLoading)}
                         orientation={adjustments.orientation}
-                        orientationLabel={photo?.url ? orientationCaption(adjustments.orientation) : ''}
+                        orientationLabel={(photo?.url || liveBlobUrl(photo)) ? orientationCaption(adjustments.orientation) : ''}
                         aspectWidth={oriented.width}
                         aspectHeight={oriented.height}
                         fitMode={adjustments.fitMode}
-                        multiple={!photo?.url && photoSlotCount > 1}
+                        multiple={!photo?.url && !liveBlobUrl(photo) && photoSlotCount > 1}
                         onUpload={(files) => handleCustomerPhotoUpload(files, files.length === 1 ? idx : null)}
                         onRemove={() => removeCustomerPhoto(idx)}
-                        onEdit={photo?.url ? () => setEditorSlotKey(idx) : undefined}
+                        onEdit={(photo?.url || liveBlobUrl(photo) || photo?.previewUrl) ? () => setEditorSlotKey(idx) : undefined}
                         instructions={area?.instructions || ''}
                       />
                     );
@@ -1513,7 +1602,11 @@ export default function ProductDetail({ product }) {
         fallbackUrl={stableUploadUrl(editorPhoto)}
         baseline={editorSlotKey !== null ? getAreaAdjustments(editorSlotKey) : getDefaultPreviewAdjustments()}
         saving={Boolean(savingPreviewAreas[editorSlotKey])}
-        replacing={Boolean(Number.isInteger(editorSlotKey) ? uploadingPhotoSlots[editorSlotKey] : uploadingVariantLabels[editorVariantLabel])}
+        replacing={Boolean(
+          (Number.isInteger(editorSlotKey) ? uploadingPhotoSlots[editorSlotKey] : uploadingVariantLabels[editorVariantLabel])
+          && !liveBlobUrl(editorPhoto)
+          && !editorPhotoUrl
+        )}
         onClose={() => setEditorSlotKey(null)}
         onApply={async (draft) => {
           const saved = await savePreviewArea(editorSlotKey, draft);

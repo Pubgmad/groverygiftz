@@ -20,20 +20,29 @@ export function clearPhotoSlot(slots = [], index) {
   return setPhotoSlot(slots, index, null);
 }
 
+/** Slot is occupied by a durable URL or a live local preview (Genie-style early blob). */
+export function slotHasPhoto(photo) {
+  if (!photo) return false;
+  if (photo.url) return true;
+  const preview = String(photo.previewUrl || '');
+  return Boolean(preview);
+}
+
 export function filledPhotos(slots = []) {
+  // Cart/order only use durable server URLs.
   return slots.filter((photo) => photo?.url);
 }
 
 export function filledPhotoCount(slots = []) {
-  return filledPhotos(slots).length;
+  return slots.filter((photo) => slotHasPhoto(photo)).length;
 }
 
 export function firstEmptyPhotoSlot(slots = []) {
-  return slots.findIndex((photo) => !photo?.url);
+  return slots.findIndex((photo) => !slotHasPhoto(photo));
 }
 
 export function emptySlotIndexes(slots = []) {
-  return slots.map((photo, index) => (photo?.url ? -1 : index)).filter((index) => index >= 0);
+  return slots.map((photo, index) => (slotHasPhoto(photo) ? -1 : index)).filter((index) => index >= 0);
 }
 
 export function planPhotoUploads(slots = [], files = [], slotIndex = null, count) {
