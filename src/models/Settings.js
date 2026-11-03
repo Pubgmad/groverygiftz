@@ -84,6 +84,17 @@ const SettingsSchema = new mongoose.Schema({
 
   heroEyebrow: { type: String, default: '' },
   heroTrustBadges: [{ type: String }],
+  productTrustStats: {
+    enabled: { type: Boolean, default: false },
+    heading: { type: String, default: '' },
+    items: [{
+      value: { type: String, default: '' },
+      label: { type: String, default: '' },
+      icon: { type: String, default: 'spark' },
+      sortOrder: { type: Number, default: 0 },
+      isActive: { type: Boolean, default: true },
+    }],
+  },
   homeCollectionsEyebrow: { type: String, default: '' },
   homeCollectionsTitle: { type: String, default: '' },
   homeCollectionsSubtitle: { type: String, default: '' },

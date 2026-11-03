@@ -106,6 +106,122 @@ export default function AdminHomeGiftSettings({ form, setForm }) {
         <div><label className="block text-sm font-medium mb-1">Subtitle</label><textarea value={form.newsletterSubtitle} onChange={(e) => setForm((p) => ({ ...p, newsletterSubtitle: e.target.value }))} className="w-full border rounded-lg px-4 py-2" rows={2} /></div>
       </div>
 
+      <div className="bg-white p-6 rounded-xl border space-y-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="font-bold text-lg">Product page trust statistics</h2>
+            <p className="text-sm text-gray-500">Global achievements shown on product pages after reviews/videos. Values are admin-entered only—nothing is invented.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setForm((p) => ({
+              ...p,
+              productTrustStats: {
+                ...(p.productTrustStats || {}),
+                items: [...(p.productTrustStats?.items || []), { value: '', label: '', icon: 'spark', sortOrder: (p.productTrustStats?.items || []).length, isActive: true }],
+              },
+            }))}
+            className="rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white"
+          >
+            Add statistic
+          </button>
+        </div>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={!!form.productTrustStats?.enabled}
+            onChange={(e) => setForm((p) => ({ ...p, productTrustStats: { ...(p.productTrustStats || {}), enabled: e.target.checked } }))}
+          />
+          Show trust statistics on product pages
+        </label>
+        <div>
+          <label className="block text-sm font-medium mb-1">Section heading (optional)</label>
+          <input
+            value={form.productTrustStats?.heading || ''}
+            onChange={(e) => setForm((p) => ({ ...p, productTrustStats: { ...(p.productTrustStats || {}), heading: e.target.value } }))}
+            className="w-full border rounded-lg px-4 py-2"
+            placeholder="Why customers trust GroveryGiftz"
+          />
+        </div>
+        {(form.productTrustStats?.items || []).length === 0 ? (
+          <p className="rounded-lg bg-gray-50 px-4 py-3 text-sm text-gray-500">No statistics configured yet.</p>
+        ) : null}
+        {(form.productTrustStats?.items || []).map((item, index) => (
+          <div key={index} className="grid gap-3 rounded-xl border bg-gray-50 p-3 md:grid-cols-4">
+            <div>
+              <label className="block text-xs font-medium mb-1">Value</label>
+              <input
+                value={item.value || ''}
+                onChange={(e) => setForm((p) => {
+                  const items = [...(p.productTrustStats?.items || [])];
+                  items[index] = { ...items[index], value: e.target.value };
+                  return { ...p, productTrustStats: { ...(p.productTrustStats || {}), items } };
+                })}
+                className="w-full border rounded-lg px-3 py-2 text-sm bg-white"
+                placeholder="e.g. 6+ years"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1">Label</label>
+              <input
+                value={item.label || ''}
+                onChange={(e) => setForm((p) => {
+                  const items = [...(p.productTrustStats?.items || [])];
+                  items[index] = { ...items[index], label: e.target.value };
+                  return { ...p, productTrustStats: { ...(p.productTrustStats || {}), items } };
+                })}
+                className="w-full border rounded-lg px-3 py-2 text-sm bg-white"
+                placeholder="making photo frames"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1">Icon</label>
+              <select
+                value={item.icon || 'spark'}
+                onChange={(e) => setForm((p) => {
+                  const items = [...(p.productTrustStats?.items || [])];
+                  items[index] = { ...items[index], icon: e.target.value };
+                  return { ...p, productTrustStats: { ...(p.productTrustStats || {}), items } };
+                })}
+                className="w-full border rounded-lg px-3 py-2 text-sm bg-white"
+              >
+                <option value="spark">Award</option>
+                <option value="users">Users</option>
+                <option value="star">Star</option>
+                <option value="heart">Heart</option>
+              </select>
+            </div>
+            <div className="flex items-end justify-between gap-2">
+              <label className="flex items-center gap-1 text-xs">
+                <input
+                  type="checkbox"
+                  checked={item.isActive !== false}
+                  onChange={(e) => setForm((p) => {
+                    const items = [...(p.productTrustStats?.items || [])];
+                    items[index] = { ...items[index], isActive: e.target.checked };
+                    return { ...p, productTrustStats: { ...(p.productTrustStats || {}), items } };
+                  })}
+                />
+                Active
+              </label>
+              <button
+                type="button"
+                className="text-sm text-red-500"
+                onClick={() => setForm((p) => ({
+                  ...p,
+                  productTrustStats: {
+                    ...(p.productTrustStats || {}),
+                    items: (p.productTrustStats?.items || []).filter((_, i) => i !== index),
+                  },
+                }))}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
     </>
   );
 }

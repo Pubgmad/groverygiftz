@@ -1,17 +1,8 @@
 'use client';
 
 import { useId, useMemo, useState } from 'react';
-import { FiBookOpen, FiChevronDown, FiInfo, FiTruck } from 'react-icons/fi';
-import { getDeliveryEstimateDisplay } from '@/lib/deliveryEstimateDisplay';
-import { formatPrice } from '@/lib/utils';
-
-function hasHtmlContent(value) {
-  const text = String(value || '')
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .trim();
-  return text.length > 0;
-}
+import { FiBookOpen, FiChevronDown, FiHelpCircle, FiInfo } from 'react-icons/fi';
+import { hasRichTextContent, sanitizeRichHtml } from '@/lib/sanitizeRichHtml';
 
 function AccordionRow({ id, title, icon, open, onToggle, children }) {
   const panelId = `${id}-panel`;
@@ -53,34 +44,32 @@ function AccordionRow({ id, title, icon, open, onToggle, children }) {
   );
 }
 
-export default function AboutThisProduct({
-  product,
-  settings,
-  selectedDeliveryState = '',
-  selectedDelivery = null,
-}) {
+export default function AboutThisProduct({ product }) {
   const baseId = useId();
   const about = product?.aboutThisProduct || {};
-  const descriptionHtml = String(product?.description || '');
+  const descriptionHtml = sanitizeRichHtml(String(product?.description || ''));
   const instructionsText = String(about.instructions || product?.customizationPreview?.instructions || '').trim();
-  const deliveryNotes = String(about.deliveryNotes || '').trim();
-  const estimate = useMemo(
-    () => getDeliveryEstimateDisplay(settings, selectedDeliveryState),
-    [settings, selectedDeliveryState]
+  const faqs = useMemo(
+    () => (product?.faqs || [])
+      .filter((faq) => faq?.isActive !== false && String(faq?.question || '').trim() && hasRichTextContent(faq?.answer))
+      .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)),
+    [product?.faqs]
   );
 
   const sections = useMemo(() => {
     const next = [];
-    if (!about.hideDescription && hasHtmlContent(descriptionHtml)) {
+    if (!about.hideDescription && hasRichTextContent(descriptionHtml)) {
       next.push({
         key: 'description',
         title: 'Description',
         icon: <FiInfo size={15} />,
         body: (
-          <div
-            className="prose prose-sm max-w-none break-words text-gray-600 [&_img]:max-w-full [&_table]:block [&_table]:w-full [&_table]:overflow-x-auto"
-            dangerouslySetInnerHTML={{ __html: descriptionHtml }}
-          />
+          <div className="mx-auto w-full max-w-prose text-left">
+            <div
+              className="prose prose-sm max-w-none break-words text-left text-gray-600 [&_img]:max-w-full [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2"
+              dangerouslySetInnerHTML={{ __html: descriptionHtml }}
+            />
+          </div>
         ),
       });
     }
@@ -89,42 +78,26 @@ export default function AboutThisProduct({
         key: 'instructions',
         title: 'Instructions',
         icon: <FiBookOpen size={15} />,
-        body: <p className="whitespace-pre-wrap break-words">{instructionsText}</p>,
+        body: <p className="mx-auto max-w-prose whitespace-pre-wrap break-words text-left">{instructionsText}</p>,
       });
     }
-    if (!about.hideDelivery) {
+    faqs.forEach((faq, index) => {
       next.push({
-        key: 'delivery',
-        title: 'Delivery Information',
-        icon: <FiTruck size={15} />,
+        key: `faq-${index}`,
+        title: String(faq.question).trim(),
+        icon: <FiHelpCircle size={15} />,
         body: (
-          <div className="space-y-2">
-            {estimate.status === 'ready' ? (
-              <>
-                <p>
-                  <span className="font-semibold text-gray-800">Estimated delivery: </span>
-                  {estimate.durationLabel}
-                  {estimate.expectedByLabel ? ` · Expected by ${estimate.expectedByLabel}` : ''}
-                </p>
-                {estimate.fullText ? <p className="text-xs text-gray-500">{estimate.fullText}</p> : null}
-              </>
-            ) : (
-              <p>{estimate.disclaimer}</p>
-            )}
-            {selectedDeliveryState && selectedDelivery ? (
-              <p>
-                <span className="font-semibold text-gray-800">Delivery charge for {selectedDeliveryState}: </span>
-                {Number(selectedDelivery.cost) === 0 ? 'FREE' : formatPrice(selectedDelivery.cost)}
-              </p>
-            ) : null}
-            {deliveryNotes ? <p className="whitespace-pre-wrap break-words">{deliveryNotes}</p> : null}
-            {estimate.status === 'ready' ? <p className="text-xs text-gray-500">{estimate.disclaimer}</p> : null}
+          <div className="mx-auto w-full max-w-prose text-left">
+            <div
+              className="prose prose-sm max-w-none break-words text-left text-gray-600 [&_a]:text-primary-700 [&_a]:underline"
+              dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(faq.answer) }}
+            />
           </div>
         ),
       });
-    }
+    });
     return next;
-  }, [about.hideDelivery, about.hideDescription, about.hideInstructions, deliveryNotes, descriptionHtml, estimate, instructionsText, selectedDelivery, selectedDeliveryState]);
+  }, [about.hideDescription, about.hideInstructions, descriptionHtml, faqs, instructionsText]);
 
   const [openKey, setOpenKey] = useState('');
 
@@ -136,7 +109,7 @@ export default function AboutThisProduct({
         <h2 id={`${baseId}-heading`} className="font-display text-base font-bold text-gray-950">
           About This Product
         </h2>
-        <p className="mt-0.5 text-xs text-gray-500">Product details managed by the store admin</p>
+        <p className="mt-0.5 text-xs text-gray-500">Details, instructions, and answers managed by the store admin</p>
       </div>
       <div className="px-3 sm:px-4">
         {sections.map((section) => (

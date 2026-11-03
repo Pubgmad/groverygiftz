@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const path = require('node:path');
+const path = require('path');
 const vm = require('node:vm');
 const { test } = require('node:test');
 
@@ -12,16 +12,34 @@ test('unwanted promo statements are removed from ProductDetail', () => {
   assert.equal(/dangerouslySetInnerHTML=\{\{\s*__html:\s*product\.description\s*\}\}/.test(source), false);
 });
 
-test('aboutThisProduct accordion component exists and uses admin/delivery sources', () => {
+test('About This Product appears after How to buy and no longer duplicates delivery', () => {
+  const detail = fs.readFileSync('src/components/product/ProductDetail.js', 'utf8');
+  const about = fs.readFileSync('src/components/product/AboutThisProduct.js', 'utf8');
+  const howToBuyAt = detail.indexOf('How to buy this gift');
+  const aboutAt = detail.indexOf('<AboutThisProduct');
+  assert.ok(howToBuyAt > 0 && aboutAt > howToBuyAt, 'AboutThisProduct must render after How to buy');
+  assert.equal(about.includes('Delivery Information'), false);
+  assert.equal(about.includes('getDeliveryEstimateDisplay'), false);
+  assert.match(about, /faqs/);
+  assert.match(about, /sanitizeRichHtml/);
+});
+
+test('preview section no longer shows the long hardcoded guidance paragraph', () => {
+  const source = fs.readFileSync('src/components/product/ProductDetail.js', 'utf8');
+  assert.equal(source.includes('Offer is Only for Normal'), false);
+  assert.equal(source.includes('Your frame automatically switches between portrait and landscape'), false);
+  assert.match(source, /shortGuidance/);
+});
+
+test('aboutThisProduct accordion component exists and uses admin sources', () => {
   const source = fs.readFileSync('src/components/product/AboutThisProduct.js', 'utf8');
   assert.match(source, /About This Product/);
-  assert.match(source, /getDeliveryEstimateDisplay/);
   assert.match(source, /aria-expanded/);
   assert.match(source, /about\.instructions \|\| product\?\.customizationPreview\?\.instructions/);
   assert.match(source, /hideDescription/);
 });
 
-test('sanitizeProductPayload keeps aboutThisProduct admin fields', () => {
+test('sanitizeProductPayload keeps aboutThisProduct and new PDP fields', () => {
   const source = fs.readFileSync(path.join(__dirname, '../src/lib/productPayload.js'), 'utf8').replace(/export /g, '');
   const context = { module: { exports: {} }, exports: {}, console };
   vm.createContext(context);
@@ -36,6 +54,11 @@ test('sanitizeProductPayload keeps aboutThisProduct admin fields', () => {
       hideInstructions: 0,
       hideDelivery: 'yes',
     },
+    faqs: [{ question: 'Q1', answer: '<b>A1</b>', isActive: true }],
+    makingVideos: [{ url: '/media/a.mp4', title: 'Office', sortOrder: 0 }],
+    stockAlert: { enabled: true, lowStockThreshold: '3' },
+    purchaseActivity: { enabled: 1, periodDays: '14', labelTemplate: '{count} bought' },
+    customizationPreview: { shortGuidance: 'Upload and adjust', areas: [{ width: '8', height: '10' }] },
   });
   assert.equal(JSON.stringify(body.aboutThisProduct), JSON.stringify({
     instructions: ' Upload clear photos ',
@@ -44,4 +67,11 @@ test('sanitizeProductPayload keeps aboutThisProduct admin fields', () => {
     hideInstructions: false,
     hideDelivery: true,
   }));
+  assert.equal(body.faqs[0].question, 'Q1');
+  assert.equal(body.makingVideos[0].url, '/media/a.mp4');
+  assert.equal(body.stockAlert.lowStockThreshold, 3);
+  assert.equal(body.purchaseActivity.enabled, true);
+  assert.equal(body.purchaseActivity.periodDays, 14);
+  assert.equal(body.customizationPreview.shortGuidance, 'Upload and adjust');
+  assert.equal(body.customizationPreview.areas[0].width, 8);
 });

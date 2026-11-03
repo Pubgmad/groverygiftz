@@ -42,6 +42,7 @@ export default function AdminSettingsPage() {
     googleReviewsEnabled: false, googleReviewsSerpApiKey: '', googleReviewsPlaceId: '', googleReviewsDataId: '', googleReviewsSortBy: 'newestFirst', googleReviewsCacheHours: 12,
     heroEyebrow: '',
     heroTrustBadgesText: '',
+    productTrustStats: { enabled: false, heading: '', items: [] },
     homeCollectionsEyebrow: '',
     homeCollectionsTitle: '',
     homeCollectionsSubtitle: '',
@@ -129,6 +130,11 @@ export default function AdminSettingsPage() {
         googleReviewsCacheHours: d.googleReviewsCacheHours ?? 12,
         heroEyebrow: d.heroEyebrow || '',
         heroTrustBadgesText: (d.heroTrustBadges && d.heroTrustBadges.length) ? d.heroTrustBadges.join('\n') : '',
+        productTrustStats: {
+          enabled: !!d.productTrustStats?.enabled,
+          heading: d.productTrustStats?.heading || '',
+          items: Array.isArray(d.productTrustStats?.items) ? d.productTrustStats.items : [],
+        },
         homeCollectionsEyebrow: d.homeCollectionsEyebrow || '',
         homeCollectionsTitle: d.homeCollectionsTitle || '',
         homeCollectionsSubtitle: d.homeCollectionsSubtitle || '',
@@ -195,6 +201,19 @@ export default function AdminSettingsPage() {
       giftFinderTypes: (rest.giftFinderTypes || []).filter((r) => r.value?.trim() && r.label?.trim()),
       giftFinderQuickPicks: (rest.giftFinderQuickPicks || []).filter((r) => r.label?.trim()),
       hotspotSpots: (rest.hotspotSpots || []).filter((s) => s.label?.trim()),
+      productTrustStats: {
+        enabled: !!rest.productTrustStats?.enabled,
+        heading: String(rest.productTrustStats?.heading || '').trim(),
+        items: (rest.productTrustStats?.items || [])
+          .map((item, index) => ({
+            value: String(item?.value || '').trim(),
+            label: String(item?.label || '').trim(),
+            icon: String(item?.icon || 'spark').trim() || 'spark',
+            sortOrder: Number.isFinite(Number(item?.sortOrder)) ? Number(item.sortOrder) : index,
+            isActive: item?.isActive !== false,
+          }))
+          .filter((item) => item.value && item.label),
+      },
     };
     const res = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     setSaving(false);

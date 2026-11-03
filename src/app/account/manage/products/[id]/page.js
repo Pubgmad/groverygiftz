@@ -9,6 +9,12 @@ import { getCentralDeliveryEstimate } from '@/lib/centralDeliveryEstimates';
 import { FiPlus, FiX, FiVideo, FiUpload, FiImage, FiLoader } from 'react-icons/fi';
 import useAdminAccess from '@/hooks/useAdminAccess';
 import ReadOnlyBanner from '@/components/admin/ReadOnlyBanner';
+import {
+  ProductFaqEditor,
+  ProductMakingVideosEditor,
+  ProductPurchaseActivityEditor,
+  ProductStockAlertEditor,
+} from '@/components/admin/ProductContentEditors';
 
 const INDIAN_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
@@ -52,8 +58,8 @@ export default function AdminProductForm({ params }) {
   const [shippingTemplates, setShippingTemplates] = useState([]);
   const [videoUploading, setVideoUploading] = useState(false);
   const [form, setForm] = useState({
-    title: '', description: '', aboutThisProduct: { instructions: '', deliveryNotes: '', hideDescription: false, hideInstructions: false, hideDelivery: false }, images: [], responsiveImages: { desktop: [], tablet: [], mobile: [] }, productVideo: { url: '', name: '', poster: '' }, customizationPreview: { enabled: false, title: 'Preview your personalized gift', frameImage: '', aspectRatio: '1:1', shape: 'rectangle', instructions: '', requiredImageCount: 0, maxImageCount: 0, areas: [] }, delivery: defaultDelivery(), regularPrice: '', salePrice: '', offerStartsAt: '', offerEndsAt: '',
-    stock: 100, collections: [], variants: [], customFields: [], collageEnabled: false, collageTemplates: [],
+    title: '', description: '', aboutThisProduct: { instructions: '', deliveryNotes: '', hideDescription: false, hideInstructions: false, hideDelivery: true }, faqs: [], images: [], responsiveImages: { desktop: [], tablet: [], mobile: [] }, productVideo: { url: '', name: '', poster: '' }, makingVideosSection: { enabled: true, heading: 'See How Your Gift Is Made' }, makingVideos: [], customizationPreview: { enabled: false, title: 'Preview your personalized gift', frameImage: '', aspectRatio: '1:1', shape: 'rectangle', instructions: '', shortGuidance: '', requiredImageCount: 0, maxImageCount: 0, areas: [] }, delivery: defaultDelivery(), regularPrice: '', salePrice: '', offerStartsAt: '', offerEndsAt: '',
+    stock: 100, stockAlert: { enabled: true, lowStockThreshold: 5, showInStock: true, lowStockLabel: '', inStockLabel: '', outOfStockLabel: '' }, purchaseActivity: { enabled: false, periodDays: 30, labelTemplate: '' }, collections: [], variants: [], customFields: [], collageEnabled: false, collageTemplates: [],
     giftWrap: { enabled: false, price: 0 }, giftMessage: false, customerNotesEnabled: true,
     isQuoteOnly: false, isOffer: false, isFeatured: false, isBestSeller: false, isActive: true,
     seoTitle: '', seoDescription: '',
@@ -71,16 +77,33 @@ export default function AdminProductForm({ params }) {
             deliveryNotes: d.aboutThisProduct?.deliveryNotes || '',
             hideDescription: !!d.aboutThisProduct?.hideDescription,
             hideInstructions: !!d.aboutThisProduct?.hideInstructions,
-            hideDelivery: !!d.aboutThisProduct?.hideDelivery,
+            hideDelivery: true,
           },
+          faqs: Array.isArray(d.faqs) ? d.faqs : [],
           images: d.images || [], responsiveImages: { desktop: d.responsiveImages?.desktop || d.images || [], tablet: d.responsiveImages?.tablet || [], mobile: d.responsiveImages?.mobile || [] },
           productVideo: d.productVideo || { url: '', name: '', poster: '' },
-          customizationPreview: { ...(d.customizationPreview || { enabled: false, title: 'Preview your personalized gift', frameImage: '', aspectRatio: '1:1', shape: 'rectangle', instructions: '' }), areas: normalizePreviewAreas(d.customizationPreview || {}) },
+          makingVideosSection: { enabled: d.makingVideosSection?.enabled !== false, heading: d.makingVideosSection?.heading || 'See How Your Gift Is Made' },
+          makingVideos: Array.isArray(d.makingVideos) ? d.makingVideos : [],
+          customizationPreview: { ...(d.customizationPreview || { enabled: false, title: 'Preview your personalized gift', frameImage: '', aspectRatio: '1:1', shape: 'rectangle', instructions: '', shortGuidance: '' }), shortGuidance: d.customizationPreview?.shortGuidance || '', areas: normalizePreviewAreas(d.customizationPreview || {}) },
           delivery: { ...defaultDelivery(), ...(d.delivery || {}), stateOverrides: d.delivery?.stateOverrides || [] },
           regularPrice: d.regularPrice || '', salePrice: d.salePrice || '',
           offerStartsAt: toDatetimeLocalInput(d.offerStartsAt),
           offerEndsAt: toDatetimeLocalInput(d.offerEndsAt),
-          stock: d.stock ?? 100, collections: d.collections?.map(c => c._id || c) || [],
+          stock: d.stock ?? 100,
+          stockAlert: {
+            enabled: d.stockAlert?.enabled !== false,
+            lowStockThreshold: d.stockAlert?.lowStockThreshold ?? 5,
+            showInStock: d.stockAlert?.showInStock !== false,
+            lowStockLabel: d.stockAlert?.lowStockLabel || '',
+            inStockLabel: d.stockAlert?.inStockLabel || '',
+            outOfStockLabel: d.stockAlert?.outOfStockLabel || '',
+          },
+          purchaseActivity: {
+            enabled: !!d.purchaseActivity?.enabled,
+            periodDays: d.purchaseActivity?.periodDays ?? 30,
+            labelTemplate: d.purchaseActivity?.labelTemplate || '',
+          },
+          collections: d.collections?.map(c => c._id || c) || [],
           variants: d.variants || [], customFields: d.customFields || [], collageEnabled: !!d.collageEnabled, collageTemplates: d.collageTemplates || [],
           giftWrap: d.giftWrap || { enabled: false, price: 0 }, giftMessage: d.giftMessage || false, customerNotesEnabled: d.customerNotesEnabled !== false,
           isQuoteOnly: d.isQuoteOnly || false, isOffer: d.isOffer || false, isFeatured: d.isFeatured || false, isBestSeller: d.isBestSeller || false,
@@ -230,7 +253,7 @@ export default function AdminProductForm({ params }) {
           <div className="rounded-xl border border-primary-100 bg-primary-50/30 p-4 space-y-3">
             <div>
               <h3 className="font-semibold text-gray-900">About This Product (customer accordion)</h3>
-              <p className="text-xs text-gray-500">Optional sections. Empty sections stay hidden on the product page. Delivery timing still uses your central delivery estimates.</p>
+              <p className="text-xs text-gray-500">Appears after How to Buy. Description, Instructions, and FAQs only—delivery estimates stay in the assurance panel above the fold.</p>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Instructions</label>
@@ -243,17 +266,7 @@ export default function AdminProductForm({ params }) {
               />
               <p className="mt-1 text-xs text-gray-500">If left blank, customization general instructions are used when available.</p>
             </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Extra delivery notes</label>
-              <textarea
-                value={form.aboutThisProduct?.deliveryNotes || ''}
-                onChange={e => setForm(p => ({ ...p, aboutThisProduct: { ...(p.aboutThisProduct || {}), deliveryNotes: e.target.value } }))}
-                className="w-full border rounded-lg px-4 py-2 focus:outline-none focus:border-primary-500"
-                rows={2}
-                placeholder="Optional notes shown with the live delivery estimate"
-              />
-            </div>
-            <div className="grid gap-2 sm:grid-cols-3">
+            <div className="grid gap-2 sm:grid-cols-2">
               <label className="flex items-center gap-2 text-sm text-gray-700">
                 <input type="checkbox" checked={!form.aboutThisProduct?.hideDescription} onChange={e => setForm(p => ({ ...p, aboutThisProduct: { ...(p.aboutThisProduct || {}), hideDescription: !e.target.checked } }))} />
                 Show Description
@@ -262,12 +275,9 @@ export default function AdminProductForm({ params }) {
                 <input type="checkbox" checked={!form.aboutThisProduct?.hideInstructions} onChange={e => setForm(p => ({ ...p, aboutThisProduct: { ...(p.aboutThisProduct || {}), hideInstructions: !e.target.checked } }))} />
                 Show Instructions
               </label>
-              <label className="flex items-center gap-2 text-sm text-gray-700">
-                <input type="checkbox" checked={!form.aboutThisProduct?.hideDelivery} onChange={e => setForm(p => ({ ...p, aboutThisProduct: { ...(p.aboutThisProduct || {}), hideDelivery: !e.target.checked } }))} />
-                Show Delivery Info
-              </label>
             </div>
           </div>
+          <ProductFaqEditor faqs={form.faqs || []} onChange={(faqs) => setForm((p) => ({ ...p, faqs }))} />
           <label className="flex items-start gap-2 rounded-lg border bg-gray-50 p-3 text-sm font-medium text-gray-700">
             <input type="checkbox" checked={form.customerNotesEnabled !== false} onChange={e => setForm(p => ({ ...p, customerNotesEnabled: e.target.checked }))} className="mt-1" />
             <span><span className="block font-semibold text-gray-900">Customer Notes</span><span className="text-xs font-normal text-gray-500">Allow customers to optionally add product-specific instructions for this product.</span></span>
@@ -307,6 +317,13 @@ export default function AdminProductForm({ params }) {
           )}
         </div>
 
+        <ProductMakingVideosEditor
+          section={form.makingVideosSection || {}}
+          videos={form.makingVideos || []}
+          onSectionChange={(makingVideosSection) => setForm((p) => ({ ...p, makingVideosSection }))}
+          onVideosChange={(makingVideos) => setForm((p) => ({ ...p, makingVideos }))}
+        />
+
         {/* Customization Preview */}
         <div className="bg-white p-4 sm:p-6 rounded-xl border space-y-4">
           <div>
@@ -324,8 +341,9 @@ export default function AdminProductForm({ params }) {
           </label>
           <div className="grid md:grid-cols-2 gap-4">
             <div><label className="block text-sm font-medium mb-1">Preview Section Title</label><input value={form.customizationPreview?.title || ''} onChange={e => setForm(p => ({ ...p, customizationPreview: { ...p.customizationPreview, title: e.target.value } }))} className="w-full border rounded-lg px-4 py-2" placeholder="Preview your personalized gift" /></div>
-            <div><label className="block text-sm font-medium mb-1">General Instructions</label><input value={form.customizationPreview?.instructions || ''} onChange={e => setForm(p => ({ ...p, customizationPreview: { ...p.customizationPreview, instructions: e.target.value } }))} className="w-full border rounded-lg px-4 py-2" placeholder="Upload clear photos. Keep faces inside the safe area." /></div>
+            <div><label className="block text-sm font-medium mb-1">Short guidance (optional)</label><input value={form.customizationPreview?.shortGuidance || ''} onChange={e => setForm(p => ({ ...p, customizationPreview: { ...p.customizationPreview, shortGuidance: e.target.value } }))} className="w-full border rounded-lg px-4 py-2" placeholder="Upload photos, adjust the frame, then review before adding to cart." /></div>
           </div>
+          <div><label className="block text-sm font-medium mb-1">General Instructions (About accordion / fallback)</label><input value={form.customizationPreview?.instructions || ''} onChange={e => setForm(p => ({ ...p, customizationPreview: { ...p.customizationPreview, instructions: e.target.value } }))} className="w-full border rounded-lg px-4 py-2" placeholder="Upload clear photos. Keep faces inside the safe area." /></div>
           <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-4 space-y-3">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -374,6 +392,8 @@ export default function AdminProductForm({ params }) {
                 className="w-full border rounded-lg px-4 py-2 focus:outline-none focus:border-primary-500" />
             </div>
           </div>
+          <ProductStockAlertEditor stockAlert={form.stockAlert || {}} onChange={(stockAlert) => setForm((p) => ({ ...p, stockAlert }))} />
+          <ProductPurchaseActivityEditor purchaseActivity={form.purchaseActivity || {}} onChange={(purchaseActivity) => setForm((p) => ({ ...p, purchaseActivity }))} />
           <div className="grid md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">Offer Starts At</label>

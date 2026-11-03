@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useCart } from '@/context/CartContext';
 import { formatPrice, calcSavings, getEffectivePrice, isOfferActive, getVariantRegularPrice, getVariantSalePrice, getVariantEffectivePrice } from '@/lib/utils';
-import { getProductAvailableStock, getSelectedAvailableStock, hasVariantManagedStock, isProductSoldOut, isVariantOptionSoldOut } from '@/lib/stock';
+import { getSelectedAvailableStock, isProductSoldOut, isVariantOptionSoldOut } from '@/lib/stock';
 import { getCentralDeliveryEstimate } from '@/lib/centralDeliveryEstimates';
 import useDeliverySettings from '@/hooks/useDeliverySettings';
 import { buildProductMetaPayload, META_READY_EVENT, trackMetaCustomEvent, trackMetaEvent } from '@/lib/metaPixel';
@@ -20,6 +20,10 @@ import PhotoAdjuster from '@/components/product/PhotoAdjuster';
 import PhotoLimitDialog from '@/components/product/PhotoLimitDialog';
 import ProductAssurancePanel from '@/components/product/ProductAssurancePanel';
 import AboutThisProduct from '@/components/product/AboutThisProduct';
+import StockAvailabilityAlert from '@/components/product/StockAvailabilityAlert';
+import PurchaseActivityBadge from '@/components/product/PurchaseActivityBadge';
+import ProductMakingVideos from '@/components/product/ProductMakingVideos';
+import ProductTrustStats from '@/components/product/ProductTrustStats';
 import { imagePerfMark, imagePerfMeasure } from '@/lib/imagePerf';
 import { readJsonResponse } from '@/lib/safeJsonResponse';
 
@@ -58,7 +62,7 @@ const getStateOverride = (delivery, state) => (delivery?.stateOverrides || []).f
 const displayUploadUrl = (upload) => stableUploadUrl(upload);
 const getDefaultPreviewAdjustments = () => ({ zoom: 1, x: 0, y: 0, orientation: 'auto', rotation: 0, fitMode: 'fit' });
 
-export default function ProductDetail({ product }) {
+export default function ProductDetail({ product, purchaseActivityCount = 0 }) {
   const [selectedImage, setSelectedImage] = useState(0);
   const [quantity, setQuantity] = useState(1);
   const [selectedVariants, setSelectedVariants] = useState({});
@@ -208,8 +212,6 @@ export default function ProductDetail({ product }) {
     });
   }, [product._id, product.variants]);
   const selectedVariantOptions = Object.values(selectedVariants).filter(Boolean);
-  const variantManagedStock = hasVariantManagedStock(product);
-  const availableStock = getProductAvailableStock(product);
   const selectedAvailableStock = getSelectedAvailableStock(product, selectedVariantOptions);
   const purchaseLimit = Math.max(0, selectedAvailableStock);
   const selectedVariantUploadOptions = selectedVariantOptions.filter((selected) => selected?.requiresImageUpload && selected?.label);
@@ -1004,7 +1006,8 @@ export default function ProductDetail({ product }) {
 
       {/* Product Info */}
       <div>
-        <h1 className="text-2xl md:text-3xl font-display font-bold mb-4">{product.title}</h1>
+        <h1 className="text-2xl md:text-3xl font-display font-bold mb-3">{product.title}</h1>
+        <PurchaseActivityBadge product={product} purchaseCount={purchaseActivityCount} />
 
         <div className="flex flex-wrap items-center gap-3 mb-4">
           <span className="text-3xl font-bold text-primary-600">{showContactOnlyPrice ? 'Contact for Price' : formatPrice(finalUnitPrice)}</span>
@@ -1040,33 +1043,7 @@ export default function ProductDetail({ product }) {
 
         <ProductAssurancePanel settings={settings} selectedDeliveryState={selectedDeliveryState} />
 
-        {(isSoldOut || variantManagedStock || Number(product.stock) > 0) ? (
-          <div className="mb-6 rounded-xl bg-primary-50/60 px-4 py-3">
-            {isSoldOut ? (
-              <p className="text-sm font-semibold text-red-600">Out of stock</p>
-            ) : variantManagedStock ? (
-              <p className="text-sm text-gray-600">{availableStock} in stock across variants</p>
-            ) : Number(product.stock) > 0 && Number(product.stock) <= 15 ? (
-              <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-amber-800">
-                <span className="inline-flex items-center rounded-md bg-amber-100 px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-amber-900">
-                  Almost gone
-                </span>
-                Only {product.stock} in stock - order soon!
-              </p>
-            ) : Number(product.stock) > 0 && Number(product.stock) <= 40 ? (
-              <p className="text-sm font-medium text-amber-700">{product.stock} in stock - selling fast</p>
-            ) : Number(product.stock) > 0 ? (
-              <p className="text-sm text-gray-600">{product.stock} in stock</p>
-            ) : null}
-          </div>
-        ) : null}
-
-        <AboutThisProduct
-          product={product}
-          settings={settings}
-          selectedDeliveryState={selectedDeliveryState}
-          selectedDelivery={selectedDelivery}
-        />
+        <StockAvailabilityAlert product={product} selectedOptions={selectedVariantOptions} />
 
         {/* Variants */}
         {product.variants?.map((variant, vIdx) => (
@@ -1166,10 +1143,9 @@ export default function ProductDetail({ product }) {
         {(needsCustomerPhotos || selectedVariantUploadOptions.length > 0 || needsCollageUploads) && (
           <div className="mb-5 rounded-2xl border border-primary-100 bg-white p-4">
             <p className="font-display text-sm font-bold text-gray-950">{previewConfig.title || 'Preview Your Personalized Gift'}</p>
-            <p className="mt-2 text-xs leading-5 text-gray-600">
-              Upload clear, high-quality photos for the best printing results. Basic clarity and alignment may be applied while keeping your original photo. Your frame automatically switches between portrait and landscape to match each photo. Use Edit if you want to fit, fill, crop, or rotate. Any uncovered white space shown in the preview may also appear in the final print.
-            </p>
-            {previewConfig.instructions ? <p className="mt-2 rounded-lg bg-primary-50 px-3 py-2 text-xs text-primary-800">{previewConfig.instructions}</p> : null}
+            {String(previewConfig.shortGuidance || '').trim() ? (
+              <p className="mt-2 text-xs leading-5 text-gray-600">{String(previewConfig.shortGuidance).trim()}</p>
+            ) : null}
           </div>
         )}
         {selectedVariantUploadOptions.length > 0 && (
@@ -1407,6 +1383,9 @@ export default function ProductDetail({ product }) {
           </div>
         )}
 
+        <div className="mt-6">
+          <AboutThisProduct product={product} />
+        </div>
 
         {/* Product Reviews */}
         {(googleReviews.enabled || reviews.length > 0) && (
@@ -1468,6 +1447,9 @@ export default function ProductDetail({ product }) {
             )}
           </div>
         )}
+
+        <ProductMakingVideos product={product} />
+        <ProductTrustStats settings={settings} />
       </div>
 
       {/* Size Chart Modal */}
