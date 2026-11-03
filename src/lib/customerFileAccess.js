@@ -3,7 +3,14 @@ import { createHmac, timingSafeEqual } from 'crypto';
 const DISPLAY_TTL_SECONDS = 60 * 60 * 24 * 180; // 180 days — covers guest carts through checkout
 
 function signingSecret() {
-  return String(process.env.NEXTAUTH_SECRET || process.env.CUSTOMER_UPLOAD_SIGNING_SECRET || '').trim();
+  const secret = String(process.env.NEXTAUTH_SECRET || process.env.CUSTOMER_UPLOAD_SIGNING_SECRET || '').trim();
+  if (!secret && process.env.NODE_ENV !== 'test') {
+    // Warn operators — without a secret, display URLs cannot be signed and guest
+    // customers will receive 401 when the editor tries to load their just-uploaded photo.
+    // Set NEXTAUTH_SECRET (or CUSTOMER_UPLOAD_SIGNING_SECRET) in your production .env.
+    console.warn('[customerFileAccess] NEXTAUTH_SECRET is not set. Customer file display URLs will not be signed and guest access will be denied. Set NEXTAUTH_SECRET in production.');
+  }
+  return secret;
 }
 
 function encodePath(relativePath = '') {

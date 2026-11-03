@@ -13,6 +13,8 @@ export default function PhotoAdjuster({
   extraLabel = '',
   area,
   photoUrl,
+  blobUrl = '',
+  fallbackUrl = '',
   baseline,
   saving = false,
   replacing = false,
@@ -91,7 +93,15 @@ export default function PhotoAdjuster({
     if (!open || !node) return undefined;
     const update = () => {
       const rect = node.getBoundingClientRect();
-      setBoxPx({ width: rect.width, height: rect.height });
+      // getBoundingClientRect returns border-box (content + padding).
+      // Subtract computed padding so boxPx matches the CSS content-box that
+      // maxWidth/maxHeight:'100%' resolves against — otherwise framePx can be
+      // up to padding-px taller than the content area, maxHeight clips the
+      // rendered height while leaving the width unchanged, corrupting the ratio.
+      const cs = getComputedStyle(node);
+      const padH = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+      const padV = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+      setBoxPx({ width: Math.max(0, rect.width - padH), height: Math.max(0, rect.height - padV) });
     };
     update();
     const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(update) : null;
@@ -218,14 +228,29 @@ export default function PhotoAdjuster({
   };
 
   const handleImageError = () => {
-    // If blob: failed, try durable display URL once (photoUrl may already be displayUrl).
-    if (!triedFallbackRef.current && activeSrc?.startsWith('blob:') && photoUrl && photoUrl !== activeSrc && !photoUrl.startsWith('blob:')) {
+    const candidates = [blobUrl, fallbackUrl, photoUrl]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+      .filter((value, index, list) => list.indexOf(value) === index)
+      .filter((value) => value !== activeSrc);
+
+    if (!triedFallbackRef.current && candidates.length > 0) {
       triedFallbackRef.current = true;
       setImageReady(false);
       setImageError('');
-      setActiveSrc(photoUrl);
+      setActiveSrc(candidates[0]);
       return;
     }
+
+    // Allow a second alternate candidate before giving up (blob <-> signed).
+    if (triedFallbackRef.current === true && candidates.length > 1) {
+      triedFallbackRef.current = 'done';
+      setImageReady(false);
+      setImageError('');
+      setActiveSrc(candidates[1]);
+      return;
+    }
+
     setImageReady(false);
     setImageError('This photo could not be loaded. Please choose another image.');
   };
@@ -265,11 +290,18 @@ export default function PhotoAdjuster({
             ref={frameRef}
             className="relative overflow-hidden border-4 border-gray-900 bg-white shadow-sm"
             style={{
-              width: frameReady ? `${framePx.width}px` : '100%',
-              height: frameReady ? `${framePx.height}px` : undefined,
-              aspectRatio: frameReady ? undefined : `${frame.width} / ${frame.height}`,
-              maxWidth: '100%',
-              maxHeight: '100%',
+              width: frameReady ? `${framePx.width}px` : 'auto',
+              height: frameReady ? `${framePx.height}px` : '100%',
+              // Keep aspect-ratio even after frameReady so the frame never collapses to square
+              // while ResizeObserver is firing asynchronously on iOS Safari.
+              aspectRatio: `${frame.width} / ${frame.height}`,
+              // Fallback only: when we have not yet measured the stage, constrain width to the
+              // content area so the portrait aspect-ratio extends vertically (not horizontally).
+              // Using height:100% + maxWidth rather than width:100% + maxHeight is critical:
+              // the old pattern let browsers that pre-date transferred-constraint support
+              // (Chrome<88 / Safari<15) render the frame as stageContentW × stageContentH ≈ square.
+              // With height:100%, width is derived from the ratio and never exceeds maxWidth.
+              maxWidth: frameReady ? undefined : '100%',
               touchAction: 'none',
             }}
             onPointerDown={onPointerDown}

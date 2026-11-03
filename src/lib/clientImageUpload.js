@@ -114,6 +114,9 @@ export async function prepareImageUpload(file) {
   const previewUrl = browserImage ? URL.createObjectURL(previewBlob) : '';
 
   // Prefer createImageBitmap with EXIF orientation — do not revoke the blob on probe failure.
+  // iOS Safari ≤15: createImageBitmap exists but the imageOrientation option throws DOMException.
+  // The catch handles that, but we also try without the option first on platforms that don't support it,
+  // by catching the error and retrying without options.
   if (previewUrl && typeof createImageBitmap === 'function') {
     try {
       const bitmap = await createImageBitmap(previewBlob, { imageOrientation: 'from-image' });
@@ -127,7 +130,19 @@ export async function prepareImageUpload(file) {
         return { previewUrl, previewFile: null, previewName: '', width, height };
       }
     } catch {
-      // Fall through to Image + EXIF heuristic without having revoked previewUrl.
+      // imageOrientation option not supported (iOS Safari ≤15) — retry without it to still get dimensions.
+      try {
+        const bitmap = await createImageBitmap(previewBlob);
+        const width = bitmap.width;
+        const height = bitmap.height;
+        bitmap.close?.();
+        if (width > 0 && height > 0) {
+          // Dimensions may be pre-rotation on iOS ≤15; EXIF heuristic below will correct them.
+          return { previewUrl, previewFile: null, previewName: '', width, height };
+        }
+      } catch {
+        // Fall through to Image + EXIF heuristic without having revoked previewUrl.
+      }
     }
   }
 
@@ -190,8 +205,25 @@ export function attachLocalPreview(upload, prepared) {
   };
 }
 
-/** Prefer signed/durable display URLs so the editor never depends on a revoked blob. */
+/** Durable URL for cards/cart (signed display preferred). */
 export function stableUploadUrl(upload) {
   if (!upload) return '';
   return upload.displayUrl || upload.previewUrl || upload.url || '';
+}
+
+/**
+ * Editor must prefer a live blob: URL when available.
+ * Production iOS failures happened because the editor loaded the signed API URL first;
+ * when that returned 401/404 the one-way fallback never tried the working blob.
+ */
+export function editorUploadUrl(upload) {
+  if (!upload) return '';
+  const preview = String(upload.previewUrl || '');
+  if (preview.startsWith('blob:')) return preview;
+  return stableUploadUrl(upload);
+}
+
+export function liveBlobUrl(upload) {
+  const preview = String(upload?.previewUrl || '');
+  return preview.startsWith('blob:') ? preview : '';
 }
