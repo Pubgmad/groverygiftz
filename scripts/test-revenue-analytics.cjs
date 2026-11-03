@@ -14,6 +14,7 @@ vm.runInContext(`${source}\nmodule.exports = { istInclusiveRange, previousEquiva
 const {
   istInclusiveRange,
   previousEquivalentRange,
+  presetToRange,
   growthPercent,
   shapeKpis,
   shapeProducts,
@@ -176,5 +177,29 @@ const geo = mergeProfitIntoPlaces(
 );
 assert.strictEqual(geo[0].collected, 10000);
 assert.strictEqual(geo[0].grossProfit, 3000);
+
+// Weekly $dateTrunc must keep startOfWeek inside the operator (screenshot crash).
+const weekPipeline = JSON.stringify(revenuePipeline({
+  from: day.from,
+  to: day.to,
+  granularity: 'week',
+}));
+assert.ok(weekPipeline.includes('"unit":"week"'));
+assert.ok(weekPipeline.includes('startOfWeek'));
+assert.ok(
+  /"\$dateTrunc":\{[^}]*"startOfWeek":"monday"/.test(weekPipeline)
+  || weekPipeline.includes('"$dateTrunc":{"date":"$eventAt","unit":"week","timezone":"Asia/Kolkata","startOfWeek":"monday"}'),
+  'startOfWeek must be nested inside $dateTrunc',
+);
+assert.ok(!/"\$dateTrunc":\{[^}]+\},"startOfWeek"/.test(weekPipeline), 'startOfWeek must not be a sibling of $dateTrunc');
+
+const last7 = presetToRange('last7');
+assert.ok(last7);
+const thisYear = presetToRange('thisYear');
+const prevYear = previousEquivalentRange(thisYear.fromStr, thisYear.toStr);
+assert.notEqual(last7.fromStr, thisYear.fromStr, 'Last 7 days must not equal This year start');
+assert.ok(thisYear.fromStr.endsWith('-01-01'));
+assert.ok(prevYear.fromStr < thisYear.fromStr);
+assert.ok(prevYear.toStr < thisYear.fromStr);
 
 console.log('Revenue analytics helper tests passed');

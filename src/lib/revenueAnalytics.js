@@ -275,9 +275,11 @@ export function itemMatchAfterUnwind({ productId, productIds, variant } = {}) {
 
 function bucketExpr(granularity) {
   const unit = ['day', 'week', 'month', 'year'].includes(granularity) ? granularity : 'day';
-  const expr = { $dateTrunc: { date: '$eventAt', unit, timezone: IST } };
-  if (unit === 'week') expr.startOfWeek = 'monday';
-  return expr;
+  // startOfWeek MUST live inside $dateTrunc. Putting it as a sibling field makes MongoDB reject
+  // the expression ("must have exactly one field") and breaks every Weekly trend request.
+  const trunc = { date: '$eventAt', unit, timezone: IST };
+  if (unit === 'week') trunc.startOfWeek = 'monday';
+  return { $dateTrunc: trunc };
 }
 
 const orderMetrics = {

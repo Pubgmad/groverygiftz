@@ -19,7 +19,7 @@ import {
 } from 'recharts';
 import { FiBarChart2, FiRefreshCw } from 'react-icons/fi';
 import { formatPrice } from '@/lib/utils';
-import { DATE_PRESETS, formatIstDateInput, shiftIstDate } from '@/lib/revenueAnalytics';
+import { DATE_PRESETS, formatIstDateInput, presetToRange, previousEquivalentRange, shiftIstDate } from '@/lib/revenueAnalytics';
 import BuyerDrillDown from '@/components/admin/BuyerDrillDown';
 import AdminSelect from '@/components/admin/AdminSelect';
 
@@ -180,7 +180,10 @@ export default function RevenueAnalyticsPage() {
     const json = await res.json().catch(() => ({}));
     if (seq !== loadSeqRef.current) return;
     if (!res.ok) {
+      // Clear stale charts/range so a failed Weekly (etc.) request cannot keep showing
+      // a previous period such as This Year while the dropdown already says Last 7 days.
       setError(json.error || 'Unable to load revenue analytics');
+      setData(null);
       setLoading(false);
       setRefreshing(false);
       return;
@@ -259,11 +262,25 @@ export default function RevenueAnalyticsPage() {
     variant || null,
   ].filter(Boolean);
 
+  // Always derive the intended IST range from the current filter controls so the
+  // "Showing …" line never lags behind the Period dropdown after a failed request.
+  const selectedRange = useMemo(() => {
+    if (preset === 'custom') return presetToRange('custom', from, to);
+    return presetToRange(preset);
+  }, [preset, from, to]);
+  const selectedPrevious = selectedRange
+    ? previousEquivalentRange(selectedRange.fromStr, selectedRange.toStr)
+    : null;
+  const shownFrom = selectedRange?.fromStr || data?.range?.from || '';
+  const shownTo = selectedRange?.toStr || data?.range?.to || '';
+  const shownPrevFrom = selectedPrevious?.fromStr || data?.range?.previousFrom || '';
+  const shownPrevTo = selectedPrevious?.toStr || data?.range?.previousTo || '';
+
   const kpis = data?.kpis || {};
   const products = [...(data?.products || [])].sort((a, b) => sortProducts === 'units' ? b.units - a.units : b.revenue - a.revenue);
   const hours = data?.hours || [];
   const maxHeat = Math.max(1, ...(data?.heatmap || []).flatMap((row) => row.hours.map((cell) => cell.orders)));
-  const ordersHref = `/account/manage/orders?dateFrom=${encodeURIComponent(data?.range?.from || '')}&dateTo=${encodeURIComponent(data?.range?.to || '')}${status ? `&status=${encodeURIComponent(status)}` : ''}`;
+  const ordersHref = `/account/manage/orders?dateFrom=${encodeURIComponent(shownFrom)}&dateTo=${encodeURIComponent(shownTo)}${status ? `&status=${encodeURIComponent(status)}` : ''}`;
   const methodOptions = (filterOptions.methods || []).map((method) => ({ value: method, label: method }));
   const stateOptions = (filterOptions.states || []).map((item) => ({ value: item, label: item }));
   const cityOptions = (filterOptions.cities || []).map((item) => ({ value: item, label: item }));
@@ -404,7 +421,13 @@ export default function RevenueAnalyticsPage() {
             Active filters: {activeFilters.join(' · ')}
           </p>
         )}
-        {data?.range && <p className="mt-3 text-xs leading-5 text-gray-500">Showing {data.range.from} to {data.range.to} IST. Comparison period: {data.range.previousFrom} to {data.range.previousTo}. Trend grouping ({data.range.granularity || granularity}) only changes chart buckets, not which orders are included.</p>}
+        {shownFrom && shownTo ? (
+          <p className="mt-3 text-xs leading-5 text-gray-500">
+            Showing {shownFrom} to {shownTo} IST.
+            {shownPrevFrom && shownPrevTo ? ` Comparison period: ${shownPrevFrom} to ${shownPrevTo}.` : ''}
+            {' '}Trend grouping ({granularity}) only changes chart buckets, not which orders are included.
+          </p>
+        ) : null}
       </section>
 
       {error && <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
