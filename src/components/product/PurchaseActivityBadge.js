@@ -1,7 +1,7 @@
 'use client';
 
 import { FiShoppingBag } from 'react-icons/fi';
-import { formatPurchaseActivityMessage } from '@/lib/purchaseActivity';
+import { formatPurchaseActivityMessage } from '@/lib/purchaseActivityMessage';
 
 export default function PurchaseActivityBadge({ product, purchaseCount = 0 }) {
   const config = product?.purchaseActivity || {};

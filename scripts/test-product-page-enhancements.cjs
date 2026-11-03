@@ -58,18 +58,19 @@ test('stock alert uses admin threshold and real quantity', () => {
 });
 
 test('purchase activity formatter hides zero counts', () => {
-  const source = fs.readFileSync('src/lib/purchaseActivity.js', 'utf8')
-    .replace(/import[\s\S]*?from ['"][^'"]+['"];?\s*/g, '')
-    .replace(/export /g, '');
-  const context = { module: { exports: {} }, exports: {}, console, Math, Number, String, Array, Object };
-  vm.createContext(context);
-  vm.runInContext(`${source}\nmodule.exports = { formatPurchaseActivityMessage };`, context);
-  const { formatPurchaseActivityMessage } = context.module.exports;
+  const { formatPurchaseActivityMessage } = loadModule('src/lib/purchaseActivityMessage.js', ['formatPurchaseActivityMessage']);
   assert.equal(formatPurchaseActivityMessage('', 0, 30), '');
   assert.equal(
     formatPurchaseActivityMessage('{count} customers in {days} days', 12, 30),
     '12 customers in 30 days'
   );
+});
+
+test('client purchase badge does not import mongoose Order module', () => {
+  const badge = fs.readFileSync('src/components/product/PurchaseActivityBadge.js', 'utf8');
+  assert.match(badge, /purchaseActivityMessage/);
+  assert.equal(badge.includes("from '@/lib/purchaseActivity'"), false);
+  assert.equal(badge.includes('models/Order'), false);
 });
 
 test('ProductDetail wires new trust sections after reviews', () => {

@@ -1,9 +1,11 @@
 import Order from '@/models/Order';
+import { formatPurchaseActivityMessage } from '@/lib/purchaseActivityMessage';
 
 const CANCELLED = new Set(['cancelled']);
 
 /**
  * Count customers who purchased a product in the given window from paid, non-cancelled orders.
+ * Server-only — do not import this module from client components.
  */
 export async function countProductPurchases(productId, periodDays = 30) {
   const days = Math.max(1, Math.min(365, Number(periodDays) || 30));
@@ -37,13 +39,4 @@ export async function countProductPurchases(productId, periodDays = 30) {
   };
 }
 
-export function formatPurchaseActivityMessage(template, count, periodDays) {
-  const safeCount = Math.max(0, Number(count) || 0);
-  const days = Math.max(1, Number(periodDays) || 30);
-  const fallback = '{count} customers purchased this in the last {days} days';
-  const source = String(template || '').trim() || fallback;
-  if (safeCount <= 0) return '';
-  return source
-    .replace(/\{count\}/gi, String(safeCount))
-    .replace(/\{days\}/gi, String(days));
-}
+export { formatPurchaseActivityMessage };
