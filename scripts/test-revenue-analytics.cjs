@@ -10,7 +10,7 @@ const source = fs.readFileSync(sourcePath, 'utf8')
   .replace(/export \{ IST, WEEKDAYS, STATUS_GROUPS \};/, '');
 const context = { module: { exports: {} }, exports: {}, console };
 vm.createContext(context);
-vm.runInContext(`${source}\nmodule.exports = { istInclusiveRange, previousEquivalentRange, presetToRange, growthPercent, shapeKpis, shapeProducts, itemMatchAfterUnwind, narrowToMatchingItems, buildRevenueMatch, revenuePipeline, refundPipeline, paymentOutcomePipeline, REVENUE_DEFINITIONS, DATE_PRESETS, formatIstDateInput, shiftIstDate, uniquePlaceLabels, normalizePlaceLabel, shapeFilterOptions, shapeTrend, mergeProfitIntoTrend, istBucketLabel, mergeProfitIntoPlaces };`, context);
+vm.runInContext(`${source}\nmodule.exports = { istInclusiveRange, previousEquivalentRange, presetToRange, growthPercent, shapeKpis, shapeProducts, itemMatchAfterUnwind, narrowToMatchingItems, buildRevenueMatch, revenuePipeline, refundPipeline, paymentOutcomePipeline, REVENUE_DEFINITIONS, DATE_PRESETS, formatIstDateInput, shiftIstDate, uniquePlaceLabels, uniqueCityStateOptions, cityStateKey, parseCityStateKey, formatCityStateLabel, normalizePlaceLabel, shapeFilterOptions, shapeTrend, mergeProfitIntoTrend, istBucketLabel, mergeProfitIntoPlaces, filterOptionPipeline };`, context);
 const {
   istInclusiveRange,
   previousEquivalentRange,
@@ -29,12 +29,17 @@ const {
   formatIstDateInput,
   shiftIstDate,
   uniquePlaceLabels,
+  uniqueCityStateOptions,
+  cityStateKey,
+  parseCityStateKey,
+  formatCityStateLabel,
   normalizePlaceLabel,
   shapeFilterOptions,
   shapeTrend,
   mergeProfitIntoTrend,
   istBucketLabel,
   mergeProfitIntoPlaces,
+  filterOptionPipeline,
 } = context.module.exports;
 
 const day = istInclusiveRange('2026-11-02', '2026-11-02');
@@ -86,16 +91,47 @@ assert.deepStrictEqual(
 
 const shaped = host(shapeFilterOptions({
   states: [{ _id: 'tamil nadu', label: 'Tamil Nadu' }, { _id: 'tamil nadu', label: 'tamil nadu' }],
-  cities: [{ _id: 'chennai', label: 'Chennai' }, { _id: 'chennai', label: 'chennai' }],
+  cities: [
+    { city: 'Chennai', state: 'Tamil Nadu' },
+    { city: 'chennai', state: 'tamil nadu' },
+    { city: 'Salem', state: 'Tamil Nadu' },
+    { city: 'Salem', state: 'West Bengal' },
+  ],
   methods: [{ _id: 'Cashfree' }, { _id: 'cashfree' }],
   products: [{ _id: 'abc', title: ' Gift hamper ' }, { _id: '', title: 'skip' }],
 }, [{ _id: 'col1', name: 'Festive' }]));
-assert.deepStrictEqual(shaped.cities, ['Chennai']);
+assert.strictEqual(shaped.cities.length, 3);
+assert.ok(shaped.cities.some((row) => row.city === 'Chennai' && row.state === 'Tamil Nadu' && row.label === 'Chennai, Tamil Nadu'));
+assert.ok(shaped.cities.some((row) => row.city === 'Salem' && row.state === 'Tamil Nadu'));
+assert.ok(shaped.cities.some((row) => row.city === 'Salem' && row.state === 'West Bengal'));
+assert.notEqual(
+  shaped.cities.find((row) => row.state === 'Tamil Nadu' && row.city === 'Salem').value,
+  shaped.cities.find((row) => row.state === 'West Bengal' && row.city === 'Salem').value,
+);
 assert.deepStrictEqual(shaped.states, ['Tamil Nadu']);
 assert.deepStrictEqual(shaped.methods, ['Cashfree']);
 assert.strictEqual(shaped.products.length, 1);
 assert.strictEqual(shaped.products[0].title, 'Gift hamper');
 assert.strictEqual(shaped.collections[0].name, 'Festive');
+
+const scopedCities = host(shapeFilterOptions({
+  cities: [
+    { city: 'Salem', state: 'Tamil Nadu' },
+    { city: 'Salem', state: 'West Bengal' },
+  ],
+}, [], { stateFilter: 'Tamil Nadu' }));
+assert.strictEqual(scopedCities.cities.length, 1);
+assert.strictEqual(scopedCities.cities[0].city, 'Salem');
+assert.strictEqual(scopedCities.cities[0].state, 'Tamil Nadu');
+assert.strictEqual(scopedCities.cities[0].label, 'Salem');
+
+assert.strictEqual(formatCityStateLabel('Salem', 'Tamil Nadu'), 'Salem, Tamil Nadu');
+const parsedCity = parseCityStateKey(cityStateKey('Salem', 'Tamil Nadu'));
+assert.strictEqual(parsedCity.city, 'Salem');
+assert.strictEqual(parsedCity.state, 'Tamil Nadu');
+
+const cityFacet = JSON.stringify(filterOptionPipeline({ from: day.from, to: day.to }));
+assert.ok(cityFacet.includes('shippingAddress.state'), 'city options must group by city and state');
 
 const unknownProfit = shapeProducts([{
   productId: 'p1',

@@ -19,7 +19,16 @@ import {
 } from 'recharts';
 import { FiBarChart2, FiRefreshCw } from 'react-icons/fi';
 import { formatPrice } from '@/lib/utils';
-import { DATE_PRESETS, formatIstDateInput, presetToRange, previousEquivalentRange, shiftIstDate } from '@/lib/revenueAnalytics';
+import {
+  DATE_PRESETS,
+  cityStateKey,
+  formatCityStateLabel,
+  formatIstDateInput,
+  parseCityStateKey,
+  presetToRange,
+  previousEquivalentRange,
+  shiftIstDate,
+} from '@/lib/revenueAnalytics';
 import BuyerDrillDown from '@/components/admin/BuyerDrillDown';
 import AdminSelect from '@/components/admin/AdminSelect';
 
@@ -255,8 +264,24 @@ export default function RevenueAnalyticsPage() {
       setState('');
       setCity('');
     }
-    if (city && !filterOptions.cities.some((c) => c.toLowerCase() === city.toLowerCase())) {
-      setCity('');
+    if (city) {
+      const matches = (filterOptions.cities || []).filter((entry) => {
+        const cityName = typeof entry === 'string' ? entry : entry.city;
+        const stateName = typeof entry === 'string' ? '' : (entry.state || '');
+        if (String(cityName || '').toLowerCase() !== city.toLowerCase()) return false;
+        if (state) return String(stateName || '').toLowerCase() === state.toLowerCase();
+        return true;
+      });
+      if (!matches.length) {
+        setCity('');
+      } else if (!state && matches.length === 1) {
+        const only = matches[0];
+        const onlyState = typeof only === 'string' ? '' : (only.state || '');
+        if (onlyState) setState(preferOptionLabel(filterOptions.states, onlyState) || onlyState);
+      } else if (!state && matches.length > 1) {
+        // Ambiguous city name across states — require an explicit city|state choice.
+        setCity('');
+      }
     }
     if (product && !filterOptions.products.some((p) => p.id === product)) {
       setProduct('');
@@ -288,7 +313,7 @@ export default function RevenueAnalyticsPage() {
     paymentMethod || null,
     status || null,
     state || null,
-    city || null,
+    city ? formatCityStateLabel(city, state) : null,
     product ? (filterOptions.products.find((p) => p.id === product)?.title || 'Product') : null,
     collection ? (filterOptions.collections.find((c) => c.id === collection)?.name || 'Collection') : null,
     variant || null,
@@ -318,10 +343,48 @@ export default function RevenueAnalyticsPage() {
   const ordersHref = `/account/manage/orders?dateFrom=${encodeURIComponent(shownFrom)}&dateTo=${encodeURIComponent(shownTo)}${status ? `&status=${encodeURIComponent(status)}` : ''}`;
   const methodOptions = (filterOptions.methods || []).map((method) => ({ value: method, label: method }));
   const stateOptions = (filterOptions.states || []).map((item) => ({ value: item, label: item }));
-  const cityOptions = (filterOptions.cities || []).map((item) => ({ value: item, label: item }));
+  const cityOptions = (filterOptions.cities || []).map((item) => {
+    if (typeof item === 'string') return { value: cityStateKey(item, state), label: item };
+    return {
+      value: item.value || cityStateKey(item.city, item.state),
+      label: item.label || formatCityStateLabel(item.city, item.state, { includeState: !state }),
+    };
+  });
+  const citySelectValue = city ? cityStateKey(city, state) : '';
   const productOptions = (filterOptions.products || []).filter((item) => item.id).map((item) => ({ value: item.id, label: item.title }));
   const collectionOptions = (filterOptions.collections || []).map((item) => ({ value: item.id, label: item.name }));
   const variantOptions = (filterOptions.variants || []).map((item) => ({ value: item, label: item }));
+
+  const applyCitySelection = (next) => {
+    if (!next) {
+      setCity('');
+      return;
+    }
+    const parsed = parseCityStateKey(next);
+    setCity(parsed.city);
+    if (parsed.state) {
+      setState(preferOptionLabel(filterOptions.states, parsed.state) || parsed.state);
+    }
+  };
+
+  const applyCityFromChart = (cityLabel, stateLabel = '') => {
+    const cityName = String(cityLabel || '').trim();
+    const stateName = String(stateLabel || '').trim();
+    const match = (filterOptions.cities || []).find((entry) => {
+      const entryCity = typeof entry === 'string' ? entry : entry.city;
+      const entryState = typeof entry === 'string' ? '' : (entry.state || '');
+      if (String(entryCity || '').toLowerCase() !== cityName.toLowerCase()) return false;
+      if (!stateName) return true;
+      return String(entryState || '').toLowerCase() === stateName.toLowerCase();
+    });
+    if (match && typeof match !== 'string') {
+      setCity(match.city);
+      if (match.state) setState(preferOptionLabel(filterOptions.states, match.state) || match.state);
+      return;
+    }
+    if (stateName) setState(preferOptionLabel(filterOptions.states, stateName) || stateName);
+    setCity(cityName);
+  };
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-7xl space-y-4">
@@ -410,8 +473,8 @@ export default function RevenueAnalyticsPage() {
           />
           <FilterSelect
             label="City"
-            value={city}
-            onChange={setCity}
+            value={citySelectValue}
+            onChange={applyCitySelection}
             placeholder="All cities"
             loadingLabel="Loading cities…"
             options={cityOptions}
@@ -553,10 +616,7 @@ export default function RevenueAnalyticsPage() {
                   <button
                     key={row.key}
                     type="button"
-                    onClick={() => {
-                      if (row.state) setState(preferOptionLabel(filterOptions.states, row.state));
-                      setCity(preferOptionLabel(filterOptions.cities, row.label));
-                    }}
+                    onClick={() => applyCityFromChart(row.label, row.state)}
                     className="flex w-full min-w-0 flex-wrap items-start justify-between gap-2 rounded-xl border px-3 py-2 text-left"
                   >
                     <span className="min-w-0">

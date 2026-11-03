@@ -130,7 +130,7 @@ async function getRevenueAnalytics(req) {
     productId: scope.productId,
     productIds: scope.productIds,
   })).allowDiskUse(true);
-  const filterOptions = shapeFilterOptions(optionFacet, collections);
+  const filterOptions = shapeFilterOptions(optionFacet, collections, { stateFilter: state });
 
   if (searchParams.get('optionsOnly') === '1') {
     return NextResponse.json({ options: filterOptions }, { headers: { 'Cache-Control': 'no-store' } });

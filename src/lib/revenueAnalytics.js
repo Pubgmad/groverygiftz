@@ -111,6 +111,12 @@ export function normalizePlaceLabel(value) {
     .trim();
 }
 
+function placeCasingScore(text = '') {
+  const value = String(text || '');
+  const mixed = value !== value.toLowerCase() && value !== value.toUpperCase();
+  return mixed ? 2 : value !== value.toLowerCase() ? 1 : 0;
+}
+
 export function uniquePlaceLabels(values = []) {
   const map = new Map();
   values.forEach((value) => {
@@ -122,13 +128,59 @@ export function uniquePlaceLabels(values = []) {
       map.set(key, label);
       return;
     }
-    const score = (text) => {
-      const mixed = text !== text.toLowerCase() && text !== text.toUpperCase();
-      return mixed ? 2 : text !== text.toLowerCase() ? 1 : 0;
-    };
-    if (score(label) > score(current)) map.set(key, label);
+    if (placeCasingScore(label) > placeCasingScore(current)) map.set(key, label);
   });
   return [...map.values()].sort((a, b) => a.localeCompare(b, 'en-IN'));
+}
+
+/** Stable select/API key so same city names in different states stay distinct. */
+export function cityStateKey(city, state = '') {
+  return `${normalizePlaceLabel(city)}\u001f${normalizePlaceLabel(state)}`;
+}
+
+export function parseCityStateKey(value = '') {
+  const text = String(value || '');
+  const sep = text.indexOf('\u001f');
+  if (sep === -1) {
+    return { city: normalizePlaceLabel(text), state: '' };
+  }
+  return {
+    city: normalizePlaceLabel(text.slice(0, sep)),
+    state: normalizePlaceLabel(text.slice(sep + 1)),
+  };
+}
+
+export function formatCityStateLabel(city, state = '', { includeState = true } = {}) {
+  const cityLabel = normalizePlaceLabel(city);
+  const stateLabel = normalizePlaceLabel(state);
+  if (!cityLabel) return '';
+  if (!includeState || !stateLabel) return cityLabel;
+  return `${cityLabel}, ${stateLabel}`;
+}
+
+export function uniqueCityStateOptions(rows = [], { includeStateInLabel = true } = {}) {
+  const map = new Map();
+  rows.forEach((row) => {
+    const city = normalizePlaceLabel(row?.city || row?.label || '');
+    const state = normalizePlaceLabel(row?.state || '');
+    if (!city) return;
+    const key = cityStateKey(city, state).toLowerCase();
+    const next = {
+      city,
+      state,
+      value: cityStateKey(city, state),
+      label: formatCityStateLabel(city, state, { includeState: includeStateInLabel }),
+    };
+    const current = map.get(key);
+    if (!current) {
+      map.set(key, next);
+      return;
+    }
+    const nextScore = placeCasingScore(next.city) + placeCasingScore(next.state);
+    const currentScore = placeCasingScore(current.city) + placeCasingScore(current.state);
+    if (nextScore > currentScore) map.set(key, next);
+  });
+  return [...map.values()].sort((a, b) => a.label.localeCompare(b.label, 'en-IN'));
 }
 
 /** Mirror normalizePlaceLabel inside Mongo so dropdown labels and $match agree on NBSP/ZW. */
@@ -517,9 +569,18 @@ export function filterOptionPipeline({ from, to, state, productId, productIds } 
           { $sort: { label: 1 } },
         ],
         cities: [
-          { $group: { _id: placeKey('$shippingAddress.city'), label: { $first: placeValue('$shippingAddress.city') } } },
-          { $match: { _id: { $nin: ['', null] } } },
-          { $sort: { label: 1 } },
+          {
+            $group: {
+              _id: {
+                city: placeKey('$shippingAddress.city'),
+                state: placeKey('$shippingAddress.state'),
+              },
+              city: { $first: placeValue('$shippingAddress.city') },
+              state: { $first: placeValue('$shippingAddress.state') },
+            },
+          },
+          { $match: { '_id.city': { $nin: ['', null] } } },
+          { $sort: { city: 1, state: 1 } },
         ],
         methods: [
           { $group: { _id: { $ifNull: ['$paymentMethod', 'Cashfree'] } } },
@@ -601,10 +662,24 @@ export function buyerListPipeline(filters) {
   ];
 }
 
-export function shapeFilterOptions(options = {}, collections = []) {
+export function shapeFilterOptions(options = {}, collections = [], { stateFilter = '' } = {}) {
+  const stateScoped = Boolean(normalizePlaceLabel(stateFilter));
   return {
     states: uniquePlaceLabels((options.states || []).map((row) => row.label || row._id)),
-    cities: uniquePlaceLabels((options.cities || []).map((row) => row.label || row._id)),
+    // City options are city+state pairs so "Salem" in two states cannot collide.
+    cities: uniqueCityStateOptions(
+      (options.cities || [])
+        .map((row) => ({
+          city: row.city || row.label || row._id?.city || row._id,
+          state: row.state || row._id?.state || '',
+        }))
+        .filter((row) => {
+          if (!stateScoped) return true;
+          return normalizePlaceLabel(row.state).toLowerCase() === normalizePlaceLabel(stateFilter).toLowerCase();
+        }),
+      // When a state filter is already active, shorten labels for mobile selects.
+      { includeStateInLabel: !stateScoped },
+    ),
     methods: uniquePlaceLabels((options.methods || []).map((row) => row._id || 'Cashfree')),
     products: (options.products || [])
       .filter((row) => row._id)
