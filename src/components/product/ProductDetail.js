@@ -1260,9 +1260,9 @@ export default function ProductDetail({ product }) {
                 <p className="mt-1 text-xs leading-5 text-gray-600">
                   {String(previewConfig.shortGuidance || '').trim()
                     || (needsCustomerPhotos
-                      ? (requiredPhotoCount > 0
-                        ? `Upload ${requiredPhotoCount} photo${requiredPhotoCount === 1 ? '' : 's'} to personalize your gift.`
-                        : `Upload up to ${maxPhotoCount} photo${maxPhotoCount === 1 ? '' : 's'} to personalize your gift.`)
+                      ? `${requiredPhotoCount > 0
+                        ? `Please upload ${requiredPhotoCount} photo${requiredPhotoCount === 1 ? '' : 's'} for this product.`
+                        : `You can upload up to ${maxPhotoCount} photo${maxPhotoCount === 1 ? '' : 's'} for this product.`}${photoSlotCount > 1 ? ' You can select several photos at once; each photo fills the next empty frame.' : ''}`
                       : 'Upload your favorite photos and adjust them to create your perfect gift.')}
                 </p>
               </div>
