@@ -8,8 +8,13 @@ const source = fs.readFileSync(path.join(__dirname, '../src/lib/makingCost.js'),
   .replace(/export function /g, 'function ');
 const context = { module: { exports: {} }, exports: {}, console };
 vm.createContext(context);
-vm.runInContext(`${source}\nmodule.exports = { backdateInauguralHistoryForAttribution };`, context);
-const { backdateInauguralHistoryForAttribution } = context.module.exports;
+vm.runInContext(`${source}\nmodule.exports = { backdateInauguralHistoryForAttribution, buildAttributedRows, summarizeAttributedItems, COST_SOURCE };`, context);
+const {
+  backdateInauguralHistoryForAttribution,
+  buildAttributedRows,
+  summarizeAttributedItems,
+  COST_SOURCE,
+} = context.module.exports;
 
 const created = new Date('2025-01-01T00:00:00.000Z');
 const today = new Date('2026-11-01T00:00:00.000+05:30');
@@ -37,5 +42,27 @@ const backdated = legacy.p2.find((row) => new Date(row.effectiveFrom).getTime() 
 assert.ok(backdated);
 assert.strictEqual(backdated.amount, 807.18);
 assert.strictEqual(backdated.previousAmount, null);
+assert.ok(backdated.analyticsBackdatedFrom);
+
+// Live MakingCost with no history must be tagged as backdated so strict coverage stays honest.
+const synthetic = {
+  p3: [{
+    variantKey: '',
+    amount: 500,
+    effectiveFrom: created,
+    analyticsBackdatedFrom: today,
+    source: COST_SOURCE.historyBackdated,
+  }],
+};
+const attributed = buildAttributedRows(
+  [{ orderId: 'o1', product: 'p3', title: 'Frame', variant: '', quantity: 2, price: 999, eventAt: new Date('2025-06-01T12:00:00.000Z') }],
+  { p3: { title: 'Frame', variants: [], createdAt: created } },
+  synthetic,
+);
+assert.strictEqual(attributed[0].source, COST_SOURCE.historyBackdated);
+const summary = summarizeAttributedItems(attributed);
+assert.strictEqual(summary.strictCostCoveragePct, 0);
+assert.strictEqual(summary.costCoveragePct, 100);
+assert.strictEqual(summary.usesInauguralBackdate, true);
 
 console.log('Profit attribution helper tests passed');

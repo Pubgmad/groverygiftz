@@ -2,7 +2,14 @@ import Order from '@/models/Order';
 import Product from '@/models/Product';
 import MakingCost from '@/models/MakingCost';
 import MakingCostHistory from '@/models/MakingCostHistory';
-import { backdateInauguralHistoryForAttribution, buildAttributedRows, groupProfitRows, normalizeVariantKey, summarizeAttributedItems } from '@/lib/makingCost';
+import {
+  COST_SOURCE,
+  backdateInauguralHistoryForAttribution,
+  buildAttributedRows,
+  groupProfitRows,
+  normalizeVariantKey,
+  summarizeAttributedItems,
+} from '@/lib/makingCost';
 import { istBucketLabel, normalizePlaceLabel, profitItemPipeline } from '@/lib/revenueAnalytics';
 
 export async function attributeProfitForFilters(filters, extraMatch = null) {
@@ -36,6 +43,8 @@ export async function attributeProfitForFilters(filters, extraMatch = null) {
     const product = productsById[key];
     const effectiveFrom = product?.createdAt ? new Date(product.createdAt) : new Date('2020-01-01T00:00:00.000Z');
     if (!historyByProduct[key]) historyByProduct[key] = [];
+    // Legacy live cost with no history: treat like inaugural backdate so "strict"
+    // coverage never counts synthetic rows as dated history confirmation.
     historyByProduct[key].push({
       product: row.product,
       variantKey: row.variantKey || '',
@@ -43,7 +52,8 @@ export async function attributeProfitForFilters(filters, extraMatch = null) {
       optionLabel: row.optionLabel || '',
       amount: row.amount,
       effectiveFrom,
-      source: 'history',
+      analyticsBackdatedFrom: row.updatedAt || row.createdAt || new Date(),
+      source: COST_SOURCE.historyBackdated,
     });
   });
   backdateInauguralHistoryForAttribution(historyByProduct, productsById);

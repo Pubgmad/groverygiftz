@@ -100,8 +100,8 @@ export async function GET(req) {
     missing,
     definitions: {
       unknown: 'Missing making cost is unknown, never treated as ₹0.',
-      fallback: 'If a purchased variant has no variant making cost, the product-level making cost is used. If that is also missing, profit for that item is unknown.',
-      history: 'Saving a cost records when it starts applying. Orders paid before that date stay unknown unless an earlier history row exists.',
+      fallback: 'If a purchased variant has no variant making cost, the product-level making cost is used. If that is also missing, profit for that item is unknown. Partial multi-axis variant costs (some options priced, others not) stay unknown so production cost is never understated.',
+      history: 'Saving a cost records when it starts applying. For the first-ever cost on a product or variant, analytics and new saves use the product creation date as the start. Later changes use the effective date you enter. Revenue Analytics may apply an inaugural cost from product creation in memory when an older history row was saved with a later date; MongoDB history is not rewritten. Strict coverage counts only checkout snapshots and non-backdated history.',
     },
   }, { headers: { 'Cache-Control': 'no-store' } });
 }
