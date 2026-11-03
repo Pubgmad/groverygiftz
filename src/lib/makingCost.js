@@ -110,6 +110,23 @@ export function findCostRow(costs = [], variantKey = '') {
   return (costs || []).find((row) => normalizeVariantKey(row?.variantKey || '') === target) || null;
 }
 
+function historyRowTime(row) {
+  return new Date(row?.effectiveFrom || row?.updatedAt || 0).getTime();
+}
+
+function historyRowCreated(row) {
+  return new Date(row?.createdAt || row?.updatedAt || 0).getTime();
+}
+
+/** Prefer later effectiveFrom; on ties prefer later createdAt so duplicate same-day saves are deterministic. */
+function historyRowWins(candidate, incumbent) {
+  if (!incumbent) return true;
+  const candidateFrom = historyRowTime(candidate);
+  const incumbentFrom = historyRowTime(incumbent);
+  if (candidateFrom !== incumbentFrom) return candidateFrom > incumbentFrom;
+  return historyRowCreated(candidate) >= historyRowCreated(incumbent);
+}
+
 export function costsEffectiveAt(rows = [], at = null) {
   const map = new Map();
   rows.forEach((row) => {
@@ -118,9 +135,7 @@ export function costsEffectiveAt(rows = [], at = null) {
     if (at && row.effectiveFrom && new Date(row.effectiveFrom).getTime() > new Date(at).getTime()) return;
     const key = normalizeVariantKey(row.variantKey || '');
     const previous = map.get(key);
-    const rowTime = new Date(row.effectiveFrom || row.updatedAt || 0).getTime();
-    const prevTime = previous ? new Date(previous.effectiveFrom || previous.updatedAt || 0).getTime() : -1;
-    if (!previous || rowTime >= prevTime) map.set(key, row);
+    if (historyRowWins(row, previous)) map.set(key, row);
   });
   return map;
 }
@@ -373,13 +388,17 @@ export function backdateInauguralHistoryForAttribution(historyByProduct = {}, pr
     });
 
     byKey.forEach((list) => {
-      list.sort((a, b) => new Date(a.effectiveFrom || 0) - new Date(b.effectiveFrom || 0));
-      const first = list[0];
-      if (!first) return;
-      const inaugural = first.previousAmount === null || first.previousAmount === undefined;
+      list.sort((a, b) => {
+        const fromDiff = historyRowTime(a) - historyRowTime(b);
+        if (fromDiff !== 0) return fromDiff;
+        return historyRowCreated(a) - historyRowCreated(b);
+      });
+      // Chronologically first history row is the inaugural coverage start for analytics,
+      // even when legacy saves left previousAmount set or several rows share one day.
+      const inaugural = list[0];
       if (!inaugural) return;
-      if (new Date(first.effectiveFrom || 0).getTime() > createdAt.getTime()) {
-        first.effectiveFrom = createdAt;
+      if (historyRowTime(inaugural) > createdAt.getTime()) {
+        inaugural.effectiveFrom = createdAt;
       }
     });
   });
@@ -387,7 +406,7 @@ export function backdateInauguralHistoryForAttribution(historyByProduct = {}, pr
 }
 
 export function makingCostStatusForProduct(product, costs = []) {
-  const hasProduct = costs.some((row) => !row.variantKey && isConfiguredCost(row.amount));
+  const hasProduct = costs.some((row) => !normalizeVariantKey(row.variantKey || '') && isConfiguredCost(row.amount));
   const variantOptions = (product?.variants || []).flatMap((variant) => (variant.options || []).map((option) => ({
     variantName: variant.name,
     optionLabel: option.label,
@@ -399,7 +418,22 @@ export function makingCostStatusForProduct(product, costs = []) {
   if (!variantOptions.length) {
     return hasProduct ? 'configured' : 'missing';
   }
-  if (configuredVariants.length === variantOptions.length) return 'configured';
-  if (configuredVariants.length > 0 || hasProduct) return 'partial';
+  // Product-level cost covers every purchased variant in resolveMakingCost when no
+  // option-specific row matches, so treat it as fully configured for admin status.
+  if (hasProduct || configuredVariants.length === variantOptions.length) return 'configured';
+  if (configuredVariants.length > 0) return 'partial';
   return 'missing';
+}
+
+/** Display amount for list UIs: product-level, else a single variant amount, else null. */
+export function displayMakingCostAmount(costs = []) {
+  const productRow = (costs || []).find((row) => !normalizeVariantKey(row?.variantKey || '') && isConfiguredCost(row?.amount));
+  if (productRow) return Number(productRow.amount);
+  const variantRows = (costs || []).filter((row) => normalizeVariantKey(row?.variantKey || '') && isConfiguredCost(row?.amount));
+  if (!variantRows.length) return null;
+  if (variantRows.length === 1) return Number(variantRows[0].amount);
+  const amounts = variantRows.map((row) => Number(row.amount));
+  const min = Math.min(...amounts);
+  const max = Math.max(...amounts);
+  return min === max ? min : { min, max };
 }

@@ -174,25 +174,36 @@ export default function RevenueAnalyticsPage() {
   const load = useCallback(async () => {
     const seq = ++loadSeqRef.current;
     if (!hasLoadedRef.current) setLoading(true);
-    else setRefreshing(true);
+    else {
+      setRefreshing(true);
+      // Drop previous charts immediately so a new period/filter cannot keep showing
+      // stale KPI/graph totals under an already-updated "Showing …" date line.
+      setData(null);
+    }
     setError('');
-    const res = await fetch(`/api/admin/revenue?${query}`, { cache: 'no-store' });
-    const json = await res.json().catch(() => ({}));
-    if (seq !== loadSeqRef.current) return;
-    if (!res.ok) {
-      // Clear stale charts/range so a failed Weekly (etc.) request cannot keep showing
-      // a previous period such as This Year while the dropdown already says Last 7 days.
-      setError(json.error || 'Unable to load revenue analytics');
+    try {
+      const res = await fetch(`/api/admin/revenue?${query}`, { cache: 'no-store' });
+      const json = await res.json().catch(() => ({}));
+      if (seq !== loadSeqRef.current) return;
+      if (!res.ok) {
+        setError(json.error || 'Unable to load revenue analytics');
+        setData(null);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+      setData(json);
+      applyOptions(json.options);
+      hasLoadedRef.current = true;
+      setLoading(false);
+      setRefreshing(false);
+    } catch {
+      if (seq !== loadSeqRef.current) return;
+      setError('Unable to load revenue analytics');
       setData(null);
       setLoading(false);
       setRefreshing(false);
-      return;
     }
-    setData(json);
-    applyOptions(json.options);
-    hasLoadedRef.current = true;
-    setLoading(false);
-    setRefreshing(false);
   }, [applyOptions, query]);
 
   useEffect(() => { load(); }, [load]);
@@ -431,7 +442,9 @@ export default function RevenueAnalyticsPage() {
       </section>
 
       {error && <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
-      {loading && <p className="py-6 text-center text-sm text-gray-500">Loading analytics...</p>}
+      {(loading || (refreshing && !data)) && (
+        <p className="py-6 text-center text-sm text-gray-500">Loading analytics...</p>
+      )}
 
       {!loading && data && (
         <>

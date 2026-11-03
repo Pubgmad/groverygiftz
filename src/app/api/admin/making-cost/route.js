@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import Product from '@/models/Product';
 import MakingCost from '@/models/MakingCost';
-import { findCostRow, makingCostStatusForProduct, variantCostKey } from '@/lib/makingCost';
+import { displayMakingCostAmount, findCostRow, makingCostStatusForProduct, variantCostKey } from '@/lib/makingCost';
 
 function escapeRegex(value = '') {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -45,7 +45,6 @@ export async function GET(req) {
 
   const rows = products.map((product) => {
     const productCosts = costsByProduct.get(String(product._id)) || [];
-    const productCost = productCosts.find((row) => !row.variantKey);
     const variantOptions = (product.variants || []).flatMap((variant) => (variant.options || []).map((option) => {
       const key = variantCostKey(variant.name, option.label);
       const cost = findCostRow(productCosts, key);
@@ -61,6 +60,7 @@ export async function GET(req) {
       };
     }));
     const costStatus = makingCostStatusForProduct(product, productCosts);
+    const displayAmount = displayMakingCostAmount(productCosts);
     const latest = productCosts.reduce((max, row) => {
       const time = new Date(row.updatedAt || 0).getTime();
       return time > max ? time : max;
@@ -74,7 +74,8 @@ export async function GET(req) {
       salePrice: Number(product.salePrice || 0),
       isActive: product.isActive !== false,
       collections: (product.collections || []).map((row) => row.name).filter(Boolean),
-      makingCost: productCost ? Number(productCost.amount) : null,
+      makingCost: typeof displayAmount === 'number' ? displayAmount : null,
+      makingCostRange: displayAmount && typeof displayAmount === 'object' ? displayAmount : null,
       costStatus,
       variants: variantOptions,
       lastUpdated: latest ? new Date(latest).toISOString() : (product.updatedAt ? new Date(product.updatedAt).toISOString() : null),

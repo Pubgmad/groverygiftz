@@ -92,6 +92,18 @@ export async function GET(req) {
   const { error } = await requireAdminPermission('revenue', 'read');
   if (error) return error;
 
+  try {
+    return await getRevenueAnalytics(req);
+  } catch (err) {
+    console.error('[admin/revenue]', err?.message || err);
+    return NextResponse.json(
+      { error: 'Unable to load revenue analytics', detail: String(err?.message || err).slice(0, 300) },
+      { status: 500, headers: { 'Cache-Control': 'no-store' } },
+    );
+  }
+}
+
+async function getRevenueAnalytics(req) {
   const { searchParams } = new URL(req.url);
   const preset = searchParams.get('preset') || 'last30';
   const granularity = searchParams.get('granularity') || 'day';

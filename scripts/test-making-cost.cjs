@@ -9,7 +9,7 @@ const source = fs.readFileSync(sourcePath, 'utf8')
   .replace(/export function /g, 'function ');
 const context = { module: { exports: {} }, exports: {}, console };
 vm.createContext(context);
-vm.runInContext(`${source}\nmodule.exports = { isConfiguredCost, parseMoneyAmount, variantCostKey, normalizeVariantKey, findCostRow, resolveMakingCost, snapshotOrderItemCost, attributeItemCost, summarizeAttributedItems, stripMakingCostFromOrder, COST_STATUS };`, context);
+vm.runInContext(`${source}\nmodule.exports = { isConfiguredCost, parseMoneyAmount, variantCostKey, normalizeVariantKey, findCostRow, resolveMakingCost, costsEffectiveAt, snapshotOrderItemCost, attributeItemCost, summarizeAttributedItems, stripMakingCostFromOrder, makingCostStatusForProduct, displayMakingCostAmount, COST_STATUS };`, context);
 const {
   isConfiguredCost,
   parseMoneyAmount,
@@ -17,10 +17,13 @@ const {
   normalizeVariantKey,
   findCostRow,
   resolveMakingCost,
+  costsEffectiveAt,
   snapshotOrderItemCost,
   attributeItemCost,
   summarizeAttributedItems,
   stripMakingCostFromOrder,
+  makingCostStatusForProduct,
+  displayMakingCostAmount,
   COST_STATUS,
 } = context.module.exports;
 
@@ -156,5 +159,28 @@ assert.ok(Math.abs(covered.productGrossProfit - 6288.2) < 0.01);
 assert.strictEqual(covered.grossMarginPct, 44.9);
 assert.strictEqual(covered.costCoveragePct, 9.3);
 assert.strictEqual(covered.complete, false);
+
+// Same effectiveFrom: later createdAt wins (Photo Cloud-style duplicate day saves).
+const sameDay = new Date('2026-11-01T18:30:00.000Z');
+const tied = costsEffectiveAt([
+  { variantKey: '', amount: 807.18, effectiveFrom: sameDay, createdAt: new Date('2026-11-02T11:12:13.941Z') },
+  { variantKey: '', amount: 770.18, effectiveFrom: sameDay, createdAt: new Date('2026-11-02T11:17:15.410Z') },
+], new Date('2026-11-03T12:00:00.000+05:30'));
+assert.strictEqual(tied.get('').amount, 770.18);
+
+const withProductLevel = makingCostStatusForProduct(
+  { variants: [{ name: 'Size', options: [{ label: 'Large' }] }] },
+  [{ variantKey: '', amount: 500 }],
+);
+assert.strictEqual(withProductLevel, 'configured');
+
+assert.strictEqual(displayMakingCostAmount([{ variantKey: '', amount: 500 }]), 500);
+assert.strictEqual(displayMakingCostAmount([{ variantKey: 'Size: Large', amount: 650 }]), 650);
+const ranged = displayMakingCostAmount([
+  { variantKey: 'Size: Large', amount: 650 },
+  { variantKey: 'Size: Small', amount: 400 },
+]);
+assert.strictEqual(ranged.min, 400);
+assert.strictEqual(ranged.max, 650);
 
 console.log('Making cost helper tests passed');

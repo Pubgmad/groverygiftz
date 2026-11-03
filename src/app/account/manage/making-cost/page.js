@@ -6,8 +6,17 @@ import { FiSearch, FiTool, FiX } from 'react-icons/fi';
 import ReadOnlyBanner from '@/components/admin/ReadOnlyBanner';
 import useAdminAccess from '@/hooks/useAdminAccess';
 import { formatPrice } from '@/lib/utils';
+import { findCostRow } from '@/lib/makingCost';
 import { formatIstDateInput } from '@/lib/revenueAnalytics';
 import AdminSelect from '@/components/admin/AdminSelect';
+
+function formatMakingCostCell(product) {
+  if (product.makingCost !== null && product.makingCost !== undefined) return formatPrice(product.makingCost);
+  if (product.makingCostRange) {
+    return `${formatPrice(product.makingCostRange.min)} – ${formatPrice(product.makingCostRange.max)}`;
+  }
+  return product.costStatus === 'configured' || product.costStatus === 'partial' ? 'Variant costs' : 'Unknown';
+}
 
 function statusBadge(status) {
   if (status === 'configured') return 'bg-emerald-50 text-emerald-800';
@@ -72,11 +81,11 @@ export default function MakingCostPage() {
       return;
     }
     setDetail(json);
-    const productCost = json.costs?.find((row) => !row.variantKey);
+    const productCost = findCostRow(json.costs || [], '');
     setProductAmount(productCost ? String(productCost.amount) : '');
     const next = {};
     (json.product?.variants || []).forEach((variant) => {
-      const cost = json.costs?.find((row) => row.variantKey === variant.variantKey);
+      const cost = findCostRow(json.costs || [], variant.variantKey);
       next[variant.variantKey] = cost ? String(cost.amount) : '';
     });
     setVariantAmounts(next);
@@ -185,7 +194,7 @@ export default function MakingCostPage() {
                         <p>{formatPrice(product.salePrice > 0 && product.salePrice < product.regularPrice ? product.salePrice : product.regularPrice)}</p>
                         {product.salePrice > 0 && product.salePrice < product.regularPrice ? <p className="text-xs text-gray-500">Regular {formatPrice(product.regularPrice)}</p> : null}
                       </td>
-                      <td className="p-4">{product.makingCost === null ? 'Unknown' : formatPrice(product.makingCost)}</td>
+                      <td className="p-4">{formatMakingCostCell(product)}</td>
                       <td className="p-4"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${statusBadge(product.costStatus)}`}>{statusLabel(product.costStatus)}</span></td>
                       <td className="p-4 text-xs text-gray-500">{product.lastUpdated ? new Date(product.lastUpdated).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '—'}</td>
                       <td className="p-4">
@@ -203,7 +212,7 @@ export default function MakingCostPage() {
                     {product.image ? <img src={product.image} alt="" className="h-14 w-14 shrink-0 rounded-lg object-cover" /> : <span className="h-14 w-14 shrink-0 rounded-lg bg-gray-100" />}
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-semibold leading-5">{product.title}</p>
-                      <p className="mt-1 text-xs leading-5 text-gray-500">{statusLabel(product.costStatus)} · {product.makingCost === null ? 'Unknown cost' : formatPrice(product.makingCost)}</p>
+                      <p className="mt-1 text-xs leading-5 text-gray-500">{statusLabel(product.costStatus)} · {formatMakingCostCell(product)}</p>
                     </div>
                   </div>
                 </button>

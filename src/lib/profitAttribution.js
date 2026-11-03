@@ -12,7 +12,9 @@ export async function attributeProfitForFilters(filters, extraMatch = null) {
   const productIds = [...new Set(items.map((row) => row.product).filter(Boolean))];
   const [products, histories, currentCosts] = await Promise.all([
     productIds.length ? Product.find({ _id: { $in: productIds } }).select('title variants images createdAt').lean() : [],
-    productIds.length ? MakingCostHistory.find({ product: { $in: productIds } }).lean() : [],
+    productIds.length
+      ? MakingCostHistory.find({ product: { $in: productIds } }).sort({ effectiveFrom: 1, createdAt: 1 }).lean()
+      : [],
     productIds.length ? MakingCost.find({ product: { $in: productIds } }).lean() : [],
   ]);
   const productsById = Object.fromEntries(products.map((row) => [String(row._id), row]));
