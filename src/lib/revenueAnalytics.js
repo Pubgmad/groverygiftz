@@ -350,22 +350,19 @@ function bucketExpr(granularity) {
   return { $dateTrunc: trunc };
 }
 
+const lineProductSalesExpr = {
+  $reduce: {
+    input: { $ifNull: ['$items', []] },
+    initialValue: 0,
+    in: { $add: ['$$value', { $multiply: [{ $ifNull: ['$$this.price', 0] }, { $ifNull: ['$$this.quantity', 0] }] }] },
+  },
+};
+
 const orderMetrics = {
   collected: { $sum: { $ifNull: ['$total', 0] } },
-  productSales: {
-    $sum: {
-      $ifNull: [
-        '$subtotal',
-        {
-          $reduce: {
-            input: { $ifNull: ['$items', []] },
-            initialValue: 0,
-            in: { $add: ['$$value', { $multiply: [{ $ifNull: ['$$this.price', 0] }, { $ifNull: ['$$this.quantity', 0] }] }] },
-          },
-        },
-      ],
-    },
-  },
+  // Always Σ(price×qty) so KPIs match product lists and the published productSales definition.
+  // Do not prefer stored subtotal — it can drift from historical line prices.
+  productSales: { $sum: lineProductSalesExpr },
   shipping: { $sum: { $ifNull: ['$shippingCost', 0] } },
   orders: { $sum: 1 },
   units: {
@@ -394,11 +391,12 @@ export function revenuePipeline({ from, to, paymentMethod, status, state, city, 
         states: [
           {
             $group: {
-              _id: { $toLower: { $trim: { input: { $ifNull: ['$shippingAddress.state', ''] } } } },
-              label: { $first: { $trim: { input: { $ifNull: ['$shippingAddress.state', 'Unknown'] } } } },
+              _id: placeKey('$shippingAddress.state'),
+              label: { $first: placeValue('$shippingAddress.state') },
               ...orderMetrics,
             },
           },
+          { $match: { _id: { $nin: ['', null] } } },
           { $sort: { collected: -1 } },
           { $limit: 50 },
         ],
@@ -406,14 +404,15 @@ export function revenuePipeline({ from, to, paymentMethod, status, state, city, 
           {
             $group: {
               _id: {
-                city: { $toLower: { $trim: { input: { $ifNull: ['$shippingAddress.city', ''] } } } },
-                state: { $toLower: { $trim: { input: { $ifNull: ['$shippingAddress.state', ''] } } } },
+                city: placeKey('$shippingAddress.city'),
+                state: placeKey('$shippingAddress.state'),
               },
-              city: { $first: { $trim: { input: { $ifNull: ['$shippingAddress.city', 'Unknown'] } } } },
-              state: { $first: { $trim: { input: { $ifNull: ['$shippingAddress.state', ''] } } } },
+              city: { $first: placeValue('$shippingAddress.city') },
+              state: { $first: placeValue('$shippingAddress.state') },
               ...orderMetrics,
             },
           },
+          { $match: { '_id.city': { $nin: ['', null] } } },
           { $sort: { collected: -1 } },
           { $limit: 50 },
         ],
@@ -757,20 +756,21 @@ export function shapeTrend(rows = [], granularity = 'day') {
 export function mergeProfitIntoPlaces(orderRows = [], profitRows = [], type = 'state') {
   const byKey = Object.fromEntries((profitRows || []).map((row) => {
     const key = type === 'city'
-      ? `${String(row.label || row.city || 'Unknown').toLowerCase()}|${String(row.state || '').toLowerCase()}`
-      : String(row.label || row.key || 'Unknown').toLowerCase();
+      ? `${normalizePlaceLabel(row.label || row.city || 'Unknown').toLowerCase()}|${normalizePlaceLabel(row.state || '').toLowerCase()}`
+      : normalizePlaceLabel(row.label || row.key || 'Unknown').toLowerCase();
     return [key, row];
   }));
   return (orderRows || []).map((row) => {
     const key = type === 'city'
-      ? `${String(row.city || 'Unknown').toLowerCase()}|${String(row.state || '').toLowerCase()}`
-      : String(row.label || row._id || 'Unknown').toLowerCase();
+      ? `${normalizePlaceLabel(row.city || 'Unknown').toLowerCase()}|${normalizePlaceLabel(row.state || '').toLowerCase()}`
+      : normalizePlaceLabel(row.label || row._id || 'Unknown').toLowerCase();
     const profit = byKey[key];
     return {
       ...row,
-      makingCost: profit ? Number(profit.makingCost || 0) : Number(row.makingCost || 0),
-      grossProfit: profit ? Number(profit.grossProfit || 0) : Number(row.grossProfit || 0),
-      unknownRevenue: profit ? Number(profit.unknownRevenue || 0) : Number(row.unknownRevenue || 0),
+      makingCost: profit ? Number(profit.makingCost || 0) : null,
+      grossProfit: profit ? Number(profit.grossProfit || 0) : null,
+      unknownRevenue: profit ? Number(profit.unknownRevenue || 0) : null,
+      profitAttributed: Boolean(profit),
     };
   });
 }
@@ -784,18 +784,25 @@ function withShare(rows, valueKey) {
 }
 
 export function shapePlaces(rows = [], type) {
-  return withShare(rows.map((row) => ({
-    key: type === 'city' ? `${row.city || 'Unknown'}|${row.state || ''}` : (row.label || row._id || 'Unknown'),
-    label: type === 'city' ? (row.city || 'Unknown') : (row.label || row._id || 'Unknown'),
-    state: row.state || '',
-    collected: Number(row.collected || 0),
-    orders: Number(row.orders || 0),
-    units: Number(row.units || 0),
-    averageOrderValue: row.orders ? Number(row.collected || 0) / Number(row.orders) : 0,
-    makingCost: Number(row.makingCost || 0),
-    grossProfit: Number(row.grossProfit || 0),
-    unknownRevenue: Number(row.unknownRevenue || 0),
-  })), 'collected');
+  return withShare(rows.map((row) => {
+    const city = normalizePlaceLabel(row.city) || 'Unknown';
+    const state = normalizePlaceLabel(row.state);
+    const label = type === 'city' ? city : (normalizePlaceLabel(row.label || row._id) || 'Unknown');
+    const profitAttributed = row.profitAttributed !== false && row.makingCost !== null && row.makingCost !== undefined;
+    return {
+      key: type === 'city' ? `${city}|${state}` : label,
+      label,
+      state,
+      collected: Number(row.collected || 0),
+      orders: Number(row.orders || 0),
+      units: Number(row.units || 0),
+      averageOrderValue: row.orders ? Number(row.collected || 0) / Number(row.orders) : 0,
+      makingCost: profitAttributed ? Number(row.makingCost || 0) : null,
+      grossProfit: profitAttributed ? Number(row.grossProfit || 0) : null,
+      unknownRevenue: profitAttributed ? Number(row.unknownRevenue || 0) : null,
+      profitAttributed,
+    };
+  }), 'collected');
 }
 
 export function shapeHours(rows = []) {
@@ -903,12 +910,25 @@ export function shapeInsights({ kpis, trend, states, hours, weekdays, products }
 
 export function mergeProfitIntoTrend(trend = [], profitRows = []) {
   const byLabel = Object.fromEntries(profitRows.map((row) => [row.label, row]));
-  return trend.map((row) => ({
-    ...row,
-    makingCost: Number(byLabel[row.label]?.makingCost || 0),
-    grossProfit: Number(byLabel[row.label]?.grossProfit || 0),
-    unknownCostRevenue: Number(byLabel[row.label]?.unknownRevenue || 0),
-  }));
+  return trend.map((row) => {
+    const profit = byLabel[row.label];
+    if (!profit) {
+      return {
+        ...row,
+        makingCost: null,
+        grossProfit: null,
+        unknownCostRevenue: null,
+        profitAttributed: false,
+      };
+    }
+    return {
+      ...row,
+      makingCost: Number(profit.makingCost || 0),
+      grossProfit: Number(profit.grossProfit || 0),
+      unknownCostRevenue: Number(profit.unknownRevenue || 0),
+      profitAttributed: true,
+    };
+  });
 }
 
 export function istBucketLabel(date, granularity = 'day') {

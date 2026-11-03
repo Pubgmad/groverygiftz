@@ -208,6 +208,11 @@ assert.strictEqual(monthTrend[0].label, '2026-11');
 const mergedMonth = mergeProfitIntoTrend(monthTrend, [{ label: '2026-11', makingCost: 400, grossProfit: 500, unknownRevenue: 0 }]);
 assert.strictEqual(mergedMonth[0].grossProfit, 500);
 assert.strictEqual(mergedMonth[0].makingCost, 400);
+assert.strictEqual(mergedMonth[0].profitAttributed, true);
+const mergedMissing = mergeProfitIntoTrend(monthTrend, []);
+assert.strictEqual(mergedMissing[0].grossProfit, null);
+assert.strictEqual(mergedMissing[0].makingCost, null);
+assert.strictEqual(mergedMissing[0].profitAttributed, false);
 
 const geo = mergeProfitIntoPlaces(
   [{ label: 'Tamil Nadu', collected: 10000, orders: 5 }],
@@ -216,6 +221,15 @@ const geo = mergeProfitIntoPlaces(
 );
 assert.strictEqual(geo[0].collected, 10000);
 assert.strictEqual(geo[0].grossProfit, 3000);
+const geoNbsp = mergeProfitIntoPlaces(
+  [{ label: 'Tamil\u00a0Nadu', collected: 10000, orders: 5 }],
+  [{ label: 'Tamil Nadu', makingCost: 2000, grossProfit: 3000, unknownRevenue: 100 }],
+  'state',
+);
+assert.strictEqual(geoNbsp[0].grossProfit, 3000, 'NBSP state labels must merge with normalized profit keys');
+
+const salesMetric = JSON.stringify(revenuePipeline({ from: day.from, to: day.to }));
+assert.ok(!salesMetric.includes('"$ifNull":["$subtotal"'), 'productSales must not prefer stored subtotal over line sums');
 
 // Weekly $dateTrunc must keep startOfWeek inside the operator (screenshot crash).
 const weekPipeline = JSON.stringify(revenuePipeline({

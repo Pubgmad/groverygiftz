@@ -3,7 +3,7 @@ import Product from '@/models/Product';
 import MakingCost from '@/models/MakingCost';
 import MakingCostHistory from '@/models/MakingCostHistory';
 import { backdateInauguralHistoryForAttribution, buildAttributedRows, groupProfitRows, normalizeVariantKey, summarizeAttributedItems } from '@/lib/makingCost';
-import { istBucketLabel, profitItemPipeline } from '@/lib/revenueAnalytics';
+import { istBucketLabel, normalizePlaceLabel, profitItemPipeline } from '@/lib/revenueAnalytics';
 
 export async function attributeProfitForFilters(filters, extraMatch = null) {
   const pipeline = profitItemPipeline(filters);
@@ -55,11 +55,15 @@ export async function attributeProfitForFilters(filters, extraMatch = null) {
     (row) => `${row.title}|${row.variant}`,
     (row) => `${row.title} · ${row.variant}`,
   );
-  const stateRows = groupProfitRows(attributed, (row) => String(row.state || 'Unknown').toLowerCase(), (row) => row.state || 'Unknown');
+  const stateRows = groupProfitRows(
+    attributed,
+    (row) => normalizePlaceLabel(row.state || 'Unknown').toLowerCase(),
+    (row) => normalizePlaceLabel(row.state) || 'Unknown',
+  );
   const cityRows = groupProfitRows(
     attributed,
-    (row) => `${String(row.city || 'Unknown').toLowerCase()}|${String(row.state || '').toLowerCase()}`,
-    (row) => row.city || 'Unknown',
+    (row) => `${normalizePlaceLabel(row.city || 'Unknown').toLowerCase()}|${normalizePlaceLabel(row.state || '').toLowerCase()}`,
+    (row) => normalizePlaceLabel(row.city) || 'Unknown',
   );
   const trendRows = groupProfitRows(
     attributed,
