@@ -207,6 +207,51 @@
 }
 .animate-pulse-glow { animation: pulseGlow 2.8s ease-in-out infinite; }
 
+@keyframes stockAlertIn {
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes stockAlertGlow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(244, 121, 32, 0), 0 1px 2px rgba(146, 59, 8, 0.08);
+    border-color: rgba(251, 191, 36, 0.7);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(244, 121, 32, 0.12), 0 4px 16px rgba(244, 121, 32, 0.2);
+    border-color: rgba(244, 121, 32, 0.85);
+  }
+}
+
+@keyframes stockAlertIcon {
+  0%, 100% { transform: scale(1) translateY(0); }
+  40% { transform: scale(1.12) translateY(-1px); }
+  70% { transform: scale(1.04) translateY(0); }
+}
+
+.stock-urgency-alert {
+  animation: stockAlertIn 0.45s ease-out both, stockAlertGlow 2.6s ease-in-out 0.45s infinite;
+}
+
+.stock-urgency-alert__icon {
+  display: inline-flex;
+  animation: stockAlertIcon 2.2s ease-in-out 0.45s infinite;
+  transform-origin: center bottom;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stock-urgency-alert,
+  .stock-urgency-alert__icon {
+    animation: none !important;
+  }
+}
+
 .dots-pattern {
   background-image: radial-gradient(circle, rgba(36,86,216,0.08) 1px, transparent 1px);
   background-size: 24px 24px;
