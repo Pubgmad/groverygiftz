@@ -9,6 +9,7 @@ import Collection from '@/models/Collection';
 import {
   DATE_PRESETS,
   REVENUE_DEFINITIONS,
+  buildRevenueMatch,
   buyerIdentityExpr,
   filterOptionPipeline,
   kpiPipeline,
@@ -203,11 +204,15 @@ export async function GET(req) {
   const unique = customerRows.length;
   const repeatRows = customerRows.filter((row) => Number(row.orders || 0) > 1);
   const buyerKeys = customerRows.map((row) => row._id);
+  // Returning buyers: earlier purchase must use the same eligibility filters as the dashboard
+  // (payment/status/geo/product/variant), only with eventAt before the selected period.
   const earlierBuyers = buyerKeys.length
     ? await Order.aggregate([
-      { $match: { paymentStatus: 'paid', status: { $nin: ['cancelled'] } } },
-      { $addFields: { eventAt: { $ifNull: ['$paidAt', '$createdAt'] } } },
-      { $match: { eventAt: { $lt: range.from } } },
+      ...buildRevenueMatch({
+        ...filters,
+        from: new Date('2000-01-01T00:00:00.000Z'),
+        to: new Date(range.from.getTime() - 1),
+      }),
       { $group: { _id: buyerIdentityExpr() } },
       { $match: { _id: { $in: buyerKeys } } },
     ]).allowDiskUse(true)

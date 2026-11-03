@@ -8,6 +8,7 @@ import Product from '@/models/Product';
 import Customer from '@/models/Customer';
 import {
   DATE_PRESETS,
+  buildRevenueMatch,
   buyerIdentityExpr,
   buyerListPipeline,
   presetToRange,
@@ -166,9 +167,11 @@ export async function GET(req) {
   if (kind === 'returning') {
     const keys = rows.map((row) => row._id);
     const earlier = keys.length ? await Order.aggregate([
-      { $match: { paymentStatus: 'paid', status: { $nin: ['cancelled'] } } },
-      { $addFields: { eventAt: { $ifNull: ['$paidAt', '$createdAt'] } } },
-      { $match: { eventAt: { $lt: parsed.range.from } } },
+      ...buildRevenueMatch({
+        ...parsed.filters,
+        from: new Date('2000-01-01T00:00:00.000Z'),
+        to: new Date(parsed.range.from.getTime() - 1),
+      }),
       { $group: { _id: buyerIdentityExpr() } },
       { $match: { _id: { $in: keys } } },
     ]).allowDiskUse(true) : [];
