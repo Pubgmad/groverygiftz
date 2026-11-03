@@ -12,19 +12,22 @@ export async function POST(req) {
     if (!file) return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
     if (file.size > MAX_FILE_SIZE) return NextResponse.json({ error: 'File must be under 500 MB' }, { status: 400 });
 
-    const format = detectImageFormat(Buffer.from(await file.arrayBuffer()));
+    const fileBuffer = Buffer.from(await file.arrayBuffer());
+    const format = detectImageFormat(fileBuffer);
     if (!isSupportedUploadFormat(format, { allowPdf: true })) return NextResponse.json({ error: 'Only valid JPG, PNG, WEBP, GIF, AVIF, SVG, HEIC, HEIF or PDF files are allowed' }, { status: 400 });
 
     const preview = formData.get('preview');
     let previewFormat = null;
+    let previewBuffer = null;
     if (format.isHeif) {
       if (!preview || !preview.size) return NextResponse.json({ error: 'HEIC/HEIF preview conversion failed. Please choose the image again.' }, { status: 415 });
-      previewFormat = detectImageFormat(Buffer.from(await preview.arrayBuffer()));
+      previewBuffer = Buffer.from(await preview.arrayBuffer());
+      previewFormat = detectImageFormat(previewBuffer);
       if (!previewFormat?.isImage || !['jpeg', 'png', 'webp'].includes(previewFormat.format)) return NextResponse.json({ error: 'Invalid compatible preview image' }, { status: 400 });
     }
 
-    const stored = await saveUploadFile(file, 'customizations');
-    const previewStored = format.isHeif ? await saveUploadFile(preview, 'customizations/previews') : null;
+    const stored = await saveUploadFile(file, 'customizations', { buffer: fileBuffer });
+    const previewStored = format.isHeif ? await saveUploadFile(preview, 'customizations/previews', { buffer: previewBuffer }) : null;
     const encodedPath = stored.relativePath.split('/').map(encodeURIComponent).join('/');
     const originalUrl = `/api/customization-upload/original-file/${encodedPath}?name=${encodeURIComponent(file.name)}`;
     const displayPath = previewStored?.relativePath || stored.relativePath;

@@ -1,6 +1,22 @@
 const HEIF_MIME = /image\/(heic|heif)(?:-sequence)?$/i;
 const HEIF_NAME = /\.(heic|heif)$/i;
 
+const imagePerfEnabled = () => {
+  try {
+    return typeof window !== 'undefined' && window.localStorage?.getItem('GG_PERF') === '1';
+  } catch {
+    return false;
+  }
+};
+const imagePerfMark = (name) => {
+  if (!imagePerfEnabled()) return;
+  try { performance.mark(`gg:${name}`); } catch {}
+};
+const imagePerfMeasure = (name, startName) => {
+  if (!imagePerfEnabled()) return;
+  try { performance.measure(`gg:${name}`, `gg:${startName}`); } catch {}
+};
+
 const asciiAt = (bytes, start, length) => String.fromCharCode(...bytes.slice(start, start + length));
 
 /** Read JPEG EXIF Orientation (tag 0x0112). Returns 1–8, or 1 when absent. */
@@ -87,15 +103,19 @@ function probeImageDecode(url) {
 
 export async function prepareImageUpload(file) {
   if (!file) return { previewUrl: '', previewFile: null };
+  imagePerfMark('prepare:start');
 
   const signature = await inspectImageHeader(file).catch(() => '');
   const heif = signature ? signature === 'heif' : HEIF_MIME.test(String(file.type || '')) || HEIF_NAME.test(String(file.name || ''));
   if (heif) {
     try {
+      imagePerfMark('prepare:heic:start');
       const { heicTo } = await import('heic-to');
       const previewBlob = await heicTo({ blob: file, type: 'image/jpeg', quality: 0.92 });
       const previewUrl = URL.createObjectURL(previewBlob);
       const image = await verifyImageDecode(previewUrl);
+      imagePerfMeasure('prepare:heic', 'prepare:heic:start');
+      imagePerfMeasure('prepare:total', 'prepare:start');
       return {
         previewUrl,
         previewFile: previewBlob,
@@ -115,38 +135,27 @@ export async function prepareImageUpload(file) {
 
   // Prefer createImageBitmap with EXIF orientation — do not revoke the blob on probe failure.
   // iOS Safari ≤15: createImageBitmap exists but the imageOrientation option throws DOMException.
-  // The catch handles that, but we also try without the option first on platforms that don't support it,
-  // by catching the error and retrying without options.
+  // When bitmap succeeds, trust its dimensions — a second <img> probe was doubling decode time.
   if (previewUrl && typeof createImageBitmap === 'function') {
     try {
+      imagePerfMark('prepare:bitmap:start');
       const bitmap = await createImageBitmap(previewBlob, { imageOrientation: 'from-image' });
       const width = bitmap.width;
       const height = bitmap.height;
       bitmap.close?.();
+      imagePerfMeasure('prepare:bitmap', 'prepare:bitmap:start');
       if (width > 0 && height > 0) {
-        const probed = await probeImageDecode(previewUrl);
-        if (probed) return { previewUrl, previewFile: null, previewName: '', width, height };
-        // Bitmap succeeded; use its dims even if <img> probe flaked.
+        imagePerfMeasure('prepare:total', 'prepare:start');
         return { previewUrl, previewFile: null, previewName: '', width, height };
       }
     } catch {
-      // imageOrientation option not supported (iOS Safari ≤15) — retry without it to still get dimensions.
-      try {
-        const bitmap = await createImageBitmap(previewBlob);
-        const width = bitmap.width;
-        const height = bitmap.height;
-        bitmap.close?.();
-        if (width > 0 && height > 0) {
-          // Dimensions may be pre-rotation on iOS ≤15; EXIF heuristic below will correct them.
-          return { previewUrl, previewFile: null, previewName: '', width, height };
-        }
-      } catch {
-        // Fall through to Image + EXIF heuristic without having revoked previewUrl.
-      }
+      // imageOrientation unsupported (iOS Safari ≤15) — one Image decode + EXIF heuristic below.
     }
   }
 
+  imagePerfMark('prepare:img:start');
   const image = previewUrl ? await verifyImageDecode(previewUrl) : null;
+  imagePerfMeasure('prepare:img', 'prepare:img:start');
   let width = image?.naturalWidth || 0;
   let height = image?.naturalHeight || 0;
   if (signature === 'jpeg' && width > 0 && height > 0) {
@@ -160,6 +169,7 @@ export async function prepareImageUpload(file) {
       }
     }
   }
+  imagePerfMeasure('prepare:total', 'prepare:start');
   return {
     previewUrl,
     previewFile: null,

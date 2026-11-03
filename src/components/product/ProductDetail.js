@@ -20,6 +20,28 @@ import PhotoAdjuster from '@/components/product/PhotoAdjuster';
 import PhotoLimitDialog from '@/components/product/PhotoLimitDialog';
 import ProductAssurancePanel from '@/components/product/ProductAssurancePanel';
 import AboutThisProduct from '@/components/product/AboutThisProduct';
+import { imagePerfMark, imagePerfMeasure } from '@/lib/imagePerf';
+
+/** Session caches for Apply/cart canvas work — avoid re-decoding the same URLs. */
+const previewImageCache = new Map();
+const frameImageCache = new Map();
+
+const canvasToJpegBlob = (canvas, quality = 0.9) => new Promise((resolve, reject) => {
+  if (typeof canvas.toBlob === 'function') {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error('Unable to generate the customized preview. Please try again.'));
+    }, 'image/jpeg', quality);
+    return;
+  }
+  try {
+    const dataUrl = canvas.toDataURL('image/jpeg', quality);
+    fetch(dataUrl).then((res) => res.blob()).then(resolve).catch(reject);
+  } catch (error) {
+    reject(error);
+  }
+});
+
 const INDIAN_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
   'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh',
@@ -240,25 +262,33 @@ export default function ProductDetail({ product }) {
     frameImage: selected?.previewFrameImage || '',
     instructions: selected?.previewInstructions || '',
   });
-  const loadPreviewImage = (src) => new Promise((resolve, reject) => {
-    const image = new Image();
-    const timer = setTimeout(() => { image.onload = null; image.onerror = null; reject(new Error('Preview image loading timed out. Please try again.')); }, 30000);
+  const loadPreviewImage = (src, { cache = previewImageCache } = {}) => {
     const url = String(src || '');
-    // Same-origin + blob stay usable for canvas without CORS mode. crossOrigin=anonymous
-    // omits cookies and can 401 unsigned customer-file URLs that a normal <img> still shows.
-    if (/^https?:\/\//i.test(url) && typeof window !== 'undefined') {
-      try {
-        if (new URL(url, window.location.href).origin !== window.location.origin) {
+    if (!url) return Promise.reject(new Error('Unable to load the image for preview. Please try uploading it again.'));
+    if (cache.has(url)) return Promise.resolve(cache.get(url));
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      const timer = setTimeout(() => { image.onload = null; image.onerror = null; reject(new Error('Preview image loading timed out. Please try again.')); }, 30000);
+      // Same-origin + blob stay usable for canvas without CORS mode. crossOrigin=anonymous
+      // omits cookies and can 401 unsigned customer-file URLs that a normal <img> still shows.
+      if (/^https?:\/\//i.test(url) && typeof window !== 'undefined') {
+        try {
+          if (new URL(url, window.location.href).origin !== window.location.origin) {
+            image.crossOrigin = 'anonymous';
+          }
+        } catch {
           image.crossOrigin = 'anonymous';
         }
-      } catch {
-        image.crossOrigin = 'anonymous';
       }
-    }
-    image.onload = () => { clearTimeout(timer); resolve(image); };
-    image.onerror = () => { clearTimeout(timer); reject(new Error('Unable to load the image for preview. Please try uploading it again.')); };
-    image.src = url;
-  });
+      image.onload = () => {
+        clearTimeout(timer);
+        cache.set(url, image);
+        resolve(image);
+      };
+      image.onerror = () => { clearTimeout(timer); reject(new Error('Unable to load the image for preview. Please try uploading it again.')); };
+      image.src = url;
+    });
+  };
   const getContainedDrawRect = (sourceWidth, sourceHeight, boxWidth, boxHeight) => {
     const scale = Math.min(boxWidth / Math.max(1, sourceWidth), boxHeight / Math.max(1, sourceHeight));
     const width = sourceWidth * scale;
@@ -273,7 +303,8 @@ export default function ProductDetail({ product }) {
   const renderFinalPreviewImage = async (area, idx, sourceUrl = '', overrideAdjustments) => {
     const photo = sourceUrl ? (typeof sourceUrl === 'object' ? sourceUrl : { url: sourceUrl }) : customerPhotos[idx];
     const candidates = previewLoadUrls(photo);
-    if (!candidates.length) return '';
+    if (!candidates.length) return null;
+    imagePerfMark('apply:render:start');
     try {
       const adjustments = overrideAdjustments ? { ...getDefaultPreviewAdjustments(), ...overrideAdjustments } : getAreaAdjustments(idx);
       const { displayWidth, displayHeight } = getPreviewDimensions(area, adjustments.orientation);
@@ -287,6 +318,7 @@ export default function ProductDetail({ product }) {
 
       let uploadedImage;
       let lastLoadError;
+      imagePerfMark('apply:decode:start');
       for (const candidate of candidates) {
         try {
           uploadedImage = await loadPreviewImage(candidate);
@@ -296,6 +328,7 @@ export default function ProductDetail({ product }) {
           lastLoadError = error;
         }
       }
+      imagePerfMeasure('apply:decode', 'apply:decode:start');
       if (!uploadedImage) throw lastLoadError || new Error('Unable to load the image for preview. Please try uploading it again.');
       const srcW = uploadedImage.naturalWidth || uploadedImage.width;
       const srcH = uploadedImage.naturalHeight || uploadedImage.height;
@@ -318,7 +351,7 @@ export default function ProductDetail({ product }) {
 
       if (area.frameImage) {
         try {
-          const frameImage = await loadPreviewImage(area.frameImage);
+          const frameImage = await loadPreviewImage(area.frameImage, { cache: frameImageCache });
           const frameRect = getContainedDrawRect(
             frameImage.naturalWidth || frameImage.width,
             frameImage.naturalHeight || frameImage.height,
@@ -331,22 +364,35 @@ export default function ProductDetail({ product }) {
         }
       }
 
-      return canvas.toDataURL('image/jpeg', 0.9);
+      imagePerfMark('apply:encode:start');
+      const blob = await canvasToJpegBlob(canvas, 0.9);
+      imagePerfMeasure('apply:encode', 'apply:encode:start');
+      imagePerfMeasure('apply:render', 'apply:render:start');
+      return blob;
     } catch (error) {
       throw new Error(error.message || 'Unable to generate the customized preview. Please try again.');
     }
   };
-  const uploadRenderedPreviewImage = async (dataUrl, label, idx) => {
-    if (!dataUrl) throw new Error('The customized preview is empty. Please try saving it again.');
+  const uploadRenderedPreviewImage = async (rendered, label, idx) => {
+    if (!rendered) throw new Error('The customized preview is empty. Please try saving it again.');
     try {
-      const blob = await (await fetch(dataUrl)).blob();
+      imagePerfMark('apply:upload:start');
+      let blob = rendered;
+      let localPreviewUrl = '';
+      if (typeof rendered === 'string') {
+        blob = await (await fetch(rendered)).blob();
+        localPreviewUrl = rendered;
+      } else if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+        localPreviewUrl = URL.createObjectURL(blob);
+      }
       const safeLabel = String(label || `photo-${idx + 1}`).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `photo-${idx + 1}`;
       const formData = new FormData();
-      formData.append('file', new File([blob], `${safeLabel}-final-preview.jpg`, { type: 'image/jpeg' }));
+      formData.append('file', new File([blob], `${safeLabel}-final-preview.jpg`, { type: blob.type || 'image/jpeg' }));
       const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Preview upload failed');
-      return { ...data, previewUrl: dataUrl };
+      imagePerfMeasure('apply:upload', 'apply:upload:start');
+      return { ...data, previewUrl: localPreviewUrl || data.displayUrl || data.url || '' };
     } catch (error) {
       throw new Error(error.message || 'Unable to store the customized preview. Please try again.');
     }
@@ -362,8 +408,9 @@ export default function ProductDetail({ product }) {
         const areaLabel = area.label || ('Photo ' + (idx + 1));
         const saved = savedPreviewFilesRef.current[idx];
         const cached = saved?.sourceUrl === uploadedFile.url && saved?.adjustments === JSON.stringify(getAreaAdjustments(idx)) ? saved.file : null;
-        const finalPreviewDataUrl = cached ? '' : await renderFinalPreviewImage(area, idx, uploadedFile);
-        const finalPreviewImage = cached || await uploadRenderedPreviewImage(finalPreviewDataUrl, areaLabel, idx);
+        const renderedPreview = cached ? null : await renderFinalPreviewImage(area, idx, uploadedFile);
+        const finalPreviewImage = cached || await uploadRenderedPreviewImage(renderedPreview, areaLabel, idx);
+        const finalPreviewDataUrl = finalPreviewImage?.url ? '' : (finalPreviewImage?.previewUrl || '');
         const adjustments = getAreaAdjustments(idx);
         const oriented = getFrameSize(area, adjustments.orientation);
         previews.push({
@@ -378,7 +425,7 @@ export default function ProductDetail({ product }) {
           uploadedFile,
           adjustments,
           finalPreviewImage,
-          finalPreviewDataUrl: finalPreviewImage?.url ? '' : finalPreviewDataUrl,
+          finalPreviewDataUrl,
         });
       }
     }
@@ -398,8 +445,8 @@ export default function ProductDetail({ product }) {
       const areaLabel = `Variant: ${selected.label}`;
       const saved = savedPreviewFilesRef.current[previewKey];
       const cached = saved?.sourceUrl === uploadedFile.url && saved?.adjustments === JSON.stringify(getAreaAdjustments(previewKey)) ? saved.file : null;
-      const finalPreviewDataUrl = cached ? '' : await renderFinalPreviewImage(area, previewKey, uploadedFile);
-      const finalPreviewImage = cached || await uploadRenderedPreviewImage(finalPreviewDataUrl, areaLabel, previews.length);
+      const renderedPreview = cached ? null : await renderFinalPreviewImage(area, previewKey, uploadedFile);
+      const finalPreviewImage = cached || await uploadRenderedPreviewImage(renderedPreview, areaLabel, previews.length);
       const adjustments = getAreaAdjustments(previewKey);
       const oriented = getFrameSize(area, adjustments.orientation);
       previews.push({
@@ -414,7 +461,7 @@ export default function ProductDetail({ product }) {
         uploadedFile,
         adjustments,
         finalPreviewImage,
-        finalPreviewDataUrl: finalPreviewImage?.url ? '' : finalPreviewDataUrl,
+        finalPreviewDataUrl: finalPreviewImage?.url ? '' : (finalPreviewImage?.previewUrl || ''),
         sourceType: 'variant',
       });
     }
@@ -434,8 +481,10 @@ export default function ProductDetail({ product }) {
       const adjustmentsObj = overrideAdjustments ? { ...getDefaultPreviewAdjustments(), ...overrideAdjustments } : getAreaAdjustments(idx);
       setPreviewAdjustments((prev) => ({ ...prev, [idx]: adjustmentsObj }));
       if (previewEnabled || variant) {
+        imagePerfMark('apply:total:start');
         const rendered = await renderFinalPreviewImage(area, idx, upload, adjustmentsObj);
-      const file = await uploadRenderedPreviewImage(rendered, area.label, idx);
+        const file = await uploadRenderedPreviewImage(rendered, area.label, idx);
+        imagePerfMeasure('apply:total', 'apply:total:start');
         savedPreviewFilesRef.current[idx] = { file, sourceUrl: upload.url, adjustments: JSON.stringify(adjustmentsObj) };
       }
       setSavedPreviewAreas((prev) => ({ ...prev, [idx]: true }));
@@ -595,11 +644,28 @@ export default function ProductDetail({ product }) {
         const token = (photoUploadTokenRef.current[job.index] || 0) + 1;
         photoUploadTokenRef.current[job.index] = token;
         setUploadingPhotoSlots((prev) => ({ ...prev, [job.index]: true }));
+        imagePerfMark('upload:job:start');
         const prepared = await prepareImageUpload(job.file);
+        // Show local blob under the uploading overlay before network completes (does not mark upload done).
+        const localPreview = {
+          previewUrl: prepared.previewUrl || '',
+          width: prepared.width || 0,
+          height: prepared.height || 0,
+        };
+        if (localPreview.previewUrl) {
+          const areaEarly = previewAreas[job.index] || null;
+          const adjustmentsEarly = adjustmentsForUploadedPhoto(prepared.width, prepared.height, areaEarly);
+          setActivePreviewSlot(job.index);
+          editPreviewArea(job.index);
+          setPreviewAdjustments((prev) => ({ ...prev, [job.index]: adjustmentsEarly }));
+          setCustomerPhotos((prev) => setPhotoSlot(alignPhotoSlots(prev, photoSlotCount), job.index, localPreview));
+        }
+        imagePerfMark('upload:network:start');
         const formData = new FormData();
         appendImageUpload(formData, job.file, prepared);
         const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
         const data = await res.json();
+        imagePerfMeasure('upload:network', 'upload:network:start');
         if (!res.ok) throw new Error(data.error || `Failed to upload ${job.file.name}`);
         if (photoUploadTokenRef.current[job.index] !== token) continue;
         const uploadedFile = attachLocalPreview(data, prepared);
@@ -610,12 +676,20 @@ export default function ProductDetail({ product }) {
         setPreviewAdjustments((prev) => ({ ...prev, [job.index]: adjustments }));
         setCustomerPhotos((prev) => setPhotoSlot(alignPhotoSlots(prev, photoSlotCount), job.index, uploadedFile));
         setUploadingPhotoSlots((prev) => ({ ...prev, [job.index]: false }));
+        imagePerfMeasure('upload:job', 'upload:job:start');
         if (openEditor) setEditorSlotKey(job.index);
       }
       toast.success(jobs.length === 1 ? 'Photo uploaded' : `${jobs.length} photos uploaded`);
       trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'customer_photos', photo_count: jobs.length }));
     } catch (error) {
       toast.error(error.message || 'Failed to upload photos');
+      setCustomerPhotos((prev) => {
+        let next = alignPhotoSlots(prev, photoSlotCount);
+        jobs.forEach((job) => {
+          if (next[job.index] && !next[job.index].url) next = clearPhotoSlot(next, job.index);
+        });
+        return next;
+      });
       setUploadingPhotoSlots((prev) => {
         const next = { ...prev };
         jobs.forEach((job) => { next[job.index] = false; });

@@ -48,12 +48,14 @@ export function storagePath(relativePath) {
   return path.join(STORAGE_ROOT, cleanPath);
 }
 
-export async function saveUploadFile(file, relativeDir) {
+export async function saveUploadFile(file, relativeDir, { buffer } = {}) {
   const filename = makeStoredFilename(file);
   const relativePath = cleanRelativePath(path.posix.join(relativeDir, filename));
   const filePath = storagePath(relativePath);
   await mkdir(path.dirname(filePath), { recursive: true });
-  const bytes = await file.arrayBuffer();
+  // Prefer a caller-provided buffer so routes that already read the file for validation
+  // do not pay a second full arrayBuffer() on large uploads.
+  const bytes = buffer || await file.arrayBuffer();
   await writeFile(filePath, Buffer.from(bytes));
   return { filename, relativePath, url: publicAssetUrl(relativePath) };
 }

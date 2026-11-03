@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>GG image pipeline bench</title>
+</head>
+<body>
+  <pre id="out">Running…</pre>
+  <script>
+    const out = document.getElementById('out');
+    const log = (line) => { out.textContent += `\n${line}`; };
+
+    async function makePhotoCanvas(w, h, seed = 0) {
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      const g = ctx.createLinearGradient(0, 0, w, h);
+      g.addColorStop(0, `hsl(${(20 + seed) % 360} 80% 45%)`);
+      g.addColorStop(1, `hsl(${(170 + seed) % 360} 70% 35%)`);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+      for (let i = 0; i < 40; i += 1) {
+        ctx.fillStyle = `rgba(255,255,255,${0.05 + (i % 7) * 0.02})`;
+        ctx.fillRect((i * 73 + seed) % w, (i * 97 + seed * 3) % h, 120, 80);
+      }
+      ctx.fillStyle = '#fff';
+      ctx.font = '48px sans-serif';
+      ctx.fillText('GroveryGiftz bench ' + seed, 40, 80);
+      return canvas;
+    }
+
+    function toBlobAsync(canvas, quality) {
+      return new Promise((resolve, reject) => {
+        canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('toBlob failed'))), 'image/jpeg', quality);
+      });
+    }
+
+    async function time(label, fn, runs = 7) {
+      const samples = [];
+      for (let i = 0; i < runs; i += 1) {
+        const t0 = performance.now();
+        await fn(i);
+        samples.push(performance.now() - t0);
+      }
+      samples.sort((a, b) => a - b);
+      const median = samples[Math.floor(samples.length / 2)];
+      return { label, median: Math.round(median), samples: samples.map((n) => Math.round(n)) };
+    }
+
+    (async () => {
+      out.textContent = 'GroveryGiftz image pipeline benchmark (isolated runs)';
+
+      // --- Decode: fresh blob each iteration so browser cannot reuse decoded cache unfairly ---
+      const doublePath = await time('BEFORE createImageBitmap + Image probe', async (i) => {
+        const canvas = await makePhotoCanvas(3024, 4032, i + 1);
+        const blob = await toBlobAsync(canvas, 0.92);
+        const url = URL.createObjectURL(blob);
+        const bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image' });
+        bitmap.close?.();
+        await new Promise((resolve, reject) => {
+          const image = new Image();
+          image.onload = () => resolve();
+          image.onerror = reject;
+          image.src = url;
+        });
+        URL.revokeObjectURL(url);
+      }, 5);
+
+      const singlePath = await time('AFTER createImageBitmap only', async (i) => {
+        const canvas = await makePhotoCanvas(3024, 4032, i + 50);
+        const blob = await toBlobAsync(canvas, 0.92);
+        const bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image' });
+        bitmap.close?.();
+      }, 5);
+
+      log(`BEFORE decode median: ${doublePath.median}ms ${JSON.stringify(doublePath.samples)}`);
+      log(`AFTER decode median:  ${singlePath.median}ms ${JSON.stringify(singlePath.samples)}`);
+      log(`Decode improvement: ${Math.round((1 - singlePath.median / Math.max(1, doublePath.median)) * 100)}%`);
+
+      // --- Encode Apply export: 1440x1920 (current product preview canvas) ---
+      const applyCanvas = await makePhotoCanvas(1440, 1920, 9);
+      const encodeBefore = await time('BEFORE toDataURL + fetch().blob()', async () => {
+        const dataUrl = applyCanvas.toDataURL('image/jpeg', 0.9);
+        const blob = await (await fetch(dataUrl)).blob();
+        void blob.size;
+      }, 7);
+      const encodeAfter = await time('AFTER canvas.toBlob()', async () => {
+        const blob = await toBlobAsync(applyCanvas, 0.9);
+        void blob.size;
+      }, 7);
+      const dataUrl = applyCanvas.toDataURL('image/jpeg', 0.9);
+      const blob = await toBlobAsync(applyCanvas, 0.9);
+      log(`BEFORE encode median: ${encodeBefore.median}ms ${JSON.stringify(encodeBefore.samples)}`);
+      log(`AFTER encode median:  ${encodeAfter.median}ms ${JSON.stringify(encodeAfter.samples)}`);
+      log(`Encode improvement: ${Math.round((1 - encodeAfter.median / Math.max(1, encodeBefore.median)) * 100)}%`);
+      log(`DataURL string length: ${dataUrl.length} chars (~${Math.round(dataUrl.length / 1024)} KB text)`);
+      log(`Blob size: ${blob.size} bytes (~${Math.round(blob.size / 1024)} KB binary)`);
+
+      // --- Cached decode for repeat Apply ---
+      const src = await makePhotoCanvas(2000, 2500, 3);
+      const srcBlob = await toBlobAsync(src, 0.9);
+      const url = URL.createObjectURL(srcBlob);
+      const cache = new Map();
+      const cold = await time('loadPreviewImage cold', async (i) => {
+        const unique = url + '#n' + i + Date.now();
+        await new Promise((resolve, reject) => {
+          const image = new Image();
+          image.onload = () => resolve(image);
+          image.onerror = reject;
+          image.src = unique;
+        });
+      }, 5);
+      // warm: load once then reuse Map
+      const warmImage = await new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = reject;
+        image.src = url;
+      });
+      cache.set(url, warmImage);
+      const warm = await time('loadPreviewImage warm cache', async () => {
+        const hit = cache.get(url);
+        void hit.naturalWidth;
+      }, 7);
+      log(`Cold decode median: ${cold.median}ms`);
+      log(`Warm cache median: ${warm.median}ms`);
+      URL.revokeObjectURL(url);
+
+      // --- Server double-read simulation (CPU copy of buffers) ---
+      const big = new Uint8Array(8 * 1024 * 1024); // 8MB upload
+      crypto.getRandomValues(big.subarray(0, 65536));
+      const doubleRead = await time('BEFORE validate+save each arrayBuffer (copy x2)', async () => {
+        const copy1 = big.slice(0);
+        const copy2 = big.slice(0);
+        void copy1.byteLength + copy2.byteLength;
+      }, 7);
+      const singleRead = await time('AFTER single buffer reuse', async () => {
+        const copy1 = big.slice(0);
+        void copy1.byteLength;
+      }, 7);
+      log(`BEFORE 8MB buffer x2 median: ${doubleRead.median}ms`);
+      log(`AFTER 8MB buffer x1 median: ${singleRead.median}ms`);
+      log(`Buffer-copy improvement: ${Math.round((1 - singleRead.median / Math.max(1, doubleRead.median)) * 100)}%`);
+
+      log('DONE');
+      document.title = 'BENCH_DONE';
+    })().catch((error) => {
+      out.textContent += `\nERROR: ${error && error.stack ? error.stack : error}`;
+      document.title = 'BENCH_FAIL';
+    });
+  </script>
+</body>
+</html>
