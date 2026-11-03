@@ -12,7 +12,7 @@ import { GOOGLE_CONSENT_SYNC_EVENT } from '@/lib/googleConsent';
 import { FiMinus, FiPlus, FiX, FiTruck, FiShield, FiClock, FiShoppingCart, FiZap, FiUpload, FiImage, FiChevronLeft, FiChevronRight, FiStar, FiLoader } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { startNavigationFeedback } from '@/components/layout/NavigationFeedback';
-import { appendImageUpload, attachLocalPreview, editorUploadUrl, liveBlobUrl, prepareImageUpload, stableUploadUrl } from '@/lib/clientImageUpload';
+import { appendImageUpload, attachLocalPreview, editorUploadUrl, liveBlobUrl, prepareImageUpload, previewLoadUrls, stableUploadUrl } from '@/lib/clientImageUpload';
 import { alignPhotoSlots, clearPhotoSlot, filledPhotoCount, filledPhotos, planPhotoUploads, removeListPhotoByUrl, setPhotoSlot } from '@/lib/photoSlots';
 import { adjustmentsForUploadedPhoto, formatFrameSizeLabel, getFrameSize, orientationCaption } from '@/lib/photoEditor';
 import PhotoUploadCard from '@/components/product/PhotoUploadCard';
@@ -30,7 +30,7 @@ const INDIAN_STATES = [
 const isTamilNadu = (state) => String(state || '').trim().toLowerCase() === 'tamil nadu';
 const getStateOverride = (delivery, state) => (delivery?.stateOverrides || []).find((row) => String(row.state || '').trim().toLowerCase() === String(state || '').trim().toLowerCase());
 
-// Prefer durable signed displayUrl so the editor never depends on a revoked blob: URL.
+// Cards/cart: durable signed displayUrl. Editor + canvas Apply: blob-first via editorUploadUrl / previewLoadUrls.
 const displayUploadUrl = (upload) => stableUploadUrl(upload);
 const getDefaultPreviewAdjustments = () => ({ zoom: 1, x: 0, y: 0, orientation: 'auto', rotation: 0, fitMode: 'fit' });
 
@@ -242,10 +242,21 @@ export default function ProductDetail({ product }) {
   const loadPreviewImage = (src) => new Promise((resolve, reject) => {
     const image = new Image();
     const timer = setTimeout(() => { image.onload = null; image.onerror = null; reject(new Error('Preview image loading timed out. Please try again.')); }, 30000);
-    image.crossOrigin = 'anonymous';
+    const url = String(src || '');
+    // Same-origin + blob stay usable for canvas without CORS mode. crossOrigin=anonymous
+    // omits cookies and can 401 unsigned customer-file URLs that a normal <img> still shows.
+    if (/^https?:\/\//i.test(url) && typeof window !== 'undefined') {
+      try {
+        if (new URL(url, window.location.href).origin !== window.location.origin) {
+          image.crossOrigin = 'anonymous';
+        }
+      } catch {
+        image.crossOrigin = 'anonymous';
+      }
+    }
     image.onload = () => { clearTimeout(timer); resolve(image); };
     image.onerror = () => { clearTimeout(timer); reject(new Error('Unable to load the image for preview. Please try uploading it again.')); };
-    image.src = src;
+    image.src = url;
   });
   const getContainedDrawRect = (sourceWidth, sourceHeight, boxWidth, boxHeight) => {
     const scale = Math.min(boxWidth / Math.max(1, sourceWidth), boxHeight / Math.max(1, sourceHeight));
@@ -260,8 +271,8 @@ export default function ProductDetail({ product }) {
   };
   const renderFinalPreviewImage = async (area, idx, sourceUrl = '', overrideAdjustments) => {
     const photo = sourceUrl ? (typeof sourceUrl === 'object' ? sourceUrl : { url: sourceUrl }) : customerPhotos[idx];
-    const photoUrl = displayUploadUrl(photo);
-    if (!photoUrl) return '';
+    const candidates = previewLoadUrls(photo);
+    if (!candidates.length) return '';
     try {
       const adjustments = overrideAdjustments ? { ...getDefaultPreviewAdjustments(), ...overrideAdjustments } : getAreaAdjustments(idx);
       const { displayWidth, displayHeight } = getPreviewDimensions(area, adjustments.orientation);
@@ -274,12 +285,17 @@ export default function ProductDetail({ product }) {
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       let uploadedImage;
-      try {
-        uploadedImage = await loadPreviewImage(photoUrl);
-      } catch (error) {
-        if (!photo.displayUrl || photo.displayUrl === photoUrl) throw error;
-        uploadedImage = await loadPreviewImage(photo.displayUrl);
+      let lastLoadError;
+      for (const candidate of candidates) {
+        try {
+          uploadedImage = await loadPreviewImage(candidate);
+          lastLoadError = null;
+          break;
+        } catch (error) {
+          lastLoadError = error;
+        }
       }
+      if (!uploadedImage) throw lastLoadError || new Error('Unable to load the image for preview. Please try uploading it again.');
       const srcW = uploadedImage.naturalWidth || uploadedImage.width;
       const srcH = uploadedImage.naturalHeight || uploadedImage.height;
       const rotation = ((Number(adjustments.rotation || 0) % 360) + 360) % 360;

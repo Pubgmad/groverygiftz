@@ -227,3 +227,27 @@ export function liveBlobUrl(upload) {
   const preview = String(upload?.previewUrl || '');
   return preview.startsWith('blob:') ? preview : '';
 }
+
+/**
+ * Ordered sources for canvas preview generation (Apply / cart).
+ * Prefer the live blob the editor already shows, then durable signed/original URLs.
+ */
+export function previewLoadUrls(upload) {
+  if (!upload) return [];
+  const ordered = [
+    liveBlobUrl(upload),
+    upload.displayUrl,
+    upload.previewUrl,
+    upload.url,
+    upload.originalUrl,
+  ];
+  const seen = new Set();
+  const urls = [];
+  for (const entry of ordered) {
+    const url = String(entry || '').trim();
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    urls.push(url);
+  }
+  return urls;
+}

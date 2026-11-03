@@ -59,9 +59,23 @@ test('failed second photo retains the first successfully uploaded photo', async 
   let photos = [];
   let calls = 0;
   const errors = [];
-  const subject = runFunction('handleCustomerPhotoUpload', 'handleVariantLabelUpload', {
-    maxPhotoCount: 2, customerPhotos: [], setUploadingCustomerPhotos() {},
-    prepareImageUpload: async () => ({ previewUrl: 'blob:valid' }),
+  const subject = runFunction('handleCustomerPhotoUpload', 'removeCustomerPhoto', {
+    photoSlotCount: 2, customerPhotos: [], setUploadingCustomerPhotos() {},
+    setPhotoLimitPlan() {}, setUploadingPhotoSlots() {}, setActivePreviewSlot() {},
+    setPreviewAdjustments() {}, setEditorSlotKey() {}, editPreviewArea() {},
+    photoUploadTokenRef: { current: {} }, previewAreas: [],
+    planPhotoUploads: (_photos, files) => ({
+      blocked: false,
+      jobs: files.map((file, index) => ({ file, index })),
+    }),
+    alignPhotoSlots: (list) => list,
+    setPhotoSlot: (list, index, file) => {
+      const next = list.slice();
+      next[index] = file;
+      return next;
+    },
+    adjustmentsForUploadedPhoto: () => ({ zoom: 1 }),
+    prepareImageUpload: async () => ({ previewUrl: 'blob:valid', width: 100, height: 80 }),
     FormData: class {}, appendImageUpload() {},
     fetch: async () => ++calls === 1 ? { ok: true, json: async () => ({ url: '/first.jpg' }) } : { ok: false, json: async () => ({ error: 'Upload failed' }) },
     attachLocalPreview: (data) => data,
@@ -97,27 +111,78 @@ test('failed variant replacement preserves the existing uploaded image', async (
   await subject('Frame', { name: 'broken.jpg' });
   assert.equal(changes, 0);
 });
+test('previewLoadUrls prefers the live editor blob before signed display URL', () => {
+  const { context } = clientContext();
+  assert.equal(
+    JSON.stringify(context.previewLoadUrls({ previewUrl: 'blob:live', displayUrl: '/signed.jpg', url: '/original.jpg' })),
+    JSON.stringify(['blob:live', '/signed.jpg', '/original.jpg'])
+  );
+});
 test('preview generation failure propagates instead of becoming an empty saved preview', async () => {
+  const { context } = clientContext();
   const subject = runFunction('renderFinalPreviewImage', 'uploadRenderedPreviewImage', {
-    customerPhotos: [{ url: '/original.jpg' }], displayUploadUrl: (photo) => photo.url,
+    customerPhotos: [{ url: '/original.jpg' }],
+    previewLoadUrls: context.previewLoadUrls,
     getAreaAdjustments: () => ({}), getPreviewDimensions: () => ({ displayWidth: 360, displayHeight: 480 }),
-    document: { createElement: () => ({ getContext: () => ({ fillRect() {} }) }) },
+    document: { createElement: () => ({ getContext: () => ({ fillRect() {}, save() {}, restore() {}, drawImage() {}, translate() {}, rotate() {} }) }) },
     loadPreviewImage: async () => { throw new Error('Decode failed'); },
+    Math,
+    Number,
   });
   await assert.rejects(subject({}, 0), /Decode failed/);
 });
+function previewCanvasDocument() {
+  return {
+    createElement: () => ({
+      getContext: () => ({
+        fillRect() {},
+        drawImage() {},
+        save() {},
+        restore() {},
+        translate() {},
+        rotate() {},
+      }),
+      toDataURL: () => 'data:image/jpeg;base64,preview',
+    }),
+  };
+}
 test('an expired local blob retries the same image from its persistent display URL', async () => {
+  const { context } = clientContext();
   const calls = [];
   const subject = runFunction('renderFinalPreviewImage', 'uploadRenderedPreviewImage', {
     customerPhotos: [{ previewUrl: 'blob:expired', displayUrl: '/same-image.jpg' }],
-    displayUploadUrl: (photo) => photo.previewUrl || photo.displayUrl,
+    previewLoadUrls: context.previewLoadUrls,
     getAreaAdjustments: () => ({}), getPreviewDimensions: () => ({ displayWidth: 360, displayHeight: 480 }),
-    document: { createElement: () => ({ getContext: () => ({ fillRect() {}, drawImage() {} }), toDataURL: () => 'data:image/jpeg;base64,preview' }) },
+    document: previewCanvasDocument(),
     loadPreviewImage: async (url) => { calls.push(url); if (url.startsWith('blob:')) throw new Error('Expired'); return { naturalWidth: 100, naturalHeight: 80 }; },
     getContainedDrawRect: () => ({ x: 0, y: 0, width: 100, height: 80 }),
+    Math,
+    Number,
   });
   assert.match(await subject({}, 0), /^data:image/);
-  assert.deepEqual(calls, ['blob:expired', '/same-image.jpg']);
+  assert.equal(JSON.stringify(calls), JSON.stringify(['blob:expired', '/same-image.jpg']));
+});
+test('failed signed display URL retries the live blob the editor already shows', async () => {
+  const { context } = clientContext();
+  const calls = [];
+  // Reproduce the old production order (display first); Apply must still recover via blob.
+  const subject = runFunction('renderFinalPreviewImage', 'uploadRenderedPreviewImage', {
+    customerPhotos: [{ previewUrl: 'blob:live', displayUrl: '/signed-401.jpg' }],
+    previewLoadUrls: () => ['/signed-401.jpg', 'blob:live'],
+    getAreaAdjustments: () => ({}), getPreviewDimensions: () => ({ displayWidth: 360, displayHeight: 480 }),
+    document: previewCanvasDocument(),
+    loadPreviewImage: async (url) => {
+      calls.push(url);
+      if (url.includes('signed-401')) throw new Error('Unable to load the image for preview. Please try uploading it again.');
+      return { naturalWidth: 100, naturalHeight: 80 };
+    },
+    getContainedDrawRect: () => ({ x: 0, y: 0, width: 100, height: 80 }),
+    Math,
+    Number,
+  });
+  assert.match(await subject({}, 0), /^data:image/);
+  assert.equal(JSON.stringify(calls), JSON.stringify(['/signed-401.jpg', 'blob:live']));
+  assert.equal(JSON.stringify(context.previewLoadUrls({ previewUrl: 'blob:live', displayUrl: '/signed-401.jpg' })), JSON.stringify(['blob:live', '/signed-401.jpg']));
 });
 test('failed generated-preview upload is surfaced to the cart operation', async () => {
   const subject = runFunction('uploadRenderedPreviewImage', 'buildCustomizationPreviewPayload', {
@@ -131,10 +196,14 @@ test('empty preview is rejected before any upload request', async () => {
   await assert.rejects(subject('', 'Frame', 0), /preview is empty/);
 });
 test('cart preview payload generation rejects when one required preview fails', async () => {
-  const subject = runFunction('buildCustomizationPreviewPayload', 'updateAreaAdjustments', {
+  const subject = runFunction('buildCustomizationPreviewPayload', 'savePreviewArea', {
     previewEnabled: true, previewAreas: [{ label: 'First' }, { label: 'Second' }],
     customerPhotos: [{ url: '/first.jpg' }, { url: '/second.jpg' }], savedPreviewFilesRef: { current: {} },
-    getAreaAdjustments: () => ({}), renderFinalPreviewImage: async () => { throw new Error('First preview failed'); },
+    selectedVariantUploadOptions: [],
+    getAreaAdjustments: () => ({}),
+    getFrameSize: (area) => ({ width: area.width || 1, height: area.height || 1 }),
+    renderFinalPreviewImage: async () => { throw new Error('First preview failed'); },
+    JSON,
   });
   await assert.rejects(subject(), /First preview failed/);
 });
@@ -149,6 +218,9 @@ test('Save Preview only reports success after its file is stored', async () => {
   const subject = runFunction('savePreviewArea', 'editPreviewArea', {
     previewSaveLocksRef: locked, actionLockRef: { current: false }, setSavingPreviewAreas() {},
     previewAreas: [{ label: 'Frame' }], customerPhotos: [{ url: '/original.jpg' }],
+    selectedVariantUploadOptions: [], variantLabelUploads: {}, previewEnabled: true,
+    getDefaultPreviewAdjustments: () => ({ zoom: 1 }),
+    setPreviewAdjustments() {},
     getAreaAdjustments: () => ({ zoom: 1 }), renderFinalPreviewImage: async () => 'data:image/jpeg;base64,AA==',
     uploadRenderedPreviewImage: () => upload, savedPreviewFilesRef: cache,
     setSavedPreviewAreas() { markedSaved = true; }, toast: { success() { success = true; }, error() {} },
@@ -174,6 +246,9 @@ test('failed Save Preview retains an editable state and releases its lock', asyn
   const subject = runFunction('savePreviewArea', 'editPreviewArea', {
     previewSaveLocksRef: locked, actionLockRef: { current: false }, setSavingPreviewAreas() {},
     previewAreas: [{ label: 'Frame' }], customerPhotos: [{ url: '/original.jpg' }],
+    selectedVariantUploadOptions: [], variantLabelUploads: {}, previewEnabled: true,
+    getDefaultPreviewAdjustments: () => ({ zoom: 1 }),
+    setPreviewAdjustments() {},
     getAreaAdjustments: () => ({ zoom: 1 }), renderFinalPreviewImage: async () => { throw new Error('Decode failed'); },
     savedPreviewFilesRef: cache, setSavedPreviewAreas() { markedSaved = true; },
     toast: { success() {}, error(message) { error = message; } },
