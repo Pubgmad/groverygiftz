@@ -9,7 +9,7 @@ import useDeliverySettings from '@/hooks/useDeliverySettings';
 import { buildProductMetaPayload, META_READY_EVENT, trackMetaCustomEvent, trackMetaEvent } from '@/lib/metaPixel';
 import { trackGA4Product } from '@/lib/ga4';
 import { GOOGLE_CONSENT_SYNC_EVENT } from '@/lib/googleConsent';
-import { FiMinus, FiPlus, FiX, FiTruck, FiShield, FiClock, FiShoppingCart, FiZap, FiUpload, FiImage, FiChevronLeft, FiChevronRight, FiStar, FiLoader } from 'react-icons/fi';
+import { FiMinus, FiPlus, FiX, FiClock, FiShoppingCart, FiZap, FiUpload, FiImage, FiChevronLeft, FiChevronRight, FiStar, FiLoader } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { startNavigationFeedback } from '@/components/layout/NavigationFeedback';
 import { appendImageUpload, attachLocalPreview, cardUploadUrls, editorUploadUrl, liveBlobUrl, prepareImageUpload, previewLoadUrls, stableUploadUrl } from '@/lib/clientImageUpload';
@@ -19,6 +19,7 @@ import PhotoUploadCard from '@/components/product/PhotoUploadCard';
 import PhotoAdjuster from '@/components/product/PhotoAdjuster';
 import PhotoLimitDialog from '@/components/product/PhotoLimitDialog';
 import ProductAssurancePanel from '@/components/product/ProductAssurancePanel';
+import AboutThisProduct from '@/components/product/AboutThisProduct';
 const INDIAN_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
   'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh',
@@ -930,34 +931,33 @@ export default function ProductDetail({ product }) {
 
         <ProductAssurancePanel settings={settings} selectedDeliveryState={selectedDeliveryState} />
 
-        <div className="bg-primary-50/60 rounded-xl px-4 py-3 mb-6 space-y-2">
-          <div className="flex items-center gap-2 text-sm text-gray-700">
-            <FiTruck size={14} className="text-primary-600 shrink-0" />
-            <span>Free Delivery Across Tamil Nadu. Shipping charges for other states will be calculated after selecting your state.</span>
+        {(isSoldOut || variantManagedStock || Number(product.stock) > 0) ? (
+          <div className="mb-6 rounded-xl bg-primary-50/60 px-4 py-3">
+            {isSoldOut ? (
+              <p className="text-sm font-semibold text-red-600">Out of stock</p>
+            ) : variantManagedStock ? (
+              <p className="text-sm text-gray-600">{availableStock} in stock across variants</p>
+            ) : Number(product.stock) > 0 && Number(product.stock) <= 15 ? (
+              <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-amber-800">
+                <span className="inline-flex items-center rounded-md bg-amber-100 px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-amber-900">
+                  Almost gone
+                </span>
+                Only {product.stock} in stock - order soon!
+              </p>
+            ) : Number(product.stock) > 0 && Number(product.stock) <= 40 ? (
+              <p className="text-sm font-medium text-amber-700">{product.stock} in stock - selling fast</p>
+            ) : Number(product.stock) > 0 ? (
+              <p className="text-sm text-gray-600">{product.stock} in stock</p>
+            ) : null}
           </div>
-          <div className="flex items-center gap-2 text-sm text-gray-700">
-            <FiShield size={14} className="text-primary-600 shrink-0" />
-            <span>100% Safe & Secure Payments</span>
-          </div>
-          {isSoldOut ? (
-            <p className="text-red-600 font-semibold text-sm">Out of stock</p>
-          ) : variantManagedStock ? (
-            <p className="text-gray-600 text-sm">{availableStock} in stock across variants</p>
-          ) : Number(product.stock) > 0 && Number(product.stock) <= 15 ? (
-            <p className="text-amber-800 font-semibold text-sm flex items-center gap-2 flex-wrap">
-              <span className="inline-flex items-center rounded-md bg-amber-100 px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-amber-900">
-                Almost gone
-              </span>
-              Only {product.stock} in stock - order soon!
-            </p>
-          ) : Number(product.stock) > 0 && Number(product.stock) <= 40 ? (
-            <p className="text-amber-700 text-sm font-medium">
-              {product.stock} in stock - selling fast
-            </p>
-          ) : Number(product.stock) > 0 ? (
-            <p className="text-gray-600 text-sm">{product.stock} in stock</p>
-          ) : null}
-        </div>
+        ) : null}
+
+        <AboutThisProduct
+          product={product}
+          settings={settings}
+          selectedDeliveryState={selectedDeliveryState}
+          selectedDelivery={selectedDelivery}
+        />
 
         {/* Variants */}
         {product.variants?.map((variant, vIdx) => (
@@ -1359,14 +1359,6 @@ export default function ProductDetail({ product }) {
             )}
           </div>
         )}
-        {/* Description */}
-        {product.description && (
-          <div className="mt-8 border-t pt-6">
-            <h2 className="text-xl font-bold mb-4">Description</h2>
-            <div className="prose prose-sm max-w-none text-gray-600" dangerouslySetInnerHTML={{ __html: product.description }} />
-          </div>
-        )}
-
       </div>
 
       {/* Size Chart Modal */}

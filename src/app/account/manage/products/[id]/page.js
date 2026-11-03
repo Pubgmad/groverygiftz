@@ -52,7 +52,7 @@ export default function AdminProductForm({ params }) {
   const [shippingTemplates, setShippingTemplates] = useState([]);
   const [videoUploading, setVideoUploading] = useState(false);
   const [form, setForm] = useState({
-    title: '', description: '', images: [], responsiveImages: { desktop: [], tablet: [], mobile: [] }, productVideo: { url: '', name: '', poster: '' }, customizationPreview: { enabled: false, title: 'Preview your personalized gift', frameImage: '', aspectRatio: '1:1', shape: 'rectangle', instructions: '', requiredImageCount: 0, maxImageCount: 0, areas: [] }, delivery: defaultDelivery(), regularPrice: '', salePrice: '', offerStartsAt: '', offerEndsAt: '',
+    title: '', description: '', aboutThisProduct: { instructions: '', deliveryNotes: '', hideDescription: false, hideInstructions: false, hideDelivery: false }, images: [], responsiveImages: { desktop: [], tablet: [], mobile: [] }, productVideo: { url: '', name: '', poster: '' }, customizationPreview: { enabled: false, title: 'Preview your personalized gift', frameImage: '', aspectRatio: '1:1', shape: 'rectangle', instructions: '', requiredImageCount: 0, maxImageCount: 0, areas: [] }, delivery: defaultDelivery(), regularPrice: '', salePrice: '', offerStartsAt: '', offerEndsAt: '',
     stock: 100, collections: [], variants: [], customFields: [], collageEnabled: false, collageTemplates: [],
     giftWrap: { enabled: false, price: 0 }, giftMessage: false, customerNotesEnabled: true,
     isQuoteOnly: false, isOffer: false, isFeatured: false, isBestSeller: false, isActive: true,
@@ -65,7 +65,15 @@ export default function AdminProductForm({ params }) {
     if (isEdit) {
       fetch(`/api/products/${params.id}`).then(r => r.json()).then(d => {
         setForm({
-          title: d.title || '', description: d.description || '', images: d.images || [], responsiveImages: { desktop: d.responsiveImages?.desktop || d.images || [], tablet: d.responsiveImages?.tablet || [], mobile: d.responsiveImages?.mobile || [] },
+          title: d.title || '', description: d.description || '',
+          aboutThisProduct: {
+            instructions: d.aboutThisProduct?.instructions || '',
+            deliveryNotes: d.aboutThisProduct?.deliveryNotes || '',
+            hideDescription: !!d.aboutThisProduct?.hideDescription,
+            hideInstructions: !!d.aboutThisProduct?.hideInstructions,
+            hideDelivery: !!d.aboutThisProduct?.hideDelivery,
+          },
+          images: d.images || [], responsiveImages: { desktop: d.responsiveImages?.desktop || d.images || [], tablet: d.responsiveImages?.tablet || [], mobile: d.responsiveImages?.mobile || [] },
           productVideo: d.productVideo || { url: '', name: '', poster: '' },
           customizationPreview: { ...(d.customizationPreview || { enabled: false, title: 'Preview your personalized gift', frameImage: '', aspectRatio: '1:1', shape: 'rectangle', instructions: '' }), areas: normalizePreviewAreas(d.customizationPreview || {}) },
           delivery: { ...defaultDelivery(), ...(d.delivery || {}), stateOverrides: d.delivery?.stateOverrides || [] },
@@ -217,6 +225,48 @@ export default function AdminProductForm({ params }) {
             <label className="block text-sm font-medium mb-1">Description</label>
             <textarea value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
               className="w-full border rounded-lg px-4 py-2 focus:outline-none focus:border-primary-500" rows={6} />
+            <p className="mt-1 text-xs text-gray-500">Shown in the customer “About This Product → Description” accordion.</p>
+          </div>
+          <div className="rounded-xl border border-primary-100 bg-primary-50/30 p-4 space-y-3">
+            <div>
+              <h3 className="font-semibold text-gray-900">About This Product (customer accordion)</h3>
+              <p className="text-xs text-gray-500">Optional sections. Empty sections stay hidden on the product page. Delivery timing still uses your central delivery estimates.</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Instructions</label>
+              <textarea
+                value={form.aboutThisProduct?.instructions || ''}
+                onChange={e => setForm(p => ({ ...p, aboutThisProduct: { ...(p.aboutThisProduct || {}), instructions: e.target.value } }))}
+                className="w-full border rounded-lg px-4 py-2 focus:outline-none focus:border-primary-500"
+                rows={3}
+                placeholder="How customers should prepare photos, care tips, or usage notes for this product"
+              />
+              <p className="mt-1 text-xs text-gray-500">If left blank, customization general instructions are used when available.</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Extra delivery notes</label>
+              <textarea
+                value={form.aboutThisProduct?.deliveryNotes || ''}
+                onChange={e => setForm(p => ({ ...p, aboutThisProduct: { ...(p.aboutThisProduct || {}), deliveryNotes: e.target.value } }))}
+                className="w-full border rounded-lg px-4 py-2 focus:outline-none focus:border-primary-500"
+                rows={2}
+                placeholder="Optional notes shown with the live delivery estimate"
+              />
+            </div>
+            <div className="grid gap-2 sm:grid-cols-3">
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" checked={!form.aboutThisProduct?.hideDescription} onChange={e => setForm(p => ({ ...p, aboutThisProduct: { ...(p.aboutThisProduct || {}), hideDescription: !e.target.checked } }))} />
+                Show Description
+              </label>
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" checked={!form.aboutThisProduct?.hideInstructions} onChange={e => setForm(p => ({ ...p, aboutThisProduct: { ...(p.aboutThisProduct || {}), hideInstructions: !e.target.checked } }))} />
+                Show Instructions
+              </label>
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" checked={!form.aboutThisProduct?.hideDelivery} onChange={e => setForm(p => ({ ...p, aboutThisProduct: { ...(p.aboutThisProduct || {}), hideDelivery: !e.target.checked } }))} />
+                Show Delivery Info
+              </label>
+            </div>
           </div>
           <label className="flex items-start gap-2 rounded-lg border bg-gray-50 p-3 text-sm font-medium text-gray-700">
             <input type="checkbox" checked={form.customerNotesEnabled !== false} onChange={e => setForm(p => ({ ...p, customerNotesEnabled: e.target.checked }))} className="mt-1" />

@@ -35,6 +35,13 @@ const ProductSchema = new mongoose.Schema({
   title: { type: String, required: true },
   slug: { type: String, required: true, unique: true },
   description: { type: String, default: '' },
+  aboutThisProduct: {
+    instructions: { type: String, default: '' },
+    deliveryNotes: { type: String, default: '' },
+    hideDescription: { type: Boolean, default: false },
+    hideInstructions: { type: Boolean, default: false },
+    hideDelivery: { type: Boolean, default: false },
+  },
   images: [String],
   responsiveImages: { type: ResponsiveImagesSchema, default: () => ({ desktop: [], tablet: [], mobile: [] }) },
   productVideo: {
