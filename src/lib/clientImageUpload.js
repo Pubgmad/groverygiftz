@@ -251,3 +251,31 @@ export function previewLoadUrls(upload) {
   }
   return urls;
 }
+
+function pushUniqueUrl(urls, seen, entry) {
+  const url = String(entry || '').trim();
+  if (!url || seen.has(url)) return;
+  seen.add(url);
+  urls.push(url);
+}
+
+/**
+ * Thumbnail sources for upload cards.
+ * After Apply: prefer the saved composed preview (data URL / signed display).
+ * Before Apply: prefer the live blob the editor uses, then durable URLs.
+ */
+export function cardUploadUrls(upload, appliedPreview = null) {
+  const seen = new Set();
+  const urls = [];
+  if (appliedPreview) {
+    const appliedLocal = String(appliedPreview.previewUrl || '');
+    if (appliedLocal.startsWith('data:') || appliedLocal.startsWith('blob:')) {
+      pushUniqueUrl(urls, seen, appliedLocal);
+    }
+    pushUniqueUrl(urls, seen, appliedPreview.displayUrl);
+    pushUniqueUrl(urls, seen, appliedPreview.previewUrl);
+    pushUniqueUrl(urls, seen, appliedPreview.url);
+  }
+  for (const url of previewLoadUrls(upload)) pushUniqueUrl(urls, seen, url);
+  return urls;
+}

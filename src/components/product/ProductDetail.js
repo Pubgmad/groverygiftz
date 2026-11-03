@@ -12,7 +12,7 @@ import { GOOGLE_CONSENT_SYNC_EVENT } from '@/lib/googleConsent';
 import { FiMinus, FiPlus, FiX, FiTruck, FiShield, FiClock, FiShoppingCart, FiZap, FiUpload, FiImage, FiChevronLeft, FiChevronRight, FiStar, FiLoader } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { startNavigationFeedback } from '@/components/layout/NavigationFeedback';
-import { appendImageUpload, attachLocalPreview, editorUploadUrl, liveBlobUrl, prepareImageUpload, previewLoadUrls, stableUploadUrl } from '@/lib/clientImageUpload';
+import { appendImageUpload, attachLocalPreview, cardUploadUrls, editorUploadUrl, liveBlobUrl, prepareImageUpload, previewLoadUrls, stableUploadUrl } from '@/lib/clientImageUpload';
 import { alignPhotoSlots, clearPhotoSlot, filledPhotoCount, filledPhotos, planPhotoUploads, removeListPhotoByUrl, setPhotoSlot } from '@/lib/photoSlots';
 import { adjustmentsForUploadedPhoto, formatFrameSizeLabel, getFrameSize, orientationCaption } from '@/lib/photoEditor';
 import PhotoUploadCard from '@/components/product/PhotoUploadCard';
@@ -30,7 +30,7 @@ const INDIAN_STATES = [
 const isTamilNadu = (state) => String(state || '').trim().toLowerCase() === 'tamil nadu';
 const getStateOverride = (delivery, state) => (delivery?.stateOverrides || []).find((row) => String(row.state || '').trim().toLowerCase() === String(state || '').trim().toLowerCase());
 
-// Cards/cart: durable signed displayUrl. Editor + canvas Apply: blob-first via editorUploadUrl / previewLoadUrls.
+// Durable signed displayUrl for links/cart. Cards use cardUploadUrls (Apply preview → blob → signed).
 const displayUploadUrl = (upload) => stableUploadUrl(upload);
 const getDefaultPreviewAdjustments = () => ({ zoom: 1, x: 0, y: 0, orientation: 'auto', rotation: 0, fitMode: 'fit' });
 
@@ -844,6 +844,15 @@ export default function ProductDetail({ product }) {
   const editorPhoto = editorIsVariant ? variantLabelUploads[editorVariantLabel] : (Number.isInteger(editorSlotKey) ? customerPhotos[editorSlotKey] : null);
   const editorPhotoUrl = editorUploadUrl(editorPhoto);
   const selectedVariantLabel = selectedVariantOptions.find((option) => option?.label)?.label || '';
+  const slotCardUrls = (photo, slotKey) => {
+    // Read savedPreviewAreas so Apply/clear triggers a re-render with the composed preview.
+    const applied = savedPreviewAreas[slotKey] ? (savedPreviewFilesRef.current[slotKey]?.file || null) : null;
+    return cardUploadUrls(photo, applied);
+  };
+  const slotCardPhotoProps = (photo, slotKey) => {
+    const urls = slotCardUrls(photo, slotKey);
+    return { photoUrl: urls[0] || '', fallbackUrls: urls.slice(1) };
+  };
 
   return (
     <div className="product-mobile-safe grid max-w-full grid-cols-1 gap-8 md:grid-cols-2 md:gap-12">
@@ -1075,8 +1084,7 @@ export default function ProductDetail({ product }) {
                     sizeLabel={areaSizeLabel(variantArea, previewKey)}
                     required
                     missingRequired={!upload?.url}
-                    photo={upload}
-                    photoUrl={displayUploadUrl(upload)}
+                    {...slotCardPhotoProps(upload, previewKey)}
                     uploading={isUploading}
                     disabled={Boolean(actionLoading) || savingPreviewAreas[previewKey]}
                     orientation={adjustments.orientation}
@@ -1142,8 +1150,7 @@ export default function ProductDetail({ product }) {
                     sizeLabel={areaSizeLabel(area, idx)}
                     required={slotRequired}
                     missingRequired={slotRequired && !photo?.url}
-                    photo={photo}
-                    photoUrl={displayUploadUrl(photo)}
+                    {...slotCardPhotoProps(photo, idx)}
                     uploading={!!uploadingPhotoSlots[idx]}
                     disabled={previewSaveLocksRef.current.size > 0 || Boolean(actionLoading) || uploadingCustomerPhotos}
                     orientation={adjustments.orientation}
@@ -1185,18 +1192,21 @@ export default function ProductDetail({ product }) {
                     <span className={`self-start rounded-full border px-3 py-1 text-xs font-bold ${belowMin || photos.length > max ? 'border-red-100 bg-red-50 text-red-700' : 'border-emerald-100 bg-emerald-50 text-emerald-700'}`}>{photos.length}/{min}-{max}</span>
                   </div>
                   <div className={uploadCardGridClass}>
-                      {photos.map((photo, idx) => (
+                      {photos.map((photo, idx) => {
+                      const collageUrls = cardUploadUrls(photo);
+                      return (
                       <PhotoUploadCard
                         key={`${label}-${idx}-${photo.url || 'photo'}`}
                         label={`${label} ${idx + 1}`}
-                        photo={photo}
-                        photoUrl={displayUploadUrl(photo)}
+                        photoUrl={collageUrls[0] || ''}
+                        fallbackUrls={collageUrls.slice(1)}
                         uploading={isUploading}
                         onUpload={(files) => handleCollageReplace(label, idx, files[0])}
                         onRemove={() => removeCollagePhoto(label, photo.url)}
                         disabled={isUploading || Boolean(actionLoading)}
                       />
-                    ))}
+                      );
+                    })}
                     {photos.length < max ? (
                       <PhotoUploadCard
                         key={`${label}-add`}

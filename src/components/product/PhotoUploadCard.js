@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useMemo, useState } from 'react';
 import { FiLoader, FiUpload, FiX } from 'react-icons/fi';
 
 export default function PhotoUploadCard({
@@ -8,6 +9,7 @@ export default function PhotoUploadCard({
   required = false,
   missingRequired = false,
   photoUrl = '',
+  fallbackUrls = [],
   uploading = false,
   disabled = false,
   accept = 'image/*,.heic,.heif',
@@ -21,13 +23,41 @@ export default function PhotoUploadCard({
   onEdit,
   instructions = '',
 }) {
-  const hasPhoto = Boolean(photoUrl);
+  const sources = useMemo(() => {
+    const seen = new Set();
+    const urls = [];
+    for (const entry of [photoUrl, ...(Array.isArray(fallbackUrls) ? fallbackUrls : [])]) {
+      const url = String(entry || '').trim();
+      if (!url || seen.has(url)) continue;
+      seen.add(url);
+      urls.push(url);
+    }
+    return urls;
+  }, [photoUrl, fallbackUrls]);
+
+  const [srcIndex, setSrcIndex] = useState(0);
+  const sourceKey = sources.join('\n');
+
+  useEffect(() => {
+    setSrcIndex(0);
+  }, [sourceKey]);
+
+  const activeSrc = sources[Math.min(srcIndex, Math.max(0, sources.length - 1))] || '';
+  const hasPhoto = sources.length > 0;
   const ratioW = Math.max(1, Number(aspectWidth) || 1);
   const ratioH = Math.max(1, Number(aspectHeight) || 1);
   const pickFiles = (event) => {
     const files = Array.from(event.target.files || []);
     event.target.value = '';
     if (files.length) onUpload?.(files);
+  };
+  const handleImageError = (event) => {
+    if (srcIndex + 1 < sources.length) {
+      event.currentTarget.style.visibility = '';
+      setSrcIndex((index) => index + 1);
+      return;
+    }
+    event.currentTarget.style.visibility = 'hidden';
   };
 
   return (
@@ -44,7 +74,13 @@ export default function PhotoUploadCard({
         <div className="flex h-full w-full items-center justify-center bg-white">
           {hasPhoto ? (
             <button type="button" onClick={() => onEdit?.()} className="h-full w-full bg-white" aria-label={`Edit ${label}`}>
-              <img src={photoUrl} alt="" className={`h-full w-full ${fitMode === 'fill' ? 'object-cover' : 'object-contain'}`} onError={(event) => { event.currentTarget.style.visibility = 'hidden'; }} />
+              <img
+                key={activeSrc}
+                src={activeSrc}
+                alt=""
+                className={`h-full w-full ${fitMode === 'fill' ? 'object-cover' : 'object-contain'}`}
+                onError={handleImageError}
+              />
             </button>
           ) : (
             <label className={`flex h-full w-full cursor-pointer flex-col items-center justify-center gap-0.5 px-1 text-center ${uploading || disabled ? 'pointer-events-none opacity-70' : ''}`}>
