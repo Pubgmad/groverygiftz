@@ -66,7 +66,7 @@ export async function attributeProfitForFilters(filters, extraMatch = null) {
     (row) => istBucketLabel(row.eventAt, filters.granularity || 'day'),
     (row) => istBucketLabel(row.eventAt, filters.granularity || 'day'),
   ).sort((a, b) => String(a.label).localeCompare(String(b.label)));
-  const knownProducts = productRows.filter((row) => row.knownRevenue > 0);
+  const knownProducts = productRows.filter((row) => Number(row.knownCostUnits || 0) > 0 || Number(row.knownRevenue || 0) > 0);
   return {
     attributed,
     summary,

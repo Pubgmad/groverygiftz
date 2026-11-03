@@ -299,6 +299,7 @@ export function groupProfitRows(rows = [], keyFn, labelFn) {
         grossProfit: 0,
         knownRevenue: 0,
         unknownRevenue: 0,
+        knownCostUnits: 0,
         orders: new Set(),
         image: row.image || '',
         id: row.productId || '',
@@ -318,6 +319,7 @@ export function groupProfitRows(rows = [], keyFn, labelFn) {
       bucket.makingCost += cost;
       bucket.grossProfit += revenue - cost;
       bucket.knownRevenue += revenue;
+      bucket.knownCostUnits += units;
     } else {
       bucket.unknownRevenue += revenue;
     }

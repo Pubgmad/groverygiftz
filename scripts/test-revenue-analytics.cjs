@@ -10,7 +10,7 @@ const source = fs.readFileSync(sourcePath, 'utf8')
   .replace(/export \{ IST, WEEKDAYS, STATUS_GROUPS \};/, '');
 const context = { module: { exports: {} }, exports: {}, console };
 vm.createContext(context);
-vm.runInContext(`${source}\nmodule.exports = { istInclusiveRange, previousEquivalentRange, presetToRange, growthPercent, shapeKpis, shapeProducts, itemMatchAfterUnwind, narrowToMatchingItems, buildRevenueMatch, revenuePipeline, REVENUE_DEFINITIONS, DATE_PRESETS, formatIstDateInput, shiftIstDate, uniquePlaceLabels, shapeFilterOptions, shapeTrend, mergeProfitIntoTrend, istBucketLabel, mergeProfitIntoPlaces };`, context);
+vm.runInContext(`${source}\nmodule.exports = { istInclusiveRange, previousEquivalentRange, presetToRange, growthPercent, shapeKpis, shapeProducts, itemMatchAfterUnwind, narrowToMatchingItems, buildRevenueMatch, revenuePipeline, refundPipeline, paymentOutcomePipeline, REVENUE_DEFINITIONS, DATE_PRESETS, formatIstDateInput, shiftIstDate, uniquePlaceLabels, normalizePlaceLabel, shapeFilterOptions, shapeTrend, mergeProfitIntoTrend, istBucketLabel, mergeProfitIntoPlaces };`, context);
 const {
   istInclusiveRange,
   previousEquivalentRange,
@@ -22,11 +22,14 @@ const {
   narrowToMatchingItems,
   buildRevenueMatch,
   revenuePipeline,
+  refundPipeline,
+  paymentOutcomePipeline,
   REVENUE_DEFINITIONS,
   DATE_PRESETS,
   formatIstDateInput,
   shiftIstDate,
   uniquePlaceLabels,
+  normalizePlaceLabel,
   shapeFilterOptions,
   shapeTrend,
   mergeProfitIntoTrend,
@@ -201,5 +204,50 @@ assert.notEqual(last7.fromStr, thisYear.fromStr, 'Last 7 days must not equal Thi
 assert.ok(thisYear.fromStr.endsWith('-01-01'));
 assert.ok(prevYear.fromStr < thisYear.fromStr);
 assert.ok(prevYear.toStr < thisYear.fromStr);
+
+assert.strictEqual(normalizePlaceLabel('Tamil\u00a0Nadu'), 'Tamil Nadu');
+const placeMatch = JSON.stringify(buildRevenueMatch({
+  from: day.from,
+  to: day.to,
+  state: 'Tamil\u00a0Nadu',
+  city: 'Ayyampet',
+}));
+assert.ok(placeMatch.includes('\\u00a0') || placeMatch.includes('\u00a0') || placeMatch.includes('replaceAll'), 'geo match must normalize NBSP in Mongo');
+assert.ok(placeMatch.includes('_normState'));
+
+const cashfreeMatch = JSON.stringify(buildRevenueMatch({
+  from: day.from,
+  to: day.to,
+  paymentMethod: 'Cashfree',
+}));
+assert.ok(cashfreeMatch.includes('$expr'), 'Cashfree filter must coalesce missing paymentMethod');
+assert.ok(cashfreeMatch.includes('Cashfree'));
+
+const refund = JSON.stringify(refundPipeline({
+  from: day.from,
+  to: day.to,
+  status: 'dispatched',
+}));
+assert.ok(refund.includes('dispatched') || refund.includes('$in'), 'refund pipeline must honor status filter');
+
+const outcomes = JSON.stringify(paymentOutcomePipeline({
+  from: day.from,
+  to: day.to,
+}));
+assert.ok(outcomes.includes('cancelled'), 'payment outcomes must exclude cancelled by default');
+
+const zeroPriceKnown = shapeProducts([{
+  title: 'Sample',
+  units: 1,
+  revenue: 0,
+  knownRevenue: 0,
+  unknownRevenue: 0,
+  makingCost: 50,
+  grossProfit: -50,
+  knownCostUnits: 1,
+  orders: 1,
+}]);
+assert.strictEqual(zeroPriceKnown[0].profitKnown, true);
+assert.strictEqual(zeroPriceKnown[0].grossProfit, -50);
 
 console.log('Revenue analytics helper tests passed');

@@ -57,10 +57,19 @@ export default function BuyerDrillDown({ open, kind, query, range, onClose }) {
     if (!open) return undefined;
     let cancelled = false;
     setLoading(true);
+    setData({ buyers: [], total: 0, pages: 1 });
     fetch(`/api/admin/revenue/buyers?${listQuery}`, { cache: 'no-store' })
-      .then((res) => res.json())
-      .then((json) => {
-        if (!cancelled && !json.error) setData(json);
+      .then(async (res) => {
+        const json = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!res.ok || json.error) {
+          setData({ buyers: [], total: 0, pages: 1, error: json.error || 'Unable to load buyers' });
+          return;
+        }
+        setData(json);
+      })
+      .catch(() => {
+        if (!cancelled) setData({ buyers: [], total: 0, pages: 1, error: 'Unable to load buyers' });
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -112,15 +121,16 @@ export default function BuyerDrillDown({ open, kind, query, range, onClose }) {
           <AdminSelect value={sort} onChange={(next) => { setSort(next); setPage(1); }} options={SORT_OPTIONS} />
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
-          {loading && !data.buyers?.length && <p className="text-sm text-gray-500">Loading buyers...</p>}
-          {(data.buyers || []).map((buyer) => (
+          {loading && <p className="text-sm text-gray-500">Loading buyers...</p>}
+          {!loading && data.error && <p className="text-sm text-red-600">{data.error}</p>}
+          {!loading && !data.error && (data.buyers || []).map((buyer) => (
             <button key={buyer.key} type="button" onClick={() => openBuyer(buyer.key)} className="mb-2 w-full min-w-0 rounded-2xl border p-3 text-left">
               <p className="truncate font-semibold">{buyer.name}</p>
               <p className="break-all text-xs leading-5 text-gray-500">{buyer.email || 'No email'}{buyer.phone ? ` · ${buyer.phone}` : ''}</p>
               <p className="mt-1 text-xs leading-5 text-gray-600">{buyer.orders} orders · {formatPrice(buyer.collected)} · last {buyer.lastAt ? new Date(buyer.lastAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) : '—'}</p>
             </button>
           ))}
-          {!loading && !data.buyers?.length && <p className="text-sm text-gray-500">No buyers match this metric and date range.</p>}
+          {!loading && !data.error && !data.buyers?.length && <p className="text-sm text-gray-500">No buyers match this metric and date range.</p>}
           {data.pages > 1 && (
             <div className="mt-3 flex flex-wrap gap-2">
               {Array.from({ length: data.pages }, (_, index) => (

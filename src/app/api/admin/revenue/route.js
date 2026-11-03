@@ -281,7 +281,8 @@ async function getRevenueAnalytics(req) {
     products,
     variants: (profit.variantRows.length ? profit.variantRows : (facet?.variants || [])).map((row) => {
       const knownRevenue = Number(row.knownRevenue || 0);
-      const profitKnown = knownRevenue > 0;
+      const knownCostUnits = Number(row.knownCostUnits || 0);
+      const profitKnown = knownCostUnits > 0 || knownRevenue > 0;
       return {
         title: row.label ? String(row.label).split(' · ')[0] : (row._id?.title || 'Product'),
         variant: row.variant || row._id?.variant || String(row.label || '').split(' · ').slice(1).join(' · '),
@@ -292,6 +293,7 @@ async function getRevenueAnalytics(req) {
         marginPct: profitKnown && row.marginPct !== undefined ? row.marginPct : null,
         unknownRevenue: Number(row.unknownRevenue || 0),
         knownRevenue,
+        knownCostUnits,
         profitKnown,
       };
     }),

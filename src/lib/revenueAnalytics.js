@@ -131,12 +131,18 @@ export function uniquePlaceLabels(values = []) {
   return [...map.values()].sort((a, b) => a.localeCompare(b, 'en-IN'));
 }
 
+/** Mirror normalizePlaceLabel inside Mongo so dropdown labels and $match agree on NBSP/ZW. */
+function mongoNormalizePlaceInput(field) {
+  let input = { $toString: { $ifNull: [field, ''] } };
+  input = { $replaceAll: { input, find: '\u00a0', replacement: ' ' } };
+  ['\u200B', '\u200C', '\u200D', '\uFEFF'].forEach((ch) => {
+    input = { $replaceAll: { input, find: ch, replacement: '' } };
+  });
+  return { $trim: { input } };
+}
+
 function placeValue(field) {
-  return {
-    $trim: {
-      input: { $toString: { $ifNull: [field, ''] } },
-    },
-  };
+  return mongoNormalizePlaceInput(field);
 }
 
 function placeKey(field) {
@@ -176,8 +182,8 @@ function placeNormalizeStages(state, city) {
   if (!state && !city) return [];
   const stages = [{
     $addFields: {
-      _normState: { $toLower: { $trim: { input: { $toString: { $ifNull: ['$shippingAddress.state', ''] } } } } },
-      _normCity: { $toLower: { $trim: { input: { $toString: { $ifNull: ['$shippingAddress.city', ''] } } } } },
+      _normState: { $toLower: mongoNormalizePlaceInput('$shippingAddress.state') },
+      _normCity: { $toLower: mongoNormalizePlaceInput('$shippingAddress.city') },
     },
   }];
   const placeMatch = {};
@@ -247,7 +253,17 @@ export function buildRevenueMatch({ from, to, paymentMethod, status, state, city
     paymentStatus: 'paid',
     status: { $nin: ['cancelled'] },
   };
-  if (paymentMethod) match.paymentMethod = paymentMethod;
+  if (paymentMethod) {
+    // Charts coalesce missing method to Cashfree and fold case via uniquePlaceLabels;
+    // the filter must use the same semantics or those rows disappear when Cashfree is selected.
+    const target = normalizePlaceLabel(paymentMethod).toLowerCase();
+    match.$expr = {
+      $eq: [
+        { $toLower: { $trim: { input: { $ifNull: ['$paymentMethod', 'Cashfree'] } } } },
+        target,
+      ],
+    };
+  }
   const aliases = statusAlias(status);
   if (aliases) match.status = { $in: aliases.filter((value) => value !== 'cancelled') };
   // Order-level product/variant match keeps orders that contain a matching line.
@@ -435,9 +451,19 @@ export function kpiPipeline(filters = {}) {
   ];
 }
 
-export function refundPipeline({ from, to, paymentMethod, state, city, productId, productIds, variant } = {}) {
+export function refundPipeline({ from, to, paymentMethod, status, state, city, productId, productIds, variant } = {}) {
   const match = { paymentStatus: 'refunded' };
-  if (paymentMethod) match.paymentMethod = paymentMethod;
+  if (paymentMethod) {
+    const target = normalizePlaceLabel(paymentMethod).toLowerCase();
+    match.$expr = {
+      $eq: [
+        { $toLower: { $trim: { input: { $ifNull: ['$paymentMethod', 'Cashfree'] } } } },
+        target,
+      ],
+    };
+  }
+  const aliases = statusAlias(status);
+  if (aliases) match.status = { $in: aliases };
   if (productId) match['items.product'] = productId;
   else if (Array.isArray(productIds) && productIds.length) match['items.product'] = { $in: productIds };
   if (variant) match['items.variant'] = { $regex: variantExactRegex(variant), $options: 'i' };
@@ -451,9 +477,20 @@ export function refundPipeline({ from, to, paymentMethod, state, city, productId
   ];
 }
 
-export function paymentOutcomePipeline({ from, to, paymentMethod, state, city, productId, productIds, variant } = {}) {
+export function paymentOutcomePipeline({ from, to, paymentMethod, status, state, city, productId, productIds, variant } = {}) {
   const match = {};
-  if (paymentMethod) match.paymentMethod = paymentMethod;
+  if (paymentMethod) {
+    const target = normalizePlaceLabel(paymentMethod).toLowerCase();
+    match.$expr = {
+      $eq: [
+        { $toLower: { $trim: { input: { $ifNull: ['$paymentMethod', 'Cashfree'] } } } },
+        target,
+      ],
+    };
+  }
+  const aliases = statusAlias(status);
+  if (aliases) match.status = { $in: aliases };
+  else match.status = { $nin: ['cancelled'] };
   if (productId) match['items.product'] = productId;
   else if (Array.isArray(productIds) && productIds.length) match['items.product'] = { $in: productIds };
   if (variant) match['items.variant'] = { $regex: variantExactRegex(variant), $options: 'i' };
@@ -725,7 +762,8 @@ export function shapeProducts(rows = []) {
     const costCoveragePct = row.costCoveragePct === undefined || row.costCoveragePct === null
       ? (revenue ? Math.round((knownRevenue / revenue) * 1000) / 10 : 100)
       : Number(row.costCoveragePct);
-    const profitKnown = knownRevenue > 0;
+    const knownCostUnits = Number(row.knownCostUnits || 0);
+    const profitKnown = knownCostUnits > 0 || knownRevenue > 0;
     return {
       id: row.productId ? String(row.productId) : '',
       title: row.title || 'Deleted product',
@@ -740,6 +778,7 @@ export function shapeProducts(rows = []) {
       marginPct: profitKnown && row.marginPct !== undefined && row.marginPct !== null ? Number(row.marginPct) : null,
       unknownRevenue,
       knownRevenue,
+      knownCostUnits,
       costCoveragePct,
       profitKnown,
     };

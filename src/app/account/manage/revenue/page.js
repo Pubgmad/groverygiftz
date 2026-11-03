@@ -88,19 +88,28 @@ const EMPTY_FILTER_OPTIONS = { states: [], cities: [], methods: [], products: []
 const selectClass = 'w-full min-w-0 rounded-lg border bg-white px-3 py-2.5 text-sm';
 
 function FilterSelect({ label, value, onChange, placeholder, loadingLabel, options, loading }) {
-  const ready = options.length > 0;
-  const emptyLabel = loading && !ready ? loadingLabel : placeholder;
+  const emptyLabel = loading ? loadingLabel : placeholder;
+  const selectOptions = loading
+    ? [{ value: '', label: emptyLabel }]
+    : [{ value: '', label: emptyLabel }, ...options];
   return (
     <label className="block min-w-0 text-sm font-medium">{label}
       <AdminSelect
         className="mt-1"
-        value={value}
-        onChange={onChange}
+        value={loading ? '' : value}
+        onChange={loading ? () => {} : onChange}
         placeholder={emptyLabel}
-        options={[{ value: '', label: emptyLabel }, ...options]}
+        options={selectOptions}
       />
     </label>
   );
+}
+
+function preferOptionLabel(options, label) {
+  const raw = String(label || '').trim();
+  if (!raw) return '';
+  const hit = (options || []).find((item) => String(item).toLowerCase() === raw.toLowerCase());
+  return hit || raw;
 }
 
 export default function RevenueAnalyticsPage() {
@@ -123,6 +132,7 @@ export default function RevenueAnalyticsPage() {
   const [error, setError] = useState('');
   const [filterOptions, setFilterOptions] = useState(EMPTY_FILTER_OPTIONS);
   const [optionsLoading, setOptionsLoading] = useState(true);
+  const [optionsReady, setOptionsReady] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const hasLoadedRef = useRef(false);
   const loadSeqRef = useRef(0);
@@ -194,6 +204,7 @@ export default function RevenueAnalyticsPage() {
       }
       setData(json);
       applyOptions(json.options);
+      setOptionsReady(true);
       hasLoadedRef.current = true;
       setLoading(false);
       setRefreshing(false);
@@ -211,40 +222,50 @@ export default function RevenueAnalyticsPage() {
   useEffect(() => {
     let cancelled = false;
     setOptionsLoading(true);
+    setOptionsReady(false);
+    setFilterOptions(EMPTY_FILTER_OPTIONS);
     (async () => {
-      const res = await fetch(`/api/admin/revenue?${optionsQuery}`, { cache: 'no-store' });
-      const json = await res.json().catch(() => ({}));
-      if (cancelled || !res.ok) {
+      try {
+        const res = await fetch(`/api/admin/revenue?${optionsQuery}`, { cache: 'no-store' });
+        const json = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!res.ok) {
+          setOptionsLoading(false);
+          return;
+        }
+        applyOptions(json.options);
+        setOptionsReady(true);
+        setOptionsLoading(false);
+      } catch {
         if (!cancelled) setOptionsLoading(false);
-        return;
       }
-      applyOptions(json.options);
-      setOptionsLoading(false);
     })();
     return () => { cancelled = true; };
   }, [applyOptions, optionsQuery]);
 
-  // Drop stale selections that are no longer in the scoped option lists.
+  // Drop stale selections that are no longer in the scoped option lists
+  // (including when the scoped list is empty — otherwise the UI shows "All …"
+  // while the hidden value still filters the API).
   useEffect(() => {
-    if (optionsLoading) return;
-    if (paymentMethod && filterOptions.methods.length && !filterOptions.methods.some((m) => m.toLowerCase() === paymentMethod.toLowerCase())) {
+    if (optionsLoading || !optionsReady) return;
+    if (paymentMethod && !filterOptions.methods.some((m) => m.toLowerCase() === paymentMethod.toLowerCase())) {
       setPaymentMethod('');
     }
-    if (state && filterOptions.states.length && !filterOptions.states.some((s) => s.toLowerCase() === state.toLowerCase())) {
+    if (state && !filterOptions.states.some((s) => s.toLowerCase() === state.toLowerCase())) {
       setState('');
       setCity('');
     }
-    if (city && filterOptions.cities.length && !filterOptions.cities.some((c) => c.toLowerCase() === city.toLowerCase())) {
+    if (city && !filterOptions.cities.some((c) => c.toLowerCase() === city.toLowerCase())) {
       setCity('');
     }
-    if (product && filterOptions.products.length && !filterOptions.products.some((p) => p.id === product)) {
+    if (product && !filterOptions.products.some((p) => p.id === product)) {
       setProduct('');
       setVariant('');
     }
-    if (variant && filterOptions.variants.length && !filterOptions.variants.some((v) => v.toLowerCase() === variant.toLowerCase())) {
+    if (variant && !filterOptions.variants.some((v) => v.toLowerCase() === variant.toLowerCase())) {
       setVariant('');
     }
-  }, [optionsLoading, filterOptions, paymentMethod, state, city, product, variant]);
+  }, [optionsLoading, optionsReady, filterOptions, paymentMethod, state, city, product, variant]);
 
   const reset = () => {
     setPreset('last30');
@@ -290,7 +311,10 @@ export default function RevenueAnalyticsPage() {
   const kpis = data?.kpis || {};
   const products = [...(data?.products || [])].sort((a, b) => sortProducts === 'units' ? b.units - a.units : b.revenue - a.revenue);
   const hours = data?.hours || [];
-  const maxHeat = Math.max(1, ...(data?.heatmap || []).flatMap((row) => row.hours.map((cell) => cell.orders)));
+  const heatOrders = (data?.heatmap || []).flatMap((row) => row.hours.map((cell) => cell.orders));
+  const totalHeatOrders = heatOrders.reduce((sum, n) => sum + Number(n || 0), 0);
+  const maxHeat = Math.max(1, ...heatOrders);
+  const hasPeakOrders = hours.some((row) => Number(row.orders || 0) > 0);
   const ordersHref = `/account/manage/orders?dateFrom=${encodeURIComponent(shownFrom)}&dateTo=${encodeURIComponent(shownTo)}${status ? `&status=${encodeURIComponent(status)}` : ''}`;
   const methodOptions = (filterOptions.methods || []).map((method) => ({ value: method, label: method }));
   const stateOptions = (filterOptions.states || []).map((item) => ({ value: item, label: item }));
@@ -510,7 +534,12 @@ export default function RevenueAnalyticsPage() {
               )}
               <div className="mt-4 space-y-2">
                 {data.states.slice(0, 8).map((row) => (
-                  <button key={row.key} type="button" onClick={() => setState(row.label)} className="flex w-full min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-xl bg-gray-50 px-3 py-2 text-left text-sm">
+                  <button
+                    key={row.key}
+                    type="button"
+                    onClick={() => setState(preferOptionLabel(filterOptions.states, row.label))}
+                    className="flex w-full min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-xl bg-gray-50 px-3 py-2 text-left text-sm"
+                  >
                     <span className="min-w-0 truncate font-medium">{row.label || 'Unknown'}</span>
                     <span className="text-xs leading-5 text-gray-500">{row.orders} orders · {money(row.collected)} · {row.sharePct}%</span>
                   </button>
@@ -521,7 +550,15 @@ export default function RevenueAnalyticsPage() {
               <p className="mb-3 text-xs leading-5 text-gray-500">District is not stored on orders. These rows are cities from shipping addresses.</p>
               <div className="space-y-2">
                 {data.cities.slice(0, 12).map((row) => (
-                  <button key={row.key} type="button" onClick={() => { if (row.state) setState(row.state); setCity(row.label); }} className="flex w-full min-w-0 flex-wrap items-start justify-between gap-2 rounded-xl border px-3 py-2 text-left">
+                  <button
+                    key={row.key}
+                    type="button"
+                    onClick={() => {
+                      if (row.state) setState(preferOptionLabel(filterOptions.states, row.state));
+                      setCity(preferOptionLabel(filterOptions.cities, row.label));
+                    }}
+                    className="flex w-full min-w-0 flex-wrap items-start justify-between gap-2 rounded-xl border px-3 py-2 text-left"
+                  >
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-semibold">{row.label}</span>
                       <span className="text-xs text-gray-500">{row.state || 'Unknown state'}</span>
@@ -535,6 +572,9 @@ export default function RevenueAnalyticsPage() {
           </div>
 
           <Panel title="Peak payment times (IST)">
+            {!hasPeakOrders ? (
+              <p className="text-sm text-gray-500">No paid orders in this range for peak-hour charts.</p>
+            ) : (
             <div className="h-64 w-full min-w-0">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={hours}>
@@ -546,8 +586,12 @@ export default function RevenueAnalyticsPage() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
+            )}
             <div className="mt-5 overflow-x-auto">
               <p className="mb-2 text-sm font-semibold">Weekday × hour heatmap</p>
+              {totalHeatOrders === 0 ? (
+                <p className="text-sm text-gray-500">No paid orders to plot on the heatmap.</p>
+              ) : (
               <div className="min-w-[640px]">
                 <div className="grid grid-cols-[72px_repeat(24,minmax(0,1fr))] gap-0.5 text-[10px]">
                   <span />
@@ -560,13 +604,14 @@ export default function RevenueAnalyticsPage() {
                           key={`${row.weekday}-${cell.hour}`}
                           title={`${row.weekday} ${String(cell.hour).padStart(2, '0')}:00 IST · ${cell.orders} orders · ${money(cell.collected)}`}
                           className="h-6 rounded-sm"
-                          style={{ backgroundColor: `rgba(36, 86, 216, ${0.08 + (cell.orders / maxHeat) * 0.92})` }}
+                          style={{ backgroundColor: cell.orders ? `rgba(36, 86, 216, ${0.08 + (cell.orders / maxHeat) * 0.92})` : 'transparent' }}
                         />
                       ))}
                     </div>
                   ))}
                 </div>
               </div>
+              )}
             </div>
             <div className="mt-4 grid gap-2 sm:grid-cols-3">
               {(data.weekdays || []).map((row) => (
@@ -669,6 +714,9 @@ export default function RevenueAnalyticsPage() {
               </div>
             </Panel>
             <Panel title="Paid order status">
+              {!data.statuses?.length ? (
+                <p className="text-sm text-gray-500">No paid orders in this range.</p>
+              ) : (
               <div className="h-64 w-full min-w-0">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={data.statuses}>
@@ -680,6 +728,7 @@ export default function RevenueAnalyticsPage() {
                   </BarChart>
                 </ResponsiveContainer>
               </div>
+              )}
             </Panel>
           </div>
 
