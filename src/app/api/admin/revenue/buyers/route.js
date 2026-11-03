@@ -25,12 +25,27 @@ function flattenTitles(rows = []) {
   return [...new Set((rows || []).flat(2).map((title) => String(title || '').trim()).filter(Boolean))];
 }
 
-function parseFilters(searchParams) {
+async function parseFilters(searchParams) {
   const preset = searchParams.get('preset') || 'last30';
   const range = presetToRange(preset, searchParams.get('from'), searchParams.get('to'));
   if (!range) return { error: 'Choose a valid date range' };
   if (!DATE_PRESETS.some((item) => item.id === preset) && preset !== 'custom') return { error: 'Invalid date preset' };
   const product = parseProductId(searchParams.get('product') || '');
+  const collection = parseProductId(searchParams.get('collection') || '');
+  let productId = product || undefined;
+  let productIds;
+  if (collection) {
+    const inCollection = await Product.find({ collections: collection }).select('_id').lean();
+    const ids = inCollection.map((row) => row._id);
+    if (!ids.length) return { empty: true, range, preset };
+    if (product && !ids.some((id) => String(id) === String(product))) return { empty: true, range, preset };
+    if (product) productId = product;
+    else if (ids.length === 1) productId = ids[0];
+    else {
+      productId = undefined;
+      productIds = ids;
+    }
+  }
   return {
     preset,
     range,
@@ -41,7 +56,8 @@ function parseFilters(searchParams) {
       status: searchParams.get('status') || undefined,
       state: searchParams.get('state') || undefined,
       city: searchParams.get('city') || undefined,
-      productId: product || undefined,
+      productId,
+      productIds,
       variant: searchParams.get('variant') || undefined,
     },
   };
@@ -75,7 +91,8 @@ export async function GET(req) {
   if (error) return error;
 
   const { searchParams } = new URL(req.url);
-  const parsed = parseFilters(searchParams);
+  await dbConnect();
+  const parsed = await parseFilters(searchParams);
   if (parsed.error) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
   const kind = searchParams.get('kind') || 'unique';
@@ -85,18 +102,11 @@ export async function GET(req) {
   const page = Math.max(1, Number(searchParams.get('page') || 1));
   const limit = Math.min(50, Math.max(1, Number(searchParams.get('limit') || 20)));
 
-  await dbConnect();
-  const pipeline = buyerListPipeline(parsed.filters);
-  const collection = searchParams.get('collection') || '';
-  if (collection && mongoose.Types.ObjectId.isValid(collection)) {
-    const inCollection = await Product.find({ collections: collection }).select('_id').lean();
-    const ids = inCollection.map((row) => row._id);
-    if (!ids.length) {
-      return NextResponse.json({ buyers: [], total: 0, pages: 1, page, kind }, { headers: { 'Cache-Control': 'no-store' } });
-    }
-    pipeline.unshift({ $match: { 'items.product': { $in: ids } } });
+  if (parsed.empty) {
+    return NextResponse.json({ buyers: [], total: 0, pages: 1, page, kind }, { headers: { 'Cache-Control': 'no-store' } });
   }
 
+  const pipeline = buyerListPipeline(parsed.filters);
   const rows = await Order.aggregate(pipeline).allowDiskUse(true);
 
   if (buyerKey) {

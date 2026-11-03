@@ -465,9 +465,11 @@ export function paymentOutcomePipeline({ from, to, paymentMethod, state, city, p
   ];
 }
 
-export function filterOptionPipeline({ from, to, state } = {}) {
+export function filterOptionPipeline({ from, to, state, productId, productIds } = {}) {
+  // Scope dropdown choices to the same product/collection slice as the main query so
+  // choosing a variant cannot silently target a different product than the Product filter.
   return [
-    ...buildRevenueMatch({ from, to, state }),
+    ...buildRevenueMatch({ from, to, state, productId, productIds }),
     {
       $facet: {
         states: [
@@ -499,7 +501,12 @@ export function filterOptionPipeline({ from, to, state } = {}) {
         variants: [
           { $unwind: { path: '$items', preserveNullAndEmptyArrays: false } },
           { $match: { 'items.variant': { $nin: ['', null] } } },
-          { $group: { _id: '$items.variant' } },
+          {
+            $group: {
+              _id: { $trim: { input: { $toString: { $ifNull: ['$items.variant', ''] } } } },
+            },
+          },
+          { $match: { _id: { $nin: ['', null] } } },
           { $sort: { _id: 1 } },
           { $limit: 200 },
         ],

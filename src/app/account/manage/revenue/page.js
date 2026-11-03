@@ -19,7 +19,7 @@ import {
 } from 'recharts';
 import { FiBarChart2, FiRefreshCw } from 'react-icons/fi';
 import { formatPrice } from '@/lib/utils';
-import { DATE_PRESETS } from '@/lib/revenueAnalytics';
+import { DATE_PRESETS, formatIstDateInput, shiftIstDate } from '@/lib/revenueAnalytics';
 import BuyerDrillDown from '@/components/admin/BuyerDrillDown';
 import AdminSelect from '@/components/admin/AdminSelect';
 
@@ -123,6 +123,7 @@ export default function RevenueAnalyticsPage() {
   const [error, setError] = useState('');
   const [filterOptions, setFilterOptions] = useState(EMPTY_FILTER_OPTIONS);
   const [optionsLoading, setOptionsLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const hasLoadedRef = useRef(false);
   const loadSeqRef = useRef(0);
 
@@ -153,8 +154,10 @@ export default function RevenueAnalyticsPage() {
       if (to) params.set('to', to);
     }
     if (state) params.set('state', state);
+    if (product) params.set('product', product);
+    if (collection) params.set('collection', collection);
     return params.toString();
-  }, [preset, from, to, state]);
+  }, [preset, from, to, state, product, collection]);
 
   const applyOptions = useCallback((next) => {
     if (!next) return;
@@ -171,6 +174,7 @@ export default function RevenueAnalyticsPage() {
   const load = useCallback(async () => {
     const seq = ++loadSeqRef.current;
     if (!hasLoadedRef.current) setLoading(true);
+    else setRefreshing(true);
     setError('');
     const res = await fetch(`/api/admin/revenue?${query}`, { cache: 'no-store' });
     const json = await res.json().catch(() => ({}));
@@ -178,12 +182,14 @@ export default function RevenueAnalyticsPage() {
     if (!res.ok) {
       setError(json.error || 'Unable to load revenue analytics');
       setLoading(false);
+      setRefreshing(false);
       return;
     }
     setData(json);
     applyOptions(json.options);
     hasLoadedRef.current = true;
     setLoading(false);
+    setRefreshing(false);
   }, [applyOptions, query]);
 
   useEffect(() => { load(); }, [load]);
@@ -204,6 +210,28 @@ export default function RevenueAnalyticsPage() {
     return () => { cancelled = true; };
   }, [applyOptions, optionsQuery]);
 
+  // Drop stale selections that are no longer in the scoped option lists.
+  useEffect(() => {
+    if (optionsLoading) return;
+    if (paymentMethod && filterOptions.methods.length && !filterOptions.methods.some((m) => m.toLowerCase() === paymentMethod.toLowerCase())) {
+      setPaymentMethod('');
+    }
+    if (state && filterOptions.states.length && !filterOptions.states.some((s) => s.toLowerCase() === state.toLowerCase())) {
+      setState('');
+      setCity('');
+    }
+    if (city && filterOptions.cities.length && !filterOptions.cities.some((c) => c.toLowerCase() === city.toLowerCase())) {
+      setCity('');
+    }
+    if (product && filterOptions.products.length && !filterOptions.products.some((p) => p.id === product)) {
+      setProduct('');
+      setVariant('');
+    }
+    if (variant && filterOptions.variants.length && !filterOptions.variants.some((v) => v.toLowerCase() === variant.toLowerCase())) {
+      setVariant('');
+    }
+  }, [optionsLoading, filterOptions, paymentMethod, state, city, product, variant]);
+
   const reset = () => {
     setPreset('last30');
     setFrom('');
@@ -219,6 +247,17 @@ export default function RevenueAnalyticsPage() {
     setSortProducts('revenue');
     setProfitProduct(null);
   };
+
+  const activeFilters = [
+    preset !== 'last30' ? DATE_PRESETS.find((item) => item.id === preset)?.label || preset : null,
+    paymentMethod || null,
+    status || null,
+    state || null,
+    city || null,
+    product ? (filterOptions.products.find((p) => p.id === product)?.title || 'Product') : null,
+    collection ? (filterOptions.collections.find((c) => c.id === collection)?.name || 'Collection') : null,
+    variant || null,
+  ].filter(Boolean);
 
   const kpis = data?.kpis || {};
   const products = [...(data?.products || [])].sort((a, b) => sortProducts === 'units' ? b.units - a.units : b.revenue - a.revenue);
@@ -252,7 +291,14 @@ export default function RevenueAnalyticsPage() {
             <AdminSelect
               className="mt-1"
               value={preset}
-              onChange={setPreset}
+              onChange={(next) => {
+                if (next === 'custom') {
+                  const today = formatIstDateInput();
+                  setFrom(shiftIstDate(today, -29));
+                  setTo(today);
+                }
+                setPreset(next);
+              }}
               options={DATE_PRESETS.map((item) => ({ value: item.id, label: item.label }))}
             />
           </label>
@@ -295,7 +341,7 @@ export default function RevenueAnalyticsPage() {
               onChange={setStatus}
               options={[
                 { value: '', label: 'All statuses' },
-                { value: 'ordered', label: 'Ordered' },
+                { value: 'ordered', label: 'Ordered (paid)' },
                 { value: 'on_process', label: 'On Process' },
                 { value: 'dispatched', label: 'Dispatched' },
               ]}
@@ -322,7 +368,7 @@ export default function RevenueAnalyticsPage() {
           <FilterSelect
             label="Product"
             value={product}
-            onChange={setProduct}
+            onChange={(next) => { setProduct(next); setVariant(''); }}
             placeholder="All products"
             loadingLabel="Loading products…"
             options={productOptions}
@@ -331,7 +377,7 @@ export default function RevenueAnalyticsPage() {
           <FilterSelect
             label="Collection"
             value={collection}
-            onChange={setCollection}
+            onChange={(next) => { setCollection(next); setProduct(''); setVariant(''); }}
             placeholder="All collections"
             loadingLabel="Loading collections…"
             options={collectionOptions}
@@ -347,10 +393,18 @@ export default function RevenueAnalyticsPage() {
             loading={optionsLoading}
           />
         </div>
-        <button type="button" onClick={reset} className="mt-4 inline-flex min-h-[44px] items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold">
-          <FiRefreshCw /> Reset filters
-        </button>
-        {data?.range && <p className="mt-3 text-xs leading-5 text-gray-500">Showing {data.range.from} to {data.range.to} IST. Comparison period: {data.range.previousFrom} to {data.range.previousTo}.</p>}
+        <div className="mt-4 flex min-w-0 flex-wrap items-center gap-2">
+          <button type="button" onClick={reset} className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold">
+            <FiRefreshCw /> Reset filters
+          </button>
+          {refreshing ? <span className="text-xs font-medium text-primary-700">Updating analytics…</span> : null}
+        </div>
+        {activeFilters.length > 0 && (
+          <p className="mt-3 text-xs leading-5 text-gray-600">
+            Active filters: {activeFilters.join(' · ')}
+          </p>
+        )}
+        {data?.range && <p className="mt-3 text-xs leading-5 text-gray-500">Showing {data.range.from} to {data.range.to} IST. Comparison period: {data.range.previousFrom} to {data.range.previousTo}. Trend grouping ({data.range.granularity || granularity}) only changes chart buckets, not which orders are included.</p>}
       </section>
 
       {error && <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}

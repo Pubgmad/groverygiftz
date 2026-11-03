@@ -64,6 +64,29 @@ function parseProductId(value) {
   return null;
 }
 
+async function resolveProductScope({ product, collection }) {
+  const productId = parseProductId(product);
+  const collectionId = parseProductId(collection);
+  let productIds = productId ? [productId] : [];
+  let emptyReason = null;
+  if (collectionId) {
+    const inCollection = await Product.find({ collections: collectionId }).select('_id').lean();
+    const ids = inCollection.map((row) => row._id);
+    if (!ids.length) {
+      emptyReason = 'No products currently belong to this collection.';
+    } else if (productId && !ids.some((id) => String(id) === String(productId))) {
+      emptyReason = 'No paid orders match this collection and product filter.';
+    } else {
+      productIds = productId ? [productId] : ids;
+    }
+  }
+  return {
+    emptyReason,
+    productId: !emptyReason && productIds.length === 1 ? productIds[0] : undefined,
+    productIds: !emptyReason && productIds.length > 1 ? productIds : undefined,
+  };
+}
+
 export async function GET(req) {
   const { requireAdminPermission } = await import('@/lib/adminAccess');
   const { error } = await requireAdminPermission('revenue', 'read');
@@ -87,10 +110,13 @@ export async function GET(req) {
 
   await dbConnect();
   const collections = await Collection.find().select('name').sort({ name: 1 }).lean();
+  const scope = await resolveProductScope({ product, collection });
   const [optionFacet] = await Order.aggregate(filterOptionPipeline({
     from: range.from,
     to: range.to,
     state: state || undefined,
+    productId: scope.productId,
+    productIds: scope.productIds,
   })).allowDiskUse(true);
   const filterOptions = shapeFilterOptions(optionFacet, collections);
 
@@ -98,24 +124,11 @@ export async function GET(req) {
     return NextResponse.json({ options: filterOptions }, { headers: { 'Cache-Control': 'no-store' } });
   }
 
-  const productId = parseProductId(product);
-  let productIds = productId ? [productId] : [];
-  if (collection && mongoose.Types.ObjectId.isValid(collection)) {
-    const inCollection = await Product.find({ collections: collection }).select('_id').lean();
-    const ids = inCollection.map((row) => row._id);
-    if (!ids.length) {
-      return NextResponse.json(
-        emptyAnalytics(range, preset, granularity, filterOptions, ['No products currently belong to this collection.']),
-        { headers: { 'Cache-Control': 'no-store' } },
-      );
-    }
-    if (productId && !ids.some((id) => String(id) === String(productId))) {
-      return NextResponse.json(
-        emptyAnalytics(range, preset, granularity, filterOptions, ['No paid orders match this collection and product filter.']),
-        { headers: { 'Cache-Control': 'no-store' } },
-      );
-    }
-    productIds = productId ? [productId] : ids;
+  if (scope.emptyReason) {
+    return NextResponse.json(
+      emptyAnalytics(range, preset, granularity, filterOptions, [scope.emptyReason]),
+      { headers: { 'Cache-Control': 'no-store' } },
+    );
   }
 
   const filters = {
@@ -125,8 +138,8 @@ export async function GET(req) {
     status: status || undefined,
     state: state || undefined,
     city: city || undefined,
-    productId: productIds.length === 1 ? productIds[0] : undefined,
-    productIds: productIds.length > 1 ? productIds : undefined,
+    productId: scope.productId,
+    productIds: scope.productIds,
     variant: variant || undefined,
     granularity,
   };
