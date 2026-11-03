@@ -85,7 +85,11 @@ export async function GET(req) {
 
   await dbConnect();
   const collections = await Collection.find().select('name').sort({ name: 1 }).lean();
-  const [optionFacet] = await Order.aggregate(filterOptionPipeline(range)).allowDiskUse(true);
+  const [optionFacet] = await Order.aggregate(filterOptionPipeline({
+    from: range.from,
+    to: range.to,
+    state: state || undefined,
+  })).allowDiskUse(true);
   const filterOptions = shapeFilterOptions(optionFacet, collections);
 
   if (searchParams.get('optionsOnly') === '1') {
@@ -138,8 +142,8 @@ export async function GET(req) {
     : null;
   const previousPipeline = previousFilters ? kpiPipeline(previousFilters) : null;
   const [previousKpi] = previousPipeline ? await Order.aggregate(previousPipeline).allowDiskUse(true) : [{}];
-  const [refund] = await Order.aggregate(refundPipeline(range)).allowDiskUse(true);
-  const paymentOutcomes = await Order.aggregate(paymentOutcomePipeline(range)).allowDiskUse(true);
+  const [refund] = await Order.aggregate(refundPipeline(filters)).allowDiskUse(true);
+  const paymentOutcomes = await Order.aggregate(paymentOutcomePipeline(filters)).allowDiskUse(true);
   const profit = await attributeProfitForFilters(filters);
   const previousProfit = previousFilters
     ? await attributeProfitForFilters(previousFilters)

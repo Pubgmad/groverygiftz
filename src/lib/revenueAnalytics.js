@@ -180,7 +180,7 @@ export function narrowToMatchingItems({ productId, productIds, variant } = {}) {
     conds.push({
       $regexMatch: {
         input: { $toString: { $ifNull: ['$$item.variant', ''] } },
-        regex: escapeRegex(variant),
+        regex: `^${escapeRegex(variant)}$`,
         options: 'i',
       },
     });
@@ -232,7 +232,7 @@ export function buildRevenueMatch({ from, to, paymentMethod, status, state, city
   // narrowToMatchingItems then drops non-matching sibling lines before KPI aggregation.
   if (productId) match['items.product'] = productId;
   else if (Array.isArray(productIds) && productIds.length) match['items.product'] = { $in: productIds };
-  if (variant) match['items.variant'] = { $regex: escapeRegex(variant), $options: 'i' };
+  if (variant) match['items.variant'] = { $regex: `^${escapeRegex(variant)}$`, $options: 'i' };
   return [
     { $match: match },
     { $addFields: { eventAt: { $ifNull: ['$paidAt', '$createdAt'] } } },
@@ -246,7 +246,7 @@ export function itemMatchAfterUnwind({ productId, productIds, variant } = {}) {
   const match = {};
   if (productId) match['items.product'] = productId;
   else if (Array.isArray(productIds) && productIds.length) match['items.product'] = { $in: productIds };
-  if (variant) match['items.variant'] = { $regex: escapeRegex(variant), $options: 'i' };
+  if (variant) match['items.variant'] = { $regex: `^${escapeRegex(variant)}$`, $options: 'i' };
   return Object.keys(match).length ? [{ $match: match }] : [];
 }
 
@@ -414,26 +414,43 @@ export function kpiPipeline(filters = {}) {
   ];
 }
 
-export function refundPipeline({ from, to }) {
+export function refundPipeline({ from, to, paymentMethod, state, city, productId, productIds, variant } = {}) {
+  const match = { paymentStatus: 'refunded' };
+  if (paymentMethod) match.paymentMethod = paymentMethod;
+  if (state) match['shippingAddress.state'] = { $regex: `^${escapeRegex(state)}$`, $options: 'i' };
+  if (city) match['shippingAddress.city'] = { $regex: `^${escapeRegex(city)}$`, $options: 'i' };
+  if (productId) match['items.product'] = productId;
+  else if (Array.isArray(productIds) && productIds.length) match['items.product'] = { $in: productIds };
+  if (variant) match['items.variant'] = { $regex: `^${escapeRegex(variant)}$`, $options: 'i' };
   return [
-    { $match: { paymentStatus: 'refunded' } },
+    { $match: match },
     { $addFields: { eventAt: { $ifNull: ['$paidAt', '$createdAt'] } } },
     { $match: { eventAt: { $gte: from, $lte: to } } },
+    ...narrowToMatchingItems({ productId, productIds, variant }),
     { $group: { _id: null, amount: { $sum: { $ifNull: ['$total', 0] } }, orders: { $sum: 1 } } },
   ];
 }
 
-export function paymentOutcomePipeline({ from, to }) {
+export function paymentOutcomePipeline({ from, to, paymentMethod, state, city, productId, productIds, variant } = {}) {
+  const match = {};
+  if (paymentMethod) match.paymentMethod = paymentMethod;
+  if (state) match['shippingAddress.state'] = { $regex: `^${escapeRegex(state)}$`, $options: 'i' };
+  if (city) match['shippingAddress.city'] = { $regex: `^${escapeRegex(city)}$`, $options: 'i' };
+  if (productId) match['items.product'] = productId;
+  else if (Array.isArray(productIds) && productIds.length) match['items.product'] = { $in: productIds };
+  if (variant) match['items.variant'] = { $regex: `^${escapeRegex(variant)}$`, $options: 'i' };
   return [
+    ...(Object.keys(match).length ? [{ $match: match }] : []),
     { $addFields: { eventAt: { $ifNull: ['$paidAt', '$createdAt'] } } },
     { $match: { eventAt: { $gte: from, $lte: to } } },
+    ...narrowToMatchingItems({ productId, productIds, variant }),
     { $group: { _id: { $ifNull: ['$paymentStatus', 'pending'] }, orders: { $sum: 1 }, amount: { $sum: { $ifNull: ['$total', 0] } } } },
   ];
 }
 
-export function filterOptionPipeline({ from, to }) {
+export function filterOptionPipeline({ from, to, state } = {}) {
   return [
-    ...buildRevenueMatch({ from, to }),
+    ...buildRevenueMatch({ from, to, state }),
     {
       $facet: {
         states: [

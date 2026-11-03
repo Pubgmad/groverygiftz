@@ -80,7 +80,11 @@ export default function MakingCostPage() {
       next[variant.variantKey] = cost ? String(cost.amount) : '';
     });
     setVariantAmounts(next);
-    setEffectiveFrom(formatIstDateInput());
+    const hasExistingCost = Array.isArray(json.costs) && json.costs.length > 0;
+    // First-ever cost is applied from product creation on the server; later changes use this date.
+    setEffectiveFrom(hasExistingCost
+      ? formatIstDateInput()
+      : formatIstDateInput(json.product?.createdAt ? new Date(json.product.createdAt) : new Date()));
     setNote('');
   };
 
@@ -255,12 +259,16 @@ export default function MakingCostPage() {
                   </div>
                 )}
                 <label className="block text-sm font-medium">Applies from (IST)
-                  <input type="date" value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)} disabled={!write} className="mt-1 min-h-[44px] w-full rounded-lg border px-3" />
+                  <input type="date" value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)} disabled={!write || !(detail.costs || []).length} className="mt-1 min-h-[44px] w-full rounded-lg border px-3" />
                 </label>
                 <label className="block text-sm font-medium">Note
                   <input value={note} onChange={(e) => setNote(e.target.value)} disabled={!write} placeholder="Optional reason for this change" className="mt-1 min-h-[44px] w-full rounded-lg border px-3" />
                 </label>
-                <p className="text-xs leading-5 text-gray-500">New paid orders snapshot the current cost at checkout. Historical orders only use a cost if a history row applies on or before the payment date. Blank fields are left unchanged.</p>
+                <p className="text-xs leading-5 text-gray-500">
+                  {(detail.costs || []).length
+                    ? 'Updating an existing cost uses the date above for when the new amount starts. Earlier history rows stay in place. New paid orders snapshot the current cost at checkout. Blank fields are left unchanged.'
+                    : 'The first making cost for each product or variant applies from the product creation date so past paid orders in analytics are covered. Choose a later “Applies from” date only when you change an existing cost. Blank fields are left unchanged.'}
+                </p>
                 {write && (
                   <button type="button" onClick={save} disabled={saving} className="min-h-[44px] w-full rounded-xl bg-primary-600 font-semibold text-white disabled:opacity-60">
                     {saving ? 'Saving...' : 'Save making cost'}

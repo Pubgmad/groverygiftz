@@ -125,7 +125,10 @@ assert.strictEqual(knownProfit[0].marginPct, 44.9);
 
 assert.strictEqual(itemMatchAfterUnwind({}).length, 0);
 assert.strictEqual(itemMatchAfterUnwind({ productId: 'abc' })[0].$match['items.product'], 'abc');
-assert.ok(itemMatchAfterUnwind({ variant: 'Size: Large' })[0].$match['items.variant'].$regex.includes('Size'));
+const variantMatch = itemMatchAfterUnwind({ variant: 'Size: Large' })[0].$match['items.variant'].$regex;
+assert.ok(variantMatch.startsWith('^'));
+assert.ok(variantMatch.endsWith('$'));
+assert.ok(variantMatch.includes('Size'));
 
 const matchStages = buildRevenueMatch({
   from: day.from,
@@ -133,6 +136,7 @@ const matchStages = buildRevenueMatch({
   variant: 'Size: 12x18',
 });
 assert.ok(JSON.stringify(matchStages).includes('items.variant'));
+assert.ok(JSON.stringify(matchStages).includes('^Size'), 'variant filter must be exact, not substring');
 
 const pipeline = revenuePipeline({
   from: day.from,

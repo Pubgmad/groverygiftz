@@ -124,6 +124,7 @@ export default function RevenueAnalyticsPage() {
   const [filterOptions, setFilterOptions] = useState(EMPTY_FILTER_OPTIONS);
   const [optionsLoading, setOptionsLoading] = useState(true);
   const hasLoadedRef = useRef(false);
+  const loadSeqRef = useRef(0);
 
   const query = useMemo(() => {
     const params = new URLSearchParams();
@@ -151,8 +152,9 @@ export default function RevenueAnalyticsPage() {
       if (from) params.set('from', from);
       if (to) params.set('to', to);
     }
+    if (state) params.set('state', state);
     return params.toString();
-  }, [preset, from, to]);
+  }, [preset, from, to, state]);
 
   const applyOptions = useCallback((next) => {
     if (!next) return;
@@ -167,10 +169,12 @@ export default function RevenueAnalyticsPage() {
   }, []);
 
   const load = useCallback(async () => {
+    const seq = ++loadSeqRef.current;
     if (!hasLoadedRef.current) setLoading(true);
     setError('');
     const res = await fetch(`/api/admin/revenue?${query}`, { cache: 'no-store' });
     const json = await res.json().catch(() => ({}));
+    if (seq !== loadSeqRef.current) return;
     if (!res.ok) {
       setError(json.error || 'Unable to load revenue analytics');
       setLoading(false);
@@ -213,6 +217,7 @@ export default function RevenueAnalyticsPage() {
     setCollection('');
     setVariant('');
     setSortProducts('revenue');
+    setProfitProduct(null);
   };
 
   const kpis = data?.kpis || {};
@@ -368,14 +373,14 @@ export default function RevenueAnalyticsPage() {
             <p className="mb-4 text-xs leading-5 text-gray-500">This is product gross profit from actual order-item prices minus applicable making cost. It is not net business profit. Shipping, payment fees, packaging, taxes, marketing, and operating expenses are not stored. Missing making cost is unknown, never ₹0.</p>
             <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <Kpi label="Product sales" value={money(kpis.productSales)} hint="Line-item revenue, excludes shipping" />
-              <Kpi label="Known making cost" value={money(kpis.makingCostKnown)} hint={`${kpis.costCoveragePct || 0}% of product revenue has a known cost`} />
-              <Kpi label="Product gross profit" value={kpis.profitComplete || kpis.productSales ? money(kpis.productGrossProfit) : 'Unavailable'} hint={kpis.profitComplete ? 'All sold items have a known making cost' : `${money(kpis.unknownCostRevenue)} revenue still has unknown cost`} />
-              <Kpi label="Gross margin" value={kpis.grossMarginPct === null || kpis.grossMarginPct === undefined ? '—' : `${kpis.grossMarginPct}%`} hint="Gross profit ÷ revenue with known cost" />
-              <Kpi label="Avg gross profit / order" value={money(kpis.averageGrossProfitPerOrder)} hint="Known gross profit ÷ paid orders" />
+              <Kpi label="Known making cost" value={money(kpis.makingCostKnown)} hint={`${kpis.costCoveragePct || 0}% cost coverage · ${money(kpis.knownCostRevenue || 0)} revenue with known cost`} />
+              <Kpi label="Profit on cost-covered sales" value={kpis.knownCostRevenue || kpis.productGrossProfit ? money(kpis.productGrossProfit) : 'Unavailable'} hint={kpis.profitComplete ? 'All sold items have a known making cost' : `Excludes ${money(kpis.unknownCostRevenue)} unknown-cost revenue`} />
+              <Kpi label="Margin on cost-covered sales" value={kpis.grossMarginPct === null || kpis.grossMarginPct === undefined ? '—' : `${kpis.grossMarginPct}%`} hint="Profit ÷ revenue with known making cost only" />
+              <Kpi label="Avg gross profit / order" value={money(kpis.averageGrossProfitPerOrder)} hint="Cost-covered profit ÷ all paid orders in range" />
               <Kpi label="Profit vs previous" value={kpis.profitGrowthPct === null ? '—' : `${kpis.profitGrowthPct}%`} hint={kpis.profitGrowthPct === null ? 'Previous period had zero known gross profit' : `Previous ${money(kpis.previousProductGrossProfit)}`} />
-              <Kpi label="Most profitable product" value={kpis.mostProfitableProduct?.title || '—'} hint={kpis.mostProfitableProduct ? money(kpis.mostProfitableProduct.grossProfit) : 'Needs known making cost'} onClick={() => kpis.mostProfitableProduct && setProfitProduct(kpis.mostProfitableProduct.title)} />
+              <Kpi label="Most profitable product" value={kpis.mostProfitableProduct?.title || '—'} hint={kpis.mostProfitableProduct ? money(kpis.mostProfitableProduct.grossProfit) : 'Needs known making cost'} onClick={() => kpis.mostProfitableProduct && setProfitProduct({ id: kpis.mostProfitableProduct.id || '', title: kpis.mostProfitableProduct.title })} />
               <Kpi label="Least profitable product" value={kpis.leastProfitableProduct?.title || '—'} hint={kpis.leastProfitableProduct ? money(kpis.leastProfitableProduct.grossProfit) : 'Needs known making cost'} />
-              <Kpi label="Orders with missing cost" value={kpis.unknownCostUnits || 0} hint="Units whose making cost is unknown" />
+              <Kpi label="Unknown-cost units" value={kpis.unknownCostUnits || 0} hint="Units whose making cost is unknown" />
             </div>
           </Panel>
 
@@ -390,7 +395,7 @@ export default function RevenueAnalyticsPage() {
                     <Tooltip content={<ChartTooltip />} />
                     <Legend />
                     <Area type="monotone" dataKey="collected" name="Collected revenue" stroke="#2456D8" fill="#DCE7FF" />
-                    <Area type="monotone" dataKey="grossProfit" name="Product gross profit" stroke="#059669" fill="#D1FAE5" />
+                    <Area type="monotone" dataKey="grossProfit" name="Profit on cost-covered sales" stroke="#059669" fill="#D1FAE5" />
                     <Area type="monotone" dataKey="orders" name="Orders" stroke="#F47920" fill="#FFE8CC" />
                   </AreaChart>
                 </ResponsiveContainer>
@@ -495,7 +500,7 @@ export default function RevenueAnalyticsPage() {
                     <Legend />
                     <Bar dataKey="productSales" name="Product sales" fill="#2456D8" />
                     <Bar dataKey="makingCost" name="Known making cost" fill="#F47920" />
-                    <Bar dataKey="grossProfit" name="Product gross profit" fill="#059669" />
+                    <Bar dataKey="grossProfit" name="Profit on cost-covered sales" fill="#059669" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -521,15 +526,15 @@ export default function RevenueAnalyticsPage() {
             <p className="mb-3 text-xs leading-5 text-gray-500">Ranked from actual order items, not the admin Best Seller flag. Historical titles and prices are kept even if a product is later edited.</p>
             <div className="space-y-3">
               {products.slice(0, 10).map((row, index) => (
-                <button key={`${row.id}-${row.title}`} type="button" onClick={() => { if (row.id) setProduct(row.id); setProfitProduct(row.title); }} className="flex w-full min-w-0 items-start gap-3 rounded-2xl border p-3 text-left sm:items-center">
+                <button key={`${row.id}-${row.title}`} type="button" onClick={() => setProfitProduct({ id: row.id || '', title: row.title })} className="flex w-full min-w-0 items-start gap-3 rounded-2xl border p-3 text-left sm:items-center">
                   <span className="w-6 shrink-0 pt-1 text-sm font-bold text-gray-400 sm:pt-0">{index + 1}</span>
                   {row.image ? <img src={row.image} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" /> : <span className="h-12 w-12 shrink-0 rounded-lg bg-gray-100" />}
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold">{row.title}</span>
-                    <span className="block text-xs leading-5 text-gray-500">{row.units} sold · {row.orders} orders · avg {money(row.averagePrice)}{row.profitKnown && row.marginPct !== null && row.marginPct !== undefined ? ` · margin ${row.marginPct}%` : ''}</span>
-                    <span className="mt-1 block text-sm font-bold sm:hidden">{money(row.revenue)}<span className={`ml-2 text-xs font-medium ${row.profitKnown ? 'text-emerald-700' : 'text-amber-700'}`}>{row.profitKnown ? `${money(row.grossProfit)} profit` : 'Profit unknown'}</span></span>
+                    <span className="block text-xs leading-5 text-gray-500">{row.units} sold · {row.orders} orders · avg {money(row.averagePrice)}{row.profitKnown && row.marginPct !== null && row.marginPct !== undefined ? ` · margin ${row.marginPct}% on covered` : ''}{row.costCoveragePct !== null && row.costCoveragePct !== undefined && row.costCoveragePct < 100 ? ` · ${row.costCoveragePct}% cost coverage` : ''}</span>
+                    <span className="mt-1 block text-sm font-bold sm:hidden">{money(row.revenue)}<span className={`ml-2 text-xs font-medium ${row.profitKnown ? 'text-emerald-700' : 'text-amber-700'}`}>{row.profitKnown ? `${money(row.grossProfit)} on covered` : 'Profit unknown'}</span></span>
                   </span>
-                  <span className="hidden shrink-0 text-right text-sm font-bold sm:block">{money(row.revenue)}<span className={`block text-xs font-medium ${row.profitKnown ? 'text-emerald-700' : 'text-amber-700'}`}>{row.profitKnown ? `${money(row.grossProfit)} profit` : 'Profit unknown'}</span></span>
+                  <span className="hidden shrink-0 text-right text-sm font-bold sm:block">{money(row.revenue)}<span className={`block text-xs font-medium ${row.profitKnown ? 'text-emerald-700' : 'text-amber-700'}`}>{row.profitKnown ? `${money(row.grossProfit)} on covered` : 'Profit unknown'}</span></span>
                 </button>
               ))}
               {products.length === 0 && <p className="text-sm text-gray-500">No product sales in this period.</p>}
@@ -542,7 +547,7 @@ export default function RevenueAnalyticsPage() {
                 {data.variants.slice(0, 12).map((row) => (
                   <div key={`${row.title}-${row.variant}`} className="flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-xl bg-gray-50 px-3 py-2 text-sm">
                     <span className="min-w-0 break-words">{row.title} · {row.variant}</span>
-                    <span className="text-xs leading-5 text-gray-600">{row.units} sold · {money(row.revenue)}{row.profitKnown ? ` · ${money(row.grossProfit)} profit` : ' · profit unknown'}</span>
+                    <span className="text-xs leading-5 text-gray-600">{row.units} sold · {money(row.revenue)}{row.profitKnown ? ` · ${money(row.grossProfit)} on covered` : ' · profit unknown'}</span>
                   </div>
                 ))}
               </div>
@@ -619,20 +624,28 @@ export default function RevenueAnalyticsPage() {
           </Panel>
           {profitProduct && (
             <div className="fixed inset-0 z-50 flex items-end bg-black/40 sm:items-center sm:justify-center">
-              <div className="max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:max-w-lg sm:rounded-3xl sm:p-6">
+              <div className="max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:max-w-lg sm:rounded-3xl sm:p-6" role="dialog" aria-modal="true" aria-label="Product analytics detail">
                 <div className="mb-3 flex items-start justify-between gap-3">
-                  <h2 className="min-w-0 break-words text-lg font-bold leading-tight">{profitProduct}</h2>
+                  <h2 className="min-w-0 break-words text-lg font-bold leading-tight">{profitProduct.title}</h2>
                   <button type="button" onClick={() => setProfitProduct(null)} className="inline-flex h-11 shrink-0 items-center rounded-lg border px-3">Close</button>
                 </div>
-                {(products.filter((row) => row.title === profitProduct)[0] ? [products.filter((row) => row.title === profitProduct)[0]] : []).map((row) => (
-                  <div key={row.id || row.title} className="space-y-2 text-sm">
+                {(products.filter((row) => (profitProduct.id && row.id === profitProduct.id) || row.title === profitProduct.title)[0]
+                  ? [products.filter((row) => (profitProduct.id && row.id === profitProduct.id) || row.title === profitProduct.title)[0]]
+                  : []).map((row) => (
+                  <div key={row.id || row.title} className="space-y-2 text-sm leading-6">
                     <p>Units sold: {row.units}</p>
                     <p>Revenue: {money(row.revenue)}</p>
+                    <p>Revenue with known making cost: {money(row.knownRevenue)}</p>
                     <p>Known making cost: {row.profitKnown ? money(row.makingCost) : 'Not configured for these sales'}</p>
-                    <p>Product gross profit: {row.profitKnown ? money(row.grossProfit) : 'Unavailable until making cost is configured'}</p>
-                    <p>Gross margin: {row.profitKnown && row.marginPct !== null && row.marginPct !== undefined ? `${row.marginPct}%` : 'Unavailable'}</p>
+                    <p>Profit on cost-covered sales: {row.profitKnown ? money(row.grossProfit) : 'Unavailable until making cost is configured'}</p>
+                    <p>Margin on cost-covered sales: {row.profitKnown && row.marginPct !== null && row.marginPct !== undefined ? `${row.marginPct}%` : 'Unavailable'}</p>
                     <p>Unknown-cost revenue: {money(row.unknownRevenue)}</p>
                     <p>Cost coverage: {row.costCoveragePct === null || row.costCoveragePct === undefined ? '—' : `${row.costCoveragePct}%`}</p>
+                    {row.costCoveragePct !== null && row.costCoveragePct !== undefined && row.costCoveragePct < 100 ? (
+                      <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+                        Profit and margin use only the {row.costCoveragePct}% of revenue with a known making cost. The remaining {money(row.unknownRevenue)} is excluded from profit — it is not treated as zero-cost.
+                      </p>
+                    ) : null}
                     <button type="button" onClick={() => { if (row.id) setProduct(row.id); setProfitProduct(null); }} className="mt-3 min-h-[44px] w-full rounded-xl border font-semibold">Filter analytics to this product</button>
                   </div>
                 ))}

@@ -18,7 +18,7 @@ function parseProductId(value) {
 
 async function loadProduct(id) {
   return Product.findById(id)
-    .select('title slug images regularPrice salePrice variants collections isActive')
+    .select('title slug images regularPrice salePrice variants collections isActive createdAt')
     .populate('collections', 'name')
     .lean();
 }
@@ -47,6 +47,7 @@ export async function GET(req, { params }) {
       title: product.title,
       slug: product.slug,
       image: product.images?.[0] || '',
+      createdAt: product.createdAt ? new Date(product.createdAt).toISOString() : null,
       regularPrice: Number(product.regularPrice || 0),
       salePrice: Number(product.salePrice || 0),
       collections: (product.collections || []).map((row) => row.name).filter(Boolean),
@@ -137,10 +138,11 @@ export async function PUT(req, { params }) {
 
   await Promise.all(entries.map(async (entry) => {
     const previous = existingByKey[normalizeVariantKey(entry.variantKey)];
-    // First-ever cost for a key with no explicit date: apply from product creation so
-    // Last 7/30 day analytics pick up the cost instead of only "today".
+    // First-ever cost for a key always starts at product creation. The admin date picker
+    // only controls later changes. (The UI used to default effectiveFrom to "today" and
+    // always send it, which left ~90% of historical revenue as unknown-cost.)
     const hasHistory = Number(historyCountByKey[normalizeVariantKey(entry.variantKey)] || 0) > 0;
-    const entryEffectiveFrom = (!dateStr && !hasHistory && product.createdAt)
+    const entryEffectiveFrom = (!hasHistory && product.createdAt)
       ? new Date(product.createdAt)
       : effectiveFrom;
     await MakingCost.findOneAndUpdate(

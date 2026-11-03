@@ -2,7 +2,7 @@ import Order from '@/models/Order';
 import Product from '@/models/Product';
 import MakingCost from '@/models/MakingCost';
 import MakingCostHistory from '@/models/MakingCostHistory';
-import { buildAttributedRows, groupProfitRows, normalizeVariantKey, summarizeAttributedItems } from '@/lib/makingCost';
+import { backdateInauguralHistoryForAttribution, buildAttributedRows, groupProfitRows, normalizeVariantKey, summarizeAttributedItems } from '@/lib/makingCost';
 import { istBucketLabel, profitItemPipeline } from '@/lib/revenueAnalytics';
 
 export async function attributeProfitForFilters(filters, extraMatch = null) {
@@ -44,6 +44,7 @@ export async function attributeProfitForFilters(filters, extraMatch = null) {
       source: 'history',
     });
   });
+  backdateInauguralHistoryForAttribution(historyByProduct, productsById);
   const attributed = buildAttributedRows(items, productsById, historyByProduct);
   const summary = summarizeAttributedItems(attributed);
   const productRows = groupProfitRows(attributed, (row) => row.productId || row.title, (row) => row.title);

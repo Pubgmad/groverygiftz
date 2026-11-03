@@ -143,4 +143,18 @@ const looseLabel = resolveMakingCost({
 assert.strictEqual(looseLabel.status, COST_STATUS.known);
 assert.strictEqual(looseLabel.amount, 650);
 
+// Screenshot-style reconciliation: profit and margin only on cost-covered revenue.
+const covered = summarizeAttributedItems([
+  { quantity: 10, revenue: 13990, makingCost: 770.18, status: 'known' },
+  { quantity: 98, revenue: 137102, makingCost: null, status: 'unknown' },
+]);
+assert.strictEqual(covered.productRevenue, 151092);
+assert.strictEqual(covered.unknownCostRevenue, 137102);
+assert.strictEqual(covered.knownCostRevenue, 13990);
+assert.ok(Math.abs(covered.makingCostKnown - 7701.8) < 0.01);
+assert.ok(Math.abs(covered.productGrossProfit - 6288.2) < 0.01);
+assert.strictEqual(covered.grossMarginPct, 44.9);
+assert.strictEqual(covered.costCoveragePct, 9.3);
+assert.strictEqual(covered.complete, false);
+
 console.log('Making cost helper tests passed');

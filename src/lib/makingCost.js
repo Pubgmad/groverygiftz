@@ -352,6 +352,40 @@ export function buildAttributedRows(items = [], productsById = {}, historyByProd
   });
 }
 
+/**
+ * First-ever history rows (previousAmount null) were often saved with effectiveFrom=today
+ * because the admin date input defaulted to today. For analytics only, treat those inaugural
+ * rows as applying from product creation so past paid orders are not left unknown-cost.
+ * Does not rewrite MongoDB history documents.
+ */
+export function backdateInauguralHistoryForAttribution(historyByProduct = {}, productsById = {}) {
+  Object.entries(historyByProduct).forEach(([productId, rows]) => {
+    const createdAt = productsById[productId]?.createdAt
+      ? new Date(productsById[productId].createdAt)
+      : null;
+    if (!createdAt || Number.isNaN(createdAt.getTime())) return;
+
+    const byKey = new Map();
+    (rows || []).forEach((row) => {
+      const key = normalizeVariantKey(row?.variantKey || '');
+      if (!byKey.has(key)) byKey.set(key, []);
+      byKey.get(key).push(row);
+    });
+
+    byKey.forEach((list) => {
+      list.sort((a, b) => new Date(a.effectiveFrom || 0) - new Date(b.effectiveFrom || 0));
+      const first = list[0];
+      if (!first) return;
+      const inaugural = first.previousAmount === null || first.previousAmount === undefined;
+      if (!inaugural) return;
+      if (new Date(first.effectiveFrom || 0).getTime() > createdAt.getTime()) {
+        first.effectiveFrom = createdAt;
+      }
+    });
+  });
+  return historyByProduct;
+}
+
 export function makingCostStatusForProduct(product, costs = []) {
   const hasProduct = costs.some((row) => !row.variantKey && isConfiguredCost(row.amount));
   const variantOptions = (product?.variants || []).flatMap((variant) => (variant.options || []).map((option) => ({
