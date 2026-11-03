@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useCart } from '@/context/CartContext';
 import { formatPrice, calcSavings, getEffectivePrice, isOfferActive, getVariantRegularPrice, getVariantSalePrice, getVariantEffectivePrice } from '@/lib/utils';
-import { getSelectedAvailableStock, isProductSoldOut, isVariantOptionSoldOut } from '@/lib/stock';
+import { getProductAvailableStock, getSelectedAvailableStock, hasVariantManagedStock, isProductSoldOut, isVariantOptionSoldOut } from '@/lib/stock';
 import { getCentralDeliveryEstimate } from '@/lib/centralDeliveryEstimates';
 import useDeliverySettings from '@/hooks/useDeliverySettings';
 import { buildProductMetaPayload, META_READY_EVENT, trackMetaCustomEvent, trackMetaEvent } from '@/lib/metaPixel';
@@ -62,7 +62,7 @@ const getStateOverride = (delivery, state) => (delivery?.stateOverrides || []).f
 const displayUploadUrl = (upload) => stableUploadUrl(upload);
 const getDefaultPreviewAdjustments = () => ({ zoom: 1, x: 0, y: 0, orientation: 'auto', rotation: 0, fitMode: 'fit' });
 
-export default function ProductDetail({ product, purchaseActivityCount = 0 }) {
+export default function ProductDetail({ product }) {
   const [selectedImage, setSelectedImage] = useState(0);
   const [quantity, setQuantity] = useState(1);
   const [selectedVariants, setSelectedVariants] = useState({});
@@ -212,6 +212,8 @@ export default function ProductDetail({ product, purchaseActivityCount = 0 }) {
     });
   }, [product._id, product.variants]);
   const selectedVariantOptions = Object.values(selectedVariants).filter(Boolean);
+  const variantManagedStock = hasVariantManagedStock(product);
+  const availableStock = getProductAvailableStock(product);
   const selectedAvailableStock = getSelectedAvailableStock(product, selectedVariantOptions);
   const purchaseLimit = Math.max(0, selectedAvailableStock);
   const selectedVariantUploadOptions = selectedVariantOptions.filter((selected) => selected?.requiresImageUpload && selected?.label);
@@ -1007,9 +1009,9 @@ export default function ProductDetail({ product, purchaseActivityCount = 0 }) {
       {/* Product Info */}
       <div>
         <h1 className="text-2xl md:text-3xl font-display font-bold mb-3">{product.title}</h1>
-        <PurchaseActivityBadge product={product} purchaseCount={purchaseActivityCount} />
+        <PurchaseActivityBadge product={product} />
 
-        <div className="flex flex-wrap items-center gap-3 mb-4">
+        <div className="flex flex-wrap items-center gap-3 mb-3">
           <span className="text-3xl font-bold text-primary-600">{showContactOnlyPrice ? 'Contact for Price' : formatPrice(finalUnitPrice)}</span>
           {!showContactOnlyPrice && savings > 0 && (
             <>
@@ -1019,6 +1021,8 @@ export default function ProductDetail({ product, purchaseActivityCount = 0 }) {
             </>
           )}
         </div>
+
+        <StockAvailabilityAlert product={product} selectedOptions={selectedVariantOptions} />
 
         {!product.isQuoteOnly && (
           <div className="mb-4 rounded-2xl border border-primary-100 bg-white p-4 shadow-sm">
@@ -1043,7 +1047,26 @@ export default function ProductDetail({ product, purchaseActivityCount = 0 }) {
 
         <ProductAssurancePanel settings={settings} selectedDeliveryState={selectedDeliveryState} />
 
-        <StockAvailabilityAlert product={product} selectedOptions={selectedVariantOptions} />
+        {(isSoldOut || variantManagedStock || Number(product.stock) > 0) ? (
+          <div className="mb-6 rounded-xl bg-primary-50/60 px-4 py-3">
+            {isSoldOut ? (
+              <p className="text-sm font-semibold text-red-600">Out of stock</p>
+            ) : variantManagedStock ? (
+              <p className="text-sm text-gray-600">{availableStock} in stock across variants</p>
+            ) : Number(product.stock) > 0 && Number(product.stock) <= 15 ? (
+              <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-amber-800">
+                <span className="inline-flex items-center rounded-md bg-amber-100 px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-amber-900">
+                  Almost gone
+                </span>
+                Only {product.stock} in stock - order soon!
+              </p>
+            ) : Number(product.stock) > 0 && Number(product.stock) <= 40 ? (
+              <p className="text-sm font-medium text-amber-700">{product.stock} in stock - selling fast</p>
+            ) : Number(product.stock) > 0 ? (
+              <p className="text-sm text-gray-600">{product.stock} in stock</p>
+            ) : null}
+          </div>
+        ) : null}
 
         {/* Variants */}
         {product.variants?.map((variant, vIdx) => (
@@ -1142,122 +1165,117 @@ export default function ProductDetail({ product, purchaseActivityCount = 0 }) {
 
         {(needsCustomerPhotos || selectedVariantUploadOptions.length > 0 || needsCollageUploads) && (
           <div className="mb-5 rounded-2xl border border-primary-100 bg-white p-4">
-            <p className="font-display text-sm font-bold text-gray-950">{previewConfig.title || 'Preview Your Personalized Gift'}</p>
-            {String(previewConfig.shortGuidance || '').trim() ? (
-              <p className="mt-2 text-xs leading-5 text-gray-600">{String(previewConfig.shortGuidance).trim()}</p>
-            ) : null}
-          </div>
-        )}
-        {selectedVariantUploadOptions.length > 0 && (
-          <div className="mb-5 rounded-2xl border border-primary-100 bg-primary-50/20 p-4">
-            <div className="mb-3">
-              <p className="text-sm font-bold text-gray-900">Selected variant image uploads</p>
-              <p className="mt-1 text-xs text-gray-500">Upload the required image for each selected option label. These are saved label-wise for admin production.</p>
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <p className="font-display text-sm font-bold text-gray-950 sm:text-base">{previewConfig.title || 'Preview Your Personalized Gift'}</p>
+                <p className="mt-1 text-xs leading-5 text-gray-600">
+                  {String(previewConfig.shortGuidance || '').trim()
+                    || (needsCustomerPhotos
+                      ? (requiredPhotoCount > 0
+                        ? `Upload ${requiredPhotoCount} photo${requiredPhotoCount === 1 ? '' : 's'} to personalize your gift.`
+                        : `Upload up to ${maxPhotoCount} photo${maxPhotoCount === 1 ? '' : 's'} to personalize your gift.`)
+                      : 'Upload your favorite photos and adjust them to create your perfect gift.')}
+                </p>
+              </div>
+              {needsCustomerPhotos ? (
+                <span className="self-start rounded-full border border-accent-100 bg-accent-50 px-3 py-1 text-xs font-bold text-accent-700">
+                  {uploadedPhotoCount}/{requiredPhotoCount || maxPhotoCount}
+                </span>
+              ) : null}
             </div>
-            <div className={uploadCardGridClass}>
-            {selectedVariantUploadOptions.map((selected) => {
-              const upload = variantLabelUploads[selected.label];
-              const isUploading = !!uploadingVariantLabels[selected.label];
+
+            {selectedVariantUploadOptions.length > 0 && (
+              <div className={`mb-4 ${needsCustomerPhotos || needsCollageUploads ? 'pb-4 border-b border-primary-50' : ''}`}>
+                <div className={uploadCardGridClass}>
+                  {selectedVariantUploadOptions.map((selected) => {
+                    const upload = variantLabelUploads[selected.label];
+                    const isUploading = !!uploadingVariantLabels[selected.label];
                     const previewKey = `variant-${selected.label}`;
                     const adjustments = getAreaAdjustments(previewKey);
                     const variantArea = variantAreaFromSelected(selected);
                     const oriented = getFrameSize(variantArea, adjustments.orientation);
                     return (
-                  <PhotoUploadCard
-                    key={selected.label}
-                    label={selected.label}
-                    sizeLabel={areaSizeLabel(variantArea, previewKey)}
-                    required
-                    missingRequired={!upload?.url}
-                    {...slotCardPhotoProps(upload, previewKey)}
-                    uploading={isUploading}
-                    disabled={Boolean(actionLoading) || savingPreviewAreas[previewKey]}
-                    orientation={adjustments.orientation}
-                    orientationLabel={upload?.url ? orientationCaption(adjustments.orientation) : ''}
-                    aspectWidth={oriented.width}
-                    aspectHeight={oriented.height}
-                    fitMode={adjustments.fitMode}
-                    onUpload={(files) => handleVariantLabelUpload(selected.label, files[0])}
-                    onRemove={() => removeVariantLabelUpload(selected.label)}
-                    onEdit={upload?.url ? () => setEditorSlotKey(previewKey) : undefined}
-                    instructions={selected.previewInstructions || ''}
-                  />
-              );
-            })}
-            </div>
-          </div>
-        )}
-        {needsCustomerPhotos && (
-          <div className="mb-5 rounded-2xl border border-accent-100 bg-accent-50/20 p-4">
-            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <p className="text-sm font-bold text-gray-900">Customer photo areas</p>
-                <p className="mt-1 text-xs text-gray-500">
-                  {requiredPhotoCount > 0
-                    ? `Please upload ${requiredPhotoCount} photo${requiredPhotoCount === 1 ? '' : 's'} for this product.`
-                    : `You can upload up to ${maxPhotoCount} photo${maxPhotoCount === 1 ? '' : 's'} for this product.`}
-                  {photoSlotCount > 1 ? ' You can select several photos at once; each photo fills the next empty frame.' : ''}
-                </p>
+                      <PhotoUploadCard
+                        key={selected.label}
+                        label={selected.label}
+                        sizeLabel={areaSizeLabel(variantArea, previewKey)}
+                        required
+                        missingRequired={!upload?.url}
+                        {...slotCardPhotoProps(upload, previewKey)}
+                        uploading={isUploading}
+                        disabled={Boolean(actionLoading) || savingPreviewAreas[previewKey]}
+                        orientation={adjustments.orientation}
+                        orientationLabel={upload?.url ? orientationCaption(adjustments.orientation) : ''}
+                        aspectWidth={oriented.width}
+                        aspectHeight={oriented.height}
+                        fitMode={adjustments.fitMode}
+                        onUpload={(files) => handleVariantLabelUpload(selected.label, files[0])}
+                        onRemove={() => removeVariantLabelUpload(selected.label)}
+                        onEdit={upload?.url ? () => setEditorSlotKey(previewKey) : undefined}
+                        instructions={selected.previewInstructions || ''}
+                      />
+                    );
+                  })}
+                </div>
               </div>
-              <span className="self-start rounded-full border border-accent-100 bg-white px-3 py-1 text-xs font-bold text-accent-700">
-                {uploadedPhotoCount}/{requiredPhotoCount || maxPhotoCount}
-              </span>
-            </div>
-            {photoSlotCount > 1 ? (
-              <label className={`mb-3 flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-accent-200 bg-white px-4 text-sm font-semibold text-accent-800 ${uploadingCustomerPhotos || Boolean(actionLoading) ? 'pointer-events-none opacity-70' : ''}`}>
-                {uploadingCustomerPhotos ? 'Uploading photos...' : `Upload photos (${uploadedPhotoCount}/${photoSlotCount})`}
-                <input
-                  type="file"
-                  accept="image/*,.heic,.heif"
-                  multiple
-                  className="sr-only"
-                  disabled={uploadingCustomerPhotos || Boolean(actionLoading)}
-                  onChange={(event) => {
-                    const files = Array.from(event.target.files || []);
-                    event.target.value = '';
-                    if (files.length) handleCustomerPhotoUpload(files);
-                  }}
-                />
-              </label>
-            ) : null}
-            <div className={uploadCardGridClass}>
-              {Array.from({ length: photoSlotCount }, (_, idx) => {
-                const area = previewAreas[idx] || { label: `Photo ${idx + 1}`, width: 1, height: 1, unit: 'ratio' };
-                const photo = customerPhotos[idx];
-                const slotRequired = previewAreas[idx] ? previewAreas[idx].required !== false : idx < requiredPhotoCount;
-                const label = area?.label || `Photo ${idx + 1}`;
-                const adjustments = getAreaAdjustments(idx);
-                const oriented = getFrameSize(area, adjustments.orientation);
-                return (
-                  <PhotoUploadCard
-                    key={`photo-slot-${idx}`}
-                    label={label}
-                    sizeLabel={areaSizeLabel(area, idx)}
-                    required={slotRequired}
-                    missingRequired={slotRequired && !photo?.url}
-                    {...slotCardPhotoProps(photo, idx)}
-                    uploading={!!uploadingPhotoSlots[idx]}
-                    disabled={previewSaveLocksRef.current.size > 0 || Boolean(actionLoading) || uploadingCustomerPhotos}
-                    orientation={adjustments.orientation}
-                    orientationLabel={photo?.url ? orientationCaption(adjustments.orientation) : ''}
-                    aspectWidth={oriented.width}
-                    aspectHeight={oriented.height}
-                    fitMode={adjustments.fitMode}
-                    multiple={!photo?.url && photoSlotCount > 1}
-                    onUpload={(files) => handleCustomerPhotoUpload(files, files.length === 1 ? idx : null)}
-                    onRemove={() => removeCustomerPhoto(idx)}
-                    onEdit={photo?.url ? () => setEditorSlotKey(idx) : undefined}
-                    instructions={area?.instructions || ''}
-                  />
-                );
-              })}
-                  </div>
-          </div>
-        )}
+            )}
 
-        {needsCollageUploads && (
-          <div className="mb-5 space-y-4 rounded-2xl border border-primary-100 bg-primary-50/20 p-4">
-              <p className="text-sm font-bold text-gray-900">Collage photo uploads</p>
+            {needsCustomerPhotos && (
+              <div className={needsCollageUploads ? 'mb-4 pb-4 border-b border-primary-50' : ''}>
+                {photoSlotCount > 1 ? (
+                  <label className={`mb-3 flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-accent-200 bg-accent-50/30 px-4 text-sm font-semibold text-accent-800 ${uploadingCustomerPhotos || Boolean(actionLoading) ? 'pointer-events-none opacity-70' : ''}`}>
+                    {uploadingCustomerPhotos ? 'Uploading photos...' : `Upload photos (${uploadedPhotoCount}/${photoSlotCount})`}
+                    <input
+                      type="file"
+                      accept="image/*,.heic,.heif"
+                      multiple
+                      className="sr-only"
+                      disabled={uploadingCustomerPhotos || Boolean(actionLoading)}
+                      onChange={(event) => {
+                        const files = Array.from(event.target.files || []);
+                        event.target.value = '';
+                        if (files.length) handleCustomerPhotoUpload(files);
+                      }}
+                    />
+                  </label>
+                ) : null}
+                <div className={uploadCardGridClass}>
+                  {Array.from({ length: photoSlotCount }, (_, idx) => {
+                    const area = previewAreas[idx] || { label: `Photo ${idx + 1}`, width: 1, height: 1, unit: 'ratio' };
+                    const photo = customerPhotos[idx];
+                    const slotRequired = previewAreas[idx] ? previewAreas[idx].required !== false : idx < requiredPhotoCount;
+                    const label = area?.label || `Photo ${idx + 1}`;
+                    const adjustments = getAreaAdjustments(idx);
+                    const oriented = getFrameSize(area, adjustments.orientation);
+                    return (
+                      <PhotoUploadCard
+                        key={`photo-slot-${idx}`}
+                        label={label}
+                        sizeLabel={areaSizeLabel(area, idx)}
+                        required={slotRequired}
+                        missingRequired={slotRequired && !photo?.url}
+                        {...slotCardPhotoProps(photo, idx)}
+                        uploading={!!uploadingPhotoSlots[idx]}
+                        disabled={previewSaveLocksRef.current.size > 0 || Boolean(actionLoading) || uploadingCustomerPhotos}
+                        orientation={adjustments.orientation}
+                        orientationLabel={photo?.url ? orientationCaption(adjustments.orientation) : ''}
+                        aspectWidth={oriented.width}
+                        aspectHeight={oriented.height}
+                        fitMode={adjustments.fitMode}
+                        multiple={!photo?.url && photoSlotCount > 1}
+                        onUpload={(files) => handleCustomerPhotoUpload(files, files.length === 1 ? idx : null)}
+                        onRemove={() => removeCustomerPhoto(idx)}
+                        onEdit={photo?.url ? () => setEditorSlotKey(idx) : undefined}
+                        instructions={area?.instructions || ''}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {needsCollageUploads && (
+              <div className="space-y-4">
             {collageTemplates.map((template) => {
               const label = template.label;
               const photos = collageUploads[label] || [];
@@ -1308,6 +1326,8 @@ export default function ProductDetail({ product, purchaseActivityCount = 0 }) {
                 </div>
               );
             })}
+              </div>
+            )}
           </div>
         )}
         {/* Gift Wrap */}
@@ -1384,7 +1404,7 @@ export default function ProductDetail({ product, purchaseActivityCount = 0 }) {
         )}
 
         <div className="mt-6">
-          <AboutThisProduct product={product} />
+          <AboutThisProduct product={product} settings={settings} />
         </div>
 
         {/* Product Reviews */}

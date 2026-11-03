@@ -44,17 +44,23 @@ function AccordionRow({ id, title, icon, open, onToggle, children }) {
   );
 }
 
-export default function AboutThisProduct({ product }) {
+function normalizeFaqs(list = []) {
+  return (Array.isArray(list) ? list : [])
+    .filter((faq) => faq?.isActive !== false && String(faq?.question || '').trim() && hasRichTextContent(faq?.answer))
+    .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+}
+
+export default function AboutThisProduct({ product, settings }) {
   const baseId = useId();
   const about = product?.aboutThisProduct || {};
   const descriptionHtml = sanitizeRichHtml(String(product?.description || ''));
   const instructionsText = String(about.instructions || product?.customizationPreview?.instructions || '').trim();
-  const faqs = useMemo(
-    () => (product?.faqs || [])
-      .filter((faq) => faq?.isActive !== false && String(faq?.question || '').trim() && hasRichTextContent(faq?.answer))
-      .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)),
-    [product?.faqs]
-  );
+  // Global FAQs from settings; fall back to legacy product FAQs only when global list is empty.
+  const faqs = useMemo(() => {
+    const globalFaqs = normalizeFaqs(settings?.productFaqs);
+    if (globalFaqs.length > 0) return globalFaqs;
+    return normalizeFaqs(product?.faqs);
+  }, [product?.faqs, settings?.productFaqs]);
 
   const sections = useMemo(() => {
     const next = [];
@@ -109,7 +115,7 @@ export default function AboutThisProduct({ product }) {
         <h2 id={`${baseId}-heading`} className="font-display text-base font-bold text-gray-950">
           About This Product
         </h2>
-        <p className="mt-0.5 text-xs text-gray-500">Details, instructions, and answers managed by the store admin</p>
+        <p className="mt-0.5 text-xs text-gray-500">Product details and shared store FAQs</p>
       </div>
       <div className="px-3 sm:px-4">
         {sections.map((section) => (

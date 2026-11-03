@@ -66,16 +66,16 @@ export function sanitizeProductPayload(payload = {}) {
     body.stockAlert = {
       enabled: body.stockAlert.enabled !== false,
       lowStockThreshold: Math.max(1, toNumber(body.stockAlert.lowStockThreshold, 5)),
-      showInStock: body.stockAlert.showInStock !== false,
       lowStockLabel: String(body.stockAlert.lowStockLabel || ''),
-      inStockLabel: String(body.stockAlert.inStockLabel || ''),
-      outOfStockLabel: String(body.stockAlert.outOfStockLabel || ''),
     };
   }
   if (body.purchaseActivity) {
+    const unit = String(body.purchaseActivity.timeUnit || body.purchaseActivity.periodUnit || 'hours').toLowerCase() === 'days' ? 'days' : 'hours';
     body.purchaseActivity = {
       enabled: !!body.purchaseActivity.enabled,
-      periodDays: Math.max(1, Math.min(365, toNumber(body.purchaseActivity.periodDays, 30))),
+      purchaseCount: Math.max(0, toNumber(body.purchaseActivity.purchaseCount, 0)),
+      timeQuantity: Math.max(1, toNumber(body.purchaseActivity.timeQuantity ?? body.purchaseActivity.periodDays, unit === 'days' ? 1 : 24)),
+      timeUnit: unit,
       labelTemplate: String(body.purchaseActivity.labelTemplate || ''),
     };
   }

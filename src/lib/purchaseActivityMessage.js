@@ -1,10 +1,29 @@
-export function formatPurchaseActivityMessage(template, count, periodDays) {
-  const safeCount = Math.max(0, Number(count) || 0);
-  const days = Math.max(1, Number(periodDays) || 30);
-  const fallback = '{count} customers purchased this in the last {days} days';
-  const source = String(template || '').trim() || fallback;
-  if (safeCount <= 0) return '';
-  return source
-    .replace(/\{count\}/gi, String(safeCount))
-    .replace(/\{days\}/gi, String(days));
+const UNIT_LABEL = {
+  hours: { one: 'hour', many: 'hours' },
+  days: { one: 'day', many: 'days' },
+};
+
+export function formatPurchaseActivityMessage({
+  enabled,
+  purchaseCount,
+  timeQuantity,
+  timeUnit = 'hours',
+  labelTemplate = '',
+} = {}) {
+  if (!enabled) return '';
+  const count = Math.max(0, Number(purchaseCount) || 0);
+  const amount = Math.max(1, Number(timeQuantity) || 1);
+  if (count <= 0) return '';
+
+  const unitKey = String(timeUnit || 'hours').toLowerCase() === 'days' ? 'days' : 'hours';
+  const unit = UNIT_LABEL[unitKey];
+  const unitText = amount === 1 ? unit.one : unit.many;
+  const template = String(labelTemplate || '').trim()
+    || '{count} people purchased this product in the last {time} {unit}';
+
+  return template
+    .replace(/\{count\}/gi, String(count))
+    .replace(/\{time\}/gi, String(amount))
+    .replace(/\{days\}/gi, String(amount))
+    .replace(/\{unit\}/gi, unitText);
 }

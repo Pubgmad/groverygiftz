@@ -22,7 +22,7 @@ export function ProductFaqEditor({ faqs = [], onChange }) {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 className="font-semibold text-gray-900">Frequently Asked Questions</h3>
-          <p className="text-xs text-gray-500">Shown in About This Product. Supports basic HTML: &lt;b&gt;, &lt;i&gt;, &lt;ul&gt;, &lt;ol&gt;, &lt;a&gt;, paragraphs.</p>
+          <p className="text-xs text-gray-500">Shared across all product pages in About This Product. Supports basic HTML: &lt;b&gt;, &lt;i&gt;, &lt;ul&gt;, &lt;ol&gt;, &lt;a&gt;, paragraphs.</p>
         </div>
         <button
           type="button"
@@ -165,34 +165,20 @@ export function ProductStockAlertEditor({ stockAlert = {}, onChange }) {
   const value = stockAlert || {};
   return (
     <div className="rounded-xl border border-amber-100 bg-amber-50/40 p-4 space-y-3">
-      <h3 className="font-semibold text-gray-900">Stock availability alert</h3>
-      <p className="text-xs text-gray-500">Customer-facing stock indicator uses real inventory. Leave labels blank to use defaults. Use {'{count}'} in the low-stock label.</p>
+      <h3 className="font-semibold text-gray-900">Low-stock urgency alert</h3>
+      <p className="text-xs text-gray-500">Shown near the price in addition to the original stock display. Uses real inventory. Use {'{count}'} for the quantity.</p>
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={value.enabled !== false} onChange={(e) => onChange({ ...value, enabled: e.target.checked })} />
-        Show stock alert on product page
+        Show animated low-stock alert
       </label>
       <div className="grid md:grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-medium mb-1">Low-stock threshold</label>
           <input type="number" min="1" value={value.lowStockThreshold ?? 5} onChange={(e) => onChange({ ...value, lowStockThreshold: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" />
         </div>
-        <label className="flex items-center gap-2 text-sm md:mt-6">
-          <input type="checkbox" checked={value.showInStock !== false} onChange={(e) => onChange({ ...value, showInStock: e.target.checked })} />
-          Show “In stock” when above threshold
-        </label>
-      </div>
-      <div className="grid md:grid-cols-3 gap-3">
         <div>
-          <label className="block text-xs font-medium mb-1">Low-stock label</label>
-          <input value={value.lowStockLabel || ''} onChange={(e) => onChange({ ...value, lowStockLabel: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" placeholder="Only {count} left in stock!" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium mb-1">In-stock label</label>
-          <input value={value.inStockLabel || ''} onChange={(e) => onChange({ ...value, inStockLabel: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" placeholder="In stock" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium mb-1">Out-of-stock label</label>
-          <input value={value.outOfStockLabel || ''} onChange={(e) => onChange({ ...value, outOfStockLabel: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" placeholder="Out of stock" />
+          <label className="block text-xs font-medium mb-1">Alert label</label>
+          <input value={value.lowStockLabel || ''} onChange={(e) => onChange({ ...value, lowStockLabel: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" placeholder="Hurry! Only {count} left in stock" />
         </div>
       </div>
     </div>
@@ -203,21 +189,32 @@ export function ProductPurchaseActivityEditor({ purchaseActivity = {}, onChange 
   const value = purchaseActivity || {};
   return (
     <div className="rounded-xl border border-primary-100 bg-primary-50/30 p-4 space-y-3">
-      <h3 className="font-semibold text-gray-900">Recent purchase activity</h3>
-      <p className="text-xs text-gray-500">Counts unique customers from paid, non-cancelled orders for this product. Use {'{count}'} and {'{days}'} in the label.</p>
+      <h3 className="font-semibold text-gray-900">Purchase activity indicator</h3>
+      <p className="text-xs text-gray-500">Admin-entered promotional values for this product only — not calculated from orders. Use {'{count}'}, {'{time}'}, and {'{unit}'} in the optional template.</p>
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={!!value.enabled} onChange={(e) => onChange({ ...value, enabled: e.target.checked })} />
         Show purchase activity on product page
       </label>
-      <div className="grid md:grid-cols-2 gap-3">
+      <div className="grid md:grid-cols-3 gap-3">
         <div>
-          <label className="block text-xs font-medium mb-1">Period (days)</label>
-          <input type="number" min="1" max="365" value={value.periodDays ?? 30} onChange={(e) => onChange({ ...value, periodDays: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" />
+          <label className="block text-xs font-medium mb-1">Purchase count</label>
+          <input type="number" min="0" value={value.purchaseCount ?? 0} onChange={(e) => onChange({ ...value, purchaseCount: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" />
         </div>
         <div>
-          <label className="block text-xs font-medium mb-1">Label template</label>
-          <input value={value.labelTemplate || ''} onChange={(e) => onChange({ ...value, labelTemplate: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" placeholder="{count} customers purchased this in the last {days} days" />
+          <label className="block text-xs font-medium mb-1">Time quantity</label>
+          <input type="number" min="1" value={value.timeQuantity ?? 24} onChange={(e) => onChange({ ...value, timeQuantity: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" />
         </div>
+        <div>
+          <label className="block text-xs font-medium mb-1">Time unit</label>
+          <select value={value.timeUnit || 'hours'} onChange={(e) => onChange({ ...value, timeUnit: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white">
+            <option value="hours">Hours</option>
+            <option value="days">Days</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label className="block text-xs font-medium mb-1">Optional label template</label>
+        <input value={value.labelTemplate || ''} onChange={(e) => onChange({ ...value, labelTemplate: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" placeholder="{count} people purchased this product in the last {time} {unit}" />
       </div>
     </div>
   );

@@ -20,7 +20,7 @@ test('About This Product appears after How to buy and no longer duplicates deliv
   assert.ok(howToBuyAt > 0 && aboutAt > howToBuyAt, 'AboutThisProduct must render after How to buy');
   assert.equal(about.includes('Delivery Information'), false);
   assert.equal(about.includes('getDeliveryEstimateDisplay'), false);
-  assert.match(about, /faqs/);
+  assert.match(about, /productFaqs/);
   assert.match(about, /sanitizeRichHtml/);
 });
 
@@ -28,7 +28,8 @@ test('preview section no longer shows the long hardcoded guidance paragraph', ()
   const source = fs.readFileSync('src/components/product/ProductDetail.js', 'utf8');
   assert.equal(source.includes('Offer is Only for Normal'), false);
   assert.equal(source.includes('Your frame automatically switches between portrait and landscape'), false);
-  assert.match(source, /shortGuidance/);
+  assert.equal(source.includes('Customer photo areas'), false);
+  assert.match(source, /shortGuidance|Upload \$\{requiredPhotoCount\} photo/);
 });
 
 test('aboutThisProduct accordion component exists and uses admin sources', () => {
@@ -39,7 +40,7 @@ test('aboutThisProduct accordion component exists and uses admin sources', () =>
   assert.match(source, /hideDescription/);
 });
 
-test('sanitizeProductPayload keeps aboutThisProduct and new PDP fields', () => {
+test('sanitizeProductPayload keeps aboutThisProduct and corrected PDP fields', () => {
   const source = fs.readFileSync(path.join(__dirname, '../src/lib/productPayload.js'), 'utf8').replace(/export /g, '');
   const context = { module: { exports: {} }, exports: {}, console };
   vm.createContext(context);
@@ -54,10 +55,8 @@ test('sanitizeProductPayload keeps aboutThisProduct and new PDP fields', () => {
       hideInstructions: 0,
       hideDelivery: 'yes',
     },
-    faqs: [{ question: 'Q1', answer: '<b>A1</b>', isActive: true }],
-    makingVideos: [{ url: '/media/a.mp4', title: 'Office', sortOrder: 0 }],
-    stockAlert: { enabled: true, lowStockThreshold: '3' },
-    purchaseActivity: { enabled: 1, periodDays: '14', labelTemplate: '{count} bought' },
+    stockAlert: { enabled: true, lowStockThreshold: '3', lowStockLabel: 'Only {count} left' },
+    purchaseActivity: { enabled: 1, purchaseCount: '18', timeQuantity: '24', timeUnit: 'hours', labelTemplate: '' },
     customizationPreview: { shortGuidance: 'Upload and adjust', areas: [{ width: '8', height: '10' }] },
   });
   assert.equal(JSON.stringify(body.aboutThisProduct), JSON.stringify({
@@ -67,11 +66,10 @@ test('sanitizeProductPayload keeps aboutThisProduct and new PDP fields', () => {
     hideInstructions: false,
     hideDelivery: true,
   }));
-  assert.equal(body.faqs[0].question, 'Q1');
-  assert.equal(body.makingVideos[0].url, '/media/a.mp4');
   assert.equal(body.stockAlert.lowStockThreshold, 3);
   assert.equal(body.purchaseActivity.enabled, true);
-  assert.equal(body.purchaseActivity.periodDays, 14);
+  assert.equal(body.purchaseActivity.purchaseCount, 18);
+  assert.equal(body.purchaseActivity.timeQuantity, 24);
+  assert.equal(body.purchaseActivity.timeUnit, 'hours');
   assert.equal(body.customizationPreview.shortGuidance, 'Upload and adjust');
-  assert.equal(body.customizationPreview.areas[0].width, 8);
 });

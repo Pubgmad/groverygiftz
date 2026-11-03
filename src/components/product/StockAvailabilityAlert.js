@@ -1,39 +1,20 @@
 'use client';
 
-import { FiAlertCircle, FiCheckCircle, FiPackage } from 'react-icons/fi';
-import { resolveStockAlertState } from '@/lib/stockAlert';
+import { resolveLowStockAlert } from '@/lib/stockAlert';
 
+/** Compact animated low-stock urgency chip — does not replace the original stock display. */
 export default function StockAvailabilityAlert({ product, selectedOptions = [] }) {
-  const state = resolveStockAlertState(product, selectedOptions);
-  if (!state) return null;
-
-  const toneClass = {
-    out: 'border-red-200 bg-red-50 text-red-800',
-    low: 'border-amber-200 bg-amber-50 text-amber-900',
-    ok: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-  }[state.tone];
-
-  const Icon = state.tone === 'out' ? FiAlertCircle : state.tone === 'low' ? FiPackage : FiCheckCircle;
+  const alert = resolveLowStockAlert(product, selectedOptions);
+  if (!alert) return null;
 
   return (
     <div
-      className={`mb-5 flex items-center gap-3 rounded-2xl border px-4 py-3 ${toneClass}`}
+      className="mb-4 inline-flex max-w-full items-center gap-2 rounded-full border border-amber-300/80 bg-gradient-to-r from-amber-50 to-orange-50 px-3.5 py-2 text-sm font-bold text-amber-950 shadow-sm motion-safe:animate-[pulse_2.8s_ease-in-out_infinite]"
       role="status"
       aria-live="polite"
     >
-      <span
-        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/80 shadow-sm ${
-          state.tone === 'low' ? 'motion-safe:animate-[pulse_2.4s_ease-in-out_infinite]' : ''
-        }`}
-      >
-        <Icon size={18} aria-hidden />
-      </span>
-      <div className="min-w-0">
-        <p className="text-sm font-bold leading-snug">{state.label}</p>
-        {state.tone === 'ok' && state.variantManaged ? (
-          <p className="mt-0.5 text-xs opacity-80">Availability varies by selected option</p>
-        ) : null}
-      </div>
+      <span className="text-base leading-none" aria-hidden>🔥</span>
+      <span className="min-w-0 leading-snug">{alert.label}</span>
     </div>
   );
 }

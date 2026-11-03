@@ -10,7 +10,6 @@ import { FiPlus, FiX, FiVideo, FiUpload, FiImage, FiLoader } from 'react-icons/f
 import useAdminAccess from '@/hooks/useAdminAccess';
 import ReadOnlyBanner from '@/components/admin/ReadOnlyBanner';
 import {
-  ProductFaqEditor,
   ProductMakingVideosEditor,
   ProductPurchaseActivityEditor,
   ProductStockAlertEditor,
@@ -58,8 +57,8 @@ export default function AdminProductForm({ params }) {
   const [shippingTemplates, setShippingTemplates] = useState([]);
   const [videoUploading, setVideoUploading] = useState(false);
   const [form, setForm] = useState({
-    title: '', description: '', aboutThisProduct: { instructions: '', deliveryNotes: '', hideDescription: false, hideInstructions: false, hideDelivery: true }, faqs: [], images: [], responsiveImages: { desktop: [], tablet: [], mobile: [] }, productVideo: { url: '', name: '', poster: '' }, makingVideosSection: { enabled: true, heading: 'See How Your Gift Is Made' }, makingVideos: [], customizationPreview: { enabled: false, title: 'Preview your personalized gift', frameImage: '', aspectRatio: '1:1', shape: 'rectangle', instructions: '', shortGuidance: '', requiredImageCount: 0, maxImageCount: 0, areas: [] }, delivery: defaultDelivery(), regularPrice: '', salePrice: '', offerStartsAt: '', offerEndsAt: '',
-    stock: 100, stockAlert: { enabled: true, lowStockThreshold: 5, showInStock: true, lowStockLabel: '', inStockLabel: '', outOfStockLabel: '' }, purchaseActivity: { enabled: false, periodDays: 30, labelTemplate: '' }, collections: [], variants: [], customFields: [], collageEnabled: false, collageTemplates: [],
+    title: '', description: '', aboutThisProduct: { instructions: '', deliveryNotes: '', hideDescription: false, hideInstructions: false, hideDelivery: true }, images: [], responsiveImages: { desktop: [], tablet: [], mobile: [] }, productVideo: { url: '', name: '', poster: '' }, makingVideosSection: { enabled: true, heading: 'See How Your Gift Is Made' }, makingVideos: [], customizationPreview: { enabled: false, title: 'Preview your personalized gift', frameImage: '', aspectRatio: '1:1', shape: 'rectangle', instructions: '', shortGuidance: '', requiredImageCount: 0, maxImageCount: 0, areas: [] }, delivery: defaultDelivery(), regularPrice: '', salePrice: '', offerStartsAt: '', offerEndsAt: '',
+    stock: 100, stockAlert: { enabled: true, lowStockThreshold: 5, lowStockLabel: '' }, purchaseActivity: { enabled: false, purchaseCount: 0, timeQuantity: 24, timeUnit: 'hours', labelTemplate: '' }, collections: [], variants: [], customFields: [], collageEnabled: false, collageTemplates: [],
     giftWrap: { enabled: false, price: 0 }, giftMessage: false, customerNotesEnabled: true,
     isQuoteOnly: false, isOffer: false, isFeatured: false, isBestSeller: false, isActive: true,
     seoTitle: '', seoDescription: '',
@@ -79,7 +78,6 @@ export default function AdminProductForm({ params }) {
             hideInstructions: !!d.aboutThisProduct?.hideInstructions,
             hideDelivery: true,
           },
-          faqs: Array.isArray(d.faqs) ? d.faqs : [],
           images: d.images || [], responsiveImages: { desktop: d.responsiveImages?.desktop || d.images || [], tablet: d.responsiveImages?.tablet || [], mobile: d.responsiveImages?.mobile || [] },
           productVideo: d.productVideo || { url: '', name: '', poster: '' },
           makingVideosSection: { enabled: d.makingVideosSection?.enabled !== false, heading: d.makingVideosSection?.heading || 'See How Your Gift Is Made' },
@@ -93,14 +91,13 @@ export default function AdminProductForm({ params }) {
           stockAlert: {
             enabled: d.stockAlert?.enabled !== false,
             lowStockThreshold: d.stockAlert?.lowStockThreshold ?? 5,
-            showInStock: d.stockAlert?.showInStock !== false,
             lowStockLabel: d.stockAlert?.lowStockLabel || '',
-            inStockLabel: d.stockAlert?.inStockLabel || '',
-            outOfStockLabel: d.stockAlert?.outOfStockLabel || '',
           },
           purchaseActivity: {
             enabled: !!d.purchaseActivity?.enabled,
-            periodDays: d.purchaseActivity?.periodDays ?? 30,
+            purchaseCount: d.purchaseActivity?.purchaseCount ?? 0,
+            timeQuantity: d.purchaseActivity?.timeQuantity ?? d.purchaseActivity?.periodDays ?? 24,
+            timeUnit: d.purchaseActivity?.timeUnit || 'hours',
             labelTemplate: d.purchaseActivity?.labelTemplate || '',
           },
           collections: d.collections?.map(c => c._id || c) || [],
@@ -277,7 +274,7 @@ export default function AdminProductForm({ params }) {
               </label>
             </div>
           </div>
-          <ProductFaqEditor faqs={form.faqs || []} onChange={(faqs) => setForm((p) => ({ ...p, faqs }))} />
+          <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">Shared FAQs for all products are managed in Site Settings → Product page FAQs.</p>
           <label className="flex items-start gap-2 rounded-lg border bg-gray-50 p-3 text-sm font-medium text-gray-700">
             <input type="checkbox" checked={form.customerNotesEnabled !== false} onChange={e => setForm(p => ({ ...p, customerNotesEnabled: e.target.checked }))} className="mt-1" />
             <span><span className="block font-semibold text-gray-900">Customer Notes</span><span className="text-xs font-normal text-gray-500">Allow customers to optionally add product-specific instructions for this product.</span></span>

@@ -5,8 +5,6 @@ import ProductDetail from '@/components/product/ProductDetail';
 import ProductCard from '@/components/product/ProductCard';
 import Breadcrumbs from '@/components/ui/Breadcrumbs';
 import { notFound } from 'next/navigation';
-import { countProductPurchases } from '@/lib/purchaseActivity';
-import mongoose from 'mongoose';
 
 export default async function ProductPage({ params }) {
   await dbConnect();
@@ -19,26 +17,13 @@ export default async function ProductPage({ params }) {
     collections: { $in: product.collections?.map(c => c._id) || [] },
   }).limit(4).lean();
 
-  let purchaseActivityCount = 0;
-  if (product.purchaseActivity?.enabled) {
-    try {
-      const productObjectId = mongoose.Types.ObjectId.isValid(product._id)
-        ? new mongoose.Types.ObjectId(String(product._id))
-        : product._id;
-      const activity = await countProductPurchases(productObjectId, product.purchaseActivity?.periodDays || 30);
-      purchaseActivityCount = activity.count;
-    } catch {
-      purchaseActivityCount = 0;
-    }
-  }
-
   const data = JSON.parse(JSON.stringify(product));
   const relatedData = JSON.parse(JSON.stringify(related));
 
   return (
     <div className="product-mobile-safe mx-auto max-w-7xl overflow-hidden px-3 py-6 sm:px-4 sm:py-8">
       <Breadcrumbs items={[{ label: 'Products', href: '/shop' }, { label: data.title }]} />
-      <ProductDetail product={data} purchaseActivityCount={purchaseActivityCount} />
+      <ProductDetail product={data} />
       {relatedData.length > 0 && (
         <section className="mt-16">
           <h2 className="section-title">You May Also Like</h2>

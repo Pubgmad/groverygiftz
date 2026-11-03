@@ -42,6 +42,7 @@ const ProductSchema = new mongoose.Schema({
     hideInstructions: { type: Boolean, default: false },
     hideDelivery: { type: Boolean, default: false },
   },
+  // Legacy per-product FAQs retained for compatibility; customer pages use Settings.productFaqs.
   faqs: [{
     question: { type: String, default: '' },
     answer: { type: String, default: '' },
@@ -83,14 +84,13 @@ const ProductSchema = new mongoose.Schema({
   stockAlert: {
     enabled: { type: Boolean, default: true },
     lowStockThreshold: { type: Number, default: 5 },
-    showInStock: { type: Boolean, default: true },
     lowStockLabel: { type: String, default: '' },
-    inStockLabel: { type: String, default: '' },
-    outOfStockLabel: { type: String, default: '' },
   },
   purchaseActivity: {
     enabled: { type: Boolean, default: false },
-    periodDays: { type: Number, default: 30 },
+    purchaseCount: { type: Number, default: 0 },
+    timeQuantity: { type: Number, default: 24 },
+    timeUnit: { type: String, enum: ['hours', 'days'], default: 'hours' },
     labelTemplate: { type: String, default: '' },
   },
   regularPrice: { type: Number, required: true },

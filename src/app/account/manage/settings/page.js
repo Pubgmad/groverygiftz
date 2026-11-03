@@ -43,6 +43,7 @@ export default function AdminSettingsPage() {
     heroEyebrow: '',
     heroTrustBadgesText: '',
     productTrustStats: { enabled: false, heading: '', items: [] },
+    productFaqs: [],
     homeCollectionsEyebrow: '',
     homeCollectionsTitle: '',
     homeCollectionsSubtitle: '',
@@ -135,6 +136,7 @@ export default function AdminSettingsPage() {
           heading: d.productTrustStats?.heading || '',
           items: Array.isArray(d.productTrustStats?.items) ? d.productTrustStats.items : [],
         },
+        productFaqs: Array.isArray(d.productFaqs) ? d.productFaqs : [],
         homeCollectionsEyebrow: d.homeCollectionsEyebrow || '',
         homeCollectionsTitle: d.homeCollectionsTitle || '',
         homeCollectionsSubtitle: d.homeCollectionsSubtitle || '',
@@ -214,6 +216,14 @@ export default function AdminSettingsPage() {
           }))
           .filter((item) => item.value && item.label),
       },
+      productFaqs: (rest.productFaqs || [])
+        .map((faq, index) => ({
+          question: String(faq?.question || '').trim(),
+          answer: String(faq?.answer || ''),
+          sortOrder: Number.isFinite(Number(faq?.sortOrder)) ? Number(faq.sortOrder) : index,
+          isActive: faq?.isActive !== false,
+        }))
+        .filter((faq) => faq.question || String(faq.answer || '').trim()),
     };
     const res = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     setSaving(false);

@@ -95,6 +95,12 @@ const SettingsSchema = new mongoose.Schema({
       isActive: { type: Boolean, default: true },
     }],
   },
+  productFaqs: [{
+    question: { type: String, default: '' },
+    answer: { type: String, default: '' },
+    sortOrder: { type: Number, default: 0 },
+    isActive: { type: Boolean, default: true },
+  }],
   homeCollectionsEyebrow: { type: String, default: '' },
   homeCollectionsTitle: { type: String, default: '' },
   homeCollectionsSubtitle: { type: String, default: '' },

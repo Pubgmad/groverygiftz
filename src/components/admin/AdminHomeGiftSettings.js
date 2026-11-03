@@ -1,6 +1,7 @@
 'use client';
 import toast from 'react-hot-toast';
 import ImageUploader from '@/components/admin/ImageUploader';
+import { ProductFaqEditor } from '@/components/admin/ProductContentEditors';
 import { defaultTickerMessages, defaultHotspotSpots } from '@/lib/giftFinderResolve';
 
 export default function AdminHomeGiftSettings({ form, setForm }) {
@@ -104,6 +105,17 @@ export default function AdminHomeGiftSettings({ form, setForm }) {
         </div>
         <div><label className="block text-sm font-medium mb-1">Heading</label><input value={form.newsletterTitle} onChange={(e) => setForm((p) => ({ ...p, newsletterTitle: e.target.value }))} className="w-full border rounded-lg px-4 py-2" /></div>
         <div><label className="block text-sm font-medium mb-1">Subtitle</label><textarea value={form.newsletterSubtitle} onChange={(e) => setForm((p) => ({ ...p, newsletterSubtitle: e.target.value }))} className="w-full border rounded-lg px-4 py-2" rows={2} /></div>
+      </div>
+
+      <div className="bg-white p-6 rounded-xl border space-y-4">
+        <div>
+          <h2 className="font-bold text-lg">Product page FAQs</h2>
+          <p className="mt-1 text-sm text-gray-500">One shared FAQ list shown in About This Product on every product page. Description and Instructions stay product-specific.</p>
+        </div>
+        <ProductFaqEditor
+          faqs={form.productFaqs || []}
+          onChange={(productFaqs) => setForm((p) => ({ ...p, productFaqs }))}
+        />
       </div>
 
       <div className="bg-white p-6 rounded-xl border space-y-4">
