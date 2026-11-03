@@ -12,6 +12,7 @@ import {
   buyerIdentityExpr,
   filterOptionPipeline,
   kpiPipeline,
+  mergeProfitIntoPlaces,
   mergeProfitIntoTrend,
   paymentOutcomePipeline,
   presetToRange,
@@ -170,28 +171,34 @@ export async function GET(req) {
     unknownRevenue: row.unknownRevenue,
     costCoveragePct: row.costCoveragePct,
   })) : (facet?.products || []));
-  const states = shapePlaces((profit.stateRows.length ? profit.stateRows.map((row) => ({
-    label: row.label,
-    collected: row.revenue,
-    orders: row.orders,
-    units: row.units,
-    makingCost: row.makingCost,
-    grossProfit: row.grossProfit,
-    unknownRevenue: row.unknownRevenue,
-  })) : (facet?.states || [])), 'state');
-  const cities = shapePlaces((profit.cityRows.length ? profit.cityRows.map((row) => ({
-    city: row.label,
-    state: row.state,
-    collected: row.revenue,
-    orders: row.orders,
-    units: row.units,
-    makingCost: row.makingCost,
-    grossProfit: row.grossProfit,
-    unknownRevenue: row.unknownRevenue,
-  })) : (facet?.cities || [])), 'city');
+  const states = shapePlaces(
+    mergeProfitIntoPlaces(facet?.states || [], profit.stateRows || [], 'state'),
+    'state',
+  );
+  const cities = shapePlaces(
+    mergeProfitIntoPlaces(
+      (facet?.cities || []).map((row) => ({
+        city: row.city,
+        state: row.state,
+        collected: row.collected,
+        orders: row.orders,
+        units: row.units,
+      })),
+      (profit.cityRows || []).map((row) => ({
+        label: row.label,
+        city: row.label,
+        state: row.state,
+        makingCost: row.makingCost,
+        grossProfit: row.grossProfit,
+        unknownRevenue: row.unknownRevenue,
+      })),
+      'city',
+    ),
+    'city',
+  );
   const hours = shapeHours(facet?.hours || []);
   const weekdays = shapeWeekdays(facet?.weekdays || []);
-  const trend = mergeProfitIntoTrend(shapeTrend(facet?.trend || []), profit.trendRows);
+  const trend = mergeProfitIntoTrend(shapeTrend(facet?.trend || [], granularity), profit.trendRows);
   const customerRows = (facet?.customers || []).filter((row) => row._id && row._id !== 'unknown');
   const unique = customerRows.length;
   const repeatRows = customerRows.filter((row) => Number(row.orders || 0) > 1);
@@ -207,7 +214,8 @@ export async function GET(req) {
     : [];
   const returningKeys = new Set(earlierBuyers.map((row) => row._id));
   const returningRows = customerRows.filter((row) => returningKeys.has(row._id));
-  const topProduct = products[0] || null;
+  // products from profit attribution are profit-sorted; Top product KPI must be by revenue.
+  const topProduct = [...products].sort((a, b) => Number(b.revenue || 0) - Number(a.revenue || 0))[0] || null;
   kpis.topProduct = topProduct ? { title: topProduct.title, units: topProduct.units, revenue: topProduct.revenue } : null;
 
   let collectionStats = [];

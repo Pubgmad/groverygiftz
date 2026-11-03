@@ -610,10 +610,11 @@ export function shapeKpis(row = {}, previous = {}, refund = {}, profit = {}, pre
   };
 }
 
-export function shapeTrend(rows = []) {
+export function shapeTrend(rows = [], granularity = 'day') {
   return rows.map((row) => ({
     bucket: row._id ? new Date(row._id).toISOString() : null,
-    label: row._id ? formatIstDateInput(row._id) : '',
+    // Must match istBucketLabel used by profit trend rows or monthly/yearly profit merges as ₹0.
+    label: row._id ? istBucketLabel(row._id, granularity) : '',
     collected: Number(row.collected || 0),
     orders: Number(row.orders || 0),
     units: Number(row.units || 0),
@@ -622,6 +623,28 @@ export function shapeTrend(rows = []) {
     grossProfit: Number(row.grossProfit || 0),
     unknownCostRevenue: Number(row.unknownCostRevenue || 0),
   }));
+}
+
+/** Keep order-facet collected/orders; overlay profit fields by place key. */
+export function mergeProfitIntoPlaces(orderRows = [], profitRows = [], type = 'state') {
+  const byKey = Object.fromEntries((profitRows || []).map((row) => {
+    const key = type === 'city'
+      ? `${String(row.label || row.city || 'Unknown').toLowerCase()}|${String(row.state || '').toLowerCase()}`
+      : String(row.label || row.key || 'Unknown').toLowerCase();
+    return [key, row];
+  }));
+  return (orderRows || []).map((row) => {
+    const key = type === 'city'
+      ? `${String(row.city || 'Unknown').toLowerCase()}|${String(row.state || '').toLowerCase()}`
+      : String(row.label || row._id || 'Unknown').toLowerCase();
+    const profit = byKey[key];
+    return {
+      ...row,
+      makingCost: profit ? Number(profit.makingCost || 0) : Number(row.makingCost || 0),
+      grossProfit: profit ? Number(profit.grossProfit || 0) : Number(row.grossProfit || 0),
+      unknownRevenue: profit ? Number(profit.unknownRevenue || 0) : Number(row.unknownRevenue || 0),
+    };
+  });
 }
 
 function withShare(rows, valueKey) {
@@ -721,7 +744,7 @@ export function shapeInsights({ kpis, trend, states, hours, weekdays, products }
   const lowHour = [...hours].sort((a, b) => a.orders - b.orders || a.collected - b.collected)[0];
   const topWeekday = [...weekdays].sort((a, b) => b.orders - a.orders)[0];
   const topState = states[0];
-  const topProduct = products[0];
+  const topProduct = [...(products || [])].sort((a, b) => Number(b.revenue || 0) - Number(a.revenue || 0))[0];
   const notes = [];
   if (topDay?.collected) notes.push(`Highest collected revenue day: ${topDay.label} (${Math.round(topDay.collected)}).`);
   if (peakHour) notes.push(`Busiest payment hour (IST): ${peakHour.label} with ${peakHour.orders} paid orders.`);

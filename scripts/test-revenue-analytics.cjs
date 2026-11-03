@@ -10,7 +10,7 @@ const source = fs.readFileSync(sourcePath, 'utf8')
   .replace(/export \{ IST, WEEKDAYS, STATUS_GROUPS \};/, '');
 const context = { module: { exports: {} }, exports: {}, console };
 vm.createContext(context);
-vm.runInContext(`${source}\nmodule.exports = { istInclusiveRange, previousEquivalentRange, presetToRange, growthPercent, shapeKpis, shapeProducts, itemMatchAfterUnwind, narrowToMatchingItems, buildRevenueMatch, revenuePipeline, REVENUE_DEFINITIONS, DATE_PRESETS, formatIstDateInput, shiftIstDate, uniquePlaceLabels, shapeFilterOptions };`, context);
+vm.runInContext(`${source}\nmodule.exports = { istInclusiveRange, previousEquivalentRange, presetToRange, growthPercent, shapeKpis, shapeProducts, itemMatchAfterUnwind, narrowToMatchingItems, buildRevenueMatch, revenuePipeline, REVENUE_DEFINITIONS, DATE_PRESETS, formatIstDateInput, shiftIstDate, uniquePlaceLabels, shapeFilterOptions, shapeTrend, mergeProfitIntoTrend, istBucketLabel, mergeProfitIntoPlaces };`, context);
 const {
   istInclusiveRange,
   previousEquivalentRange,
@@ -27,6 +27,10 @@ const {
   shiftIstDate,
   uniquePlaceLabels,
   shapeFilterOptions,
+  shapeTrend,
+  mergeProfitIntoTrend,
+  istBucketLabel,
+  mergeProfitIntoPlaces,
 } = context.module.exports;
 
 const day = istInclusiveRange('2026-11-02', '2026-11-02');
@@ -156,5 +160,21 @@ assert.ok(JSON.stringify(buildRevenueMatch({
   to: day.to,
   productIds: ['a', 'b'],
 })).includes('$in'), 'collection multi-product filter must use $in');
+
+const monthBucket = new Date('2026-11-01T00:00:00.000+05:30');
+const monthTrend = shapeTrend([{ _id: monthBucket, collected: 1000, orders: 2, productSales: 900 }], 'month');
+assert.strictEqual(monthTrend[0].label, istBucketLabel(monthBucket, 'month'));
+assert.strictEqual(monthTrend[0].label, '2026-11');
+const mergedMonth = mergeProfitIntoTrend(monthTrend, [{ label: '2026-11', makingCost: 400, grossProfit: 500, unknownRevenue: 0 }]);
+assert.strictEqual(mergedMonth[0].grossProfit, 500);
+assert.strictEqual(mergedMonth[0].makingCost, 400);
+
+const geo = mergeProfitIntoPlaces(
+  [{ label: 'Tamil Nadu', collected: 10000, orders: 5 }],
+  [{ label: 'Tamil Nadu', makingCost: 2000, grossProfit: 3000, unknownRevenue: 100 }],
+  'state',
+);
+assert.strictEqual(geo[0].collected, 10000);
+assert.strictEqual(geo[0].grossProfit, 3000);
 
 console.log('Revenue analytics helper tests passed');
