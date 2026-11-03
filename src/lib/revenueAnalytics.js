@@ -16,7 +16,7 @@ export const REVENUE_DEFINITIONS = {
   eventAt: 'Successful payment time (paidAt), falling back to createdAt when paidAt is missing. All buckets use Asia/Kolkata.',
   district: 'Orders store city, state, and pincode only. District is not recorded and is not inferred.',
   profit: 'Product gross profit is net item revenue minus applicable making cost for items whose cost is known. It is not net business profit: shipping cost, payment fees, packaging, taxes, marketing, and operating expenses are not stored.',
-  makingCost: 'Making cost is the admin-entered production cost. Missing cost is unknown, never treated as ₹0. New paid orders snapshot the current cost at checkout. Historical orders only use a cost if a history row applies on or before payment time.',
+  makingCost: 'Making cost is the admin-entered production cost. Missing cost is unknown, never treated as ₹0. New paid orders snapshot the current cost at checkout. Historical orders use a history row that applies on or before payment time. If the first history row was saved with a later effective date (common when the admin date defaulted to today), analytics applies that inaugural amount from the product creation date for attribution only — MongoDB history is not rewritten. Strict coverage counts only snapshot and non-backdated history rows.',
   uniqueBuyers: 'Unique buyers are identifiable customers with at least one qualifying paid, non-cancelled order in the selected period. One customer with three orders counts as one buyer. Identity uses the customer account id, then guest/shipping email. Phone-only records without email are excluded.',
   repeatBuyers: 'Repeat buyers in period placed at least two qualifying orders inside the selected date range.',
   returningBuyers: 'Returning buyers purchased in the selected period and also had an earlier qualifying purchase before that period.',
@@ -717,6 +717,13 @@ export function shapeKpis(row = {}, previous = {}, refund = {}, profit = {}, pre
     knownCostRevenue,
     unknownCostRevenue: Number(profit.unknownCostRevenue || 0),
     unknownCostUnits: Number(profit.unknownCostUnits || 0),
+    backdatedCostRevenue: Number(profit.backdatedCostRevenue || 0),
+    backdatedCostUnits: Number(profit.backdatedCostUnits || 0),
+    strictKnownCostRevenue: Number(profit.strictKnownCostRevenue || 0),
+    strictCostCoveragePct: profit.strictCostCoveragePct === undefined
+      ? (Number(row.productSales || 0) ? Math.round((Number(profit.strictKnownCostRevenue || 0) / Number(row.productSales || 0)) * 1000) / 10 : 100)
+      : profit.strictCostCoveragePct,
+    usesInauguralBackdate: profit.usesInauguralBackdate === true,
     productGrossProfit,
     previousProductGrossProfit: previousGrossProfit,
     grossMarginPct: profit.grossMarginPct === undefined ? (knownCostRevenue ? Math.round((productGrossProfit / knownCostRevenue) * 1000) / 10 : null) : profit.grossMarginPct,
@@ -839,6 +846,11 @@ export function shapeProducts(rows = []) {
       : Number(row.costCoveragePct);
     const knownCostUnits = Number(row.knownCostUnits || 0);
     const profitKnown = knownCostUnits > 0 || knownRevenue > 0;
+    const backdatedRevenue = Number(row.backdatedRevenue || 0);
+    const strictKnownRevenue = Number(row.strictKnownRevenue || Math.max(0, knownRevenue - backdatedRevenue));
+    const strictCostCoveragePct = row.strictCostCoveragePct === undefined || row.strictCostCoveragePct === null
+      ? (revenue ? Math.round((strictKnownRevenue / revenue) * 1000) / 10 : 100)
+      : Number(row.strictCostCoveragePct);
     return {
       id: row.productId ? String(row.productId) : '',
       title: row.title || 'Deleted product',
@@ -854,7 +866,11 @@ export function shapeProducts(rows = []) {
       unknownRevenue,
       knownRevenue,
       knownCostUnits,
+      backdatedRevenue,
+      strictKnownRevenue,
       costCoveragePct,
+      strictCostCoveragePct,
+      usesInauguralBackdate: row.usesInauguralBackdate === true || backdatedRevenue > 0,
       profitKnown,
     };
   }), 'revenue');

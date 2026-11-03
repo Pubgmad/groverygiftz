@@ -9,7 +9,7 @@ const source = fs.readFileSync(sourcePath, 'utf8')
   .replace(/export function /g, 'function ');
 const context = { module: { exports: {} }, exports: {}, console };
 vm.createContext(context);
-vm.runInContext(`${source}\nmodule.exports = { isConfiguredCost, parseMoneyAmount, variantCostKey, normalizeVariantKey, findCostRow, resolveMakingCost, costsEffectiveAt, snapshotOrderItemCost, attributeItemCost, summarizeAttributedItems, stripMakingCostFromOrder, makingCostStatusForProduct, displayMakingCostAmount, COST_STATUS };`, context);
+vm.runInContext(`${source}\nmodule.exports = { isConfiguredCost, parseMoneyAmount, variantCostKey, normalizeVariantKey, findCostRow, resolveMakingCost, costsEffectiveAt, snapshotOrderItemCost, attributeItemCost, summarizeAttributedItems, stripMakingCostFromOrder, makingCostStatusForProduct, displayMakingCostAmount, backdateInauguralHistoryForAttribution, buildAttributedRows, COST_STATUS, COST_SOURCE };`, context);
 const {
   isConfiguredCost,
   parseMoneyAmount,
@@ -24,7 +24,10 @@ const {
   stripMakingCostFromOrder,
   makingCostStatusForProduct,
   displayMakingCostAmount,
+  backdateInauguralHistoryForAttribution,
+  buildAttributedRows,
   COST_STATUS,
+  COST_SOURCE,
 } = context.module.exports;
 
 assert.strictEqual(isConfiguredCost(0), true);
@@ -182,5 +185,26 @@ const ranged = displayMakingCostAmount([
 ]);
 assert.strictEqual(ranged.min, 400);
 assert.strictEqual(ranged.max, 650);
+
+// Inaugural backdate must mark analytics-only attribution separately from strict history.
+const created = new Date('2025-08-13T20:17:33.346Z');
+const late = new Date('2026-11-01T18:30:00.000Z');
+const histByProduct = {
+  p1: [{ variantKey: '', amount: 807.18, previousAmount: null, effectiveFrom: late, createdAt: late }],
+};
+backdateInauguralHistoryForAttribution(histByProduct, { p1: { createdAt: created, title: 'Photo', variants: [] } });
+assert.ok(histByProduct.p1[0].analyticsBackdatedFrom);
+assert.strictEqual(new Date(histByProduct.p1[0].effectiveFrom).toISOString(), created.toISOString());
+const attributed = buildAttributedRows(
+  [{ orderId: 'o1', product: 'p1', title: 'Photo', variant: '', quantity: 1, price: 1399, eventAt: new Date('2026-09-01T12:00:00.000+05:30') }],
+  { p1: { title: 'Photo', variants: [] } },
+  histByProduct,
+);
+assert.strictEqual(attributed[0].source, COST_SOURCE.historyBackdated);
+const backdatedSummary = summarizeAttributedItems(attributed);
+assert.strictEqual(backdatedSummary.costCoveragePct, 100);
+assert.strictEqual(backdatedSummary.strictCostCoveragePct, 0);
+assert.strictEqual(backdatedSummary.backdatedCostUnits, 1);
+assert.strictEqual(backdatedSummary.usesInauguralBackdate, true);
 
 console.log('Making cost helper tests passed');

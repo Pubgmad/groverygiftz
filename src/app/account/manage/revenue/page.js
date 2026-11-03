@@ -550,8 +550,14 @@ export default function RevenueAnalyticsPage() {
             <p className="mb-4 text-xs leading-5 text-gray-500">This is product gross profit from actual order-item prices minus applicable making cost. It is not net business profit. Shipping, payment fees, packaging, taxes, marketing, and operating expenses are not stored. Missing making cost is unknown, never ₹0.</p>
             <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <Kpi label="Product sales" value={money(kpis.productSales)} hint="Line-item revenue, excludes shipping" />
-              <Kpi label="Known making cost" value={money(kpis.makingCostKnown)} hint={`${kpis.costCoveragePct || 0}% cost coverage · ${money(kpis.knownCostRevenue || 0)} revenue with known cost`} />
-              <Kpi label="Profit on cost-covered sales" value={kpis.knownCostRevenue || kpis.productGrossProfit ? money(kpis.productGrossProfit) : 'Unavailable'} hint={kpis.profitComplete ? 'All sold items have a known making cost' : `Excludes ${money(kpis.unknownCostRevenue)} unknown-cost revenue`} />
+              <Kpi
+                label="Known making cost"
+                value={money(kpis.makingCostKnown)}
+                hint={kpis.usesInauguralBackdate
+                  ? `${kpis.costCoveragePct || 0}% policy coverage · ${kpis.strictCostCoveragePct || 0}% strict history/snapshot · ${money(kpis.backdatedCostRevenue || 0)} uses inaugural backdate`
+                  : `${kpis.costCoveragePct || 0}% cost coverage · ${money(kpis.knownCostRevenue || 0)} revenue with known cost`}
+              />
+              <Kpi label="Profit on cost-covered sales" value={kpis.knownCostRevenue || kpis.productGrossProfit ? money(kpis.productGrossProfit) : 'Unavailable'} hint={kpis.profitComplete ? (kpis.usesInauguralBackdate ? 'All sold items have a known making cost under the inaugural-from-creation policy' : 'All sold items have a known making cost') : `Excludes ${money(kpis.unknownCostRevenue)} unknown-cost revenue`} />
               <Kpi label="Margin on cost-covered sales" value={kpis.grossMarginPct === null || kpis.grossMarginPct === undefined ? '—' : `${kpis.grossMarginPct}%`} hint="Profit ÷ revenue with known making cost only" />
               <Kpi label="Avg gross profit / order" value={money(kpis.averageGrossProfitPerOrder)} hint="Cost-covered profit ÷ all paid orders in range" />
               <Kpi label="Profit vs previous" value={kpis.profitGrowthPct === null ? '—' : `${kpis.profitGrowthPct}%`} hint={kpis.profitGrowthPct === null ? 'Previous period had zero known gross profit' : `Previous ${money(kpis.previousProductGrossProfit)}`} />
@@ -839,7 +845,13 @@ export default function RevenueAnalyticsPage() {
                     <p>Profit on cost-covered sales: {row.profitKnown ? money(row.grossProfit) : 'Unavailable until making cost is configured'}</p>
                     <p>Margin on cost-covered sales: {row.profitKnown && row.marginPct !== null && row.marginPct !== undefined ? `${row.marginPct}%` : 'Unavailable'}</p>
                     <p>Unknown-cost revenue: {money(row.unknownRevenue)}</p>
-                    <p>Cost coverage: {row.costCoveragePct === null || row.costCoveragePct === undefined ? '—' : `${row.costCoveragePct}%`}</p>
+                    <p>Cost coverage (policy): {row.costCoveragePct === null || row.costCoveragePct === undefined ? '—' : `${row.costCoveragePct}%`}</p>
+                    <p>Strict coverage (snapshot + dated history only): {row.strictCostCoveragePct === null || row.strictCostCoveragePct === undefined ? '—' : `${row.strictCostCoveragePct}%`}</p>
+                    {row.usesInauguralBackdate ? (
+                      <p className="rounded-xl bg-sky-50 px-3 py-2 text-xs leading-5 text-sky-950">
+                        {money(row.backdatedRevenue || 0)} of known-cost revenue uses the inaugural making cost applied from product creation because the first saved history date was later. MongoDB history dates were not rewritten.
+                      </p>
+                    ) : null}
                     {row.costCoveragePct !== null && row.costCoveragePct !== undefined && row.costCoveragePct < 100 ? (
                       <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
                         Profit and margin use only the {row.costCoveragePct}% of revenue with a known making cost. The remaining {money(row.unknownRevenue)} is excluded from profit — it is not treated as zero-cost.

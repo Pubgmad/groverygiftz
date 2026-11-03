@@ -195,7 +195,12 @@ async function getRevenueAnalytics(req) {
     marginPct: row.marginPct,
     knownRevenue: row.knownRevenue,
     unknownRevenue: row.unknownRevenue,
+    knownCostUnits: row.knownCostUnits,
+    backdatedRevenue: row.backdatedRevenue,
+    strictKnownRevenue: row.strictKnownRevenue,
     costCoveragePct: row.costCoveragePct,
+    strictCostCoveragePct: row.strictCostCoveragePct,
+    usesInauguralBackdate: row.usesInauguralBackdate,
   })) : (facet?.products || []));
   const states = shapePlaces(
     mergeProfitIntoPlaces(facet?.states || [], profit.stateRows || [], 'state'),
@@ -326,6 +331,7 @@ async function getRevenueAnalytics(req) {
       'District is not stored on orders and is not inferred from pincode or city.',
       REVENUE_DEFINITIONS.profit,
       REVENUE_DEFINITIONS.makingCost,
+      'Cost coverage includes inaugural making costs applied from product creation when the first saved history date was later. Strict coverage excludes that analytics-only backdate.',
       'Refunded orders are excluded from collected revenue and product gross profit. Whether a refunded item was already manufactured is not stored, so that production cost is not treated as recovered or as a recorded loss.',
       'Cancelled and unpaid orders are excluded. Partial refund amounts are not stored.',
       'No Razorpay or COD orders exist in the current checkout flow; payment method is recorded from the order document, usually Cashfree.',

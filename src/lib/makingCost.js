@@ -25,7 +25,19 @@ export const COST_SOURCE = {
   variant: 'variant',
   product: 'product',
   history: 'history',
+  /** Inaugural history row applied from product.createdAt for analytics only (DB effectiveFrom was later). */
+  historyBackdated: 'history_backdated',
 };
+
+function resolveCostSource(row) {
+  if (!row) return null;
+  if (row.analyticsBackdatedFrom) return COST_SOURCE.historyBackdated;
+  if (row.source === COST_SOURCE.historyBackdated) return COST_SOURCE.historyBackdated;
+  if (row.source === COST_SOURCE.history || row.effectiveFrom) return COST_SOURCE.history;
+  if (row.source === COST_SOURCE.variant) return COST_SOURCE.variant;
+  if (row.source === COST_SOURCE.product) return COST_SOURCE.product;
+  return COST_SOURCE.product;
+}
 
 export function isConfiguredCost(value) {
   if (value === null || value === undefined || value === '') return false;
@@ -151,10 +163,14 @@ export function resolveMakingCost({ product, variantText = '', costs = [], at = 
   // so we never understate production cost. If none match, fall back to product-level.
   if (selected.length > 0 && optionRows.length === selected.length) {
     const amount = optionRows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+    const backdated = optionRows.some((row) => row.analyticsBackdatedFrom || row.source === COST_SOURCE.historyBackdated);
+    const fromHistory = optionRows.some((row) => row.source === COST_SOURCE.history || row.effectiveFrom);
     return {
       status: COST_STATUS.known,
       amount,
-      source: optionRows.some((row) => row.source === COST_SOURCE.history || row.effectiveFrom) ? COST_SOURCE.history : COST_SOURCE.variant,
+      source: backdated
+        ? COST_SOURCE.historyBackdated
+        : (fromHistory ? COST_SOURCE.history : COST_SOURCE.variant),
       keys: optionRows.map((row) => row.variantKey || ''),
     };
   }
@@ -174,7 +190,7 @@ export function resolveMakingCost({ product, variantText = '', costs = [], at = 
     return {
       status: COST_STATUS.known,
       amount: Number(productRow.amount),
-      source: productRow.source === COST_SOURCE.history || productRow.effectiveFrom ? COST_SOURCE.history : COST_SOURCE.product,
+      source: resolveCostSource(productRow),
       keys: [''],
     };
   }
@@ -226,7 +242,7 @@ export function attributeItemCost(item, product, costs = [], at = null) {
     return {
       status: COST_STATUS.known,
       amount: resolved.amount,
-      source: COST_SOURCE.history,
+      source: resolved.source || COST_SOURCE.history,
     };
   }
   return {
@@ -252,6 +268,10 @@ export function summarizeAttributedItems(rows = []) {
     knownCostUnits: 0,
     unknownCostLineCount: 0,
     knownCostLineCount: 0,
+    backdatedCostRevenue: 0,
+    backdatedCostUnits: 0,
+    strictKnownCostRevenue: 0,
+    strictKnownCostUnits: 0,
   };
   rows.forEach((row) => {
     const units = Number(row.quantity || 0);
@@ -265,6 +285,13 @@ export function summarizeAttributedItems(rows = []) {
       summary.productGrossProfit += revenue - cost;
       summary.knownCostUnits += units;
       summary.knownCostLineCount += 1;
+      if (row.source === COST_SOURCE.historyBackdated) {
+        summary.backdatedCostRevenue += revenue;
+        summary.backdatedCostUnits += units;
+      } else {
+        summary.strictKnownCostRevenue += revenue;
+        summary.strictKnownCostUnits += units;
+      }
     } else {
       summary.unknownCostRevenue += revenue;
       summary.unknownCostUnits += units;
@@ -274,14 +301,19 @@ export function summarizeAttributedItems(rows = []) {
   const coveragePct = summary.productRevenue
     ? Math.round((summary.knownCostRevenue / summary.productRevenue) * 1000) / 10
     : 100;
+  const strictCoveragePct = summary.productRevenue
+    ? Math.round((summary.strictKnownCostRevenue / summary.productRevenue) * 1000) / 10
+    : 100;
   const grossMarginPct = summary.knownCostRevenue
     ? Math.round((summary.productGrossProfit / summary.knownCostRevenue) * 1000) / 10
     : null;
   return {
     ...summary,
     costCoveragePct: coveragePct,
+    strictCostCoveragePct: strictCoveragePct,
     grossMarginPct,
     complete: summary.unknownCostLineCount === 0,
+    usesInauguralBackdate: summary.backdatedCostUnits > 0,
   };
 }
 
@@ -300,6 +332,9 @@ export function groupProfitRows(rows = [], keyFn, labelFn) {
         knownRevenue: 0,
         unknownRevenue: 0,
         knownCostUnits: 0,
+        backdatedRevenue: 0,
+        backdatedUnits: 0,
+        strictKnownRevenue: 0,
         orders: new Set(),
         image: row.image || '',
         id: row.productId || '',
@@ -320,6 +355,12 @@ export function groupProfitRows(rows = [], keyFn, labelFn) {
       bucket.grossProfit += revenue - cost;
       bucket.knownRevenue += revenue;
       bucket.knownCostUnits += units;
+      if (row.source === COST_SOURCE.historyBackdated) {
+        bucket.backdatedRevenue += revenue;
+        bucket.backdatedUnits += units;
+      } else {
+        bucket.strictKnownRevenue += revenue;
+      }
     } else {
       bucket.unknownRevenue += revenue;
     }
@@ -330,6 +371,8 @@ export function groupProfitRows(rows = [], keyFn, labelFn) {
       orders: row.orders.size,
       marginPct: row.knownRevenue ? Math.round((row.grossProfit / row.knownRevenue) * 1000) / 10 : null,
       costCoveragePct: row.revenue ? Math.round((row.knownRevenue / row.revenue) * 1000) / 10 : 100,
+      strictCostCoveragePct: row.revenue ? Math.round((row.strictKnownRevenue / row.revenue) * 1000) / 10 : 100,
+      usesInauguralBackdate: row.backdatedUnits > 0,
     }))
     .sort((a, b) => b.grossProfit - a.grossProfit || b.revenue - a.revenue);
 }
@@ -400,6 +443,8 @@ export function backdateInauguralHistoryForAttribution(historyByProduct = {}, pr
       const inaugural = list[0];
       if (!inaugural) return;
       if (historyRowTime(inaugural) > createdAt.getTime()) {
+        // Keep the stored date for audit; analytics treats the row as applying from product creation.
+        inaugural.analyticsBackdatedFrom = inaugural.effectiveFrom;
         inaugural.effectiveFrom = createdAt;
       }
     });
