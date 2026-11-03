@@ -163,7 +163,62 @@ export function buyerIdentityExpr() {
   };
 }
 
-export function buildRevenueMatch({ from, to, paymentMethod, status, state, city, productId, variant }) {
+/**
+ * When product/collection/variant filters are active, shrink each order's items[] to
+ * matching lines only and rebuild subtotal/total from those lines. Otherwise KPI
+ * "collected" / "product sales" would still count sibling products on the same order.
+ */
+export function narrowToMatchingItems({ productId, productIds, variant } = {}) {
+  const hasProduct = Boolean(productId) || (Array.isArray(productIds) && productIds.length > 0);
+  const hasVariant = Boolean(variant);
+  if (!hasProduct && !hasVariant) return [];
+
+  const conds = [];
+  if (productId) conds.push({ $eq: ['$$item.product', productId] });
+  else if (Array.isArray(productIds) && productIds.length) conds.push({ $in: ['$$item.product', productIds] });
+  if (variant) {
+    conds.push({
+      $regexMatch: {
+        input: { $toString: { $ifNull: ['$$item.variant', ''] } },
+        regex: escapeRegex(variant),
+        options: 'i',
+      },
+    });
+  }
+
+  const itemRevenue = {
+    $reduce: {
+      input: '$items',
+      initialValue: 0,
+      in: { $add: ['$$value', { $multiply: [{ $ifNull: ['$$this.price', 0] }, { $ifNull: ['$$this.quantity', 0] }] }] },
+    },
+  };
+
+  return [
+    {
+      $addFields: {
+        items: {
+          $filter: {
+            input: { $ifNull: ['$items', []] },
+            as: 'item',
+            cond: conds.length === 1 ? conds[0] : { $and: conds },
+          },
+        },
+      },
+    },
+    { $match: { 'items.0': { $exists: true } } },
+    {
+      $addFields: {
+        subtotal: itemRevenue,
+        // Product/variant-scoped view: do not keep full checkout total (other lines + shipping).
+        total: itemRevenue,
+        shippingCost: 0,
+      },
+    },
+  ];
+}
+
+export function buildRevenueMatch({ from, to, paymentMethod, status, state, city, productId, productIds, variant }) {
   const match = {
     paymentStatus: 'paid',
     status: { $nin: ['cancelled'] },
@@ -174,13 +229,15 @@ export function buildRevenueMatch({ from, to, paymentMethod, status, state, city
   if (state) match['shippingAddress.state'] = { $regex: `^${escapeRegex(state)}$`, $options: 'i' };
   if (city) match['shippingAddress.city'] = { $regex: `^${escapeRegex(city)}$`, $options: 'i' };
   // Order-level product/variant match keeps orders that contain a matching line.
-  // Callers that $unwind items must also apply itemMatchAfterUnwind so sibling lines are excluded.
+  // narrowToMatchingItems then drops non-matching sibling lines before KPI aggregation.
   if (productId) match['items.product'] = productId;
+  else if (Array.isArray(productIds) && productIds.length) match['items.product'] = { $in: productIds };
   if (variant) match['items.variant'] = { $regex: escapeRegex(variant), $options: 'i' };
   return [
     { $match: match },
     { $addFields: { eventAt: { $ifNull: ['$paidAt', '$createdAt'] } } },
     { $match: { eventAt: { $gte: from, $lte: to } } },
+    ...narrowToMatchingItems({ productId, productIds, variant }),
   ];
 }
 
@@ -233,9 +290,9 @@ const orderMetrics = {
   },
 };
 
-export function revenuePipeline({ from, to, paymentMethod, status, state, city, productId, variant, granularity = 'day' }) {
-  const prefix = buildRevenueMatch({ from, to, paymentMethod, status, state, city, productId, variant });
-  const itemFilter = itemMatchAfterUnwind({ productId, variant });
+export function revenuePipeline({ from, to, paymentMethod, status, state, city, productId, productIds, variant, granularity = 'day' }) {
+  const prefix = buildRevenueMatch({ from, to, paymentMethod, status, state, city, productId, productIds, variant });
+  const itemFilter = itemMatchAfterUnwind({ productId, productIds, variant });
   return [
     ...prefix,
     {

@@ -125,9 +125,7 @@ export async function GET(req) {
     granularity,
   };
 
-  const matchExtra = productIds.length > 1 ? { 'items.product': { $in: productIds } } : null;
   const pipeline = revenuePipeline(filters);
-  if (matchExtra) pipeline.unshift({ $match: matchExtra });
 
   const previous = previousEquivalentRange(range.fromStr, range.toStr);
   const [facet] = await Order.aggregate(pipeline).allowDiskUse(true);
@@ -139,13 +137,12 @@ export async function GET(req) {
     }
     : null;
   const previousPipeline = previousFilters ? kpiPipeline(previousFilters) : null;
-  if (previousPipeline && matchExtra) previousPipeline.unshift({ $match: matchExtra });
   const [previousKpi] = previousPipeline ? await Order.aggregate(previousPipeline).allowDiskUse(true) : [{}];
   const [refund] = await Order.aggregate(refundPipeline(range)).allowDiskUse(true);
   const paymentOutcomes = await Order.aggregate(paymentOutcomePipeline(range)).allowDiskUse(true);
-  const profit = await attributeProfitForFilters(filters, matchExtra);
+  const profit = await attributeProfitForFilters(filters);
   const previousProfit = previousFilters
-    ? await attributeProfitForFilters(previousFilters, matchExtra)
+    ? await attributeProfitForFilters(previousFilters)
     : { summary: {} };
 
   const kpis = shapeKpis(facet?.kpis?.[0], previousKpi, refund, {

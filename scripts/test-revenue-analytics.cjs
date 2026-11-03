@@ -10,7 +10,7 @@ const source = fs.readFileSync(sourcePath, 'utf8')
   .replace(/export \{ IST, WEEKDAYS, STATUS_GROUPS \};/, '');
 const context = { module: { exports: {} }, exports: {}, console };
 vm.createContext(context);
-vm.runInContext(`${source}\nmodule.exports = { istInclusiveRange, previousEquivalentRange, presetToRange, growthPercent, shapeKpis, shapeProducts, itemMatchAfterUnwind, buildRevenueMatch, revenuePipeline, REVENUE_DEFINITIONS, DATE_PRESETS, formatIstDateInput, shiftIstDate, uniquePlaceLabels, shapeFilterOptions };`, context);
+vm.runInContext(`${source}\nmodule.exports = { istInclusiveRange, previousEquivalentRange, presetToRange, growthPercent, shapeKpis, shapeProducts, itemMatchAfterUnwind, narrowToMatchingItems, buildRevenueMatch, revenuePipeline, REVENUE_DEFINITIONS, DATE_PRESETS, formatIstDateInput, shiftIstDate, uniquePlaceLabels, shapeFilterOptions };`, context);
 const {
   istInclusiveRange,
   previousEquivalentRange,
@@ -18,6 +18,7 @@ const {
   shapeKpis,
   shapeProducts,
   itemMatchAfterUnwind,
+  narrowToMatchingItems,
   buildRevenueMatch,
   revenuePipeline,
   REVENUE_DEFINITIONS,
@@ -140,5 +141,14 @@ const pipeline = revenuePipeline({
   granularity: 'day',
 });
 assert.ok(JSON.stringify(pipeline).includes('items.variant'), 'revenuePipeline must keep the variant filter');
+assert.ok(JSON.stringify(pipeline).includes('$filter'), 'product/variant filters must narrow order items before KPIs');
+
+assert.strictEqual(narrowToMatchingItems({}).length, 0);
+assert.ok(narrowToMatchingItems({ productId: 'abc' }).length >= 2);
+assert.ok(JSON.stringify(buildRevenueMatch({
+  from: day.from,
+  to: day.to,
+  productIds: ['a', 'b'],
+})).includes('$in'), 'collection multi-product filter must use $in');
 
 console.log('Revenue analytics helper tests passed');
