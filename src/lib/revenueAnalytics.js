@@ -163,6 +163,30 @@ export function buyerIdentityExpr() {
   };
 }
 
+function escapeRegex(value = '') {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function variantExactRegex(variant = '') {
+  // Order item variants often include trailing spaces; dropdown options are trimmed.
+  return `^\\s*${escapeRegex(variant)}\\s*$`;
+}
+
+function placeNormalizeStages(state, city) {
+  if (!state && !city) return [];
+  const stages = [{
+    $addFields: {
+      _normState: { $toLower: { $trim: { input: { $toString: { $ifNull: ['$shippingAddress.state', ''] } } } } },
+      _normCity: { $toLower: { $trim: { input: { $toString: { $ifNull: ['$shippingAddress.city', ''] } } } } },
+    },
+  }];
+  const placeMatch = {};
+  if (state) placeMatch._normState = normalizePlaceLabel(state).toLowerCase();
+  if (city) placeMatch._normCity = normalizePlaceLabel(city).toLowerCase();
+  stages.push({ $match: placeMatch });
+  return stages;
+}
+
 /**
  * When product/collection/variant filters are active, shrink each order's items[] to
  * matching lines only and rebuild subtotal/total from those lines. Otherwise KPI
@@ -180,7 +204,7 @@ export function narrowToMatchingItems({ productId, productIds, variant } = {}) {
     conds.push({
       $regexMatch: {
         input: { $toString: { $ifNull: ['$$item.variant', ''] } },
-        regex: `^${escapeRegex(variant)}$`,
+        regex: variantExactRegex(variant),
         options: 'i',
       },
     });
@@ -226,15 +250,14 @@ export function buildRevenueMatch({ from, to, paymentMethod, status, state, city
   if (paymentMethod) match.paymentMethod = paymentMethod;
   const aliases = statusAlias(status);
   if (aliases) match.status = { $in: aliases.filter((value) => value !== 'cancelled') };
-  if (state) match['shippingAddress.state'] = { $regex: `^${escapeRegex(state)}$`, $options: 'i' };
-  if (city) match['shippingAddress.city'] = { $regex: `^${escapeRegex(city)}$`, $options: 'i' };
   // Order-level product/variant match keeps orders that contain a matching line.
   // narrowToMatchingItems then drops non-matching sibling lines before KPI aggregation.
   if (productId) match['items.product'] = productId;
   else if (Array.isArray(productIds) && productIds.length) match['items.product'] = { $in: productIds };
-  if (variant) match['items.variant'] = { $regex: `^${escapeRegex(variant)}$`, $options: 'i' };
+  if (variant) match['items.variant'] = { $regex: variantExactRegex(variant), $options: 'i' };
   return [
     { $match: match },
+    ...placeNormalizeStages(state, city),
     { $addFields: { eventAt: { $ifNull: ['$paidAt', '$createdAt'] } } },
     { $match: { eventAt: { $gte: from, $lte: to } } },
     ...narrowToMatchingItems({ productId, productIds, variant }),
@@ -246,12 +269,8 @@ export function itemMatchAfterUnwind({ productId, productIds, variant } = {}) {
   const match = {};
   if (productId) match['items.product'] = productId;
   else if (Array.isArray(productIds) && productIds.length) match['items.product'] = { $in: productIds };
-  if (variant) match['items.variant'] = { $regex: `^${escapeRegex(variant)}$`, $options: 'i' };
+  if (variant) match['items.variant'] = { $regex: variantExactRegex(variant), $options: 'i' };
   return Object.keys(match).length ? [{ $match: match }] : [];
-}
-
-function escapeRegex(value = '') {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function bucketExpr(granularity) {
@@ -417,13 +436,12 @@ export function kpiPipeline(filters = {}) {
 export function refundPipeline({ from, to, paymentMethod, state, city, productId, productIds, variant } = {}) {
   const match = { paymentStatus: 'refunded' };
   if (paymentMethod) match.paymentMethod = paymentMethod;
-  if (state) match['shippingAddress.state'] = { $regex: `^${escapeRegex(state)}$`, $options: 'i' };
-  if (city) match['shippingAddress.city'] = { $regex: `^${escapeRegex(city)}$`, $options: 'i' };
   if (productId) match['items.product'] = productId;
   else if (Array.isArray(productIds) && productIds.length) match['items.product'] = { $in: productIds };
-  if (variant) match['items.variant'] = { $regex: `^${escapeRegex(variant)}$`, $options: 'i' };
+  if (variant) match['items.variant'] = { $regex: variantExactRegex(variant), $options: 'i' };
   return [
     { $match: match },
+    ...placeNormalizeStages(state, city),
     { $addFields: { eventAt: { $ifNull: ['$paidAt', '$createdAt'] } } },
     { $match: { eventAt: { $gte: from, $lte: to } } },
     ...narrowToMatchingItems({ productId, productIds, variant }),
@@ -434,13 +452,12 @@ export function refundPipeline({ from, to, paymentMethod, state, city, productId
 export function paymentOutcomePipeline({ from, to, paymentMethod, state, city, productId, productIds, variant } = {}) {
   const match = {};
   if (paymentMethod) match.paymentMethod = paymentMethod;
-  if (state) match['shippingAddress.state'] = { $regex: `^${escapeRegex(state)}$`, $options: 'i' };
-  if (city) match['shippingAddress.city'] = { $regex: `^${escapeRegex(city)}$`, $options: 'i' };
   if (productId) match['items.product'] = productId;
   else if (Array.isArray(productIds) && productIds.length) match['items.product'] = { $in: productIds };
-  if (variant) match['items.variant'] = { $regex: `^${escapeRegex(variant)}$`, $options: 'i' };
+  if (variant) match['items.variant'] = { $regex: variantExactRegex(variant), $options: 'i' };
   return [
     ...(Object.keys(match).length ? [{ $match: match }] : []),
+    ...placeNormalizeStages(state, city),
     { $addFields: { eventAt: { $ifNull: ['$paidAt', '$createdAt'] } } },
     { $match: { eventAt: { $gte: from, $lte: to } } },
     ...narrowToMatchingItems({ productId, productIds, variant }),

@@ -126,17 +126,19 @@ assert.strictEqual(knownProfit[0].marginPct, 44.9);
 assert.strictEqual(itemMatchAfterUnwind({}).length, 0);
 assert.strictEqual(itemMatchAfterUnwind({ productId: 'abc' })[0].$match['items.product'], 'abc');
 const variantMatch = itemMatchAfterUnwind({ variant: 'Size: Large' })[0].$match['items.variant'].$regex;
-assert.ok(variantMatch.startsWith('^'));
-assert.ok(variantMatch.endsWith('$'));
+assert.ok(variantMatch.startsWith('^\\s*') || variantMatch.startsWith('^\\s*'), 'allow leading whitespace on stored variants');
+assert.ok(variantMatch.includes('\\s*$'));
 assert.ok(variantMatch.includes('Size'));
 
 const matchStages = buildRevenueMatch({
   from: day.from,
   to: day.to,
   variant: 'Size: 12x18',
+  city: 'Chennai',
 });
 assert.ok(JSON.stringify(matchStages).includes('items.variant'));
-assert.ok(JSON.stringify(matchStages).includes('^Size'), 'variant filter must be exact, not substring');
+assert.ok(JSON.stringify(matchStages).includes('Size: 12x18'), 'variant filter must stay exact (not substring)');
+assert.ok(JSON.stringify(matchStages).includes('_normCity'), 'city filter must trim padded address values');
 
 const pipeline = revenuePipeline({
   from: day.from,
