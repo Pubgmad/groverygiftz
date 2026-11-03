@@ -6,7 +6,7 @@ import dbConnect from '@/lib/db';
 import Product from '@/models/Product';
 import MakingCost from '@/models/MakingCost';
 import MakingCostHistory from '@/models/MakingCostHistory';
-import { parseMoneyAmount, variantCostKey } from '@/lib/makingCost';
+import { normalizeVariantKey, parseMoneyAmount, variantCostKey } from '@/lib/makingCost';
 import { istInclusiveRange } from '@/lib/revenueAnalytics';
 
 function parseProductId(value) {
@@ -128,10 +128,21 @@ export async function PUT(req, { params }) {
   const actorId = access?.adminId || access?.sessionUserId || null;
 
   const existing = await MakingCost.find({ product: productId }).lean();
-  const existingByKey = Object.fromEntries(existing.map((row) => [row.variantKey || '', row]));
+  const existingByKey = Object.fromEntries(existing.map((row) => [normalizeVariantKey(row.variantKey || ''), row]));
+  const historyCounts = await MakingCostHistory.aggregate([
+    { $match: { product: productId } },
+    { $group: { _id: { $toLower: { $trim: { input: { $ifNull: ['$variantKey', ''] } } } }, count: { $sum: 1 } } },
+  ]);
+  const historyCountByKey = Object.fromEntries(historyCounts.map((row) => [normalizeVariantKey(row._id || ''), row.count]));
 
   await Promise.all(entries.map(async (entry) => {
-    const previous = existingByKey[entry.variantKey];
+    const previous = existingByKey[normalizeVariantKey(entry.variantKey)];
+    // First-ever cost for a key with no explicit date: apply from product creation so
+    // Last 7/30 day analytics pick up the cost instead of only "today".
+    const hasHistory = Number(historyCountByKey[normalizeVariantKey(entry.variantKey)] || 0) > 0;
+    const entryEffectiveFrom = (!dateStr && !hasHistory && product.createdAt)
+      ? new Date(product.createdAt)
+      : effectiveFrom;
     await MakingCost.findOneAndUpdate(
       { product: productId, variantKey: entry.variantKey },
       {
@@ -152,7 +163,7 @@ export async function PUT(req, { params }) {
       optionLabel: entry.optionLabel,
       amount: entry.amount,
       previousAmount: previous ? Number(previous.amount) : null,
-      effectiveFrom,
+      effectiveFrom: entryEffectiveFrom,
       note,
       updatedBy: actorId,
       updatedByEmail: actorEmail,

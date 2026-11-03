@@ -72,12 +72,42 @@ function parseVariantSelection(variantText = '') {
 
 function findSelectedVariantOptions(product, variantText = '') {
   const selections = parseVariantSelection(variantText);
-  return (product?.variants || []).flatMap((variant) => {
+  const matched = (product?.variants || []).flatMap((variant) => {
     const selected = selections[normalizeVariantKey(variant?.name)];
     if (!selected) return [];
     const option = (variant.options || []).find((opt) => normalizeVariantKey(opt?.label) === normalizeVariantKey(selected.label));
     return option ? [{ variant, option }] : [];
   });
+  if (matched.length) return matched;
+
+  // Legacy / loose snapshots: match option labels when "Name: Label" parsing fails
+  // (e.g. stored as "12x18" or "Large" without the axis name).
+  const rawParts = String(variantText || '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      const separatorIndex = part.indexOf(':');
+      if (separatorIndex === -1) return normalizeVariantKey(part);
+      return normalizeVariantKey(part.slice(separatorIndex + 1));
+    })
+    .filter(Boolean);
+  if (!rawParts.length) return [];
+
+  const byLabel = [];
+  (product?.variants || []).forEach((variant) => {
+    (variant.options || []).forEach((option) => {
+      if (rawParts.includes(normalizeVariantKey(option?.label))) {
+        byLabel.push({ variant, option });
+      }
+    });
+  });
+  return byLabel;
+}
+
+export function findCostRow(costs = [], variantKey = '') {
+  const target = normalizeVariantKey(variantKey);
+  return (costs || []).find((row) => normalizeVariantKey(row?.variantKey || '') === target) || null;
 }
 
 export function costsEffectiveAt(rows = [], at = null) {
@@ -102,13 +132,25 @@ export function resolveMakingCost({ product, variantText = '', costs = [], at = 
     .map(({ variant, option }) => byKey.get(normalizeVariantKey(variantCostKey(variant.name, option.label))))
     .filter(Boolean);
 
-  if (optionRows.length > 0) {
+  // All selected axes must have a cost. Partial multi-option matches stay unknown
+  // so we never understate production cost. If none match, fall back to product-level.
+  if (selected.length > 0 && optionRows.length === selected.length) {
     const amount = optionRows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
     return {
       status: COST_STATUS.known,
       amount,
       source: optionRows.some((row) => row.source === COST_SOURCE.history || row.effectiveFrom) ? COST_SOURCE.history : COST_SOURCE.variant,
       keys: optionRows.map((row) => row.variantKey || ''),
+    };
+  }
+
+  if (selected.length > 0 && optionRows.length > 0 && optionRows.length < selected.length) {
+    return {
+      status: COST_STATUS.unknown,
+      amount: null,
+      source: null,
+      keys: [],
+      reason: 'partial_variant_cost',
     };
   }
 

@@ -1,7 +1,8 @@
 import Order from '@/models/Order';
 import Product from '@/models/Product';
+import MakingCost from '@/models/MakingCost';
 import MakingCostHistory from '@/models/MakingCostHistory';
-import { buildAttributedRows, groupProfitRows, summarizeAttributedItems } from '@/lib/makingCost';
+import { buildAttributedRows, groupProfitRows, normalizeVariantKey, summarizeAttributedItems } from '@/lib/makingCost';
 import { istBucketLabel, profitItemPipeline } from '@/lib/revenueAnalytics';
 
 export async function attributeProfitForFilters(filters, extraMatch = null) {
@@ -9,9 +10,10 @@ export async function attributeProfitForFilters(filters, extraMatch = null) {
   if (extraMatch) pipeline.unshift(extraMatch);
   const items = await Order.aggregate(pipeline).allowDiskUse(true);
   const productIds = [...new Set(items.map((row) => row.product).filter(Boolean))];
-  const [products, histories] = await Promise.all([
-    productIds.length ? Product.find({ _id: { $in: productIds } }).select('title variants images').lean() : [],
+  const [products, histories, currentCosts] = await Promise.all([
+    productIds.length ? Product.find({ _id: { $in: productIds } }).select('title variants images createdAt').lean() : [],
     productIds.length ? MakingCostHistory.find({ product: { $in: productIds } }).lean() : [],
+    productIds.length ? MakingCost.find({ product: { $in: productIds } }).lean() : [],
   ]);
   const productsById = Object.fromEntries(products.map((row) => [String(row._id), row]));
   const historyByProduct = {};
@@ -19,6 +21,28 @@ export async function attributeProfitForFilters(filters, extraMatch = null) {
     const key = String(row.product);
     if (!historyByProduct[key]) historyByProduct[key] = [];
     historyByProduct[key].push(row);
+  });
+  // If a live MakingCost row has no history (legacy saves), apply it from product creation
+  // so period filters include known production cost instead of silently showing ₹0 profit.
+  // When history exists for that key, history alone remains the source of truth.
+  currentCosts.forEach((row) => {
+    const key = String(row.product);
+    const variantKey = normalizeVariantKey(row.variantKey || '');
+    const rows = historyByProduct[key] || [];
+    const hasHistory = rows.some((entry) => normalizeVariantKey(entry.variantKey || '') === variantKey);
+    if (hasHistory) return;
+    const product = productsById[key];
+    const effectiveFrom = product?.createdAt ? new Date(product.createdAt) : new Date('2020-01-01T00:00:00.000Z');
+    if (!historyByProduct[key]) historyByProduct[key] = [];
+    historyByProduct[key].push({
+      product: row.product,
+      variantKey: row.variantKey || '',
+      variantName: row.variantName || '',
+      optionLabel: row.optionLabel || '',
+      amount: row.amount,
+      effectiveFrom,
+      source: 'history',
+    });
   });
   const attributed = buildAttributedRows(items, productsById, historyByProduct);
   const summary = summarizeAttributedItems(attributed);

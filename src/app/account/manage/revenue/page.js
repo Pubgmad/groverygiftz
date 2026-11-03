@@ -526,10 +526,10 @@ export default function RevenueAnalyticsPage() {
                   {row.image ? <img src={row.image} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" /> : <span className="h-12 w-12 shrink-0 rounded-lg bg-gray-100" />}
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold">{row.title}</span>
-                    <span className="block text-xs leading-5 text-gray-500">{row.units} sold · {row.orders} orders · avg {money(row.averagePrice)}{row.marginPct === null || row.marginPct === undefined ? '' : ` · margin ${row.marginPct}%`}</span>
-                    <span className="mt-1 block text-sm font-bold sm:hidden">{money(row.revenue)}<span className="ml-2 text-xs font-medium text-emerald-700">{row.grossProfit || row.grossProfit === 0 ? money(row.grossProfit) : 'Profit unknown'}</span></span>
+                    <span className="block text-xs leading-5 text-gray-500">{row.units} sold · {row.orders} orders · avg {money(row.averagePrice)}{row.profitKnown && row.marginPct !== null && row.marginPct !== undefined ? ` · margin ${row.marginPct}%` : ''}</span>
+                    <span className="mt-1 block text-sm font-bold sm:hidden">{money(row.revenue)}<span className={`ml-2 text-xs font-medium ${row.profitKnown ? 'text-emerald-700' : 'text-amber-700'}`}>{row.profitKnown ? `${money(row.grossProfit)} profit` : 'Profit unknown'}</span></span>
                   </span>
-                  <span className="hidden shrink-0 text-right text-sm font-bold sm:block">{money(row.revenue)}<span className="block text-xs font-medium text-emerald-700">{row.grossProfit || row.grossProfit === 0 ? money(row.grossProfit) : 'Profit unknown'}</span></span>
+                  <span className="hidden shrink-0 text-right text-sm font-bold sm:block">{money(row.revenue)}<span className={`block text-xs font-medium ${row.profitKnown ? 'text-emerald-700' : 'text-amber-700'}`}>{row.profitKnown ? `${money(row.grossProfit)} profit` : 'Profit unknown'}</span></span>
                 </button>
               ))}
               {products.length === 0 && <p className="text-sm text-gray-500">No product sales in this period.</p>}
@@ -542,7 +542,7 @@ export default function RevenueAnalyticsPage() {
                 {data.variants.slice(0, 12).map((row) => (
                   <div key={`${row.title}-${row.variant}`} className="flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-xl bg-gray-50 px-3 py-2 text-sm">
                     <span className="min-w-0 break-words">{row.title} · {row.variant}</span>
-                    <span className="text-xs leading-5 text-gray-600">{row.units} sold · {money(row.revenue)}{row.grossProfit || row.grossProfit === 0 ? ` · ${money(row.grossProfit)} profit` : ''}</span>
+                    <span className="text-xs leading-5 text-gray-600">{row.units} sold · {money(row.revenue)}{row.profitKnown ? ` · ${money(row.grossProfit)} profit` : ' · profit unknown'}</span>
                   </div>
                 ))}
               </div>
@@ -628,10 +628,11 @@ export default function RevenueAnalyticsPage() {
                   <div key={row.id || row.title} className="space-y-2 text-sm">
                     <p>Units sold: {row.units}</p>
                     <p>Revenue: {money(row.revenue)}</p>
-                    <p>Known making cost: {money(row.makingCost)}</p>
-                    <p>Product gross profit: {money(row.grossProfit)}</p>
-                    <p>Gross margin: {row.marginPct === null || row.marginPct === undefined ? 'Unavailable' : `${row.marginPct}%`}</p>
+                    <p>Known making cost: {row.profitKnown ? money(row.makingCost) : 'Not configured for these sales'}</p>
+                    <p>Product gross profit: {row.profitKnown ? money(row.grossProfit) : 'Unavailable until making cost is configured'}</p>
+                    <p>Gross margin: {row.profitKnown && row.marginPct !== null && row.marginPct !== undefined ? `${row.marginPct}%` : 'Unavailable'}</p>
                     <p>Unknown-cost revenue: {money(row.unknownRevenue)}</p>
+                    <p>Cost coverage: {row.costCoveragePct === null || row.costCoveragePct === undefined ? '—' : `${row.costCoveragePct}%`}</p>
                     <button type="button" onClick={() => { if (row.id) setProduct(row.id); setProfitProduct(null); }} className="mt-3 min-h-[44px] w-full rounded-xl border font-semibold">Filter analytics to this product</button>
                   </div>
                 ))}

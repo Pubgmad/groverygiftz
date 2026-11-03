@@ -9,11 +9,13 @@ const source = fs.readFileSync(sourcePath, 'utf8')
   .replace(/export function /g, 'function ');
 const context = { module: { exports: {} }, exports: {}, console };
 vm.createContext(context);
-vm.runInContext(`${source}\nmodule.exports = { isConfiguredCost, parseMoneyAmount, variantCostKey, resolveMakingCost, snapshotOrderItemCost, attributeItemCost, summarizeAttributedItems, stripMakingCostFromOrder, COST_STATUS };`, context);
+vm.runInContext(`${source}\nmodule.exports = { isConfiguredCost, parseMoneyAmount, variantCostKey, normalizeVariantKey, findCostRow, resolveMakingCost, snapshotOrderItemCost, attributeItemCost, summarizeAttributedItems, stripMakingCostFromOrder, COST_STATUS };`, context);
 const {
   isConfiguredCost,
   parseMoneyAmount,
   variantCostKey,
+  normalizeVariantKey,
+  findCostRow,
   resolveMakingCost,
   snapshotOrderItemCost,
   attributeItemCost,
@@ -103,5 +105,42 @@ const publicOrder = stripMakingCostFromOrder({
 });
 assert.strictEqual(publicOrder.items[0].makingCost, undefined);
 assert.strictEqual(publicOrder.items[0].price, 1399);
+
+assert.strictEqual(normalizeVariantKey(' Size:  Large '), 'size: large');
+assert.ok(findCostRow([{ variantKey: 'Size: Large', amount: 180 }], 'size: large'));
+assert.strictEqual(findCostRow([{ variantKey: 'Size: Small', amount: 100 }], 'Size: Large'), null);
+
+const multi = {
+  title: 'Combo',
+  variants: [
+    { name: 'Size', options: [{ label: '10x12' }, { label: '12x18' }] },
+    { name: 'Finish', options: [{ label: 'Matte' }, { label: 'Gloss' }] },
+  ],
+};
+const partial = resolveMakingCost({
+  product: multi,
+  variantText: 'Size: 10x12, Finish: Matte',
+  costs: [{ variantKey: 'Size: 10x12', amount: 350 }],
+});
+assert.strictEqual(partial.status, COST_STATUS.unknown, 'partial multi-axis costs must stay unknown');
+
+const fullMulti = resolveMakingCost({
+  product: multi,
+  variantText: 'Size: 10x12, Finish: Matte',
+  costs: [
+    { variantKey: 'Size: 10x12', amount: 350 },
+    { variantKey: 'Finish: Matte', amount: 40 },
+  ],
+});
+assert.strictEqual(fullMulti.status, COST_STATUS.known);
+assert.strictEqual(fullMulti.amount, 390);
+
+const looseLabel = resolveMakingCost({
+  product,
+  variantText: 'Large',
+  costs: [{ variantKey: 'Size: Large', amount: 650 }],
+});
+assert.strictEqual(looseLabel.status, COST_STATUS.known);
+assert.strictEqual(looseLabel.amount, 650);
 
 console.log('Making cost helper tests passed');

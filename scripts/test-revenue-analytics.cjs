@@ -10,12 +10,16 @@ const source = fs.readFileSync(sourcePath, 'utf8')
   .replace(/export \{ IST, WEEKDAYS, STATUS_GROUPS \};/, '');
 const context = { module: { exports: {} }, exports: {}, console };
 vm.createContext(context);
-vm.runInContext(`${source}\nmodule.exports = { istInclusiveRange, previousEquivalentRange, presetToRange, growthPercent, shapeKpis, REVENUE_DEFINITIONS, DATE_PRESETS, formatIstDateInput, shiftIstDate, uniquePlaceLabels, shapeFilterOptions };`, context);
+vm.runInContext(`${source}\nmodule.exports = { istInclusiveRange, previousEquivalentRange, presetToRange, growthPercent, shapeKpis, shapeProducts, itemMatchAfterUnwind, buildRevenueMatch, revenuePipeline, REVENUE_DEFINITIONS, DATE_PRESETS, formatIstDateInput, shiftIstDate, uniquePlaceLabels, shapeFilterOptions };`, context);
 const {
   istInclusiveRange,
   previousEquivalentRange,
   growthPercent,
   shapeKpis,
+  shapeProducts,
+  itemMatchAfterUnwind,
+  buildRevenueMatch,
+  revenuePipeline,
   REVENUE_DEFINITIONS,
   DATE_PRESETS,
   formatIstDateInput,
@@ -83,5 +87,58 @@ assert.deepStrictEqual(shaped.methods, ['Cashfree']);
 assert.strictEqual(shaped.products.length, 1);
 assert.strictEqual(shaped.products[0].title, 'Gift hamper');
 assert.strictEqual(shaped.collections[0].name, 'Festive');
+
+const unknownProfit = shapeProducts([{
+  productId: 'p1',
+  title: 'Frame',
+  units: 11,
+  revenue: 16489,
+  orders: 10,
+  makingCost: 0,
+  grossProfit: 0,
+  knownRevenue: 0,
+  unknownRevenue: 16489,
+  costCoveragePct: 0,
+}]);
+assert.strictEqual(unknownProfit[0].profitKnown, false);
+assert.strictEqual(unknownProfit[0].grossProfit, null);
+assert.strictEqual(unknownProfit[0].makingCost, null);
+assert.strictEqual(unknownProfit[0].marginPct, null);
+
+const knownProfit = shapeProducts([{
+  productId: 'p2',
+  title: 'Combo',
+  units: 108,
+  revenue: 151092,
+  orders: 108,
+  makingCost: 83200,
+  grossProfit: 67892,
+  knownRevenue: 151092,
+  unknownRevenue: 0,
+  marginPct: 44.9,
+  costCoveragePct: 100,
+}]);
+assert.strictEqual(knownProfit[0].profitKnown, true);
+assert.strictEqual(knownProfit[0].grossProfit, 67892);
+assert.strictEqual(knownProfit[0].marginPct, 44.9);
+
+assert.strictEqual(itemMatchAfterUnwind({}).length, 0);
+assert.strictEqual(itemMatchAfterUnwind({ productId: 'abc' })[0].$match['items.product'], 'abc');
+assert.ok(itemMatchAfterUnwind({ variant: 'Size: Large' })[0].$match['items.variant'].$regex.includes('Size'));
+
+const matchStages = buildRevenueMatch({
+  from: day.from,
+  to: day.to,
+  variant: 'Size: 12x18',
+});
+assert.ok(JSON.stringify(matchStages).includes('items.variant'));
+
+const pipeline = revenuePipeline({
+  from: day.from,
+  to: day.to,
+  variant: 'Size: 12x18',
+  granularity: 'day',
+});
+assert.ok(JSON.stringify(pipeline).includes('items.variant'), 'revenuePipeline must keep the variant filter');
 
 console.log('Revenue analytics helper tests passed');

@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import Product from '@/models/Product';
 import MakingCost from '@/models/MakingCost';
-import { makingCostStatusForProduct, variantCostKey } from '@/lib/makingCost';
+import { findCostRow, makingCostStatusForProduct, variantCostKey } from '@/lib/makingCost';
 
 function escapeRegex(value = '') {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -48,15 +48,15 @@ export async function GET(req) {
     const productCost = productCosts.find((row) => !row.variantKey);
     const variantOptions = (product.variants || []).flatMap((variant) => (variant.options || []).map((option) => {
       const key = variantCostKey(variant.name, option.label);
-      const cost = productCosts.find((row) => String(row.variantKey || '') === key);
+      const cost = findCostRow(productCosts, key);
       return {
         variantName: variant.name || '',
         optionLabel: option.label || '',
         variantKey: key,
         regularPrice: option.useOwnPrice ? option.regularPrice : product.regularPrice,
         salePrice: option.useOwnPrice ? option.salePrice : product.salePrice,
-        makingCost: cost ? Number(cost.amount) : null,
-        configured: !!cost,
+        makingCost: cost && cost.amount !== null && cost.amount !== undefined ? Number(cost.amount) : null,
+        configured: Boolean(cost && cost.amount !== null && cost.amount !== undefined),
         updatedAt: cost?.updatedAt || null,
       };
     }));

@@ -173,6 +173,8 @@ export function buildRevenueMatch({ from, to, paymentMethod, status, state, city
   if (aliases) match.status = { $in: aliases.filter((value) => value !== 'cancelled') };
   if (state) match['shippingAddress.state'] = { $regex: `^${escapeRegex(state)}$`, $options: 'i' };
   if (city) match['shippingAddress.city'] = { $regex: `^${escapeRegex(city)}$`, $options: 'i' };
+  // Order-level product/variant match keeps orders that contain a matching line.
+  // Callers that $unwind items must also apply itemMatchAfterUnwind so sibling lines are excluded.
   if (productId) match['items.product'] = productId;
   if (variant) match['items.variant'] = { $regex: escapeRegex(variant), $options: 'i' };
   return [
@@ -180,6 +182,15 @@ export function buildRevenueMatch({ from, to, paymentMethod, status, state, city
     { $addFields: { eventAt: { $ifNull: ['$paidAt', '$createdAt'] } } },
     { $match: { eventAt: { $gte: from, $lte: to } } },
   ];
+}
+
+/** After $unwind:$items, keep only line items that match product/variant filters. */
+export function itemMatchAfterUnwind({ productId, productIds, variant } = {}) {
+  const match = {};
+  if (productId) match['items.product'] = productId;
+  else if (Array.isArray(productIds) && productIds.length) match['items.product'] = { $in: productIds };
+  if (variant) match['items.variant'] = { $regex: escapeRegex(variant), $options: 'i' };
+  return Object.keys(match).length ? [{ $match: match }] : [];
 }
 
 function escapeRegex(value = '') {
@@ -222,8 +233,9 @@ const orderMetrics = {
   },
 };
 
-export function revenuePipeline({ from, to, paymentMethod, status, state, city, productId, granularity = 'day' }) {
-  const prefix = buildRevenueMatch({ from, to, paymentMethod, status, state, city, productId });
+export function revenuePipeline({ from, to, paymentMethod, status, state, city, productId, variant, granularity = 'day' }) {
+  const prefix = buildRevenueMatch({ from, to, paymentMethod, status, state, city, productId, variant });
+  const itemFilter = itemMatchAfterUnwind({ productId, variant });
   return [
     ...prefix,
     {
@@ -294,6 +306,7 @@ export function revenuePipeline({ from, to, paymentMethod, status, state, city, 
         ],
         products: [
           { $unwind: '$items' },
+          ...itemFilter,
           {
             $group: {
               _id: { $ifNull: ['$items.product', '$items.title'] },
@@ -311,6 +324,7 @@ export function revenuePipeline({ from, to, paymentMethod, status, state, city, 
         ],
         variants: [
           { $unwind: '$items' },
+          ...itemFilter,
           { $match: { 'items.variant': { $nin: [null, ''] } } },
           {
             $group: {
@@ -336,9 +350,9 @@ export function revenuePipeline({ from, to, paymentMethod, status, state, city, 
   ];
 }
 
-export function kpiPipeline({ from, to }) {
+export function kpiPipeline(filters = {}) {
   return [
-    ...buildRevenueMatch({ from, to }),
+    ...buildRevenueMatch(filters),
     { $group: { _id: null, ...orderMetrics } },
   ];
 }
@@ -407,6 +421,7 @@ export function profitItemPipeline(filters) {
   return [
     ...buildRevenueMatch(filters),
     { $unwind: '$items' },
+    ...itemMatchAfterUnwind(filters),
     {
       $project: {
         orderId: '$_id',
@@ -580,20 +595,32 @@ export function shapeHeatmap(rows = []) {
 }
 
 export function shapeProducts(rows = []) {
-  return withShare(rows.map((row) => ({
-    id: row.productId ? String(row.productId) : '',
-    title: row.title || 'Deleted product',
-    image: row.image || '',
-    units: Number(row.units || 0),
-    revenue: Number(row.revenue || 0),
-    orders: Number(row.orders || 0),
-    averagePrice: row.units ? Number(row.revenue || 0) / Number(row.units) : 0,
-    makingCost: Number(row.makingCost || 0),
-    grossProfit: Number(row.grossProfit || 0),
-    marginPct: row.marginPct === undefined || row.marginPct === null ? null : Number(row.marginPct),
-    unknownRevenue: Number(row.unknownRevenue || 0),
-    costCoveragePct: row.costCoveragePct === undefined ? null : Number(row.costCoveragePct),
-  })), 'revenue');
+  return withShare(rows.map((row) => {
+    const revenue = Number(row.revenue || 0);
+    const knownRevenue = Number(row.knownRevenue || 0);
+    const unknownRevenue = Number(row.unknownRevenue || 0);
+    const costCoveragePct = row.costCoveragePct === undefined || row.costCoveragePct === null
+      ? (revenue ? Math.round((knownRevenue / revenue) * 1000) / 10 : 100)
+      : Number(row.costCoveragePct);
+    const profitKnown = knownRevenue > 0;
+    return {
+      id: row.productId ? String(row.productId) : '',
+      title: row.title || 'Deleted product',
+      image: row.image || '',
+      units: Number(row.units || 0),
+      revenue,
+      orders: Number(row.orders || 0),
+      averagePrice: row.units ? revenue / Number(row.units) : 0,
+      // Missing cost must stay null — never coerce unknown to ₹0 profit.
+      makingCost: profitKnown ? Number(row.makingCost || 0) : null,
+      grossProfit: profitKnown ? Number(row.grossProfit || 0) : null,
+      marginPct: profitKnown && row.marginPct !== undefined && row.marginPct !== null ? Number(row.marginPct) : null,
+      unknownRevenue,
+      knownRevenue,
+      costCoveragePct,
+      profitKnown,
+    };
+  }), 'revenue');
 }
 
 export function shapeInsights({ kpis, trend, states, hours, weekdays, products }) {

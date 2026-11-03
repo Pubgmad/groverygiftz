@@ -120,6 +120,7 @@ export async function GET(req) {
     state: state || undefined,
     city: city || undefined,
     productId: productIds.length === 1 ? productIds[0] : undefined,
+    productIds: productIds.length > 1 ? productIds : undefined,
     variant: variant || undefined,
     granularity,
   };
@@ -130,11 +131,22 @@ export async function GET(req) {
 
   const previous = previousEquivalentRange(range.fromStr, range.toStr);
   const [facet] = await Order.aggregate(pipeline).allowDiskUse(true);
-  const [previousKpi] = previous ? await Order.aggregate(kpiPipeline(previous)).allowDiskUse(true) : [{}];
+  const previousFilters = previous
+    ? {
+      ...filters,
+      from: previous.from,
+      to: previous.to,
+    }
+    : null;
+  const previousPipeline = previousFilters ? kpiPipeline(previousFilters) : null;
+  if (previousPipeline && matchExtra) previousPipeline.unshift({ $match: matchExtra });
+  const [previousKpi] = previousPipeline ? await Order.aggregate(previousPipeline).allowDiskUse(true) : [{}];
   const [refund] = await Order.aggregate(refundPipeline(range)).allowDiskUse(true);
   const paymentOutcomes = await Order.aggregate(paymentOutcomePipeline(range)).allowDiskUse(true);
   const profit = await attributeProfitForFilters(filters, matchExtra);
-  const previousProfit = previous ? await attributeProfitForFilters({ ...previous, granularity }) : { summary: {} };
+  const previousProfit = previousFilters
+    ? await attributeProfitForFilters(previousFilters, matchExtra)
+    : { summary: {} };
 
   const kpis = shapeKpis(facet?.kpis?.[0], previousKpi, refund, {
     ...profit.summary,
@@ -153,6 +165,7 @@ export async function GET(req) {
     makingCost: row.makingCost,
     grossProfit: row.grossProfit,
     marginPct: row.marginPct,
+    knownRevenue: row.knownRevenue,
     unknownRevenue: row.unknownRevenue,
     costCoveragePct: row.costCoveragePct,
   })) : (facet?.products || []));
@@ -227,16 +240,22 @@ export async function GET(req) {
     weekdays,
     heatmap: shapeHeatmap(facet?.heatmap || []),
     products,
-    variants: (profit.variantRows.length ? profit.variantRows : (facet?.variants || [])).map((row) => ({
-      title: row.label ? String(row.label).split(' · ')[0] : (row._id?.title || 'Product'),
-      variant: row.variant || row._id?.variant || String(row.label || '').split(' · ').slice(1).join(' · '),
-      units: Number(row.units || 0),
-      revenue: Number(row.revenue || 0),
-      makingCost: Number(row.makingCost || 0),
-      grossProfit: Number(row.grossProfit || 0),
-      marginPct: row.marginPct === undefined ? null : row.marginPct,
-      unknownRevenue: Number(row.unknownRevenue || 0),
-    })),
+    variants: (profit.variantRows.length ? profit.variantRows : (facet?.variants || [])).map((row) => {
+      const knownRevenue = Number(row.knownRevenue || 0);
+      const profitKnown = knownRevenue > 0;
+      return {
+        title: row.label ? String(row.label).split(' · ')[0] : (row._id?.title || 'Product'),
+        variant: row.variant || row._id?.variant || String(row.label || '').split(' · ').slice(1).join(' · '),
+        units: Number(row.units || 0),
+        revenue: Number(row.revenue || 0),
+        makingCost: profitKnown ? Number(row.makingCost || 0) : null,
+        grossProfit: profitKnown ? Number(row.grossProfit || 0) : null,
+        marginPct: profitKnown && row.marginPct !== undefined ? row.marginPct : null,
+        unknownRevenue: Number(row.unknownRevenue || 0),
+        knownRevenue,
+        profitKnown,
+      };
+    }),
     payments: (facet?.payments || []).map((row) => ({
       method: row._id || 'Cashfree',
       collected: Number(row.collected || 0),
