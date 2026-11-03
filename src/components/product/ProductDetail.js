@@ -21,6 +21,7 @@ import PhotoLimitDialog from '@/components/product/PhotoLimitDialog';
 import ProductAssurancePanel from '@/components/product/ProductAssurancePanel';
 import AboutThisProduct from '@/components/product/AboutThisProduct';
 import { imagePerfMark, imagePerfMeasure } from '@/lib/imagePerf';
+import { readJsonResponse } from '@/lib/safeJsonResponse';
 
 /** Session caches for Apply/cart canvas work — avoid re-decoding the same URLs. */
 const previewImageCache = new Map();
@@ -70,6 +71,9 @@ export default function ProductDetail({ product }) {
   const [editorSlotKey, setEditorSlotKey] = useState(null);
   const [photoLimitPlan, setPhotoLimitPlan] = useState(null);
   const photoUploadTokenRef = useRef({});
+  const photoUploadPromiseRef = useRef({});
+  const customerPhotosRef = useRef([]);
+  const variantLabelUploadsRef = useRef({});
   const [activePreviewSlot, setActivePreviewSlot] = useState(0);
   const [collageUploads, setCollageUploads] = useState({});
   const [uploadingCollageLabels, setUploadingCollageLabels] = useState({});
@@ -110,6 +114,9 @@ export default function ProductDetail({ product }) {
     galleryTouchRef.current = { startX: 0, endX: 0 };
     lightboxTouchRef.current = { startX: 0, endX: 0 };
   }, [product._id, product.slug]);
+
+  useEffect(() => { customerPhotosRef.current = customerPhotos; }, [customerPhotos]);
+  useEffect(() => { variantLabelUploadsRef.current = variantLabelUploads; }, [variantLabelUploads]);
 
   const offerActive = isOfferActive(product);
   const isSoldOut = isProductSoldOut(product);
@@ -373,26 +380,25 @@ export default function ProductDetail({ product }) {
       throw new Error(error.message || 'Unable to generate the customized preview. Please try again.');
     }
   };
-  const uploadRenderedPreviewImage = async (rendered, label, idx) => {
+  const uploadRenderedPreviewImage = async (rendered, label, idx, { localPreviewUrl = '' } = {}) => {
     if (!rendered) throw new Error('The customized preview is empty. Please try saving it again.');
     try {
       imagePerfMark('apply:upload:start');
       let blob = rendered;
-      let localPreviewUrl = '';
+      let previewUrl = localPreviewUrl;
       if (typeof rendered === 'string') {
         blob = await (await fetch(rendered)).blob();
-        localPreviewUrl = rendered;
-      } else if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
-        localPreviewUrl = URL.createObjectURL(blob);
+        previewUrl = previewUrl || rendered;
+      } else if (!previewUrl && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+        previewUrl = URL.createObjectURL(blob);
       }
       const safeLabel = String(label || `photo-${idx + 1}`).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `photo-${idx + 1}`;
       const formData = new FormData();
       formData.append('file', new File([blob], `${safeLabel}-final-preview.jpg`, { type: blob.type || 'image/jpeg' }));
       const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Preview upload failed');
+      const data = await readJsonResponse(res, { fallbackError: 'Unable to store the customized preview. Please try again.' });
       imagePerfMeasure('apply:upload', 'apply:upload:start');
-      return { ...data, previewUrl: localPreviewUrl || data.displayUrl || data.url || '' };
+      return { ...data, previewUrl: previewUrl || data.displayUrl || data.url || '' };
     } catch (error) {
       throw new Error(error.message || 'Unable to store the customized preview. Please try again.');
     }
@@ -476,14 +482,35 @@ export default function ProductDetail({ product }) {
     try {
       const variant = typeof idx === 'string' ? selectedVariantUploadOptions.find((option) => `variant-${option.label}` === idx) : null;
       const area = variant ? { label: variant.label, width: variant.previewWidth || 1, height: variant.previewHeight || 1, unit: variant.previewUnit || 'inch', frameImage: variant.previewFrameImage || '' } : previewAreas[idx] || { label: `Photo ${Number(idx) + 1}`, width: 1, height: 1, unit: 'ratio' };
-      const upload = variant ? variantLabelUploads[variant.label] : customerPhotos[idx];
-      if (!upload?.url) throw new Error('Please upload an image before saving its preview.');
+      let upload = variant ? variantLabelUploadsRef.current[variant.label] : customerPhotosRef.current[idx];
+      const pendingUpload = photoUploadPromiseRef.current[idx];
+      if (pendingUpload) {
+        try {
+          const ready = await pendingUpload;
+          if (ready?.url) upload = ready;
+          else upload = variant ? variantLabelUploadsRef.current[variant.label] : customerPhotosRef.current[idx];
+        } catch (error) {
+          throw new Error(error.message || 'Photo upload did not finish. Please try again.');
+        }
+      }
+      if (!upload?.url) throw new Error('Please wait for the photo to finish uploading, then apply again.');
       const adjustmentsObj = overrideAdjustments ? { ...getDefaultPreviewAdjustments(), ...overrideAdjustments } : getAreaAdjustments(idx);
       setPreviewAdjustments((prev) => ({ ...prev, [idx]: adjustmentsObj }));
       if (previewEnabled || variant) {
         imagePerfMark('apply:total:start');
         const rendered = await renderFinalPreviewImage(area, idx, upload, adjustmentsObj);
-        const file = await uploadRenderedPreviewImage(rendered, area.label, idx);
+        let localPreviewUrl = '';
+        if (rendered && typeof rendered !== 'string' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+          localPreviewUrl = URL.createObjectURL(rendered);
+          // Update the card thumbnail immediately while persistence continues.
+          savedPreviewFilesRef.current[idx] = {
+            file: { previewUrl: localPreviewUrl, type: 'image/jpeg', name: 'local-preview.jpg' },
+            sourceUrl: upload.url,
+            adjustments: JSON.stringify(adjustmentsObj),
+          };
+          setSavedPreviewAreas((prev) => ({ ...prev, [idx]: true }));
+        }
+        const file = await uploadRenderedPreviewImage(rendered, area.label, idx, { localPreviewUrl });
         imagePerfMeasure('apply:total', 'apply:total:start');
         savedPreviewFilesRef.current[idx] = { file, sourceUrl: upload.url, adjustments: JSON.stringify(adjustmentsObj) };
       }
@@ -615,8 +642,7 @@ export default function ProductDetail({ product }) {
       const formData = new FormData();
       appendImageUpload(formData, file, prepared);
       const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      const data = await readJsonResponse(res, { fallbackError: 'Upload failed' });
       const uploadedFile = attachLocalPreview(data, prepared);
       setCustomFieldValues((prev) => ({ ...prev, [fieldLabel]: uploadedFile }));
       toast.success('Customization file uploaded');
@@ -660,24 +686,34 @@ export default function ProductDetail({ product }) {
           setPreviewAdjustments((prev) => ({ ...prev, [job.index]: adjustmentsEarly }));
           setCustomerPhotos((prev) => setPhotoSlot(alignPhotoSlots(prev, photoSlotCount), job.index, localPreview));
         }
-        imagePerfMark('upload:network:start');
-        const formData = new FormData();
-        appendImageUpload(formData, job.file, prepared);
-        const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
-        const data = await res.json();
-        imagePerfMeasure('upload:network', 'upload:network:start');
-        if (!res.ok) throw new Error(data.error || `Failed to upload ${job.file.name}`);
-        if (photoUploadTokenRef.current[job.index] !== token) continue;
-        const uploadedFile = attachLocalPreview(data, prepared);
-        const area = previewAreas[job.index] || null;
-        const adjustments = adjustmentsForUploadedPhoto(prepared.width, prepared.height, area);
-        setActivePreviewSlot(job.index);
-        editPreviewArea(job.index);
-        setPreviewAdjustments((prev) => ({ ...prev, [job.index]: adjustments }));
-        setCustomerPhotos((prev) => setPhotoSlot(alignPhotoSlots(prev, photoSlotCount), job.index, uploadedFile));
-        setUploadingPhotoSlots((prev) => ({ ...prev, [job.index]: false }));
-        imagePerfMeasure('upload:job', 'upload:job:start');
-        if (openEditor) setEditorSlotKey(job.index);
+        const uploadTask = (async () => {
+          imagePerfMark('upload:network:start');
+          const formData = new FormData();
+          appendImageUpload(formData, job.file, prepared);
+          const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
+          const data = await readJsonResponse(res, { fallbackError: `Failed to upload ${job.file.name}` });
+          imagePerfMeasure('upload:network', 'upload:network:start');
+          if (photoUploadTokenRef.current[job.index] !== token) return null;
+          const uploadedFile = attachLocalPreview(data, prepared);
+          const area = previewAreas[job.index] || null;
+          const adjustments = adjustmentsForUploadedPhoto(prepared.width, prepared.height, area);
+          setActivePreviewSlot(job.index);
+          editPreviewArea(job.index);
+          setPreviewAdjustments((prev) => ({ ...prev, [job.index]: adjustments }));
+          setCustomerPhotos((prev) => setPhotoSlot(alignPhotoSlots(prev, photoSlotCount), job.index, uploadedFile));
+          setUploadingPhotoSlots((prev) => ({ ...prev, [job.index]: false }));
+          imagePerfMeasure('upload:job', 'upload:job:start');
+          return uploadedFile;
+        })();
+        photoUploadPromiseRef.current[job.index] = uploadTask;
+        // Open the editor as soon as a local preview exists; Apply waits for persistence if needed.
+        if (openEditor && localPreview.previewUrl) setEditorSlotKey(job.index);
+        const uploadedFile = await uploadTask;
+        delete photoUploadPromiseRef.current[job.index];
+        if (!uploadedFile && photoUploadTokenRef.current[job.index] === token) {
+          throw new Error(`Failed to upload ${job.file.name}`);
+        }
+        if (openEditor && uploadedFile && !localPreview.previewUrl) setEditorSlotKey(job.index);
       }
       toast.success(jobs.length === 1 ? 'Photo uploaded' : `${jobs.length} photos uploaded`);
       trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'customer_photos', photo_count: jobs.length }));
@@ -695,6 +731,8 @@ export default function ProductDetail({ product }) {
         jobs.forEach((job) => { next[job.index] = false; });
         return next;
       });
+      jobs.forEach((job) => { delete photoUploadPromiseRef.current[job.index]; });
+      if (openEditor) setEditorSlotKey(null);
     } finally {
       setUploadingCustomerPhotos(false);
     }
@@ -722,8 +760,7 @@ export default function ProductDetail({ product }) {
       const formData = new FormData();
       appendImageUpload(formData, file, prepared);
       const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      const data = await readJsonResponse(res, { fallbackError: 'Upload failed' });
       const uploadedFile = attachLocalPreview(data, prepared);
       editPreviewArea(`variant-${label}`);
       const variantArea = selectedVariantUploadOptions.find((entry) => entry.label === label)
@@ -769,8 +806,7 @@ export default function ProductDetail({ product }) {
         const formData = new FormData();
         appendImageUpload(formData, file, prepared);
         const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || `Failed to upload ${file.name}`);
+        const data = await readJsonResponse(res, { fallbackError: `Failed to upload ${file.name}` });
         const uploadedFile = attachLocalPreview(data, prepared);
         uploaded.push(uploadedFile);
         setCollageUploads((prev) => ({ ...prev, [label]: [...(prev[label] || []), uploadedFile] }));
@@ -792,8 +828,7 @@ export default function ProductDetail({ product }) {
       const formData = new FormData();
       appendImageUpload(formData, file, prepared);
       const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || `Failed to upload ${file.name}`);
+      const data = await readJsonResponse(res, { fallbackError: `Failed to upload ${file.name}` });
       const uploadedFile = attachLocalPreview(data, prepared);
       setCollageUploads((prev) => {
         const current = [...(prev[label] || [])];

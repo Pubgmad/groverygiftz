@@ -5,9 +5,18 @@ import { saveUploadFile } from '@/lib/uploadStorage';
 
 const MAX_FILE_SIZE = 500 * 1024 * 1024;
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 export async function POST(req) {
   try {
-    const formData = await req.formData();
+    let formData;
+    try {
+      formData = await req.formData();
+    } catch {
+      // Proxy/body-size rejections often surface here; always answer with JSON (never HTML).
+      return NextResponse.json({ error: 'This photo is too large for the server. Please choose a smaller image and try again.' }, { status: 413 });
+    }
     const file = formData.get('file');
     if (!file) return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
     if (file.size > MAX_FILE_SIZE) return NextResponse.json({ error: 'File must be under 500 MB' }, { status: 400 });
@@ -34,6 +43,10 @@ export async function POST(req) {
     const displayUrl = buildCustomerDisplayUrl(displayPath);
     return NextResponse.json({ name: file.name, type: format.mime, size: file.size, url: originalUrl, originalUrl, displayUrl, storagePath: stored.relativePath, previewStoragePath: previewStored?.relativePath || '', previewType: previewFormat?.mime || '' }, { status: 201 });
   } catch (error) {
+    const message = String(error?.message || '');
+    if (/ENOSPC|EROFS|EACCES|ENOENT/i.test(message)) {
+      return NextResponse.json({ error: 'Unable to store the photo on the server. Please try again shortly.' }, { status: 500 });
+    }
     return NextResponse.json({ error: 'Failed to upload customization file' }, { status: 500 });
   }
 }

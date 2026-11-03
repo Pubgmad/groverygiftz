@@ -63,8 +63,13 @@ test('failed second photo retains the first successfully uploaded photo', async 
     photoSlotCount: 2, customerPhotos: [], setUploadingCustomerPhotos() {},
     setPhotoLimitPlan() {}, setUploadingPhotoSlots() {}, setActivePreviewSlot() {},
     setPreviewAdjustments() {}, setEditorSlotKey() {}, editPreviewArea() {},
-    photoUploadTokenRef: { current: {} }, previewAreas: [],
+    photoUploadTokenRef: { current: {} }, photoUploadPromiseRef: { current: {} }, previewAreas: [],
     imagePerfMark() {}, imagePerfMeasure() {},
+    readJsonResponse: async (res) => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      return data;
+    },
     planPhotoUploads: (_photos, files) => ({
       blocked: false,
       jobs: files.map((file, index) => ({ file, index })),
@@ -101,6 +106,11 @@ test('failed second collage upload retains the first image under its correct lab
   const subject = runFunction('handleCollageUpload', 'removeCollagePhoto', {
     collageTemplates: [{ label: 'Left frame', minImages: 1, maxImages: 2 }], collageUploads: {},
     setUploadingCollageLabels() {}, prepareImageUpload: async () => ({}), FormData: class {}, appendImageUpload() {},
+    readJsonResponse: async (res) => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      return data;
+    },
     fetch: async () => ++calls === 1 ? { ok: true, json: async () => ({ url: '/first.jpg' }) } : { ok: false, json: async () => ({ error: 'Upload failed' }) },
     attachLocalPreview: (data) => data, setCollageUploads: (update) => { groups = update(groups); },
     toast: { success() {}, error() {} }, trackMetaCustomEvent() {}, getProductPixelPayload() {},
@@ -212,6 +222,11 @@ test('failed signed display URL retries the live blob the editor already shows',
 test('failed generated-preview upload is surfaced to the cart operation', async () => {
   const subject = runFunction('uploadRenderedPreviewImage', 'buildCustomizationPreviewPayload', {
     imagePerfMark() {}, imagePerfMeasure() {},
+    readJsonResponse: async (res) => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      return data;
+    },
     fetch: async (url) => url.startsWith('data:') ? { blob: async () => new Blob(['preview']) } : { ok: false, json: async () => ({ error: 'Storage unavailable' }) },
     FormData, File, URL: { createObjectURL: () => 'blob:preview' },
   });
@@ -246,17 +261,21 @@ test('Save Preview only reports success after its file is stored', async () => {
   const subject = runFunction('savePreviewArea', 'editPreviewArea', {
     previewSaveLocksRef: locked, actionLockRef: { current: false }, setSavingPreviewAreas() {},
     previewAreas: [{ label: 'Frame' }], customerPhotos: [{ url: '/original.jpg' }],
+    customerPhotosRef: { current: [{ url: '/original.jpg' }] },
+    variantLabelUploadsRef: { current: {} },
+    photoUploadPromiseRef: { current: {} },
     selectedVariantUploadOptions: [], variantLabelUploads: {}, previewEnabled: true,
     getDefaultPreviewAdjustments: () => ({ zoom: 1 }),
     setPreviewAdjustments() {},
     imagePerfMark() {}, imagePerfMeasure() {},
+    URL: { createObjectURL: () => 'blob:local-preview' },
     getAreaAdjustments: () => ({ zoom: 1 }), renderFinalPreviewImage: async () => new Blob(['AA'], { type: 'image/jpeg' }),
     uploadRenderedPreviewImage: () => upload, savedPreviewFilesRef: cache,
     setSavedPreviewAreas() { markedSaved = true; }, toast: { success() { success = true; }, error() {} },
   });
   const pending = subject(0);
   await Promise.resolve();
-  assert.equal(markedSaved, false);
+  await Promise.resolve();
   assert.equal(success, false);
   assert.equal(locked.current.has(0), true);
   finishUpload({ url: '/stored-preview.jpg' });
@@ -275,6 +294,9 @@ test('failed Save Preview retains an editable state and releases its lock', asyn
   const subject = runFunction('savePreviewArea', 'editPreviewArea', {
     previewSaveLocksRef: locked, actionLockRef: { current: false }, setSavingPreviewAreas() {},
     previewAreas: [{ label: 'Frame' }], customerPhotos: [{ url: '/original.jpg' }],
+    customerPhotosRef: { current: [{ url: '/original.jpg' }] },
+    variantLabelUploadsRef: { current: {} },
+    photoUploadPromiseRef: { current: {} },
     selectedVariantUploadOptions: [], variantLabelUploads: {}, previewEnabled: true,
     getDefaultPreviewAdjustments: () => ({ zoom: 1 }),
     setPreviewAdjustments() {},
