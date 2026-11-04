@@ -1,7 +1,11 @@
 import OpsNotification from '@/models/OpsNotification';
 import Admin from '@/models/Admin';
 import Role from '@/models/Role';
-import { computeBalanceStatus } from '@/lib/opsConstants';
+import {
+  computeBalanceStatus,
+  getLatestDesignVersionsBySheet,
+  syncDesignApprovalFromSheets,
+} from '@/lib/opsConstants';
 
 export function appendTimeline(order, {
   type,
@@ -166,6 +170,15 @@ export function sanitizePublicDesignOrder(order) {
   if (!order) return null;
   const versions = Array.isArray(order.designVersions) ? order.designVersions : [];
   const current = versions.find((v) => Number(v.version) === Number(order.currentDesignVersion)) || versions[versions.length - 1];
+  const sheets = getLatestDesignVersionsBySheet(order).map((sheet) => ({
+    sheetNumber: sheet.sheetNumber,
+    sheetLabel: sheet.sheetLabel,
+    version: sheet.versionNumber,
+    url: sheet.url,
+    linkedLabels: sheet.linkedLabels,
+    approval: (Array.isArray(order.designSheetApprovals) ? order.designSheetApprovals : [])
+      .find((row) => Number(row?.sheetNumber) === Number(sheet.sheetNumber)) || null,
+  }));
   return {
     orderNumber: order.orderNumber,
     previewRequired: order.previewRequired !== false,
@@ -176,10 +189,54 @@ export function sanitizePublicDesignOrder(order) {
     design: current
       ? {
         version: current.version,
+        sheetNumber: Math.max(1, Number(current.sheetNumber) || 1),
+        sheetLabel: current.sheetLabel || '',
         url: current.url,
         uploadedAt: current.uploadedAt,
         notes: current.notes || '',
       }
       : null,
+    sheets,
   };
+}
+
+/** Invalidate approval for one sheet after a new upload; sync order-level status. */
+export function invalidateSheetApproval(order, sheetNumber, { awaiting = true } = {}) {
+  const n = Math.max(1, Number(sheetNumber) || 1);
+  order.designSheetApprovals = Array.isArray(order.designSheetApprovals) ? order.designSheetApprovals : [];
+  const idx = order.designSheetApprovals.findIndex((row) => Number(row?.sheetNumber) === n);
+  const next = {
+    sheetNumber: n,
+    status: awaiting ? 'awaiting_approval' : 'not_uploaded',
+    approvedVersion: 0,
+    approvedAt: undefined,
+    source: 'system',
+  };
+  if (idx >= 0) order.designSheetApprovals[idx] = { ...order.designSheetApprovals[idx], ...next };
+  else order.designSheetApprovals.push(next);
+  syncDesignApprovalFromSheets(order);
+  return order;
+}
+
+/** Mark every current sheet as approved (customer or admin). */
+export function approveAllCurrentSheets(order, { source = 'customer', evidence = '' } = {}) {
+  const sheets = getLatestDesignVersionsBySheet(order);
+  order.designSheetApprovals = Array.isArray(order.designSheetApprovals) ? order.designSheetApprovals : [];
+  sheets.forEach((sheet) => {
+    const idx = order.designSheetApprovals.findIndex((row) => Number(row?.sheetNumber) === Number(sheet.sheetNumber));
+    const row = {
+      sheetNumber: sheet.sheetNumber,
+      status: 'approved',
+      approvedVersion: sheet.versionNumber,
+      approvedAt: new Date(),
+      source,
+    };
+    if (idx >= 0) order.designSheetApprovals[idx] = { ...order.designSheetApprovals[idx], ...row };
+    else order.designSheetApprovals.push(row);
+  });
+  syncDesignApprovalFromSheets(order);
+  if (evidence) {
+    // evidence recorded by caller in designApprovalHistory
+  }
+  return order;
 }

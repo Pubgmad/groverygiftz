@@ -8,6 +8,7 @@ import { requireAdminPermission, logAdminAudit } from '@/lib/adminAccess';
 import { assertCanAccessOrder } from '@/lib/opsStaffAccess';
 import {
   OPS_STATUSES,
+  SALES_COMMS_KEYS,
   canPrintDesign,
   canTransitionOpsStatus,
   isPaymentGatedOpsStatus,
@@ -89,8 +90,10 @@ export async function PATCH(req, { params }) {
       }
       if (printAssignee) {
         order.printingAssignedTo = printAssignee._id;
+        order.printingAssignedToName = printAssignee.name || printAssignee.email || '';
       } else if (access.adminId) {
         order.printingAssignedTo = access.adminId;
+        order.printingAssignedToName = access.name || access.email || '';
       }
       if (body.opsStatus === 'printing_in_progress' && !order.printingStartedAt) {
         order.printingStartedAt = new Date();
@@ -112,16 +115,49 @@ export async function PATCH(req, { params }) {
     }
   }
 
-  if (body.printingAssignedTo !== undefined && body.opsStatus === undefined) {
+  if (body.printingAssignedTo !== undefined) {
     if (!body.printingAssignedTo) {
       order.printingAssignedTo = undefined;
+      order.printingAssignedToName = '';
     } else if (mongoose.Types.ObjectId.isValid(String(body.printingAssignedTo))) {
-      const admin = await Admin.findById(body.printingAssignedTo).select('_id isActive').lean();
+      const admin = await Admin.findById(body.printingAssignedTo).select('_id name email isActive').lean();
       if (!admin || admin.isActive === false) {
         return NextResponse.json({ error: 'Print assignee not found' }, { status: 400 });
       }
       order.printingAssignedTo = admin._id;
+      order.printingAssignedToName = admin.name || admin.email || '';
+      appendTimeline(order, {
+        type: 'printing_assigned',
+        employee: access.adminId,
+        employeeName: access.name || access.email || '',
+        notes: `Printing assigned to ${order.printingAssignedToName}`,
+      });
     }
+  }
+
+  if (body.salesCommsChecklist && typeof body.salesCommsChecklist === 'object') {
+    if (!order.salesCommsChecklist) order.salesCommsChecklist = {};
+    for (const key of SALES_COMMS_KEYS) {
+      if (body.salesCommsChecklist[key] === undefined) continue;
+      const incoming = body.salesCommsChecklist[key];
+      const done = typeof incoming === 'boolean' ? incoming : Boolean(incoming?.done);
+      const prev = order.salesCommsChecklist[key] || {};
+      order.salesCommsChecklist[key] = {
+        done,
+        at: done ? (prev.at || new Date()) : undefined,
+        by: done ? (prev.by || access.adminId) : undefined,
+        byName: done ? (prev.byName || access.name || access.email || '') : '',
+        note: typeof incoming === 'object' && incoming?.note != null
+          ? String(incoming.note)
+          : (prev.note || ''),
+      };
+      if (done && !prev.done) {
+        order.salesCommsChecklist[key].at = new Date();
+        order.salesCommsChecklist[key].by = access.adminId;
+        order.salesCommsChecklist[key].byName = access.name || access.email || '';
+      }
+    }
+    order.markModified('salesCommsChecklist');
   }
 
   if (body.assignedTo !== undefined) {
@@ -198,6 +234,8 @@ export async function PATCH(req, { params }) {
       assignedTo: order.assignedTo,
       assignedToName: order.assignedToName,
       printingAssignedTo: order.printingAssignedTo,
+      printingAssignedToName: order.printingAssignedToName,
+      salesCommsChecklist: order.salesCommsChecklist,
       canPrintDesign: canPrintDesign(order),
     },
   });

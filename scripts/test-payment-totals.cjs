@@ -7,9 +7,9 @@ const constantsSrc = fs.readFileSync(path.join(__dirname, '../src/lib/opsConstan
   .replace(/export const /g, 'const ')
   .replace(/export function /g, 'function ');
 
-// Strip ESM imports; inject computeBalanceStatus from constants sandbox below.
+// Strip ESM imports (including multi-line); inject helpers from constants sandbox below.
 const helpersSrc = fs.readFileSync(path.join(__dirname, '../src/lib/opsOrderHelpers.js'), 'utf8')
-  .replace(/^import .+$/gm, '')
+  .replace(/^import[\s\S]*?from\s+['"][^'"]+['"];?\s*$/gm, '')
   .replace(/export function /g, 'function ')
   .replace(/export async function /g, 'async function ');
 
@@ -25,6 +25,7 @@ const ctx = {
   Array,
   Object,
   Set,
+  Map,
   OpsNotification: { insertMany: async () => {} },
   Admin: { find: () => ({ select: () => ({ lean: async () => [] }) }) },
   Role: { find: () => ({ select: () => ({ lean: async () => [] }) }) },

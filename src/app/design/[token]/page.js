@@ -54,7 +54,24 @@ export default function DesignPreviewPage() {
           <div className="mt-4 space-y-4">
             <p className="text-sm text-gray-600">Order <span className="font-bold text-gray-900">{preview.orderNumber}</span> · Version {preview.currentDesignVersion}</p>
             <p className="text-sm">Status: <span className="font-semibold">{preview.designApprovalStatus}</span></p>
-            {preview.design?.url ? (
+            {Array.isArray(preview.sheets) && preview.sheets.length > 0 ? (
+              <div className="space-y-3">
+                {preview.sheets.map((sheet) => (
+                  <div key={sheet.sheetNumber} className="overflow-hidden rounded-xl border">
+                    <p className="border-b bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-700">
+                      {sheet.sheetLabel || `Sheet ${sheet.sheetNumber}`} · v{sheet.version}
+                      {sheet.linkedLabels?.length ? ` · ${sheet.linkedLabels.join(', ')}` : ''}
+                    </p>
+                    {sheet.url ? (
+                      <a href={sheet.url} target="_blank" rel="noopener noreferrer" className="block">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={sheet.url} alt={sheet.sheetLabel || `Sheet ${sheet.sheetNumber}`} className="max-h-[70vh] w-full object-contain bg-white" />
+                      </a>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : preview.design?.url ? (
               <a href={preview.design.url} target="_blank" rel="noopener noreferrer" className="block overflow-hidden rounded-xl border">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={preview.design.url} alt="Design preview" className="max-h-[70vh] w-full object-contain bg-gray-50" />

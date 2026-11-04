@@ -224,7 +224,23 @@ function replaceCustomerPhoto(item, { slotKey, fieldPath, saved, file }) {
   return null;
 }
 
-/** Replace actual customer photo asset on an order item. Blocked after printing starts. */
+function appendCustomerPhoto(item, { saved, file, slotLabel = 'Customer Photos' }) {
+  if (!item.customFields || typeof item.customFields !== 'object') {
+    item.customFields = {};
+  }
+  const label = String(slotLabel || 'Customer Photos').trim() || 'Customer Photos';
+  const existing = item.customFields[label];
+  const arr = Array.isArray(existing) ? [...existing] : (existing && isImageLike(existing) ? [existing] : []);
+  arr.push(buildReplacementAsset(null, saved, file));
+  item.customFields[label] = arr;
+  return {
+    previousPath: '',
+    target: `customFields.${label}.${arr.length - 1}`,
+    photoIndex: arr.length - 1,
+  };
+}
+
+/** Add or replace customer photo on an order item/size. Blocked after printing starts. */
 export async function POST(req, { params }) {
   const { error, access } = await requireAdminPermission('orders', 'write');
   if (error) return error;
@@ -247,6 +263,8 @@ export async function POST(req, { params }) {
   const slotKey = String(form.get('slotKey') || 'customer-photo').trim();
   const fieldPath = String(form.get('fieldPath') || '').trim();
   const reason = String(form.get('reason') || '').trim();
+  const mode = String(form.get('mode') || 'auto').toLowerCase();
+  const slotLabel = String(form.get('slotLabel') || 'Customer Photos').trim() || 'Customer Photos';
   if (!file || typeof file === 'string') {
     return NextResponse.json({ error: 'Photo file is required' }, { status: 400 });
   }
@@ -256,18 +274,31 @@ export async function POST(req, { params }) {
 
   const saved = await saveUploadFile(file, 'customizations');
   const item = order.items[itemIndex];
-  const replaced = replaceCustomerPhoto(item, { slotKey, fieldPath, saved, file });
-  if (!replaced) {
+  let result = null;
+  let actionType = 'photo_replaced';
+
+  if (mode === 'append' || mode === 'add') {
+    result = appendCustomerPhoto(item, { saved, file, slotLabel });
+    actionType = 'photo_added';
+  } else {
+    result = replaceCustomerPhoto(item, { slotKey, fieldPath, saved, file });
+    if (!result && (mode === 'auto' || mode === 'replace_or_append')) {
+      result = appendCustomerPhoto(item, { saved, file, slotLabel });
+      actionType = 'photo_added';
+    }
+  }
+
+  if (!result) {
     return NextResponse.json({
-      error: 'No replaceable customer photo found for this item/slot. Provide fieldPath or a matching slotKey.',
+      error: 'No replaceable customer photo found for this item/slot. Use mode=append to add a new photo.',
     }, { status: 400 });
   }
 
   order.markModified(`items.${itemIndex}`);
   order.photoHistory = order.photoHistory || [];
   order.photoHistory.push({
-    slotKey: fieldPath || slotKey,
-    previousPath: replaced.previousPath || '',
+    slotKey: fieldPath || slotKey || `${slotLabel}:${itemIndex}`,
+    previousPath: result.previousPath || '',
     newPath: saved.relativePath,
     reason,
     replacedBy: access.adminId,
@@ -275,10 +306,10 @@ export async function POST(req, { params }) {
   });
 
   appendTimeline(order, {
-    type: 'photo_replaced',
+    type: actionType,
     employee: access.adminId,
     employeeName: access.name || access.email || '',
-    notes: reason || `Photo replaced for item ${itemIndex + 1} (${replaced.target})`,
+    notes: reason || `Photo ${actionType === 'photo_added' ? 'added' : 'replaced'} for item ${itemIndex + 1} (${result.target})`,
     fileRef: saved.relativePath,
   });
   await order.save();
@@ -286,17 +317,17 @@ export async function POST(req, { params }) {
   await logAdminAudit({
     access,
     req,
-    action: 'orders.photo_replace',
+    action: actionType === 'photo_added' ? 'orders.photo_add' : 'orders.photo_replace',
     targetType: 'Order',
     targetId: String(order._id),
-    details: { slotKey, fieldPath, itemIndex, target: replaced.target, orderNumber: order.orderNumber },
+    details: { slotKey, fieldPath, itemIndex, target: result.target, mode, orderNumber: order.orderNumber },
   });
 
   if (order.assignedTo) {
     await notifyAdmins([order.assignedTo], {
-      type: 'photo_replaced',
+      type: actionType,
       title: 'Customer photo updated',
-      body: `${order.orderNumber}: ${slotKey || replaced.target}`,
+      body: `${order.orderNumber}: item ${itemIndex + 1}`,
       order: order._id,
       orderNumber: order.orderNumber,
     }).catch(() => {});
@@ -305,7 +336,9 @@ export async function POST(req, { params }) {
   return NextResponse.json({
     ok: true,
     url: saved.url,
-    previousPath: replaced.previousPath,
-    target: replaced.target,
+    previousPath: result.previousPath,
+    target: result.target,
+    mode: actionType === 'photo_added' ? 'append' : 'replace',
+    itemIndex,
   });
 }

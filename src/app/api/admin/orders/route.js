@@ -173,6 +173,10 @@ export async function POST(req) {
     advancePaid: 0,
     balancePaid: 0,
     paymentRecords: [],
+    customerKind: ['new', 'existing_whatsapp'].includes(String(body.customerKind || ''))
+      ? String(body.customerKind)
+      : '',
+    historicalWhatsAppOrderRef: String(body.historicalWhatsAppOrderRef || body.historicalOrderId || '').trim(),
   });
 
   if (advancePaid > 0) {

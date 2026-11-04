@@ -10,8 +10,9 @@ import DownloadCsvButton from '@/components/admin/DownloadCsvButton';
 import ShippingLabelModal from '@/components/admin/ShippingLabelModal';
 import CreateWhatsAppOrderModal from '@/components/admin/CreateWhatsAppOrderModal';
 import OrderOpsPanel from '@/components/admin/OrderOpsPanel';
+import OrderDesignSheetsPanel from '@/components/admin/OrderDesignSheetsPanel';
 import { MAX_SHIPPING_LABEL_ORDERS } from '@/lib/shippingLabelLayout';
-import { ORDER_SOURCE_LABELS, OPS_STATUS_LABELS, DESIGN_APPROVAL_LABELS, isDelayedOrder } from '@/lib/opsConstants';
+import { ORDER_SOURCE_LABELS, OPS_STATUS_LABELS, isDelayedOrder } from '@/lib/opsConstants';
 import { FiPlus, FiRefreshCw } from 'react-icons/fi';
 
 const statusOptions = [
@@ -239,7 +240,6 @@ export default function AdminOrdersPage() {
   const [labelModalOpen, setLabelModalOpen] = useState(false);
   const [createWaOpen, setCreateWaOpen] = useState(false);
   const [sourceFilter, setSourceFilter] = useState('');
-  const [designBusy, setDesignBusy] = useState(false);
   const [selectingMatching, setSelectingMatching] = useState(false);
   const pageSize = 10;
   const dateError = dateFrom && dateTo && dateFrom > dateTo ? 'From date cannot be after To date' : '';
@@ -691,6 +691,16 @@ export default function AdminOrdersPage() {
                   </button>
                 ) : null}
 
+                {selected.historicalWhatsAppOrderRef || selected.customerKind ? (
+                  <div className="rounded-lg border bg-sky-50/60 px-3 py-2 text-xs text-gray-700">
+                    {selected.customerKind === 'existing_whatsapp' ? <p><strong>Existing WhatsApp customer</strong></p> : null}
+                    {selected.customerKind === 'new' ? <p><strong>New customer</strong></p> : null}
+                    {selected.historicalWhatsAppOrderRef ? (
+                      <p>Historical WA order ref: <span className="font-mono font-semibold">{selected.historicalWhatsAppOrderRef}</span> (reference only)</p>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 <OrderOpsPanel
                   order={selected}
                   writable={writable}
@@ -699,69 +709,13 @@ export default function AdminOrdersPage() {
                   }}
                 />
 
-                <div className="min-w-0 rounded-lg border border-primary-100 bg-primary-50/40 p-3 space-y-2">
-                  <h3 className="font-semibold text-primary-900">Design preview & approval</h3>
-                  <p className="text-xs text-gray-600">
-                    Source: {ORDER_SOURCE_LABELS[selected.orderSource] || 'Website'} · Preview required: {selected.previewRequired === false ? 'No' : 'Yes'} ·{' '}
-                    {DESIGN_APPROVAL_LABELS[selected.designApprovalStatus] || 'Not Uploaded'}
-                    {selected.currentDesignVersion ? ` · v${selected.currentDesignVersion}` : ''}
-                  </p>
-                  {selected.designChangeRequest ? <p className="text-xs text-amber-800 whitespace-pre-wrap">Customer feedback: {selected.designChangeRequest}</p> : null}
-                  {writable ? (
-                    <div className="flex flex-col gap-2">
-                      <label className="text-xs font-semibold text-gray-700">
-                        Upload / replace design
-                        <input
-                          type="file"
-                          accept="image/*,application/pdf"
-                          disabled={designBusy}
-                          className="mt-1 block w-full text-sm"
-                          onChange={async (e) => {
-                            const file = e.target.files?.[0];
-                            e.target.value = '';
-                            if (!file) return;
-                            setDesignBusy(true);
-                            try {
-                              const body = new FormData();
-                              body.append('file', file);
-                              const res = await fetch(`/api/admin/orders/${selected._id}/design`, { method: 'POST', body });
-                              const data = await res.json();
-                              if (!res.ok) throw new Error(data.error || 'Upload failed');
-                              toast.success(`Design v${data.version} uploaded`);
-                              await fetchOrders();
-                            } catch (err) {
-                              toast.error(err.message || 'Upload failed');
-                            } finally {
-                              setDesignBusy(false);
-                            }
-                          }}
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        disabled={designBusy || !selected.currentDesignVersion}
-                        className="inline-flex min-h-[44px] items-center justify-center rounded-xl border border-green-200 bg-green-50 px-4 py-2 text-sm font-semibold text-green-900 disabled:opacity-50"
-                        onClick={async () => {
-                          setDesignBusy(true);
-                          try {
-                            const res = await fetch(`/api/admin/orders/${selected._id}/design/share`, { method: 'POST' });
-                            const data = await res.json();
-                            if (!res.ok) throw new Error(data.error || 'Share failed');
-                            if (data.whatsappShareUrl) window.open(data.whatsappShareUrl, '_blank', 'noopener,noreferrer');
-                            toast.success('WhatsApp opened with preview link (send manually)');
-                            await fetchOrders();
-                          } catch (err) {
-                            toast.error(err.message || 'Share failed');
-                          } finally {
-                            setDesignBusy(false);
-                          }
-                        }}
-                      >
-                        Share Preview on WhatsApp
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
+                <OrderDesignSheetsPanel
+                  order={selected}
+                  writable={writable}
+                  onUpdated={async () => {
+                    await fetchOrders();
+                  }}
+                />
 
                 <div className="min-w-0 border rounded-lg p-3 bg-gray-50 space-y-2 break-words">
                   <p className="text-xs text-gray-600 leading-relaxed"><strong>ST Couriers tracking ID:</strong> after booking the parcel with ST Couriers, paste the tracking ID here. Customers can copy it and open the ST website.</p>

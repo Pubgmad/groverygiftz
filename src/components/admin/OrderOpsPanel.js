@@ -1,20 +1,59 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { formatPrice } from '@/lib/utils';
 import {
   OPS_STATUS_LABELS,
   DESIGN_APPROVAL_LABELS,
+  SALES_COMMS_KEYS,
+  SALES_COMMS_LABELS,
   canPrintDesign,
   canTransitionOpsStatus,
   allowedOpsStatusesFor,
+  requiresPaidRevisionGate,
+  PRINTING_STARTED_OPS,
 } from '@/lib/opsConstants';
+
+function assetListFromItem(item) {
+  const out = [];
+  const fields = item?.customFields;
+  if (fields && typeof fields === 'object') {
+    Object.entries(fields).forEach(([label, value]) => {
+      if (label === 'Variant Label Uploads' && value && typeof value === 'object') {
+        Object.entries(value).forEach(([vk, vv]) => {
+          const url = typeof vv === 'string' ? vv : (vv?.url || vv?.displayUrl || '');
+          if (url) out.push({ label: `${label}: ${vk}`, url, fieldPath: `customFields.Variant Label Uploads.${vk}` });
+        });
+      } else if (Array.isArray(value)) {
+        value.forEach((entry, idx) => {
+          const url = typeof entry === 'string' ? entry : (entry?.url || entry?.displayUrl || '');
+          if (url) out.push({ label: `${label} #${idx + 1}`, url, fieldPath: `customFields.${label}.${idx}` });
+        });
+      } else {
+        const url = typeof value === 'string' ? value : (value?.url || value?.displayUrl || '');
+        if (url && (/\.(png|jpe?g|webp|gif)/i.test(url) || url.includes('/media/') || url.includes('/api/customization'))) {
+          out.push({ label, url, fieldPath: `customFields.${label}` });
+        }
+      }
+    });
+  }
+  (item?.collageUploads || []).forEach((group, g) => {
+    (group?.images || []).forEach((img, idx) => {
+      const url = typeof img === 'string' ? img : (img?.url || img?.displayUrl || '');
+      if (url) out.push({ label: `${group.label || `Collage ${g + 1}`} #${idx + 1}`, url, fieldPath: `collageUploads.${g}.images.${idx}` });
+    });
+  });
+  return out;
+}
 
 export default function OrderOpsPanel({ order, writable, onUpdated }) {
   const [opsStatus, setOpsStatus] = useState(order?.opsStatus || 'new_order');
   const [staff, setStaff] = useState([]);
   const [assignedTo, setAssignedTo] = useState(order?.assignedTo ? String(order.assignedTo) : '');
+  const [printingAssignedTo, setPrintingAssignedTo] = useState(
+    order?.printingAssignedTo ? String(order.printingAssignedTo) : '',
+  );
   const [expectedDispatchDate, setExpectedDispatchDate] = useState(
     order?.expectedDispatchDate ? String(order.expectedDispatchDate).slice(0, 10) : '',
   );
@@ -30,14 +69,28 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
   const [revisionCharge, setRevisionCharge] = useState('');
   const [courierCompany, setCourierCompany] = useState(order?.courierCompany || '');
   const [trackingUrl, setTrackingUrl] = useState(order?.trackingUrl || '');
+  const [photoItemIndex, setPhotoItemIndex] = useState(0);
+  const [photoSlot, setPhotoSlot] = useState('');
+  const [comms, setComms] = useState(order?.salesCommsChecklist || {});
 
   useEffect(() => {
     setOpsStatus(order?.opsStatus || 'new_order');
     setAssignedTo(order?.assignedTo ? String(order.assignedTo) : '');
+    setPrintingAssignedTo(order?.printingAssignedTo ? String(order.printingAssignedTo) : '');
     setExpectedDispatchDate(order?.expectedDispatchDate ? String(order.expectedDispatchDate).slice(0, 10) : '');
     setCourierCompany(order?.courierCompany || '');
     setTrackingUrl(order?.trackingUrl || '');
-  }, [order?._id, order?.opsStatus, order?.assignedTo, order?.expectedDispatchDate, order?.courierCompany, order?.trackingUrl]);
+    setComms(order?.salesCommsChecklist || {});
+  }, [
+    order?._id,
+    order?.opsStatus,
+    order?.assignedTo,
+    order?.printingAssignedTo,
+    order?.expectedDispatchDate,
+    order?.courierCompany,
+    order?.trackingUrl,
+    order?.salesCommsChecklist,
+  ]);
 
   useEffect(() => {
     fetch('/api/admin/staff', { cache: 'no-store' })
@@ -103,8 +156,16 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
   const printOk = canPrintDesign(order);
   const freeRevisionUsed = Boolean(order.freeRevisionUsed);
   const revisionCount = Number(order.designRevisionCount || 0);
+  const paidRevisionBlocked = requiresPaidRevisionGate(order);
+  const printingLocked = PRINTING_STARTED_OPS.has(order?.opsStatus) || Boolean(order?.printingStartedAt);
   const currentOps = order?.opsStatus || 'new_order';
   const allowedStatuses = allowedOpsStatusesFor(currentOps);
+  const items = Array.isArray(order?.items) ? order.items : [];
+  const selectedItemPhotos = useMemo(
+    () => assetListFromItem(items[photoItemIndex] || {}),
+    [items, photoItemIndex],
+  );
+
   const quickActions = [
     ['editing_in_progress', 'Start editing'],
     ['preview_waiting', 'Send to preview'],
@@ -124,8 +185,26 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
     ['on_hold', 'On hold'],
   ].filter(([status]) => canTransitionOpsStatus(currentOps, status) && status !== currentOps);
 
+  const toggleComm = async (key, done) => {
+    const next = {
+      ...(comms || {}),
+      [key]: { done, note: comms?.[key]?.note || '' },
+    };
+    setComms(next);
+    await patchOps({ salesCommsChecklist: { [key]: { done } } });
+  };
+
   return (
     <div className="space-y-3">
+      {paidRevisionBlocked ? (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+          <p className="font-bold">Paid revision required</p>
+          <p className="text-xs mt-1">
+            Free revision already used ({revisionCount} request(s)). Record and verify a revision charge before uploading a new design or starting print/production.
+          </p>
+        </div>
+      ) : null}
+
       <div className="rounded-xl border bg-gray-50 p-3 space-y-2">
         <h3 className="font-semibold text-gray-900">Operations workflow</h3>
         <label className="block text-xs font-semibold text-gray-600">
@@ -143,7 +222,7 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
         </label>
         <p className="text-[11px] text-gray-500">Only valid next statuses are listed (server also enforces transitions).</p>
         <label className="block text-xs font-semibold text-gray-600">
-          Assign employee
+          Assign employee (general)
           <select
             disabled={!writable || busy}
             value={assignedTo}
@@ -156,6 +235,23 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
             ))}
           </select>
         </label>
+        <label className="block text-xs font-semibold text-gray-600">
+          Printing assigned to
+          <select
+            disabled={!writable || busy}
+            value={printingAssignedTo}
+            onChange={(e) => setPrintingAssignedTo(e.target.value)}
+            className="mt-1 w-full rounded-lg border px-3 py-2 text-sm disabled:bg-gray-100"
+          >
+            <option value="">Unassigned</option>
+            {staff.map((a) => (
+              <option key={`print-${a._id || a.id}`} value={a._id || a.id}>{a.name || a.email}</option>
+            ))}
+          </select>
+        </label>
+        {order?.printingAssignedToName ? (
+          <p className="text-[11px] text-gray-500">Current printer: {order.printingAssignedToName}</p>
+        ) : null}
         <label className="block text-xs font-semibold text-gray-600">
           Expected dispatch
           <input
@@ -173,6 +269,7 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
             onClick={() => patchOps({
               opsStatus,
               assignedTo: assignedTo || null,
+              printingAssignedTo: printingAssignedTo || null,
               expectedDispatchDate: expectedDispatchDate || null,
               courierCompany,
               trackingUrl,
@@ -194,6 +291,7 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
                   patchOps({
                     opsStatus: status,
                     assignedTo: assignedTo || null,
+                    printingAssignedTo: printingAssignedTo || null,
                     expectedDispatchDate: expectedDispatchDate || null,
                     courierCompany,
                     trackingUrl,
@@ -217,6 +315,38 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
       </div>
 
       <div className="rounded-xl border bg-white p-3 space-y-2">
+        <h3 className="font-semibold text-gray-900">Sales communication checklist</h3>
+        <p className="text-[11px] text-gray-500">
+          Customer chat stays in WhatsApp. Tick items after you actually send/confirm — opening WhatsApp alone does not mark delivery.
+        </p>
+        <ul className="space-y-2">
+          {SALES_COMMS_KEYS.map((key) => {
+            const row = comms?.[key] || {};
+            return (
+              <li key={key} className="flex items-start gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  disabled={!writable || busy}
+                  checked={Boolean(row.done)}
+                  onChange={(e) => toggleComm(key, e.target.checked)}
+                  className="mt-0.5"
+                />
+                <div>
+                  <p className="font-semibold text-gray-800">{SALES_COMMS_LABELS[key] || key}</p>
+                  {row.done && row.at ? (
+                    <p className="text-[10px] text-gray-500">
+                      {new Date(row.at).toLocaleString('en-IN')}
+                      {row.byName ? ` · ${row.byName}` : ''}
+                    </p>
+                  ) : null}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+
+      <div className="rounded-xl border bg-white p-3 space-y-2">
         <h3 className="font-semibold text-gray-900">Payments & balance</h3>
         <div className="grid grid-cols-2 gap-2 text-xs">
           <p>Total: <strong>{formatPrice(order.total || 0)}</strong></p>
@@ -224,6 +354,11 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
           <p>Balance paid: <strong>{formatPrice(order.balancePaid || 0)}</strong></p>
           <p>Remaining: <strong>{formatPrice(order.remainingBalance || 0)}</strong></p>
           <p className="col-span-2">Status: <strong>{order.balanceStatus || order.paymentStatus || '—'}</strong></p>
+          {Number(order.revisionCharges) > 0 ? (
+            <p className="col-span-2">Revision charges: <strong>{formatPrice(order.revisionCharges)}</strong>
+              {order.revisionPaymentVerified ? ' · verified' : ' · awaiting verification'}
+            </p>
+          ) : null}
         </div>
         {writable ? (
           <div className="space-y-2 border-t pt-2">
@@ -280,7 +415,7 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
       <div className="rounded-xl border bg-white p-3 space-y-2">
         <h3 className="font-semibold text-gray-900">Revisions</h3>
         <p className="text-xs text-gray-600">
-          Policy: first revision free. Used free: {freeRevisionUsed ? 'Yes' : 'No'} · Requests: {revisionCount}
+          Policy: one free revision per order. Free used: <strong>{freeRevisionUsed ? 'Yes' : 'No'}</strong> · Requests: <strong>{revisionCount}</strong>
           {Number(order.revisionCharges) > 0 ? ` · Charges: ${formatPrice(order.revisionCharges)}` : ''}
           {order.revisionPaymentVerified ? ' · Charge verified' : ''}
         </p>
@@ -301,7 +436,7 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
               onClick={() => recordPayment({ amount: revisionCharge, kind: 'revision', verified: true, notes: 'Chargeable revision' })}
               className="rounded-xl border px-3 py-2 text-xs font-semibold"
             >
-              Record charge
+              Record & verify charge
             </button>
           </div>
         ) : null}
@@ -382,6 +517,109 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
         ))}
       </div>
 
+      <div className="rounded-xl border bg-white p-3 space-y-2">
+        <h3 className="font-semibold text-gray-900">Customer photos by product / size</h3>
+        <p className="text-[11px] text-gray-500">
+          {printingLocked
+            ? 'Printing has started — photo changes are blocked.'
+            : 'Add or replace photos per line item before printing starts. Originals are kept in history.'}
+        </p>
+        {items.map((item, idx) => {
+          const photos = assetListFromItem(item);
+          return (
+            <div key={idx} className="rounded-lg border bg-gray-50 p-2 text-xs">
+              <p className="font-semibold text-gray-900">
+                Item {idx + 1}: {[item.title, item.variant].filter(Boolean).join(' · ') || 'Product'}
+              </p>
+              {photos.length ? (
+                <ul className="mt-1 space-y-1">
+                  {photos.map((photo) => (
+                    <li key={photo.fieldPath} className="flex flex-wrap items-center gap-2">
+                      <a href={photo.url} target="_blank" rel="noopener noreferrer" className="text-primary-700 underline">{photo.label}</a>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-1 text-gray-500">No customer photos yet.</p>
+              )}
+            </div>
+          );
+        })}
+        {writable && !printingLocked ? (
+          <div className="space-y-2 border-t pt-2">
+            <label className="block text-xs font-semibold">
+              Product / size
+              <select
+                value={photoItemIndex}
+                onChange={(e) => {
+                  setPhotoItemIndex(Number(e.target.value) || 0);
+                  setPhotoSlot('');
+                }}
+                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+              >
+                {items.map((item, idx) => (
+                  <option key={idx} value={idx}>
+                    Item {idx + 1}: {[item.title, item.variant].filter(Boolean).join(' · ') || 'Product'}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {selectedItemPhotos.length ? (
+              <label className="block text-xs font-semibold">
+                Replace existing slot (optional)
+                <select
+                  value={photoSlot}
+                  onChange={(e) => setPhotoSlot(e.target.value)}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                >
+                  <option value="">Add new photo</option>
+                  {selectedItemPhotos.map((photo) => (
+                    <option key={photo.fieldPath} value={photo.fieldPath}>{photo.label}</option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            <input
+              type="file"
+              accept="image/*"
+              disabled={busy}
+              className="block w-full text-xs"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (!file) return;
+                const reason = window.prompt('Reason / note') || '';
+                setBusy(true);
+                try {
+                  const body = new FormData();
+                  body.append('file', file);
+                  body.append('itemIndex', String(photoItemIndex));
+                  body.append('reason', reason);
+                  if (photoSlot) {
+                    body.append('mode', 'replace');
+                    body.append('fieldPath', photoSlot);
+                    body.append('slotKey', photoSlot);
+                  } else {
+                    body.append('mode', 'append');
+                    body.append('slotLabel', 'Customer Photos');
+                    body.append('slotKey', `item-${photoItemIndex}`);
+                  }
+                  const res = await fetch(`/api/admin/orders/${order._id}/photos`, { method: 'POST', body });
+                  const data = await res.json();
+                  if (!res.ok) throw new Error(data.error || 'Photo update failed');
+                  toast.success(data.mode === 'append' ? 'Photo added' : 'Photo replaced');
+                  await refresh();
+                } catch (err) {
+                  toast.error(err.message || 'Photo update failed');
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            />
+          </div>
+        ) : null}
+      </div>
+
       {Array.isArray(order.photoHistory) && order.photoHistory.length > 0 ? (
         <div className="rounded-xl border bg-white p-3 space-y-2">
           <h3 className="font-semibold text-gray-900">Photo version history</h3>
@@ -400,42 +638,6 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
           </ul>
         </div>
       ) : null}
-
-      <div className="rounded-xl border bg-white p-3 space-y-2">
-        <h3 className="font-semibold text-gray-900">Replace customer photo</h3>
-        <p className="text-[11px] text-gray-500">Blocked after printing starts. Originals are preserved in history.</p>
-        {writable ? (
-          <input
-            type="file"
-            accept="image/*"
-            disabled={busy}
-            className="block w-full text-xs"
-            onChange={async (e) => {
-              const file = e.target.files?.[0];
-              e.target.value = '';
-              if (!file) return;
-              const reason = window.prompt('Replacement reason') || '';
-              setBusy(true);
-              try {
-                const body = new FormData();
-                body.append('file', file);
-                body.append('itemIndex', '0');
-                body.append('slotKey', 'item-0');
-                body.append('reason', reason);
-                const res = await fetch(`/api/admin/orders/${order._id}/photos`, { method: 'POST', body });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.error || 'Replace failed');
-                toast.success('Photo replaced');
-                await refresh();
-              } catch (err) {
-                toast.error(err.message || 'Replace failed');
-              } finally {
-                setBusy(false);
-              }
-            }}
-          />
-        ) : null}
-      </div>
 
       {Array.isArray(order.timeline) && order.timeline.length > 0 ? (
         <div className="rounded-xl border bg-gray-50 p-3">

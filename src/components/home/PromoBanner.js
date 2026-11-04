@@ -3,8 +3,13 @@ import Settings from '@/models/Settings';
 import PromoCountdown from './PromoCountdown';
 
 export default async function PromoBanner() {
-  await dbConnect();
-  const settings = await Settings.findOne().lean();
+  let settings = null;
+  try {
+    await dbConnect();
+    settings = await Settings.findOne().lean();
+  } catch {
+    return null;
+  }
 
   if (settings?.promoEnabled === false) return null;
   const buttonLink = !settings?.promoButtonLink || settings.promoButtonLink === '/shop'

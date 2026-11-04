@@ -3,7 +3,14 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import Order from '@/models/Order';
 import { verifyDesignPreviewToken } from '@/lib/designPreviewToken';
-import { sanitizePublicDesignOrder, appendTimeline, notifyAdmins } from '@/lib/opsOrderHelpers';
+import {
+  sanitizePublicDesignOrder,
+  appendTimeline,
+  notifyAdmins,
+  approveAllCurrentSheets,
+  invalidateSheetApproval,
+} from '@/lib/opsOrderHelpers';
+import { getLatestDesignVersionsBySheet, syncDesignApprovalFromSheets } from '@/lib/opsConstants';
 
 export async function GET(_req, { params }) {
   const verified = verifyDesignPreviewToken(params.token);
@@ -48,16 +55,40 @@ export async function POST(req, { params }) {
   }
 
   const feedback = String(body.feedback || body.notes || '').trim();
+  const sheetNumberRaw = body.sheetNumber != null ? Number(body.sheetNumber) : null;
   order.designApprovalHistory = order.designApprovalHistory || [];
 
   if (action === 'approve') {
-    order.designApprovalStatus = 'approved';
-    order.designApprovedVersion = order.currentDesignVersion;
-    order.designApprovedAt = new Date();
-    order.designChangeRequest = '';
-    order.opsStatus = 'approved_printing_pending';
+    if (sheetNumberRaw != null && Number.isFinite(sheetNumberRaw)) {
+      const sheets = getLatestDesignVersionsBySheet(order);
+      const sheet = sheets.find((s) => Number(s.sheetNumber) === Number(sheetNumberRaw));
+      if (!sheet) {
+        return NextResponse.json({ error: 'Unknown sheet' }, { status: 400 });
+      }
+      order.designSheetApprovals = Array.isArray(order.designSheetApprovals) ? order.designSheetApprovals : [];
+      const idx = order.designSheetApprovals.findIndex((row) => Number(row?.sheetNumber) === Number(sheetNumberRaw));
+      const row = {
+        sheetNumber: Number(sheetNumberRaw),
+        status: 'approved',
+        approvedVersion: sheet.versionNumber,
+        approvedAt: new Date(),
+        source: 'customer',
+      };
+      if (idx >= 0) order.designSheetApprovals[idx] = { ...order.designSheetApprovals[idx], ...row };
+      else order.designSheetApprovals.push(row);
+      syncDesignApprovalFromSheets(order);
+      if (order.designApprovalStatus === 'approved') {
+        order.opsStatus = 'approved_printing_pending';
+        order.designChangeRequest = '';
+      }
+    } else {
+      approveAllCurrentSheets(order, { source: 'customer', evidence: 'secure_preview_token' });
+      order.designChangeRequest = '';
+      order.opsStatus = 'approved_printing_pending';
+    }
     order.designApprovalHistory.push({
       version: order.currentDesignVersion,
+      sheetNumber: sheetNumberRaw || undefined,
       status: 'approved',
       source: 'customer',
       notes: feedback,
@@ -71,8 +102,28 @@ export async function POST(req, { params }) {
     order.designRevisionCount = Math.max(0, Number(order.designRevisionCount) || 0) + 1;
     if (!order.freeRevisionUsed) order.freeRevisionUsed = true;
     order.opsStatus = 'revision_required';
+    order.revisionPaymentVerified = false;
+    if (sheetNumberRaw != null && Number.isFinite(sheetNumberRaw)) {
+      invalidateSheetApproval(order, sheetNumberRaw, { awaiting: false });
+      const idx = (order.designSheetApprovals || []).findIndex((row) => Number(row?.sheetNumber) === Number(sheetNumberRaw));
+      if (idx >= 0) {
+        order.designSheetApprovals[idx].status = 'changes_requested';
+        order.designSheetApprovals[idx].approvedVersion = 0;
+      }
+      syncDesignApprovalFromSheets(order);
+    } else {
+      const sheets = getLatestDesignVersionsBySheet(order);
+      sheets.forEach((sheet) => invalidateSheetApproval(order, sheet.sheetNumber, { awaiting: false }));
+      order.designSheetApprovals = (order.designSheetApprovals || []).map((row) => ({
+        ...row,
+        status: 'changes_requested',
+        approvedVersion: 0,
+      }));
+      order.designApprovalStatus = 'changes_requested';
+    }
     order.designApprovalHistory.push({
       version: order.currentDesignVersion,
+      sheetNumber: sheetNumberRaw || undefined,
       status: 'changes_requested',
       source: 'customer',
       notes: feedback,
@@ -85,6 +136,7 @@ export async function POST(req, { params }) {
     order.opsStatus = 'on_hold';
     order.designApprovalHistory.push({
       version: order.currentDesignVersion,
+      sheetNumber: sheetNumberRaw || undefined,
       status: 'rejected',
       source: 'customer',
       notes: feedback,
@@ -113,5 +165,6 @@ export async function POST(req, { params }) {
     ok: true,
     designApprovalStatus: order.designApprovalStatus,
     currentDesignVersion: order.currentDesignVersion,
+    sheets: getLatestDesignVersionsBySheet(order),
   });
 }

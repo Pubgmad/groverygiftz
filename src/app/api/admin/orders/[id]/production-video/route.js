@@ -7,8 +7,7 @@ import { saveUploadFile } from '@/lib/uploadStorage';
 import { appendTimeline, notifyRoleSlugs } from '@/lib/opsOrderHelpers';
 import { assertCanAccessOrder } from '@/lib/opsStaffAccess';
 import {
-  createProductionVideoShareToken,
-  buildProductionVideoSharePath,
+  buildProductionVideoShareUrl,
   buildWhatsAppVideoShareUrl,
 } from '@/lib/productionVideoToken';
 
@@ -56,10 +55,8 @@ export async function POST(req, { params }) {
   await order.save();
 
   const video = order.productionVideos[order.productionVideos.length - 1];
-  const token = createProductionVideoShareToken(order._id, video._id);
   const origin = req.headers.get('origin') || process.env.NEXTAUTH_URL || 'https://groverygiftz.in';
-  const sharePath = buildProductionVideoSharePath(saved.relativePath, token);
-  const shareUrl = sharePath ? `${String(origin).replace(/\/$/, '')}${sharePath}` : '';
+  const shareUrl = buildProductionVideoShareUrl(saved.relativePath, origin);
   const phone = order.shippingAddress?.whatsappNumber || order.shippingAddress?.phone;
   const whatsappShareUrl = buildWhatsAppVideoShareUrl(
     phone,
@@ -110,10 +107,8 @@ export async function GET(req, { params }) {
   const video = (order.productionVideos || []).find((v) => String(v._id) === String(videoId))
     || (order.productionVideos || [])[(order.productionVideos || []).length - 1];
   if (!video) return NextResponse.json({ error: 'No production video' }, { status: 404 });
-  const token = createProductionVideoShareToken(order._id, video._id);
   const origin = req.headers.get('origin') || process.env.NEXTAUTH_URL || 'https://groverygiftz.in';
-  const sharePath = buildProductionVideoSharePath(video.filePath || '', token);
-  const shareUrl = sharePath ? `${String(origin).replace(/\/$/, '')}${sharePath}` : video.url;
+  const shareUrl = buildProductionVideoShareUrl(video.filePath || '', origin) || video.url;
   const phone = order.shippingAddress?.whatsappNumber || order.shippingAddress?.phone;
   const whatsappShareUrl = buildWhatsAppVideoShareUrl(
     phone,

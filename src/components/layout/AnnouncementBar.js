@@ -5,8 +5,13 @@ import { resolveTickerMessages } from '@/lib/giftFinderResolve';
 
 export default async function AnnouncementBar() {
   noStore();
-  await dbConnect();
-  const settings = await Settings.findOne().lean();
+  let settings = null;
+  try {
+    await dbConnect();
+    settings = await Settings.findOne().lean();
+  } catch {
+    settings = null;
+  }
   const threshold = settings?.freeShippingThreshold ?? 499;
   const configuredTicker = Array.isArray(settings?.tickerMessages) && settings.tickerMessages.some((line) => String(line || '').trim());
   const announcementText = settings?.announcementText || `Free shipping on orders above INR ${threshold}`;

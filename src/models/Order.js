@@ -13,19 +13,38 @@ const TimelineEventSchema = new mongoose.Schema({
 
 const DesignVersionSchema = new mongoose.Schema({
   version: { type: Number, required: true },
+  sheetNumber: { type: Number, default: 1, min: 1 },
+  sheetLabel: { type: String, default: '' },
+  linkedItemIndexes: [{ type: Number }],
+  linkedLabels: [{ type: String }],
   filePath: String,
   url: String,
   originalUrl: String,
   mimeType: String,
   size: Number,
+  width: Number,
+  height: Number,
   uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin' },
   uploadedByName: String,
   notes: String,
   uploadedAt: { type: Date, default: Date.now },
 }, { _id: true });
 
+const DesignSheetApprovalSchema = new mongoose.Schema({
+  sheetNumber: { type: Number, required: true },
+  status: {
+    type: String,
+    enum: ['not_uploaded', 'awaiting_approval', 'changes_requested', 'approved', 'rejected'],
+    default: 'awaiting_approval',
+  },
+  approvedVersion: { type: Number, default: 0 },
+  approvedAt: Date,
+  source: { type: String, enum: ['customer', 'admin', 'system'], default: 'system' },
+}, { _id: false });
+
 const DesignApprovalEventSchema = new mongoose.Schema({
   version: Number,
+  sheetNumber: Number,
   status: String,
   at: { type: Date, default: Date.now },
   source: { type: String, enum: ['customer', 'admin', 'system'], default: 'customer' },
@@ -33,6 +52,14 @@ const DesignApprovalEventSchema = new mongoose.Schema({
   notes: String,
   customerEvidence: String,
 }, { _id: true });
+
+const SalesCommsItemSchema = new mongoose.Schema({
+  done: { type: Boolean, default: false },
+  at: Date,
+  by: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin' },
+  byName: String,
+  note: String,
+}, { _id: false });
 
 const PhotoHistorySchema = new mongoose.Schema({
   slotKey: String,
@@ -207,6 +234,7 @@ const OrderSchema = new mongoose.Schema({
   // —— Design ——
   designVersions: [DesignVersionSchema],
   currentDesignVersion: { type: Number, default: 0 },
+  designSheetApprovals: [DesignSheetApprovalSchema],
   designApprovalStatus: {
     type: String,
     enum: ['not_uploaded', 'awaiting_approval', 'changes_requested', 'approved', 'rejected'],
@@ -222,14 +250,34 @@ const OrderSchema = new mongoose.Schema({
   revisionCharges: { type: Number, default: 0 },
   revisionPaymentVerified: { type: Boolean, default: false },
 
+  /** Manual reference to a historical WhatsApp order ID (may not exist in DB). */
+  historicalWhatsAppOrderRef: { type: String, default: '' },
+  customerKind: {
+    type: String,
+    enum: ['new', 'existing_whatsapp', ''],
+    default: '',
+  },
+
   photoHistory: [PhotoHistorySchema],
   productionVideos: [ProductionVideoSchema],
   printingAssignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin' },
+  printingAssignedToName: String,
   printingStartedAt: Date,
   printingCompletedAt: Date,
   productionStartedAt: Date,
   productionCompletedAt: Date,
   packedAt: Date,
+
+  /** Sales WhatsApp communication checklist — opening WA is not delivery proof. */
+  salesCommsChecklist: {
+    previewShared: { type: SalesCommsItemSchema, default: () => ({}) },
+    approvalReceived: { type: SalesCommsItemSchema, default: () => ({}) },
+    videoShared: { type: SalesCommsItemSchema, default: () => ({}) },
+    balanceRequested: { type: SalesCommsItemSchema, default: () => ({}) },
+    dispatchCommunicated: { type: SalesCommsItemSchema, default: () => ({}) },
+    trackingShared: { type: SalesCommsItemSchema, default: () => ({}) },
+  },
+
   timeline: [TimelineEventSchema],
 }, { timestamps: true });
 

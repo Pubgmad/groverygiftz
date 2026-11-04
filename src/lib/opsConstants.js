@@ -241,14 +241,127 @@ export function computeBalanceStatus({ total = 0, advancePaid = 0, additionalCha
   return 'partially_paid';
 }
 
+/** Latest design version per sheetNumber (default sheet 1 for legacy uploads). */
+export function getLatestDesignVersionsBySheet(order = {}) {
+  const versions = Array.isArray(order.designVersions) ? order.designVersions : [];
+  const bySheet = new Map();
+  versions.forEach((v) => {
+    const sheetNumber = Math.max(1, Number(v?.sheetNumber) || 1);
+    const prev = bySheet.get(sheetNumber);
+    if (!prev || Number(v.version) > Number(prev.version)) {
+      bySheet.set(sheetNumber, v);
+    }
+  });
+  return [...bySheet.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([sheetNumber, version]) => ({
+      sheetNumber,
+      sheetLabel: String(version?.sheetLabel || `Sheet ${sheetNumber}`),
+      version,
+      versionNumber: Number(version?.version) || 0,
+      url: version?.url || '',
+      linkedItemIndexes: Array.isArray(version?.linkedItemIndexes) ? version.linkedItemIndexes : [],
+      linkedLabels: Array.isArray(version?.linkedLabels) ? version.linkedLabels : [],
+    }));
+}
+
+export function getSheetApproval(order = {}, sheetNumber = 1) {
+  const n = Math.max(1, Number(sheetNumber) || 1);
+  const rows = Array.isArray(order.designSheetApprovals) ? order.designSheetApprovals : [];
+  return rows.find((row) => Number(row?.sheetNumber) === n) || null;
+}
+
+/**
+ * Sync order-level designApprovalStatus from per-sheet approvals.
+ * Mutates order in place when provided as a mongoose doc / plain object.
+ */
+export function syncDesignApprovalFromSheets(order = {}) {
+  const sheets = getLatestDesignVersionsBySheet(order);
+  if (!sheets.length) {
+    order.designApprovalStatus = 'not_uploaded';
+    order.designApprovedVersion = 0;
+    return order;
+  }
+
+  const previewRequired = order.previewRequired !== false && order.previewRequired !== 'no';
+  if (!previewRequired) {
+    order.designApprovalStatus = 'approved';
+    order.designApprovedVersion = Number(order.currentDesignVersion) || sheets[sheets.length - 1].versionNumber;
+    if (!order.designApprovedAt) order.designApprovedAt = new Date();
+    return order;
+  }
+
+  const approvals = Array.isArray(order.designSheetApprovals) ? order.designSheetApprovals : [];
+  const allApproved = sheets.every((sheet) => {
+    const appr = approvals.find((row) => Number(row?.sheetNumber) === Number(sheet.sheetNumber));
+    return appr
+      && appr.status === 'approved'
+      && Number(appr.approvedVersion || 0) === Number(sheet.versionNumber);
+  });
+  const anyChanges = approvals.some((row) => row?.status === 'changes_requested');
+  const anyRejected = approvals.some((row) => row?.status === 'rejected');
+
+  if (allApproved) {
+    order.designApprovalStatus = 'approved';
+    order.designApprovedVersion = Number(order.currentDesignVersion) || 0;
+    order.designApprovedAt = new Date();
+  } else if (anyRejected) {
+    order.designApprovalStatus = 'rejected';
+  } else if (anyChanges) {
+    order.designApprovalStatus = 'changes_requested';
+  } else {
+    order.designApprovalStatus = 'awaiting_approval';
+    order.designApprovedVersion = 0;
+  }
+  return order;
+}
+
 /** Design printing (not shipping labels). Preview Required=No needs an uploaded design. */
 export function canPrintDesign(order = {}) {
-  const hasDesign = Number(order.currentDesignVersion || 0) > 0;
+  const versions = Array.isArray(order.designVersions) ? order.designVersions : [];
+  const hasDesign = Number(order.currentDesignVersion || 0) > 0 || versions.length > 0;
   if (!hasDesign) return false;
   const previewRequired = order.previewRequired !== false && order.previewRequired !== 'no';
   if (!previewRequired) return true;
-  return (
-    order.designApprovalStatus === 'approved'
-    && Number(order.designApprovedVersion || 0) === Number(order.currentDesignVersion || 0)
-  );
+
+  const approvals = Array.isArray(order.designSheetApprovals) ? order.designSheetApprovals : [];
+  const usesMultiSheetMeta = approvals.length > 0
+    || versions.some((v) => Number(v?.sheetNumber || 1) > 1)
+    || versions.some((v) => String(v?.sheetLabel || '').trim());
+
+  // Legacy / single-file orders without sheet metadata
+  if (!usesMultiSheetMeta) {
+    return (
+      order.designApprovalStatus === 'approved'
+      && Number(order.designApprovedVersion || 0) === Number(order.currentDesignVersion || 0)
+    );
+  }
+
+  const sheets = getLatestDesignVersionsBySheet(order);
+  if (!sheets.length) return false;
+
+  return sheets.every((sheet) => {
+    const appr = approvals.find((row) => Number(row?.sheetNumber) === Number(sheet.sheetNumber));
+    return appr
+      && appr.status === 'approved'
+      && Number(appr.approvedVersion || 0) === Number(sheet.versionNumber);
+  });
 }
+
+export const SALES_COMMS_KEYS = [
+  'previewShared',
+  'approvalReceived',
+  'videoShared',
+  'balanceRequested',
+  'dispatchCommunicated',
+  'trackingShared',
+];
+
+export const SALES_COMMS_LABELS = {
+  previewShared: 'Design preview shared',
+  approvalReceived: 'Customer approval received',
+  videoShared: 'Product completion video shared',
+  balanceRequested: 'Balance payment requested',
+  dispatchCommunicated: 'Dispatch information communicated',
+  trackingShared: 'Tracking details shared',
+};

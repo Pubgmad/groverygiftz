@@ -6,8 +6,13 @@ import Settings from '@/models/Settings';
 import MarketingPreferencesLink from '@/components/meta/MarketingPreferencesLink';
 
 export default async function Footer() {
-  await dbConnect();
-  const settings = await Settings.findOne().lean();
+  let settings = null;
+  try {
+    await dbConnect();
+    settings = await Settings.findOne().lean();
+  } catch {
+    settings = null;
+  }
 
   const contactPhone = settings?.phone || '+91 99945 49781';
   const contactEmail = settings?.email || 'Groverygiftz@gmail.com';
