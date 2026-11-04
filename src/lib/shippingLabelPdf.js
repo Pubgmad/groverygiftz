@@ -1,18 +1,22 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import QRCode from 'qrcode';
+import bwipjs from 'bwip-js';
 
 /** A4 in PDF points (1 pt = 1/72 in). 210mm × 297mm. */
 export const A4_WIDTH = 595.28;
 export const A4_HEIGHT = 841.89;
 
-/** ~8mm page margin, ~4.2mm gutter — print-safe for cutters. */
 const PAGE_MARGIN = 22.5;
 const GUTTER = 12;
-const RULE = rgb(0.78, 0.78, 0.78);
-const BORDER = rgb(0.18, 0.18, 0.18);
-const MUTED = rgb(0.38, 0.38, 0.38);
+const RULE = rgb(0.82, 0.82, 0.82);
+const BORDER = rgb(0.2, 0.2, 0.2);
+const MUTED = rgb(0.4, 0.4, 0.4);
 const INK = rgb(0.1, 0.1, 0.1);
-const BRAND = rgb(0.141, 0.337, 0.847); // GroveryGiftz primary blue #2456D8
+const BRAND = rgb(0.141, 0.337, 0.847); // #2456D8
+const ACCENT = rgb(0.957, 0.475, 0.125); // #F47920
+const PILL_BG = rgb(0.93, 0.93, 0.94);
+const WAVE_BLUE = rgb(0.141, 0.337, 0.847);
+const WAVE_ORANGE = rgb(0.957, 0.475, 0.125);
 
 function winAnsiSafe(text = '') {
   return String(text || '')
@@ -44,9 +48,7 @@ function wrapLines(font, text, size, maxWidth) {
 function fitText(font, text, size, maxWidth) {
   let line = winAnsiSafe(text);
   if (!line) return '';
-  while (line.length > 1 && font.widthOfTextAtSize(line, size) > maxWidth) {
-    line = line.slice(0, -1);
-  }
+  while (line.length > 1 && font.widthOfTextAtSize(line, size) > maxWidth) line = line.slice(0, -1);
   return line;
 }
 
@@ -55,19 +57,14 @@ function drawWrapped(page, font, text, {
 }) {
   const lh = Number(lineHeight) || (Number(size) + 2);
   const startY = Number(y);
-  if (!Number.isFinite(startY)) return { lines: 0, bottom: startY, overflow: false };
-  const all = wrapLines(font, text, size, maxWidth);
-  const lines = all.slice(0, Math.max(1, maxLines));
+  if (!Number.isFinite(startY)) return { lines: 0, bottom: startY };
+  const lines = wrapLines(font, text, size, maxWidth).slice(0, Math.max(1, maxLines));
   let cursor = startY;
   lines.forEach((line) => {
     page.drawText(line, { x, y: cursor, size, font, color });
     cursor -= lh;
   });
-  return {
-    lines: lines.length,
-    bottom: cursor,
-    overflow: all.length > lines.length,
-  };
+  return { lines: lines.length, bottom: cursor };
 }
 
 function drawHairline(page, x1, x2, y) {
@@ -77,6 +74,28 @@ function drawHairline(page, x1, x2, y) {
     end: { x: x2, y },
     thickness: 0.7,
     color: RULE,
+  });
+}
+
+function drawRoundedRect(page, {
+  x, y, width, height, color = PILL_BG, radius = 4,
+}) {
+  // pdf-lib has no native rounded rect — approximate with filled rect (print-safe).
+  page.drawRectangle({ x, y, width, height, color, borderWidth: 0 });
+  void radius;
+}
+
+function drawPinIcon(page, cx, cy, size, accent = ACCENT) {
+  const r = size * 0.38;
+  page.drawCircle({ x: cx, y: cy + size * 0.12, size: r, color: accent });
+  page.drawCircle({ x: cx, y: cy + size * 0.12, size: r * 0.35, color: rgb(1, 1, 1) });
+  // Simple teardrop tip
+  page.drawRectangle({
+    x: cx - size * 0.12,
+    y: cy - size * 0.35,
+    width: size * 0.24,
+    height: size * 0.35,
+    color: accent,
   });
 }
 
@@ -114,6 +133,18 @@ async function qrPngBytes(url) {
   });
 }
 
+async function barcodePngBytes(text) {
+  const value = winAnsiSafe(text).slice(0, 32) || 'ORDER';
+  return bwipjs.toBuffer({
+    bcid: 'code128',
+    text: value,
+    scale: 3,
+    height: 12,
+    includetext: false,
+    backgroundcolor: 'FFFFFF',
+  });
+}
+
 function labelRects(layout = {}) {
   const usableW = A4_WIDTH - PAGE_MARGIN * 2;
   const usableH = A4_HEIGHT - PAGE_MARGIN * 2;
@@ -136,58 +167,67 @@ function labelRects(layout = {}) {
 function scaleFor(perPage) {
   if (perPage >= 4) {
     return {
-      pad: 9,
-      logoH: 22,
-      logoMaxW: 70,
+      pad: 8,
+      logoH: 24,
+      logoMaxW: 78,
       titleSize: 9,
-      orderIdSize: 8,
+      orderIdSize: 7.5,
       sectionSize: 7,
-      bodySize: 8,
-      nameSize: 10,
-      smallSize: 6.5,
-      qrSize: 54,
-      qtyCol: 28,
-      headerBand: 30,
-      footerH: 14,
-      lh: 10,
-      nameLh: 12,
+      bodySize: 7.5,
+      nameSize: 9.5,
+      smallSize: 6.2,
+      qrSize: 52,
+      qtyCol: 26,
+      headerBand: 34,
+      barcodeH: 22,
+      footerWave: 8,
+      thanksH: 11,
+      lh: 9.5,
+      nameLh: 11,
+      metaW: 0.34,
     };
   }
   if (perPage === 2) {
     return {
       pad: 12,
-      logoH: 28,
-      logoMaxW: 96,
+      logoH: 30,
+      logoMaxW: 100,
       titleSize: 12,
-      orderIdSize: 10,
+      orderIdSize: 9,
       sectionSize: 8,
-      bodySize: 9.5,
-      nameSize: 13,
-      smallSize: 7.5,
-      qrSize: 72,
-      qtyCol: 36,
-      headerBand: 36,
-      footerH: 18,
-      lh: 12,
-      nameLh: 15,
+      bodySize: 9,
+      nameSize: 12,
+      smallSize: 7.2,
+      qrSize: 70,
+      qtyCol: 34,
+      headerBand: 40,
+      barcodeH: 28,
+      footerWave: 10,
+      thanksH: 14,
+      lh: 11.5,
+      nameLh: 14,
+      metaW: 0.32,
     };
   }
   return {
     pad: 16,
-    logoH: 34,
-    logoMaxW: 120,
+    logoH: 36,
+    logoMaxW: 124,
     titleSize: 14,
-    orderIdSize: 11,
+    orderIdSize: 10,
     sectionSize: 9,
-    bodySize: 11,
-    nameSize: 16,
-    smallSize: 8.5,
-    qrSize: 88,
-    qtyCol: 42,
-    headerBand: 42,
-    footerH: 22,
-    lh: 14,
-    nameLh: 18,
+    bodySize: 10.5,
+    nameSize: 15,
+    smallSize: 8,
+    qrSize: 86,
+    qtyCol: 40,
+    headerBand: 46,
+    barcodeH: 34,
+    footerWave: 12,
+    thanksH: 16,
+    lh: 13,
+    nameLh: 17,
+    metaW: 0.3,
   };
 }
 
@@ -199,10 +239,22 @@ function addressLines(order) {
   const cityState = [order.city, order.state].filter(Boolean).join(', ');
   const cityLine = [cityState, order.pincode ? `- ${order.pincode}` : ''].filter(Boolean).join(' ').trim();
   if (cityLine) lines.push(cityLine);
-  if (order.district && (!order.city || order.district.toLowerCase() !== order.city.toLowerCase())) {
-    lines.push(`District: ${order.district}`);
-  }
   return lines;
+}
+
+function drawBrandWave(page, rect, pad, waveH) {
+  const y = rect.y + pad * 0.35;
+  const w = rect.width - pad * 2;
+  const x = rect.x + pad;
+  page.drawRectangle({ x, y, width: w * 0.62, height: waveH, color: WAVE_BLUE, borderWidth: 0 });
+  page.drawRectangle({
+    x: x + w * 0.58,
+    y,
+    width: w * 0.42,
+    height: waveH,
+    color: WAVE_ORANGE,
+    borderWidth: 0,
+  });
 }
 
 function drawLabel(page, {
@@ -213,6 +265,7 @@ function drawLabel(page, {
   bold,
   logo,
   qrImage,
+  barcodeImage,
   perPage,
 }) {
   if (!rect || !Number.isFinite(rect.x) || !Number.isFinite(rect.y) || !Number.isFinite(rect.width) || !Number.isFinite(rect.height)) {
@@ -224,266 +277,200 @@ function drawLabel(page, {
   const innerX = rect.x + pad;
   const innerRight = rect.x + rect.width - pad;
   const maxW = rect.width - pad * 2;
-  const footerTop = rect.y + pad + s.footerH;
+  const bottomReserve = pad + s.footerWave + s.thanksH + s.barcodeH + 10;
+  const contentFloor = rect.y + bottomReserve;
   let y = rect.y + rect.height - pad;
 
-  // Outer border
   page.drawRectangle({
     x: rect.x,
     y: rect.y,
     width: rect.width,
     height: rect.height,
     borderColor: BORDER,
-    borderWidth: 1.1,
+    borderWidth: 1.15,
   });
 
-  // —— Section A: Header (logo/brand left | SHIPPING LABEL + Order ID right) ——
-  const headerBottom = y - s.headerBand;
+  // —— Header: logo left | Shipping Label + Order ID pill right ——
   const logoH = s.logoH;
   const logoW = logo ? Math.min(s.logoMaxW, (logo.width / logo.height) * logoH) : 0;
   const brandName = company.tradeName || company.siteName || 'GroveryGiftz';
-  const leftMax = Math.max(48, maxW * 0.48);
 
   if (logo) {
     page.drawImage(logo, {
       x: innerX,
-      y: y - logoH - 2,
+      y: y - logoH,
       width: logoW,
       height: logoH,
     });
   } else {
-    page.drawText(fitText(bold, brandName, s.titleSize, leftMax), {
+    page.drawText(fitText(bold, brandName, s.titleSize, maxW * 0.45), {
       x: innerX,
-      y: y - Math.round(logoH * 0.55),
+      y: y - Math.round(logoH * 0.6),
       size: s.titleSize,
       font: bold,
       color: BRAND,
     });
   }
 
-  const title = 'SHIPPING LABEL';
-  const titleSize = s.titleSize;
-  const titleW = bold.widthOfTextAtSize(title, titleSize);
+  const title = 'Shipping Label';
+  const titleW = bold.widthOfTextAtSize(title, s.titleSize);
   page.drawText(title, {
     x: innerRight - titleW,
     y: y - 11,
-    size: titleSize,
+    size: s.titleSize,
     font: bold,
     color: BRAND,
   });
-  const orderLine = fitText(bold, `Order ID: ${order.orderNumber || ''}`, s.orderIdSize, leftMax);
-  const orderW = bold.widthOfTextAtSize(orderLine, s.orderIdSize);
-  page.drawText(orderLine, {
-    x: innerRight - orderW,
-    y: y - 11 - s.orderIdSize - 4,
+
+  const pillText = fitText(bold, `Order ID: ${order.orderNumber || ''}`, s.orderIdSize, maxW * 0.48);
+  const pillPadX = 6;
+  const pillPadY = 3;
+  const pillW = bold.widthOfTextAtSize(pillText, s.orderIdSize) + pillPadX * 2;
+  const pillH = s.orderIdSize + pillPadY * 2;
+  const pillX = innerRight - pillW;
+  const pillY = y - 11 - s.orderIdSize - 4 - pillPadY;
+  drawRoundedRect(page, { x: pillX, y: pillY, width: pillW, height: pillH, color: PILL_BG });
+  page.drawText(pillText, {
+    x: pillX + pillPadX,
+    y: pillY + pillPadY,
     size: s.orderIdSize,
     font: bold,
     color: INK,
   });
 
-  y = headerBottom;
+  y = Math.min(y - s.headerBand, pillY - 6);
   drawHairline(page, innerX, innerRight, y);
-  y -= s.sectionSize + 6;
+  y -= s.sectionSize + 5;
 
-  // —— Section B: FROM (left) + QR (right) ——
-  const qrSize = Math.min(s.qrSize, maxW * 0.34);
-  const qrGap = 8;
-  const fromWidth = Math.max(60, maxW - qrSize - qrGap);
+  // —— FROM + QR ——
+  const qrSize = Math.min(s.qrSize, maxW * 0.32);
+  const fromWidth = Math.max(58, maxW - qrSize - 10);
   const qrX = innerRight - qrSize;
   const fromTop = y;
 
-  page.drawText('FROM', {
-    x: innerX,
-    y,
-    size: s.sectionSize,
-    font: bold,
-    color: MUTED,
+  page.drawText('FROM', { x: innerX, y, size: s.sectionSize, font: bold, color: MUTED });
+  y -= s.sectionSize + 3;
+  const fromName = drawWrapped(page, bold, brandName, {
+    x: innerX, y, size: s.bodySize, maxWidth: fromWidth, lineHeight: s.lh, maxLines: 2,
   });
-  y -= s.sectionSize + 4;
-
-  const companyName = company.tradeName || company.siteName || 'GroveryGiftz';
-  const fromName = drawWrapped(page, bold, companyName, {
-    x: innerX,
-    y,
-    size: s.bodySize,
-    maxWidth: fromWidth,
-    lineHeight: s.lh,
-    maxLines: 2,
-  });
-  y = fromName.bottom - 1;
-
+  y = fromName.bottom;
   if (company.returnAddress) {
     const addr = drawWrapped(page, font, company.returnAddress, {
-      x: innerX,
-      y,
-      size: s.smallSize,
-      maxWidth: fromWidth,
-      color: MUTED,
-      lineHeight: s.smallSize + 2,
-      maxLines: perPage >= 4 ? 3 : 4,
+      x: innerX, y, size: s.smallSize, maxWidth: fromWidth, color: MUTED,
+      lineHeight: s.smallSize + 2, maxLines: perPage >= 4 ? 3 : 4,
     });
-    y = addr.bottom - 1;
+    y = addr.bottom;
   }
   if (company.phone) {
     page.drawText(fitText(font, `Ph: ${company.phone}`, s.smallSize, fromWidth), {
-      x: innerX,
-      y,
-      size: s.smallSize,
-      font,
-      color: MUTED,
+      x: innerX, y, size: s.smallSize, font, color: MUTED,
     });
-    y -= s.smallSize + 3;
+    y -= s.smallSize + 2;
   }
 
-  // QR column aligned to top of FROM block
-  const qrTop = fromTop;
-  const qrY = qrTop - qrSize + s.sectionSize;
+  const qrY = fromTop - qrSize + s.sectionSize;
   if (qrImage) {
-    page.drawImage(qrImage, { x: qrX, y: Math.max(footerTop + 2, qrY), width: qrSize, height: qrSize });
+    const drawY = Math.max(contentFloor + 2, qrY);
+    page.drawImage(qrImage, { x: qrX, y: drawY, width: qrSize, height: qrSize });
     const caption = 'Scan to Track Order';
-    const capSize = s.smallSize;
-    const capW = bold.widthOfTextAtSize(caption, capSize);
-    const capY = Math.max(footerTop + 2, qrY) - (capSize + 2);
-    if (capY > rect.y + pad) {
+    const capW = font.widthOfTextAtSize(caption, s.smallSize);
+    const capY = drawY - (s.smallSize + 2);
+    if (capY > contentFloor) {
       page.drawText(caption, {
         x: qrX + Math.max(0, (qrSize - capW) / 2),
         y: capY,
-        size: capSize,
+        size: s.smallSize,
         font,
         color: MUTED,
       });
     }
+    y = Math.min(y, capY - 4);
   }
-
-  // Continue below the taller of FROM text or QR+caption
-  const qrBottom = qrImage
-    ? Math.max(footerTop + 2, qrY) - (s.smallSize + 6)
-    : y;
-  y = Math.min(y, qrBottom) - 4;
   drawHairline(page, innerX, innerRight, y);
-  y -= s.sectionSize + 6;
+  y -= s.sectionSize + 5;
 
-  // —— Section C: SHIP TO ——
-  page.drawText('SHIP TO', {
-    x: innerX,
-    y,
-    size: s.sectionSize,
-    font: bold,
-    color: MUTED,
-  });
-  y -= s.sectionSize + 4;
+  // —— SHIP TO (left) + order meta (right) — no weight/payment ——
+  const metaW = Math.max(70, maxW * s.metaW);
+  const shipW = Math.max(70, maxW - metaW - 8);
+  const shipTop = y;
 
+  page.drawText('SHIP TO', { x: innerX, y, size: s.sectionSize, font: bold, color: MUTED });
+  y -= s.sectionSize + 2;
+
+  const pinSize = Math.min(14, s.nameSize + 2);
+  drawPinIcon(page, innerX + pinSize * 0.55, y - pinSize * 0.15, pinSize, ACCENT);
   const name = drawWrapped(page, bold, order.recipientName || '', {
-    x: innerX,
+    x: innerX + pinSize + 4,
     y,
     size: s.nameSize,
-    maxWidth: maxW,
+    maxWidth: shipW - pinSize - 4,
     lineHeight: s.nameLh,
     maxLines: 2,
   });
-  y = name.bottom - 1;
+  y = name.bottom;
 
   for (const line of addressLines(order)) {
-    if (y < footerTop + s.lh * 6) break;
+    if (y < contentFloor + s.lh * 8) break;
     const drawn = drawWrapped(page, font, line, {
-      x: innerX,
-      y,
-      size: s.bodySize,
-      maxWidth: maxW,
-      lineHeight: s.lh,
-      maxLines: 2,
+      x: innerX, y, size: s.bodySize, maxWidth: shipW, lineHeight: s.lh, maxLines: 2,
     });
     y = drawn.bottom;
   }
-
-  if (order.phone && y >= footerTop + s.lh * 5) {
-    page.drawText(fitText(bold, `Mobile: ${order.phone}`, s.bodySize, maxW), {
-      x: innerX,
-      y,
-      size: s.bodySize,
-      font: bold,
-      color: INK,
+  if (order.phone && y >= contentFloor + s.lh * 7) {
+    page.drawText(fitText(bold, `Mobile: ${order.phone}`, s.bodySize, shipW), {
+      x: innerX, y, size: s.bodySize, font: bold, color: INK,
     });
-    y -= s.lh + 2;
+    y -= s.lh + 1;
   }
 
-  drawHairline(page, innerX, innerRight, y);
-  y -= s.sectionSize + 5;
-
-  // —— Section D: Order information (no payment / weight) ——
-  page.drawText(fitText(bold, `Order ID: ${order.orderNumber || ''}`, s.bodySize, maxW * 0.55), {
-    x: innerX,
-    y,
-    size: s.bodySize,
-    font: bold,
-    color: INK,
+  // Meta column (date / est. delivery only)
+  let metaY = shipTop;
+  const metaX = innerRight - metaW;
+  page.drawText('ORDER DATE', { x: metaX, y: metaY, size: s.smallSize, font: bold, color: MUTED });
+  metaY -= s.smallSize + 2;
+  const dateDrawn = drawWrapped(page, font, order.orderDateIst || '-', {
+    x: metaX, y: metaY, size: s.smallSize, maxWidth: metaW, lineHeight: s.smallSize + 2, maxLines: 2, color: INK,
   });
-  const dateLabel = fitText(font, order.orderDateIst || '', s.smallSize, maxW * 0.42);
-  page.drawText(dateLabel, {
-    x: innerRight - font.widthOfTextAtSize(dateLabel, s.smallSize),
-    y,
-    size: s.smallSize,
-    font,
-    color: MUTED,
-  });
-  y -= s.lh + 2;
+  metaY = dateDrawn.bottom - 4;
   if (order.deliveryType) {
-    page.drawText(fitText(font, `Est. delivery: ${order.deliveryType}`, s.smallSize, maxW), {
-      x: innerX,
-      y,
-      size: s.smallSize,
-      font,
-      color: MUTED,
+    page.drawText('EST. DELIVERY', { x: metaX, y: metaY, size: s.smallSize, font: bold, color: MUTED });
+    metaY -= s.smallSize + 2;
+    const del = drawWrapped(page, font, order.deliveryType, {
+      x: metaX, y: metaY, size: s.smallSize, maxWidth: metaW, lineHeight: s.smallSize + 2, maxLines: 3, color: INK,
     });
-    y -= s.lh;
+    metaY = del.bottom;
   }
+
+  y = Math.min(y, metaY) - 4;
   drawHairline(page, innerX, innerRight, y);
-  y -= s.sectionSize + 5;
+  y -= s.sectionSize + 4;
 
-  // —— Section E: Products table (Product | Qty) — no prices ——
-  page.drawText('ORDERED PRODUCTS', {
-    x: innerX,
-    y,
-    size: s.sectionSize,
-    font: bold,
-    color: MUTED,
-  });
-  y -= s.sectionSize + 3;
-
+  // —— Order Items | Qty (never price) ——
+  page.drawText('ORDER ITEMS', { x: innerX, y, size: s.sectionSize, font: bold, color: MUTED });
+  y -= s.sectionSize + 2;
   const qtyCol = s.qtyCol;
   const productColW = Math.max(40, maxW - qtyCol - 4);
-  page.drawText('Product', { x: innerX, y, size: s.smallSize, font: bold, color: MUTED });
-  page.drawText('Qty', {
-    x: innerRight - qtyCol,
-    y,
-    size: s.smallSize,
-    font: bold,
-    color: MUTED,
-  });
-  y -= 3;
+  page.drawText('Item', { x: innerX, y, size: s.smallSize, font: bold, color: MUTED });
+  page.drawText('Qty', { x: innerRight - qtyCol, y, size: s.smallSize, font: bold, color: MUTED });
+  y -= 2;
   drawHairline(page, innerX, innerRight, y);
-  y -= s.bodySize + 2;
+  y -= s.bodySize + 1;
 
-  const items = Array.isArray(order.items) ? order.items : [];
-  let remaining = [...items];
+  const items = Array.isArray(order.items) ? [...order.items] : [];
+  let remaining = items;
   let drawnCount = 0;
-  const minContentY = footerTop + 2;
-
-  while (remaining.length && y - s.lh >= minContentY) {
+  while (remaining.length && y - s.lh >= contentFloor + 2) {
     const item = remaining[0];
     const title = `${item.title || 'Product'}${item.variant ? ` (${item.variant})` : ''}`;
     const titleLines = wrapLines(font, title, s.bodySize, productColW);
-    const needed = titleLines.length * s.lh;
-    if (y - needed < minContentY) break;
+    if (y - titleLines.length * s.lh < contentFloor + 2) break;
     remaining.shift();
-
     let cursor = y;
     titleLines.forEach((line, idx) => {
       page.drawText(line, { x: innerX, y: cursor, size: s.bodySize, font, color: INK });
       if (idx === 0) {
-        const qty = String(item.quantity || 1);
-        page.drawText(qty, {
-          x: innerRight - qtyCol + 4,
+        page.drawText(String(item.quantity || 1), {
+          x: innerRight - qtyCol + 2,
           y: cursor,
           size: s.bodySize,
           font: bold,
@@ -495,37 +482,53 @@ function drawLabel(page, {
     y = cursor - 1;
     drawnCount += 1;
   }
-
-  if (remaining.length) {
+  if (remaining.length && y >= contentFloor + 2) {
     const units = remaining.reduce((sum, item) => sum + (Number(item.quantity) || 1), 0);
-    if (y >= minContentY) {
-      page.drawText(
-        fitText(font, `+ ${remaining.length} more item line(s) / ${units} unit(s) — use 2-label or single layout`, s.smallSize, maxW),
-        { x: innerX, y: Math.max(minContentY, y), size: s.smallSize, font, color: MUTED },
-      );
-    }
+    page.drawText(
+      fitText(font, `+ ${remaining.length} more / ${units} unit(s) — try 2-label or single layout`, s.smallSize, maxW),
+      { x: innerX, y: Math.max(contentFloor + 2, y), size: s.smallSize, font, color: MUTED },
+    );
   } else if (!drawnCount) {
     page.drawText('No items listed', { x: innerX, y, size: s.bodySize, font, color: MUTED });
   }
 
-  // —— Section F: Footer ——
-  drawHairline(page, innerX, innerRight, footerTop + s.footerH - 2);
-  const thanks = 'Thank you for choosing GroveryGiftz!';
+  // —— Barcode + thank-you + brand wave (no amount paid) ——
+  const barcodeBandTop = rect.y + pad + s.footerWave + s.thanksH + s.barcodeH + 4;
+  drawHairline(page, innerX, innerRight, barcodeBandTop + 2);
+
+  if (barcodeImage) {
+    const maxBarcodeW = Math.min(maxW * 0.72, barcodeImage.width);
+    const barcodeH = s.barcodeH;
+    const barcodeW = Math.min(maxBarcodeW, (barcodeImage.width / barcodeImage.height) * barcodeH);
+    page.drawImage(barcodeImage, {
+      x: innerX,
+      y: rect.y + pad + s.footerWave + s.thanksH + 2,
+      width: barcodeW,
+      height: barcodeH,
+    });
+    const codeLabel = fitText(font, order.orderNumber || '', s.smallSize, barcodeW);
+    page.drawText(codeLabel, {
+      x: innerX + Math.max(0, (barcodeW - font.widthOfTextAtSize(codeLabel, s.smallSize)) / 2),
+      y: rect.y + pad + s.footerWave + s.thanksH - s.smallSize,
+      size: s.smallSize,
+      font,
+      color: MUTED,
+    });
+  }
+
+  const thanks = 'Thank you for shopping with GroveryGiftz!';
   const thanksSize = s.smallSize;
   const thanksW = font.widthOfTextAtSize(thanks, thanksSize);
   page.drawText(thanks, {
     x: innerX + Math.max(0, (maxW - thanksW) / 2),
-    y: rect.y + pad + 3,
+    y: rect.y + pad + s.footerWave + 2,
     size: thanksSize,
-    font,
+    font: bold,
     color: BRAND,
   });
+  drawBrandWave(page, rect, pad, Math.max(4, s.footerWave - 1));
 }
 
-/**
- * Build an A4 multi-page shipping-label PDF.
- * Never receives or renders prices / payment / weight fields.
- */
 export async function buildShippingLabelsPdf({
   orders = [],
   company = {},
@@ -553,16 +556,20 @@ export async function buildShippingLabelsPdf({
   const perPage = Math.max(1, rects.length);
 
   const qrImages = [];
+  const barcodeImages = [];
   for (const order of orders) {
-    if (!order.trackUrl) {
-      qrImages.push(null);
-      continue;
-    }
+    if (order.trackUrl) {
+      try {
+        qrImages.push(await pdf.embedPng(await qrPngBytes(order.trackUrl)));
+      } catch {
+        qrImages.push(null);
+      }
+    } else qrImages.push(null);
+
     try {
-      const bytes = await qrPngBytes(order.trackUrl);
-      qrImages.push(await pdf.embedPng(bytes));
+      barcodeImages.push(await pdf.embedPng(await barcodePngBytes(order.orderNumber || order.id || 'ORDER')));
     } catch {
-      qrImages.push(null);
+      barcodeImages.push(null);
     }
   }
 
@@ -581,13 +588,13 @@ export async function buildShippingLabelsPdf({
         bold,
         logo,
         qrImage: qrImages[orderIndex],
+        barcodeImage: barcodeImages[orderIndex],
         perPage,
       });
     }
   }
 
-  const bytes = await pdf.save();
-  return Buffer.from(bytes);
+  return Buffer.from(await pdf.save());
 }
 
 export function shippingLabelFilename(date = new Date()) {

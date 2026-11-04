@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
-import { FiDownload, FiExternalLink, FiPrinter, FiX } from 'react-icons/fi';
+import { FiDownload, FiExternalLink, FiImage, FiPrinter, FiX } from 'react-icons/fi';
 import AdminSelect from '@/components/admin/AdminSelect';
 import { SHIPPING_LABEL_LAYOUTS, pageCountForLabels } from '@/lib/shippingLabelLayout';
+import { downloadShippingLabelJpegs } from '@/lib/shippingLabelJpeg';
 
 const LAYOUT_OPTIONS = [
   { value: 'four', label: SHIPPING_LABEL_LAYOUTS.four.label },
@@ -50,8 +51,9 @@ export default function ShippingLabelModal({
   const [pdfUrl, setPdfUrl] = useState('');
   const [pdfName, setPdfName] = useState('GroveryGiftz-Shipping-Labels.pdf');
   const [pageCount, setPageCount] = useState(0);
+  const [jpegBusy, setJpegBusy] = useState(false);
   const iframeRef = useRef(null);
-  const busy = checking || generating;
+  const busy = checking || generating || jpegBusy;
 
   const layoutMeta = SHIPPING_LABEL_LAYOUTS[layout] || SHIPPING_LABEL_LAYOUTS.four;
 
@@ -158,6 +160,23 @@ export default function ShippingLabelModal({
     link.remove();
   };
 
+  const downloadJpeg = async () => {
+    if (!pdfUrl || jpegBusy) return;
+    setJpegBusy(true);
+    try {
+      const result = await downloadShippingLabelJpegs(pdfUrl, pdfName);
+      toast.success(
+        result.pageCount === 1
+          ? 'JPEG downloaded'
+          : `Downloaded ${result.pageCount} JPEG pages (same layout as the PDF)`,
+      );
+    } catch {
+      toast.error('Unable to create JPEG. Try Download PDF instead.');
+    } finally {
+      setJpegBusy(false);
+    }
+  };
+
   const openPdfTab = () => {
     if (!pdfUrl) return;
     window.open(pdfUrl, '_blank', 'noopener,noreferrer');
@@ -207,7 +226,7 @@ export default function ShippingLabelModal({
             <h2 className="text-lg font-bold text-gray-900">Shipping labels</h2>
             <p className="text-xs leading-5 text-gray-500">
               {orderIds.length} selected · {layoutMeta.label} · {pageCount || estimatedPages} A4 page(s).
-              Preview is the same PDF you download. Print at A4, 100% / Actual size. No prices or weights.
+              Preview matches Download PDF / Download JPEG. Print at A4, 100% / Actual size. No prices, payment, or weight.
             </p>
           </div>
           <button type="button" onClick={onClose} className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border" aria-label="Close">
@@ -287,23 +306,31 @@ export default function ShippingLabelModal({
               onClick={openPdfTab}
               className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold disabled:opacity-50"
             >
-              <FiExternalLink /> Open PDF
+              <FiExternalLink /> Open
             </button>
             <button
               type="button"
               disabled={!pdfUrl || busy}
               onClick={downloadPdf}
-              className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold disabled:opacity-50"
+              className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-primary-200 bg-primary-50 px-3 py-2 text-sm font-semibold text-primary-800 disabled:opacity-50"
             >
-              <FiDownload /> Download
+              <FiDownload /> Download PDF
+            </button>
+            <button
+              type="button"
+              disabled={!pdfUrl || busy}
+              onClick={downloadJpeg}
+              className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-accent-200 bg-accent-50 px-3 py-2 text-sm font-semibold text-accent-800 disabled:opacity-50"
+            >
+              <FiImage /> {jpegBusy ? 'Preparing JPEG…' : 'Download JPEG'}
             </button>
             <button
               type="button"
               disabled={!pdfUrl || busy}
               onClick={printPdf}
-              className="col-span-2 inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-primary-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50 sm:col-span-1"
+              className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-primary-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
             >
-              <FiPrinter /> Print labels
+              <FiPrinter /> Print
             </button>
           </div>
         </div>

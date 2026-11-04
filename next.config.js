@@ -6,6 +6,10 @@ const nextConfig = {
   env: {
     NEXTAUTH_URL: siteUrl,
   },
+  // Keep native/barcode helpers out of the webpack server bundle.
+  experimental: {
+    serverComponentsExternalPackages: ['bwip-js', 'pdf-lib', 'qrcode'],
+  },
   async redirects() {
     return [
       { source: '/admin', destination: '/account/manage', permanent: false },
