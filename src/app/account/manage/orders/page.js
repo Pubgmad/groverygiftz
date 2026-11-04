@@ -8,8 +8,10 @@ import ReadOnlyBanner from '@/components/admin/ReadOnlyBanner';
 import AdminSelect from '@/components/admin/AdminSelect';
 import DownloadCsvButton from '@/components/admin/DownloadCsvButton';
 import ShippingLabelModal from '@/components/admin/ShippingLabelModal';
+import CreateWhatsAppOrderModal from '@/components/admin/CreateWhatsAppOrderModal';
 import { MAX_SHIPPING_LABEL_ORDERS } from '@/lib/shippingLabelLayout';
-import { FiRefreshCw } from 'react-icons/fi';
+import { ORDER_SOURCE_LABELS, OPS_STATUS_LABELS, DESIGN_APPROVAL_LABELS, isDelayedOrder } from '@/lib/opsConstants';
+import { FiPlus, FiRefreshCw } from 'react-icons/fi';
 
 const statusOptions = [
   { value: 'ordered', label: 'Ordered' },
@@ -234,6 +236,9 @@ export default function AdminOrdersPage() {
   const [deliveryHolidays, setDeliveryHolidays] = useState([]);
   const [checkedIds, setCheckedIds] = useState(() => new Set());
   const [labelModalOpen, setLabelModalOpen] = useState(false);
+  const [createWaOpen, setCreateWaOpen] = useState(false);
+  const [sourceFilter, setSourceFilter] = useState('');
+  const [designBusy, setDesignBusy] = useState(false);
   const [selectingMatching, setSelectingMatching] = useState(false);
   const pageSize = 10;
   const dateError = dateFrom && dateTo && dateFrom > dateTo ? 'From date cannot be after To date' : '';
@@ -257,6 +262,7 @@ export default function AdminOrdersPage() {
     if (nameFilter.trim()) query.set('name', nameFilter.trim());
     if (mobileFilter.trim()) query.set('mobile', mobileFilter.trim());
     if (statusFilter) query.set('status', statusFilter);
+    if (sourceFilter) query.set('source', sourceFilter);
     if (dateFrom) query.set('dateFrom', dateFrom);
     if (dateTo) query.set('dateTo', dateTo);
     return query;
@@ -304,7 +310,7 @@ export default function AdminOrdersPage() {
       return;
     }
     fetchOrders();
-  }, [filtersReady, currentPage, orderFilter, nameFilter, mobileFilter, statusFilter, dateFrom, dateTo, dateError]);
+  }, [filtersReady, currentPage, orderFilter, nameFilter, mobileFilter, statusFilter, sourceFilter, dateFrom, dateTo, dateError]);
 
   useEffect(() => {
     fetch('/api/settings')
@@ -431,9 +437,18 @@ export default function AdminOrdersPage() {
       <div className="mb-6 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           <h1 className="text-2xl font-bold">Orders</h1>
-          <p className="text-sm text-gray-500">Dates are shown and filtered in Indian Standard Time (IST). Update production status and ST Couriers tracking from the selected order.</p>
+          <p className="text-sm text-gray-500">Website (GG…) and WhatsApp/Instagram (G…) orders in one list. Dates use IST.</p>
         </div>
-        <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row">
+        <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
+          {writable ? (
+            <button
+              type="button"
+              onClick={() => setCreateWaOpen(true)}
+              className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-primary-600 px-4 py-2 text-sm font-semibold text-white sm:w-auto"
+            >
+              <FiPlus /> Create WhatsApp Order
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => {
@@ -441,6 +456,7 @@ export default function AdminOrdersPage() {
               setNameFilter('');
               setMobileFilter('');
               setStatusFilter('');
+              setSourceFilter('');
               setDateFrom('');
               setDateTo('');
               setCurrentPage(1);
@@ -493,10 +509,23 @@ export default function AdminOrdersPage() {
 
       <div className={`grid gap-6 ${selected ? 'xl:grid-cols-3' : ''}`}>
         <div className={`${selected ? 'xl:col-span-2' : ''} bg-white rounded-xl border overflow-hidden`}>
-          <div className="grid min-w-0 gap-3 border-b bg-gray-50 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          <div className="grid min-w-0 gap-3 border-b bg-gray-50 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7">
             <div className="min-w-0">
               <label className="mb-1 block text-xs font-semibold text-gray-500">Order ID</label>
-              <input value={orderFilter} onChange={(e) => { setOrderFilter(e.target.value); setCurrentPage(1); }} placeholder="Search GG0001" className="min-h-[44px] w-full min-w-0 rounded-lg border px-3 py-2 text-sm" />
+              <input value={orderFilter} onChange={(e) => { setOrderFilter(e.target.value); setCurrentPage(1); }} placeholder="GG0001 or G4746" className="min-h-[44px] w-full min-w-0 rounded-lg border px-3 py-2 text-sm" />
+            </div>
+            <div className="min-w-0">
+              <label className="mb-1 block text-xs font-semibold text-gray-500">Source</label>
+              <AdminSelect
+                value={sourceFilter}
+                onChange={(next) => { setSourceFilter(next); setCurrentPage(1); }}
+                options={[
+                  { value: '', label: 'All sources' },
+                  { value: 'website', label: 'Website' },
+                  { value: 'whatsapp', label: 'WhatsApp' },
+                  { value: 'instagram', label: 'Instagram' },
+                ]}
+              />
             </div>
             <div className="min-w-0">
               <label className="mb-1 block text-xs font-semibold text-gray-500">Customer Name</label>
@@ -527,7 +556,7 @@ export default function AdminOrdersPage() {
 
           {loading ? <p className="p-6 text-center">Loading...</p> : (<>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm min-w-[1100px]">
+              <table className="w-full text-sm min-w-[1400px]">
                 <thead>
                   <tr className="bg-gray-50 text-left text-gray-600">
                     <th className="p-4 w-12">
@@ -542,11 +571,14 @@ export default function AdminOrdersPage() {
                     </th>
                     <th className="p-4">SNO</th>
                     <th className="p-4">Order ID</th>
+                    <th className="p-4">Source</th>
                     <th className="p-4">Order Date</th>
                     <th className="p-4">Name</th>
                     <th className="p-4">Mobile</th>
                     <th className="p-4">City</th>
                     <th className="p-4">Status</th>
+                    <th className="p-4">Assigned</th>
+                    <th className="p-4">Dispatch</th>
                     <th className="p-4">Payment</th>
                     <th className="p-4 text-right">Total</th>
                   </tr>
@@ -570,11 +602,24 @@ export default function AdminOrdersPage() {
                         </td>
                         <td className="p-4 font-semibold text-gray-500 cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>{(currentPage - 1) * pageSize + idx + 1}</td>
                         <td className="p-4 font-bold text-primary-700 cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>{order.orderNumber}</td>
+                        <td className="p-4 cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>
+                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${order.orderSource === 'whatsapp' ? 'bg-green-50 text-green-800 border border-green-200' : order.orderSource === 'instagram' ? 'bg-pink-50 text-pink-800 border border-pink-200' : 'bg-sky-50 text-sky-800 border border-sky-200'}`}>
+                            {ORDER_SOURCE_LABELS[order.orderSource] || 'Website'}
+                          </span>
+                        </td>
                         <td className="p-4 text-gray-600 whitespace-nowrap cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>{formatDate(order.paidAt || order.createdAt)}</td>
                         <td className="p-4 cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}><p className="font-medium text-gray-900">{order.shippingAddress?.fullName || '-'}</p><p className="text-xs text-gray-500">{order.shippingAddress?.email || order.guestEmail || '-'}</p></td>
                         <td className="p-4 font-medium whitespace-nowrap cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}><p>{order.shippingAddress?.phone || '-'}</p>{order.shippingAddress?.whatsappNumber && <p className="text-xs text-green-700">WA: {order.shippingAddress.whatsappNumber}</p>}</td>
                         <td className="p-4 max-w-[160px] cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}><p className="font-medium text-gray-700 break-words">{order.shippingAddress?.city || '-'}</p>{outOfTn && <span className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">Outside TN</span>}</td>
-                        <td className="p-4 cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}><span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusColors[normalized] || statusColors.ordered}`}>{statusLabels[normalized] || normalized}</span></td>
+                        <td className="p-4 cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>
+                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusColors[normalized] || statusColors.ordered}`}>{statusLabels[normalized] || normalized}</span>
+                          {order.opsStatus ? <p className="mt-1 text-[11px] text-gray-500">{OPS_STATUS_LABELS[order.opsStatus] || order.opsStatus}</p> : null}
+                        </td>
+                        <td className="p-4 text-xs cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>{order.assignedToName || '—'}</td>
+                        <td className="p-4 text-xs cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>
+                          {order.expectedDispatchDate ? formatDate(order.expectedDispatchDate) : '—'}
+                          {isDelayedOrder(order) ? <span className="mt-1 block font-semibold text-red-600">Delayed</span> : null}
+                        </td>
                         <td className="p-4 cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}><span className={`px-2 py-1 rounded-full text-xs font-semibold ${paymentStatusColors[order.paymentStatus] || paymentStatusColors.pending}`}>{order.paymentMethod || 'Cashfree'} {order.paymentStatus}</span></td>
                         <td className="p-4 text-right font-medium cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>{formatPrice(order.total)}</td>
                       </tr>
@@ -645,6 +690,70 @@ export default function AdminOrdersPage() {
                   </button>
                 ) : null}
 
+                <div className="min-w-0 rounded-lg border border-primary-100 bg-primary-50/40 p-3 space-y-2">
+                  <h3 className="font-semibold text-primary-900">Design preview & approval</h3>
+                  <p className="text-xs text-gray-600">
+                    Source: {ORDER_SOURCE_LABELS[selected.orderSource] || 'Website'} · Preview required: {selected.previewRequired === false ? 'No' : 'Yes'} ·{' '}
+                    {DESIGN_APPROVAL_LABELS[selected.designApprovalStatus] || 'Not Uploaded'}
+                    {selected.currentDesignVersion ? ` · v${selected.currentDesignVersion}` : ''}
+                  </p>
+                  {selected.designChangeRequest ? <p className="text-xs text-amber-800 whitespace-pre-wrap">Customer feedback: {selected.designChangeRequest}</p> : null}
+                  {writable ? (
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs font-semibold text-gray-700">
+                        Upload / replace design
+                        <input
+                          type="file"
+                          accept="image/*,application/pdf"
+                          disabled={designBusy}
+                          className="mt-1 block w-full text-sm"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            e.target.value = '';
+                            if (!file) return;
+                            setDesignBusy(true);
+                            try {
+                              const body = new FormData();
+                              body.append('file', file);
+                              const res = await fetch(`/api/admin/orders/${selected._id}/design`, { method: 'POST', body });
+                              const data = await res.json();
+                              if (!res.ok) throw new Error(data.error || 'Upload failed');
+                              toast.success(`Design v${data.version} uploaded`);
+                              await fetchOrders();
+                            } catch (err) {
+                              toast.error(err.message || 'Upload failed');
+                            } finally {
+                              setDesignBusy(false);
+                            }
+                          }}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        disabled={designBusy || !selected.currentDesignVersion}
+                        className="inline-flex min-h-[44px] items-center justify-center rounded-xl border border-green-200 bg-green-50 px-4 py-2 text-sm font-semibold text-green-900 disabled:opacity-50"
+                        onClick={async () => {
+                          setDesignBusy(true);
+                          try {
+                            const res = await fetch(`/api/admin/orders/${selected._id}/design/share`, { method: 'POST' });
+                            const data = await res.json();
+                            if (!res.ok) throw new Error(data.error || 'Share failed');
+                            if (data.whatsappShareUrl) window.open(data.whatsappShareUrl, '_blank', 'noopener,noreferrer');
+                            toast.success('WhatsApp opened with preview link (send manually)');
+                            await fetchOrders();
+                          } catch (err) {
+                            toast.error(err.message || 'Share failed');
+                          } finally {
+                            setDesignBusy(false);
+                          }
+                        }}
+                      >
+                        Share Preview on WhatsApp
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+
                 <div className="min-w-0 border rounded-lg p-3 bg-gray-50 space-y-2 break-words">
                   <p className="text-xs text-gray-600 leading-relaxed"><strong>ST Couriers tracking ID:</strong> after booking the parcel with ST Couriers, paste the tracking ID here. Customers can copy it and open the ST website.</p>
                   <label className="text-xs font-medium text-gray-700">Tracking ID</label>
@@ -694,6 +803,15 @@ export default function AdminOrdersPage() {
           } catch {
             toast.error('Unable to open that order');
           }
+        }}
+      />
+      <CreateWhatsAppOrderModal
+        open={createWaOpen}
+        onClose={() => setCreateWaOpen(false)}
+        onCreated={() => {
+          setCurrentPage(1);
+          setSourceFilter('whatsapp');
+          fetchOrders();
         }}
       />
     </div>

@@ -116,6 +116,9 @@ export async function finalizeCashfreeOrder(orderId, { retryTracking = false } =
         await deductOrderInventory(claimed.items || []);
         claimed.paymentStatus = 'paid';
         claimed.status = 'ordered';
+        if (!claimed.orderSource) claimed.orderSource = 'website';
+        if (!claimed.opsStatus) claimed.opsStatus = 'new_order';
+        if (claimed.balanceStatus == null) claimed.balanceStatus = 'fully_paid';
         if (!claimed.paidAt) claimed.paidAt = new Date();
         if (!isFinalOrderNumber(claimed.orderNumber)) {
           claimed.orderNumber = await getNextPaidOrderNumber();
@@ -147,6 +150,9 @@ export async function finalizeCashfreeOrder(orderId, { retryTracking = false } =
   } else {
     order.paymentStatus = 'paid';
     if (!order.status || order.status === 'pending') order.status = 'ordered';
+    if (!order.orderSource) order.orderSource = 'website';
+    if (!order.opsStatus) order.opsStatus = 'new_order';
+    if (order.balanceStatus == null) order.balanceStatus = 'fully_paid';
     if (!order.paidAt) order.paidAt = new Date();
     if (!isFinalOrderNumber(order.orderNumber)) {
       order.orderNumber = await getNextPaidOrderNumber();

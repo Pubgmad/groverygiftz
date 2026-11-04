@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { FiHome, FiPackage, FiGrid, FiTruck, FiShoppingCart, FiUsers, FiImage, FiFileText, FiBookOpen, FiMail, FiMessageSquare, FiSettings, FiX, FiStar, FiGift, FiClock, FiShield, FiBarChart2, FiTool } from 'react-icons/fi';
+import { FiHome, FiPackage, FiGrid, FiTruck, FiShoppingCart, FiUsers, FiImage, FiFileText, FiBookOpen, FiMail, FiMessageSquare, FiSettings, FiX, FiStar, FiGift, FiClock, FiShield, FiBarChart2, FiTool, FiClipboard } from 'react-icons/fi';
 import useAdminAccess from '@/hooks/useAdminAccess';
 import { ADMIN_BASE_PATH } from '@/lib/adminPermissions';
 
@@ -13,6 +13,7 @@ const iconMap = {
   shipping: FiTruck,
   'estimated-delivery': FiClock,
   orders: FiShoppingCart,
+  operations: FiClipboard,
   revenue: FiBarChart2,
   customers: FiUsers,
   reviews: FiStar,
@@ -33,6 +34,7 @@ const navItems = [
   { id: 'shipping', href: `${ADMIN_BASE_PATH}/shipping`, label: 'Shipping Templates' },
   { id: 'estimated-delivery', href: `${ADMIN_BASE_PATH}/estimated-delivery`, label: 'Estimated Delivery Days' },
   { id: 'orders', href: `${ADMIN_BASE_PATH}/orders`, label: 'Orders' },
+  { id: 'operations', href: `${ADMIN_BASE_PATH}/operations`, label: 'Operations' },
   { id: 'revenue', href: `${ADMIN_BASE_PATH}/revenue`, label: 'Revenue Analytics' },
   { id: 'customers', href: `${ADMIN_BASE_PATH}/customers`, label: 'Customers' },
   { id: 'reviews', href: `${ADMIN_BASE_PATH}/reviews`, label: 'Reviews' },

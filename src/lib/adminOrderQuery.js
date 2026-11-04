@@ -30,24 +30,32 @@ export const ORDER_STATUS_LABELS = {
 
 export const ORDER_CSV_HEADERS = [
   'Order ID',
+  'Order Source',
   'Order Date (IST)',
   'Customer Name',
   'Customer Email',
   'Customer Mobile Number',
   'WhatsApp Number',
   'City',
+  'District',
   'State',
   'Pincode',
   'Full Shipping Address',
   'Order Status',
+  'Ops Status',
+  'Assigned To',
+  'Expected Dispatch',
   'Payment Method',
   'Payment Status',
+  'Balance Status',
   'Product Names',
   'Product Variants',
   'Product Quantities',
   'Item Subtotal (INR)',
   'Shipping Charges (INR)',
   'Total Order Amount (INR)',
+  'Advance Paid (INR)',
+  'Remaining Balance (INR)',
   'Tracking Details',
 ];
 
@@ -56,6 +64,9 @@ export function parseOrderReportFilters(params) {
   const name = paramValue(params, 'name');
   const mobile = paramValue(params, 'mobile', 'mobileNumber');
   const status = paramValue(params, 'status');
+  const source = paramValue(params, 'source', 'orderSource');
+  const opsStatus = paramValue(params, 'opsStatus');
+  const assignedTo = paramValue(params, 'assignedTo');
   const dateFrom = paramValue(params, 'dateFrom');
   const dateTo = paramValue(params, 'dateTo');
   const range = parseIstRange(dateFrom, dateTo);
@@ -66,6 +77,9 @@ export function parseOrderReportFilters(params) {
     name,
     mobile,
     status: normalizedStatus,
+    source: String(source || '').toLowerCase(),
+    opsStatus,
+    assignedTo,
     dateFrom: range.fromStr,
     dateTo: range.toStr,
     paidAtFrom: range.from,
@@ -76,9 +90,31 @@ export function parseOrderReportFilters(params) {
 }
 
 export function buildAdminOrderFilter(filters = {}) {
-  const filter = { paymentStatus: 'paid' };
+  // Paid website (and any paid) orders + all WhatsApp/Instagram ops orders (including unpaid).
+  const filter = {
+    $or: [
+      { paymentStatus: 'paid' },
+      { orderSource: { $in: ['whatsapp', 'instagram'] } },
+    ],
+  };
+  if (filters.source === 'website') {
+    filter.$or = [
+      { paymentStatus: 'paid', orderSource: 'website' },
+      { paymentStatus: 'paid', orderSource: { $exists: false } },
+      { paymentStatus: 'paid', orderSource: null },
+    ];
+  } else if (filters.source === 'whatsapp' || filters.source === 'instagram') {
+    delete filter.$or;
+    filter.orderSource = filters.source;
+  }
   if (filters.status) {
     filter.status = { $in: ORDER_STATUS_ALIASES[filters.status] || [filters.status] };
+  }
+  if (filters.opsStatus) {
+    filter.opsStatus = filters.opsStatus;
+  }
+  if (filters.assignedTo) {
+    filter.assignedTo = filters.assignedTo;
   }
   if (filters.orderId) {
     filter.orderNumber = { $regex: escapeRegex(filters.orderId), $options: 'i' };
@@ -126,24 +162,32 @@ export function orderCsvValues(order = {}) {
   const items = Array.isArray(order.items) ? order.items : [];
   return [
     order.orderNumber || '',
+    order.orderSource || 'website',
     formatIstDateTime(order.paidAt || order.createdAt),
     address.fullName || '',
     address.email || order.guestEmail || '',
     address.phone || order.phone || '',
     address.whatsappNumber || order.whatsappNumber || '',
     address.city || '',
+    address.district || '',
     address.state || '',
     address.pincode || '',
     fullAddress(address),
     ORDER_STATUS_LABELS[order.status] || order.status || '',
+    order.opsStatus || '',
+    order.assignedToName || '',
+    order.expectedDispatchDate ? formatIstDateTime(order.expectedDispatchDate) : '',
     order.paymentMethod || '',
     order.paymentStatus || '',
+    order.balanceStatus || '',
     joinItems(items, (item) => item.title || ''),
     joinItems(items, (item) => item.variant || 'No variant'),
     joinItems(items, (item) => String(item.quantity || '')),
     formatInrAmount(order.subtotal),
     formatInrAmount(order.shippingCost),
     formatInrAmount(order.total),
+    formatInrAmount(order.advancePaid),
+    formatInrAmount(order.remainingBalance),
     order.trackingNumber || '',
   ];
 }

@@ -195,6 +195,7 @@ export async function POST(req) {
 
     const order = await Order.create({
       orderNumber: pendingOrderNumber,
+      orderSource: 'website',
       customer: session.user.id,
       guestEmail: shippingAddress?.email || session.user.email || null,
       items: orderItems.map((item) => {
@@ -214,6 +215,9 @@ export async function POST(req) {
       cashfreeCfOrderId: String(cashfreeData.cf_order_id || ''),
       cashfreePaymentSessionId: cashfreeData.payment_session_id,
       notes: notes || '',
+      opsStatus: 'new_order',
+      previewRequired: true,
+      balanceStatus: 'pending',
       metaAttribution: captureMetaOrderAttribution(req),
     });
 
