@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { formatPrice } from '@/lib/utils';
 import { getOrderDeliveryEstimate, isOrderOutOfTamilNadu } from '@/lib/orderDeliveryEstimate';
 import toast from 'react-hot-toast';
@@ -7,6 +7,8 @@ import useAdminAccess from '@/hooks/useAdminAccess';
 import ReadOnlyBanner from '@/components/admin/ReadOnlyBanner';
 import AdminSelect from '@/components/admin/AdminSelect';
 import DownloadCsvButton from '@/components/admin/DownloadCsvButton';
+import ShippingLabelModal from '@/components/admin/ShippingLabelModal';
+import { MAX_SHIPPING_LABEL_ORDERS } from '@/lib/shippingLabelLayout';
 import { FiRefreshCw } from 'react-icons/fi';
 
 const statusOptions = [
@@ -212,7 +214,8 @@ function PreviewDetails({ preview }) {
 }
 
 export default function AdminOrdersPage() {
-  const { canWrite } = useAdminAccess();
+  const { canRead, canWrite } = useAdminAccess();
+  const readable = canRead('orders');
   const writable = canWrite('orders');
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -229,8 +232,23 @@ export default function AdminOrdersPage() {
   const [totalOrders, setTotalOrders] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [deliveryHolidays, setDeliveryHolidays] = useState([]);
+  const [checkedIds, setCheckedIds] = useState(() => new Set());
+  const [labelModalOpen, setLabelModalOpen] = useState(false);
+  const [selectingMatching, setSelectingMatching] = useState(false);
   const pageSize = 10;
   const dateError = dateFrom && dateTo && dateFrom > dateTo ? 'From date cannot be after To date' : '';
+  const checkedCount = checkedIds.size;
+  const pageIds = useMemo(() => orders.map((order) => String(order._id)), [orders]);
+  const pageSelectedCount = pageIds.filter((id) => checkedIds.has(id)).length;
+  const allPageSelected = pageIds.length > 0 && pageSelectedCount === pageIds.length;
+  const somePageSelected = pageSelectedCount > 0 && !allPageSelected;
+  const hiddenSelectedCount = useMemo(() => {
+    if (!checkedCount) return 0;
+    const visible = new Set(pageIds);
+    let hidden = 0;
+    checkedIds.forEach((id) => { if (!visible.has(id)) hidden += 1; });
+    return hidden;
+  }, [checkedIds, checkedCount, pageIds]);
 
   const filterQuery = () => {
     const query = new URLSearchParams();
@@ -333,6 +351,72 @@ export default function AdminOrdersPage() {
     await fetchOrders();
   };
 
+  const toggleChecked = (id, nextChecked) => {
+    setCheckedIds((prev) => {
+      const copy = new Set(prev);
+      if (nextChecked) copy.add(String(id));
+      else copy.delete(String(id));
+      return copy;
+    });
+  };
+
+  const selectCurrentPage = () => {
+    setCheckedIds((prev) => {
+      const copy = new Set(prev);
+      pageIds.forEach((id) => copy.add(id));
+      return copy;
+    });
+  };
+
+  const clearSelection = () => setCheckedIds(new Set());
+
+  const toggleSelectCurrentPage = () => {
+    if (allPageSelected) {
+      setCheckedIds((prev) => {
+        const copy = new Set(prev);
+        pageIds.forEach((id) => copy.delete(id));
+        return copy;
+      });
+      return;
+    }
+    selectCurrentPage();
+  };
+
+  const selectAllMatching = async () => {
+    if (selectingMatching || dateError) return;
+    setSelectingMatching(true);
+    try {
+      const query = filterQuery();
+      query.set('limit', String(MAX_SHIPPING_LABEL_ORDERS));
+      const res = await fetch(`/api/admin/orders/ids?${query.toString()}`, { cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.error || 'Unable to select matching orders');
+        return;
+      }
+      const ids = Array.isArray(data.ids) ? data.ids.map(String) : [];
+      setCheckedIds(new Set(ids));
+      if (data.capped) {
+        toast.success(`Selected first ${ids.length} of ${data.total} matching orders (max ${data.max} for labels).`);
+      } else {
+        toast.success(`Selected ${ids.length} matching order${ids.length === 1 ? '' : 's'}.`);
+      }
+    } catch {
+      toast.error('Unable to select matching orders');
+    } finally {
+      setSelectingMatching(false);
+    }
+  };
+
+  const openLabelModal = () => {
+    if (!checkedCount) return;
+    if (checkedCount > MAX_SHIPPING_LABEL_ORDERS) {
+      toast.error(`Select at most ${MAX_SHIPPING_LABEL_ORDERS} orders for shipping labels.`);
+      return;
+    }
+    setLabelModalOpen(true);
+  };
+
   return (
     <div>
       <ReadOnlyBanner show={!writable} />
@@ -364,6 +448,40 @@ export default function AdminOrdersPage() {
           />
         </div>
       </div>
+
+      {readable ? (
+        <div className="mb-4 rounded-xl border bg-white p-3 sm:p-4">
+          <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0 text-sm">
+              <p className="font-semibold text-gray-900">{checkedCount} order{checkedCount === 1 ? '' : 's'} selected for labels</p>
+              {hiddenSelectedCount > 0 ? (
+                <p className="mt-1 text-xs text-amber-700">{hiddenSelectedCount} selected order{hiddenSelectedCount === 1 ? '' : 's'} hidden by the current page or filters — selection is kept by order ID.</p>
+              ) : (
+                <p className="mt-1 text-xs text-gray-500">Selection is kept when you change pages or filters. Use Select current page or Select all matching (capped).</p>
+              )}
+            </div>
+            <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap">
+              <button type="button" onClick={selectCurrentPage} disabled={!pageIds.length} className="inline-flex min-h-[44px] items-center justify-center rounded-xl border px-3 py-2 text-sm font-semibold disabled:opacity-50">
+                Select current page
+              </button>
+              <button type="button" onClick={selectAllMatching} disabled={!!dateError || selectingMatching} className="inline-flex min-h-[44px] items-center justify-center rounded-xl border px-3 py-2 text-sm font-semibold disabled:opacity-50">
+                {selectingMatching ? 'Selecting…' : `Select all matching (max ${MAX_SHIPPING_LABEL_ORDERS})`}
+              </button>
+              <button type="button" onClick={clearSelection} disabled={!checkedCount} className="inline-flex min-h-[44px] items-center justify-center rounded-xl border px-3 py-2 text-sm font-semibold disabled:opacity-50">
+                Clear selection
+              </button>
+              <button
+                type="button"
+                onClick={openLabelModal}
+                disabled={!checkedCount}
+                className="inline-flex min-h-[44px] items-center justify-center rounded-xl bg-primary-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Generate shipping labels ({checkedCount})
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className={`grid gap-6 ${selected ? 'xl:grid-cols-3' : ''}`}>
         <div className={`${selected ? 'xl:col-span-2' : ''} bg-white rounded-xl border overflow-hidden`}>
@@ -401,9 +519,19 @@ export default function AdminOrdersPage() {
 
           {loading ? <p className="p-6 text-center">Loading...</p> : (<>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm min-w-[1050px]">
+              <table className="w-full text-sm min-w-[1100px]">
                 <thead>
                   <tr className="bg-gray-50 text-left text-gray-600">
+                    <th className="p-4 w-12">
+                      <input
+                        type="checkbox"
+                        checked={allPageSelected}
+                        ref={(el) => { if (el) el.indeterminate = somePageSelected; }}
+                        onChange={toggleSelectCurrentPage}
+                        aria-label="Select current page"
+                        className="h-4 w-4 rounded border-gray-300"
+                      />
+                    </th>
                     <th className="p-4">SNO</th>
                     <th className="p-4">Order ID</th>
                     <th className="p-4">Order Date</th>
@@ -419,21 +547,32 @@ export default function AdminOrdersPage() {
                   {paginatedOrders.map((order, idx) => {
                     const outOfTn = isOrderOutOfTamilNadu(order);
                     const normalized = normalizeStatus(order.status);
+                    const id = String(order._id);
+                    const isChecked = checkedIds.has(id);
                     return (
-                      <tr key={order._id} className={`border-t cursor-pointer hover:bg-gray-50 ${selected?._id === order._id ? 'bg-primary-50' : ''}`} onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>
-                        <td className="p-4 font-semibold text-gray-500">{(currentPage - 1) * pageSize + idx + 1}</td>
-                        <td className="p-4 font-bold text-primary-700">{order.orderNumber}</td>
-                        <td className="p-4 text-gray-600 whitespace-nowrap">{formatDate(order.paidAt || order.createdAt)}</td>
-                        <td className="p-4"><p className="font-medium text-gray-900">{order.shippingAddress?.fullName || '-'}</p><p className="text-xs text-gray-500">{order.shippingAddress?.email || order.guestEmail || '-'}</p></td>
-                        <td className="p-4 font-medium whitespace-nowrap"><p>{order.shippingAddress?.phone || '-'}</p>{order.shippingAddress?.whatsappNumber && <p className="text-xs text-green-700">WA: {order.shippingAddress.whatsappNumber}</p>}</td>
-                        <td className="p-4 max-w-[160px]"><p className="font-medium text-gray-700 break-words">{order.shippingAddress?.city || '-'}</p>{outOfTn && <span className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">Outside TN</span>}</td>
-                        <td className="p-4"><span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusColors[normalized] || statusColors.ordered}`}>{statusLabels[normalized] || normalized}</span></td>
-                        <td className="p-4"><span className={`px-2 py-1 rounded-full text-xs font-semibold ${paymentStatusColors[order.paymentStatus] || paymentStatusColors.pending}`}>{order.paymentMethod || 'Cashfree'} {order.paymentStatus}</span></td>
-                        <td className="p-4 text-right font-medium">{formatPrice(order.total)}</td>
+                      <tr key={order._id} className={`border-t hover:bg-gray-50 ${selected?._id === order._id ? 'bg-primary-50' : ''} ${isChecked ? 'bg-sky-50/60' : ''}`}>
+                        <td className="p-4" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => toggleChecked(id, e.target.checked)}
+                            aria-label={`Select order ${order.orderNumber}`}
+                            className="h-4 w-4 rounded border-gray-300"
+                          />
+                        </td>
+                        <td className="p-4 font-semibold text-gray-500 cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>{(currentPage - 1) * pageSize + idx + 1}</td>
+                        <td className="p-4 font-bold text-primary-700 cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>{order.orderNumber}</td>
+                        <td className="p-4 text-gray-600 whitespace-nowrap cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>{formatDate(order.paidAt || order.createdAt)}</td>
+                        <td className="p-4 cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}><p className="font-medium text-gray-900">{order.shippingAddress?.fullName || '-'}</p><p className="text-xs text-gray-500">{order.shippingAddress?.email || order.guestEmail || '-'}</p></td>
+                        <td className="p-4 font-medium whitespace-nowrap cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}><p>{order.shippingAddress?.phone || '-'}</p>{order.shippingAddress?.whatsappNumber && <p className="text-xs text-green-700">WA: {order.shippingAddress.whatsappNumber}</p>}</td>
+                        <td className="p-4 max-w-[160px] cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}><p className="font-medium text-gray-700 break-words">{order.shippingAddress?.city || '-'}</p>{outOfTn && <span className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">Outside TN</span>}</td>
+                        <td className="p-4 cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}><span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusColors[normalized] || statusColors.ordered}`}>{statusLabels[normalized] || normalized}</span></td>
+                        <td className="p-4 cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}><span className={`px-2 py-1 rounded-full text-xs font-semibold ${paymentStatusColors[order.paymentStatus] || paymentStatusColors.pending}`}>{order.paymentMethod || 'Cashfree'} {order.paymentStatus}</span></td>
+                        <td className="p-4 text-right font-medium cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>{formatPrice(order.total)}</td>
                       </tr>
                     );
                   })}
-                  {orders.length === 0 && <tr><td colSpan={9} className="p-6 text-center text-gray-500">No orders match your filters</td></tr>}
+                  {orders.length === 0 && <tr><td colSpan={10} className="p-6 text-center text-gray-500">No orders match your filters</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -517,6 +656,28 @@ export default function AdminOrdersPage() {
           </div>
         )}
       </div>
+
+      <ShippingLabelModal
+        open={labelModalOpen}
+        orderIds={[...checkedIds]}
+        onClose={() => setLabelModalOpen(false)}
+        onOpenOrder={async (id) => {
+          setLabelModalOpen(false);
+          const onPage = orders.find((order) => String(order._id) === String(id));
+          if (onPage) {
+            setSelected(onPage);
+            return;
+          }
+          try {
+            const res = await fetch(`/api/orders/${id}`, { cache: 'no-store' });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data?._id) setSelected(data);
+            else toast.error('Unable to open that order');
+          } catch {
+            toast.error('Unable to open that order');
+          }
+        }}
+      />
     </div>
   );
 }

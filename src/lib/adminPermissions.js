@@ -7,7 +7,7 @@ export const ADMIN_MODULES = [
   { id: 'collections', label: 'Collections', href: `${ADMIN_BASE_PATH}/collections`, writeSupported: true, description: 'Storefront collections and featured grouping.' },
   { id: 'shipping', label: 'Shipping Templates', href: `${ADMIN_BASE_PATH}/shipping`, writeSupported: true, description: 'State shipping templates used at checkout.' },
   { id: 'estimated-delivery', label: 'Estimated Delivery Days', href: `${ADMIN_BASE_PATH}/estimated-delivery`, writeSupported: true, description: 'Central Tamil Nadu and other-state delivery estimates.' },
-  { id: 'orders', label: 'Orders', href: `${ADMIN_BASE_PATH}/orders`, writeSupported: true, description: 'Paid orders, status, tracking, and customer upload originals.' },
+  { id: 'orders', label: 'Orders', href: `${ADMIN_BASE_PATH}/orders`, writeSupported: true, description: 'Paid orders, status, tracking, shipping labels, and customer upload originals.' },
   { id: 'revenue', label: 'Revenue Analytics', href: `${ADMIN_BASE_PATH}/revenue`, writeSupported: false, description: 'Aggregated paid-order revenue, geography, products, and timing. Read-only.' },
   { id: 'customers', label: 'Customers', href: `${ADMIN_BASE_PATH}/customers`, writeSupported: false, description: 'Customer account list. No admin edits exist in this module.' },
   { id: 'reviews', label: 'Reviews', href: `${ADMIN_BASE_PATH}/reviews`, writeSupported: false, description: 'Verified customer reviews. No admin edits exist in this module.' },
