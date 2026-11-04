@@ -5,6 +5,7 @@ import Order from '@/models/Order';
 import { requireAdminPermission, logAdminAudit } from '@/lib/adminAccess';
 import { createDesignPreviewToken, buildDesignPreviewUrl, buildWhatsAppShareUrl } from '@/lib/designPreviewToken';
 import { appendTimeline } from '@/lib/opsOrderHelpers';
+import { assertCanAccessOrder } from '@/lib/opsStaffAccess';
 
 export async function POST(req, { params }) {
   const { error, access } = await requireAdminPermission('orders', 'write');
@@ -12,6 +13,9 @@ export async function POST(req, { params }) {
   await dbConnect();
   const order = await Order.findById(params.id);
   if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+  if (!assertCanAccessOrder(access, order)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
   if (!order.currentDesignVersion) {
     return NextResponse.json({ error: 'Upload a design before sharing preview' }, { status: 400 });
   }

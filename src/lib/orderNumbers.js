@@ -17,23 +17,23 @@ export async function getNextPaidOrderNumber() {
  */
 export async function getNextWhatsAppOrderNumber() {
   const seed = Math.max(0, Number(process.env.WHATSAPP_ORDER_SEQ_START || 4745) || 4745);
-  let counter = await Counter.findOneAndUpdate(
+  // Atomic upsert: on first insert seq becomes seed+1 (first ID G4746 when seed=4745).
+  const counter = await Counter.findOneAndUpdate(
     { key: 'whatsappOrder' },
-    { $inc: { seq: 1 } },
-    { new: true, upsert: false },
+    [
+      {
+        $set: {
+          seq: {
+            $add: [
+              { $ifNull: ['$seq', seed] },
+              1,
+            ],
+          },
+        },
+      },
+    ],
+    { new: true, upsert: true },
   );
-  if (!counter) {
-    try {
-      await Counter.create({ key: 'whatsappOrder', seq: seed });
-    } catch {
-      // Concurrent create — another request won the race.
-    }
-    counter = await Counter.findOneAndUpdate(
-      { key: 'whatsappOrder' },
-      { $inc: { seq: 1 } },
-      { new: true, upsert: true },
-    );
-  }
   const seq = Math.max(Number(counter?.seq) || 0, 1);
   return `G${String(seq).padStart(4, '0')}`;
 }

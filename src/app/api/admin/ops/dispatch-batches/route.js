@@ -121,3 +121,42 @@ export async function POST(req) {
 
   return NextResponse.json({ batch, rejected }, { status: 201 });
 }
+
+/** Advance batch handover / mark tracking pending. */
+export async function PATCH(req) {
+  let { error, access } = await requireAdminPermission('operations', 'write');
+  if (error) {
+    const fallback = await requireAdminPermission('orders', 'write');
+    if (fallback.error) return error;
+    access = fallback.access;
+  }
+  const body = await req.json();
+  if (!body.batchId) return NextResponse.json({ error: 'batchId required' }, { status: 400 });
+  await dbConnect();
+  const batch = await DispatchBatch.findById(body.batchId);
+  if (!batch) return NextResponse.json({ error: 'Batch not found' }, { status: 404 });
+
+  if (body.confirmPickup === true || body.status === 'handed_over') {
+    batch.status = 'handed_over';
+    batch.pickupConfirmedAt = new Date();
+    const orders = await Order.find({ _id: { $in: batch.orderIds } });
+    for (const order of orders) {
+      order.pickupStatus = 'handed_over';
+      order.opsStatus = 'tracking_pending';
+      order.status = 'dispatched';
+      appendTimeline(order, {
+        type: 'courier_handover',
+        newStatus: 'tracking_pending',
+        employee: access.adminId,
+        employeeName: access.name || access.email || '',
+        notes: `Batch ${batch.batchCode} handed over`,
+      });
+      await order.save();
+    }
+  }
+  if (body.status === 'completed') {
+    batch.status = 'completed';
+  }
+  await batch.save();
+  return NextResponse.json({ batch });
+}

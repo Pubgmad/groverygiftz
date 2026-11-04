@@ -1,4 +1,6 @@
 import OpsNotification from '@/models/OpsNotification';
+import Admin from '@/models/Admin';
+import Role from '@/models/Role';
 import { computeBalanceStatus } from '@/lib/opsConstants';
 
 export function appendTimeline(order, {
@@ -23,37 +25,107 @@ export function appendTimeline(order, {
   });
 }
 
-export function refreshPaymentTotals(order) {
-  const records = Array.isArray(order.paymentRecords) ? order.paymentRecords : [];
+/**
+ * Pure payment totals — only VERIFIED records credit paid amounts.
+ * Unverified screenshots never inflate paid balances.
+ * Verified revision payments reduce remaining balance.
+ */
+export function computePaymentTotals({
+  total = 0,
+  additionalCharges = 0,
+  revisionCharges = 0,
+  paymentRecords = [],
+  paymentStatus = '',
+  paidAt = null,
+  revisionPaymentVerified = false,
+} = {}) {
+  const records = Array.isArray(paymentRecords) ? paymentRecords : [];
   let advance = 0;
   let balance = 0;
-  let revision = 0;
-  let needsVerification = false;
+  let revisionPaid = 0;
+  let revisionCharged = Number(revisionCharges) || 0;
+  let hasUnverifiedPositive = false;
+
   records.forEach((row) => {
-    const amount = Number(row.amount) || 0;
-    if (!row.verified) needsVerification = true;
+    const amount = Number(row?.amount) || 0;
+    if (row?.kind === 'revision') {
+      revisionCharged = Math.max(revisionCharged, amount);
+    }
+    if (!row?.verified) {
+      if (amount > 0) hasUnverifiedPositive = true;
+      return;
+    }
     if (row.kind === 'balance') balance += amount;
-    else if (row.kind === 'revision') revision += amount;
+    else if (row.kind === 'revision') revisionPaid += amount;
     else advance += amount;
   });
-  order.advancePaid = advance;
-  order.balancePaid = balance;
-  order.revisionCharges = Math.max(Number(order.revisionCharges) || 0, revision);
-  order.additionalCharges = Number(order.additionalCharges) || 0;
-  const owed = Math.max(0, Number(order.total || 0) + Number(order.additionalCharges || 0) + Number(order.revisionCharges || 0));
-  const paid = advance + balance;
-  order.remainingBalance = Math.max(0, Math.round((owed - paid) * 100) / 100);
-  order.balanceStatus = computeBalanceStatus({
-    total: order.total,
+
+  const nextAdditional = Number(additionalCharges) || 0;
+  const owed = Math.max(0, Number(total || 0) + nextAdditional + revisionCharged);
+  const paid = advance + balance + revisionPaid;
+  const remainingBalance = Math.max(0, Math.round((owed - paid) * 100) / 100);
+  const verificationRequired = hasUnverifiedPositive && (paid + 0.009 < owed || paid <= 0);
+
+  const balanceStatus = computeBalanceStatus({
+    total,
     advancePaid: advance,
-    additionalCharges: Number(order.additionalCharges || 0) + Number(order.revisionCharges || 0),
-    balancePaid: balance,
-    verificationRequired: needsVerification && paid > 0 && paid < owed,
+    additionalCharges: nextAdditional + revisionCharged,
+    balancePaid: balance + revisionPaid,
+    verificationRequired,
   });
-  if (order.balanceStatus === 'fully_paid' && order.paymentStatus !== 'refunded') {
-    order.paymentStatus = 'paid';
-    if (!order.paidAt) order.paidAt = new Date();
+
+  let nextPaymentStatus = paymentStatus;
+  let nextPaidAt = paidAt;
+  if (balanceStatus === 'fully_paid' && paymentStatus !== 'refunded') {
+    nextPaymentStatus = 'paid';
+    if (!nextPaidAt) nextPaidAt = new Date();
+  } else if (balanceStatus === 'verification_required') {
+    // Do not treat unpaid/unverified as paid
+    if (paymentStatus === 'paid' && !records.some((r) => r.verified && (Number(r.amount) || 0) > 0)) {
+      nextPaymentStatus = 'pending';
+    }
   }
+
+  const nextRevisionVerified = revisionPaid > 0 && revisionPaid + 0.009 >= revisionCharged
+    ? true
+    : revisionPaymentVerified;
+
+  return {
+    advancePaid: advance,
+    balancePaid: balance,
+    revisionCharges: revisionCharged,
+    additionalCharges: nextAdditional,
+    remainingBalance,
+    balanceStatus,
+    paymentStatus: nextPaymentStatus,
+    paidAt: nextPaidAt,
+    revisionPaymentVerified: nextRevisionVerified,
+    paid,
+    owed,
+    verificationRequired,
+    hasUnverifiedPositive,
+  };
+}
+
+export function refreshPaymentTotals(order) {
+  const totals = computePaymentTotals({
+    total: order.total,
+    additionalCharges: order.additionalCharges,
+    revisionCharges: order.revisionCharges,
+    paymentRecords: order.paymentRecords,
+    paymentStatus: order.paymentStatus,
+    paidAt: order.paidAt,
+    revisionPaymentVerified: order.revisionPaymentVerified,
+  });
+  order.advancePaid = totals.advancePaid;
+  order.balancePaid = totals.balancePaid;
+  order.revisionCharges = totals.revisionCharges;
+  order.additionalCharges = totals.additionalCharges;
+  order.remainingBalance = totals.remainingBalance;
+  order.balanceStatus = totals.balanceStatus;
+  order.paymentStatus = totals.paymentStatus;
+  if (totals.paidAt) order.paidAt = totals.paidAt;
+  if (totals.revisionPaymentVerified) order.revisionPaymentVerified = true;
   return order;
 }
 
@@ -72,6 +144,22 @@ export async function notifyAdmins(recipientIds = [], payload = {}) {
       meta: payload.meta || {},
     })),
   );
+}
+
+/** Notify all active admins assigned to roles with matching slugs (e.g. sales-person). */
+export async function notifyRoleSlugs(slugs = [], payload = {}) {
+  const wanted = new Set((slugs || []).map((s) => String(s || '').toLowerCase()).filter(Boolean));
+  if (!wanted.size) return;
+  const roles = await Role.find({ slug: { $in: [...wanted] }, isActive: { $ne: false } }).select('_id').lean();
+  const roleIds = roles.map((r) => r._id);
+  if (!roleIds.length) return;
+  const staff = await Admin.find({
+    isActive: { $ne: false },
+    roleId: { $in: roleIds },
+  }).select('_id').lean();
+  const ids = staff.map((s) => s._id);
+  if (payload.alsoInclude) ids.push(...payload.alsoInclude);
+  await notifyAdmins(ids, payload);
 }
 
 export function sanitizePublicDesignOrder(order) {

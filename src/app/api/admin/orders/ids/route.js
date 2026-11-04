@@ -13,7 +13,8 @@ import { MAX_SHIPPING_LABEL_ORDERS } from '@/lib/shippingLabelData';
 /** Returns order ObjectIds matching current admin filters (capped — never unbounded). */
 export async function GET(req) {
   const { requireAdminPermission } = await import('@/lib/adminAccess');
-  const { error } = await requireAdminPermission('orders', 'read');
+  const { mergeStaffOrderFilter } = await import('@/lib/opsStaffAccess');
+  const { error, access } = await requireAdminPermission('orders', 'read');
   if (error) return error;
 
   const { searchParams } = new URL(req.url);
@@ -21,11 +22,12 @@ export async function GET(req) {
   if (parsed.error) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
   await dbConnect();
-  const filter = buildAdminOrderFilter(parsed);
+  const base = buildAdminOrderFilter(parsed);
   // Exclude cancelled from bulk label selection even if filter status is empty
   if (!parsed.status) {
-    filter.status = { $nin: ['cancelled'] };
+    base.status = { $nin: ['cancelled'] };
   }
+  const filter = mergeStaffOrderFilter(base, access);
 
   const limit = Math.min(
     MAX_SHIPPING_LABEL_ORDERS,

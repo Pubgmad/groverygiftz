@@ -5,8 +5,24 @@ import dbConnect from '@/lib/db';
 import Order from '@/models/Order';
 import Admin from '@/models/Admin';
 import { requireAdminPermission, logAdminAudit } from '@/lib/adminAccess';
-import { OPS_STATUSES, canPrintDesign, PRINTING_STARTED_OPS } from '@/lib/opsConstants';
+import { assertCanAccessOrder } from '@/lib/opsStaffAccess';
+import {
+  OPS_STATUSES,
+  canPrintDesign,
+  canTransitionOpsStatus,
+  isPaymentGatedOpsStatus,
+  isPrintOpsStatus,
+  isProductionOpsStatus,
+  PRINTING_STARTED_OPS,
+  requiresPaidRevisionGate,
+} from '@/lib/opsConstants';
 import { appendTimeline, notifyAdmins, refreshPaymentTotals } from '@/lib/opsOrderHelpers';
+
+function paymentOk(order) {
+  return order.paymentStatus === 'paid'
+    || order.balanceStatus === 'fully_paid'
+    || order.paymentException === true;
+}
 
 export async function PATCH(req, { params }) {
   const { error, access } = await requireAdminPermission('orders', 'write');
@@ -22,6 +38,9 @@ export async function PATCH(req, { params }) {
   await dbConnect();
   const order = await Order.findById(params.id);
   if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+  if (!assertCanAccessOrder(access, order)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   const prevOps = order.opsStatus;
   const prevStatus = order.status;
@@ -30,28 +49,58 @@ export async function PATCH(req, { params }) {
     if (!OPS_STATUSES.includes(body.opsStatus)) {
       return NextResponse.json({ error: 'Invalid ops status' }, { status: 400 });
     }
-    if (['printing_in_progress', 'printing_completed', 'approved_printing_pending'].includes(body.opsStatus)) {
-      if (!canPrintDesign(order)) {
-        return NextResponse.json({
-          error: 'Printing blocked until design is uploaded and approved (when preview is required)',
-        }, { status: 409 });
-      }
+    if (!canTransitionOpsStatus(prevOps, body.opsStatus)) {
+      return NextResponse.json({
+        error: `Cannot transition from ${prevOps || 'unset'} to ${body.opsStatus}`,
+      }, { status: 409 });
+    }
+    if (isPrintOpsStatus(body.opsStatus) && !canPrintDesign(order)) {
+      return NextResponse.json({
+        error: 'Printing blocked until design is uploaded and approved (when preview is required)',
+      }, { status: 409 });
+    }
+    if (
+      (isPrintOpsStatus(body.opsStatus) || isProductionOpsStatus(body.opsStatus))
+      && requiresPaidRevisionGate(order)
+    ) {
+      return NextResponse.json({
+        error: 'Paid revision must be verified before printing or production',
+      }, { status: 409 });
+    }
+    if (isPaymentGatedOpsStatus(body.opsStatus) && !paymentOk(order)) {
+      return NextResponse.json({
+        error: 'Payment must be verified (or exception granted) before this status',
+      }, { status: 409 });
     }
     if (body.opsStatus === 'ready_to_dispatch') {
-      const paidOk = order.paymentStatus === 'paid' || order.balanceStatus === 'fully_paid' || order.paymentException === true;
       const addressOk = order.shippingAddress?.line1 && order.shippingAddress?.city && order.shippingAddress?.pincode;
-      if (!paidOk) {
-        return NextResponse.json({ error: 'Payment must be verified (or exception granted) before ready to dispatch' }, { status: 409 });
-      }
       if (!addressOk) {
         return NextResponse.json({ error: 'Complete delivery address required' }, { status: 409 });
       }
     }
     order.opsStatus = body.opsStatus;
-    if (body.opsStatus === 'printing_in_progress' && !order.printingStartedAt) order.printingStartedAt = new Date();
+
+    if (body.opsStatus === 'printing_assigned' || body.opsStatus === 'printing_in_progress') {
+      let printAssignee = null;
+      const candidate = body.printingAssignedTo || body.assignedTo || access.adminId;
+      if (candidate && mongoose.Types.ObjectId.isValid(String(candidate))) {
+        const admin = await Admin.findById(candidate).select('_id name email isActive').lean();
+        if (admin && admin.isActive !== false) printAssignee = admin;
+      }
+      if (printAssignee) {
+        order.printingAssignedTo = printAssignee._id;
+      } else if (access.adminId) {
+        order.printingAssignedTo = access.adminId;
+      }
+      if (body.opsStatus === 'printing_in_progress' && !order.printingStartedAt) {
+        order.printingStartedAt = new Date();
+      }
+    }
+
     if (body.opsStatus === 'printing_completed') order.printingCompletedAt = new Date();
     if (body.opsStatus === 'production_in_progress' && !order.productionStartedAt) order.productionStartedAt = new Date();
-    if (body.opsStatus === 'production_in_progress' || body.opsStatus === 'packing_pending') {
+    if (body.opsStatus === 'production_in_progress' || body.opsStatus === 'packing_pending'
+      || body.opsStatus === 'manufacturing' || body.opsStatus === 'assembly' || body.opsStatus === 'finishing') {
       order.status = 'on_process';
     }
     if (body.opsStatus === 'dispatched' || body.opsStatus === 'completed') {
@@ -60,6 +109,18 @@ export async function PATCH(req, { params }) {
     }
     if (body.opsStatus === 'packing_pending' || body.opsStatus === 'ready_to_dispatch') {
       if (!order.packedAt && body.opsStatus === 'ready_to_dispatch') order.packedAt = new Date();
+    }
+  }
+
+  if (body.printingAssignedTo !== undefined && body.opsStatus === undefined) {
+    if (!body.printingAssignedTo) {
+      order.printingAssignedTo = undefined;
+    } else if (mongoose.Types.ObjectId.isValid(String(body.printingAssignedTo))) {
+      const admin = await Admin.findById(body.printingAssignedTo).select('_id isActive').lean();
+      if (!admin || admin.isActive === false) {
+        return NextResponse.json({ error: 'Print assignee not found' }, { status: 400 });
+      }
+      order.printingAssignedTo = admin._id;
     }
   }
 
@@ -136,6 +197,7 @@ export async function PATCH(req, { params }) {
       status: order.status,
       assignedTo: order.assignedTo,
       assignedToName: order.assignedToName,
+      printingAssignedTo: order.printingAssignedTo,
       canPrintDesign: canPrintDesign(order),
     },
   });

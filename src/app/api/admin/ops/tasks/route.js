@@ -8,6 +8,7 @@ import Admin from '@/models/Admin';
 import { requireAdminPermission, logAdminAudit } from '@/lib/adminAccess';
 import { TASK_TYPES, TASK_PRIORITIES, TASK_STATUSES } from '@/lib/opsConstants';
 import { notifyAdmins } from '@/lib/opsOrderHelpers';
+import { mergeStaffTaskFilter } from '@/lib/opsStaffAccess';
 
 export async function GET(req) {
   let { error, access } = await requireAdminPermission('operations', 'read');
@@ -20,8 +21,10 @@ export async function GET(req) {
   const { searchParams } = new URL(req.url);
   const view = searchParams.get('view') || 'today';
   const type = searchParams.get('type') || '';
-  const filter = {};
+  let filter = {};
   if (type && TASK_TYPES.includes(type)) filter.type = type;
+  // Non-oversight staff always see only their assigned tasks (mine=1 optional for oversight)
+  filter = mergeStaffTaskFilter(filter, access);
   if (searchParams.get('mine') === '1' && access?.adminId) {
     filter.assignedTo = access.adminId;
   }
@@ -135,6 +138,7 @@ export async function PATCH(req) {
     if (body.status === 'completed') task.completedAt = new Date();
   }
   if (body.priority && TASK_PRIORITIES.includes(body.priority)) task.priority = body.priority;
+  const prevDue = task.dueDate;
   if (body.dueDate !== undefined) task.dueDate = body.dueDate ? new Date(body.dueDate) : undefined;
   if (body.notes !== undefined) task.notes = String(body.notes || '').trim();
   if (body.assignedTo !== undefined) {
@@ -148,7 +152,9 @@ export async function PATCH(req) {
     action: 'updated',
     from: prev,
     to: task.status,
-    note: String(body.note || '').trim(),
+    note: String(body.note || '').trim()
+      || (body.dueDate !== undefined ? `dueDate ${prevDue || ''} → ${task.dueDate || ''}` : '')
+      || (body.assignedTo !== undefined ? `reassigned` : ''),
   });
   await task.save();
   return NextResponse.json({ task });

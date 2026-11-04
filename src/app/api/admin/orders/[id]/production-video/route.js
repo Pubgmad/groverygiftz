@@ -4,7 +4,13 @@ import dbConnect from '@/lib/db';
 import Order from '@/models/Order';
 import { requireAdminPermission, logAdminAudit } from '@/lib/adminAccess';
 import { saveUploadFile } from '@/lib/uploadStorage';
-import { appendTimeline, notifyAdmins } from '@/lib/opsOrderHelpers';
+import { appendTimeline, notifyRoleSlugs } from '@/lib/opsOrderHelpers';
+import { assertCanAccessOrder } from '@/lib/opsStaffAccess';
+import {
+  createProductionVideoShareToken,
+  buildProductionVideoSharePath,
+  buildWhatsAppVideoShareUrl,
+} from '@/lib/productionVideoToken';
 
 export async function POST(req, { params }) {
   const { error, access } = await requireAdminPermission('orders', 'write');
@@ -12,6 +18,9 @@ export async function POST(req, { params }) {
   await dbConnect();
   const order = await Order.findById(params.id);
   if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+  if (!assertCanAccessOrder(access, order)) {
+    return NextResponse.json({ error: 'You do not have access to this order' }, { status: 403 });
+  }
 
   const form = await req.formData();
   const file = form.get('file');
@@ -46,6 +55,17 @@ export async function POST(req, { params }) {
   });
   await order.save();
 
+  const video = order.productionVideos[order.productionVideos.length - 1];
+  const token = createProductionVideoShareToken(order._id, video._id);
+  const origin = req.headers.get('origin') || process.env.NEXTAUTH_URL || 'https://groverygiftz.in';
+  const sharePath = buildProductionVideoSharePath(saved.relativePath, token);
+  const shareUrl = sharePath ? `${String(origin).replace(/\/$/, '')}${sharePath}` : '';
+  const phone = order.shippingAddress?.whatsappNumber || order.shippingAddress?.phone;
+  const whatsappShareUrl = buildWhatsAppVideoShareUrl(
+    phone,
+    `Hi ${order.shippingAddress?.fullName || 'there'}, your GroveryGiftz product video for ${order.orderNumber}: ${shareUrl}`,
+  );
+
   await logAdminAudit({
     access,
     req,
@@ -55,14 +75,49 @@ export async function POST(req, { params }) {
     details: { orderNumber: order.orderNumber },
   });
 
-  const recipients = [order.assignedTo, order.createdByAdmin].filter(Boolean);
-  await notifyAdmins(recipients, {
+  await notifyRoleSlugs(['sales-person'], {
     type: 'production_video',
     title: 'Production video uploaded',
     body: `${order.orderNumber} has a new completion video`,
     order: order._id,
     orderNumber: order.orderNumber,
+    alsoInclude: [order.assignedTo, order.createdByAdmin].filter(Boolean),
   }).catch(() => {});
 
-  return NextResponse.json({ ok: true, count: order.productionVideos.length, url: saved.url });
+  return NextResponse.json({
+    ok: true,
+    count: order.productionVideos.length,
+    url: saved.url,
+    shareUrl,
+    whatsappShareUrl,
+    videoId: String(video._id),
+  });
+}
+
+/** Generate WhatsApp share link for an existing production video. */
+export async function GET(req, { params }) {
+  const { error, access } = await requireAdminPermission('orders', 'read');
+  if (error) return error;
+  await dbConnect();
+  const order = await Order.findById(params.id)
+    .select('orderNumber shippingAddress productionVideos assignedTo createdByAdmin printingAssignedTo')
+    .lean();
+  if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+  if (!assertCanAccessOrder(access, order)) {
+    return NextResponse.json({ error: 'You do not have access to this order' }, { status: 403 });
+  }
+  const videoId = new URL(req.url).searchParams.get('videoId');
+  const video = (order.productionVideos || []).find((v) => String(v._id) === String(videoId))
+    || (order.productionVideos || [])[(order.productionVideos || []).length - 1];
+  if (!video) return NextResponse.json({ error: 'No production video' }, { status: 404 });
+  const token = createProductionVideoShareToken(order._id, video._id);
+  const origin = req.headers.get('origin') || process.env.NEXTAUTH_URL || 'https://groverygiftz.in';
+  const sharePath = buildProductionVideoSharePath(video.filePath || '', token);
+  const shareUrl = sharePath ? `${String(origin).replace(/\/$/, '')}${sharePath}` : video.url;
+  const phone = order.shippingAddress?.whatsappNumber || order.shippingAddress?.phone;
+  const whatsappShareUrl = buildWhatsAppVideoShareUrl(
+    phone,
+    `Hi ${order.shippingAddress?.fullName || 'there'}, your GroveryGiftz product video for ${order.orderNumber}: ${shareUrl}`,
+  );
+  return NextResponse.json({ shareUrl, whatsappShareUrl, url: video.url });
 }

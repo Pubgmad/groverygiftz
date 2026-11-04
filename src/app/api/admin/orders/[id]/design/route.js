@@ -4,22 +4,26 @@ import dbConnect from '@/lib/db';
 import Order from '@/models/Order';
 import { requireAdminPermission, logAdminAudit } from '@/lib/adminAccess';
 import { saveUploadFile } from '@/lib/uploadStorage';
-import { appendTimeline, notifyAdmins } from '@/lib/opsOrderHelpers';
+import { appendTimeline, notifyAdmins, notifyRoleSlugs } from '@/lib/opsOrderHelpers';
 import { createDesignPreviewToken, buildDesignPreviewUrl, buildWhatsAppShareUrl } from '@/lib/designPreviewToken';
-import { canPrintDesign } from '@/lib/opsConstants';
+import { canPrintDesign, requiresPaidRevisionGate } from '@/lib/opsConstants';
+import { assertCanAccessOrder } from '@/lib/opsStaffAccess';
 
 const ALLOWED = new Set([
   'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf',
 ]);
 
 export async function GET(_req, { params }) {
-  const { error } = await requireAdminPermission('orders', 'read');
+  const { error, access } = await requireAdminPermission('orders', 'read');
   if (error) return error;
   await dbConnect();
   const order = await Order.findById(params.id)
-    .select('orderNumber designVersions currentDesignVersion designApprovalStatus designApprovedVersion designChangeRequest designApprovalHistory previewRequired opsStatus assignedTo shippingAddress.whatsappNumber shippingAddress.phone')
+    .select('orderNumber designVersions currentDesignVersion designApprovalStatus designApprovedVersion designChangeRequest designApprovalHistory previewRequired opsStatus assignedTo createdByAdmin printingAssignedTo shippingAddress.whatsappNumber shippingAddress.phone')
     .lean();
   if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+  if (!assertCanAccessOrder(access, order)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
   return NextResponse.json({
     order,
     canPrintDesign: canPrintDesign(order),
@@ -32,6 +36,14 @@ export async function POST(req, { params }) {
   await dbConnect();
   const order = await Order.findById(params.id);
   if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+  if (!assertCanAccessOrder(access, order)) {
+    return NextResponse.json({ error: 'You do not have access to this order' }, { status: 403 });
+  }
+  if (requiresPaidRevisionGate(order)) {
+    return NextResponse.json({
+      error: 'Paid revision charge must be recorded and verified before uploading another design',
+    }, { status: 409 });
+  }
 
   const form = await req.formData();
   const file = form.get('file');
@@ -95,6 +107,14 @@ export async function POST(req, { params }) {
     details: { version: nextVersion, orderNumber: order.orderNumber },
   });
 
+  await notifyRoleSlugs(['sales-person'], {
+    type: 'design_uploaded',
+    title: 'Design ready',
+    body: `${order.orderNumber} design v${nextVersion} uploaded`,
+    order: order._id,
+    orderNumber: order.orderNumber,
+    alsoInclude: [order.assignedTo, order.createdByAdmin].filter(Boolean),
+  }).catch(() => {});
   if (order.assignedTo) {
     await notifyAdmins([order.assignedTo], {
       type: 'design_uploaded',

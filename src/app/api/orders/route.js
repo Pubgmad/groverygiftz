@@ -9,6 +9,7 @@ import { can, getRequestAdminAccess } from '@/lib/adminAccess';
 import { getOrderDeliveryEstimate } from '@/lib/orderDeliveryEstimate';
 import { stripMakingCostFromOrder } from '@/lib/makingCost';
 import { buildAdminOrderFilter, parseOrderReportFilters, ORDER_STATUS_ALIASES } from '@/lib/adminOrderQuery';
+import { mergeStaffOrderFilter } from '@/lib/opsStaffAccess';
 
 export async function GET(req) {
   await dbConnect();
@@ -33,13 +34,18 @@ export async function GET(req) {
   const customerId = searchParams.get('customerId');
   const page = parsed.page;
   const limit = parsed.limit;
+  const sortKey = searchParams.get('sort') || 'createdAt';
+  const sortDir = searchParams.get('dir') === 'asc' ? 1 : -1;
+  const sort = ['createdAt', 'paidAt', 'total', 'orderNumber', 'opsStatus'].includes(sortKey)
+    ? { [sortKey]: sortDir }
+    : { createdAt: -1 };
 
   let filter;
   if (session.user.type === 'admin') {
     const access = await getRequestAdminAccess(session);
     if (!can(access, 'orders', 'read')) return NextResponse.json({ error: 'You do not have permission to perform this action' }, { status: 403 });
-    filter = buildAdminOrderFilter(parsed);
-    if (customerId) filter.customer = customerId;
+    filter = mergeStaffOrderFilter(buildAdminOrderFilter(parsed), access);
+    if (customerId) filter = mergeStaffOrderFilter({ ...buildAdminOrderFilter(parsed), customer: customerId }, access);
   } else {
     const email = String(session.user.email || '').trim().toLowerCase();
     filter = {
@@ -63,7 +69,7 @@ export async function GET(req) {
   }
 
   const [orders, total] = await Promise.all([
-    Order.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+    Order.find(filter).sort(sort).skip((page - 1) * limit).limit(limit).lean(),
     Order.countDocuments(filter),
   ]);
   const settings = await Settings.findOne().select('deliveryHolidays').lean();

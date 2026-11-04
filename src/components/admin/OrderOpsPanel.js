@@ -165,9 +165,14 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
             {[
               ['editing_in_progress', 'Start editing'],
               ['preview_waiting', 'Send to preview'],
+              ['printing_assigned', 'Assign printing'],
               ['printing_in_progress', 'Start printing'],
               ['printing_completed', 'Printing done'],
               ['production_in_progress', 'Start production'],
+              ['manufacturing', 'Manufacturing'],
+              ['assembly', 'Assembly'],
+              ['finishing', 'Finishing'],
+              ['quality_check', 'Quality check'],
               ['packing_pending', 'To packing'],
               ['ready_to_dispatch', 'Ready to dispatch'],
             ].map(([status, label]) => (
@@ -341,11 +346,51 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
           />
         ) : null}
         {(order.productionVideos || []).map((vid, idx) => (
-          <a key={vid._id || idx} href={vid.url} target="_blank" rel="noopener noreferrer" className="block text-xs font-semibold text-primary-700 underline">
-            Video {idx + 1}{vid.uploadedAt ? ` · ${new Date(vid.uploadedAt).toLocaleString('en-IN')}` : ''}
-          </a>
+          <div key={vid._id || idx} className="flex flex-wrap items-center gap-2 text-xs">
+            <a href={vid.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary-700 underline">
+              Video {idx + 1}{vid.uploadedAt ? ` · ${new Date(vid.uploadedAt).toLocaleString('en-IN')}` : ''}
+            </a>
+            {writable ? (
+              <button
+                type="button"
+                className="rounded border border-green-200 bg-green-50 px-2 py-1 font-semibold text-green-900"
+                onClick={async () => {
+                  try {
+                    const res = await fetch(`/api/admin/orders/${order._id}/production-video?videoId=${encodeURIComponent(vid._id || '')}`);
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error || 'Share failed');
+                    if (data.whatsappShareUrl) window.open(data.whatsappShareUrl, '_blank', 'noopener,noreferrer');
+                    toast.success('WhatsApp opened with video link');
+                  } catch (err) {
+                    toast.error(err.message || 'Share failed');
+                  }
+                }}
+              >
+                Share on WhatsApp
+              </button>
+            ) : null}
+          </div>
         ))}
       </div>
+
+      {Array.isArray(order.photoHistory) && order.photoHistory.length > 0 ? (
+        <div className="rounded-xl border bg-white p-3 space-y-2">
+          <h3 className="font-semibold text-gray-900">Photo version history</h3>
+          <ul className="max-h-40 space-y-1 overflow-y-auto text-xs text-gray-600">
+            {order.photoHistory.slice().reverse().map((row, idx) => (
+              <li key={row._id || idx} className="rounded border bg-gray-50 px-2 py-1">
+                {row.slotKey || 'photo'} · {row.replacedAt ? new Date(row.replacedAt).toLocaleString('en-IN') : ''}
+                {row.previousPath ? (
+                  <a className="ml-2 underline text-primary-700" href={row.previousPath.startsWith('/') ? row.previousPath : `/media/${row.previousPath}`} target="_blank" rel="noopener noreferrer">previous</a>
+                ) : null}
+                {row.newPath ? (
+                  <a className="ml-2 underline text-primary-700" href={`/media/${row.newPath}`} target="_blank" rel="noopener noreferrer">new</a>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <div className="rounded-xl border bg-white p-3 space-y-2">
         <h3 className="font-semibold text-gray-900">Replace customer photo</h3>

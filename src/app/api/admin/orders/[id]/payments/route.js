@@ -5,6 +5,7 @@ import Order from '@/models/Order';
 import { requireAdminPermission, logAdminAudit } from '@/lib/adminAccess';
 import { saveUploadFile } from '@/lib/uploadStorage';
 import { appendTimeline, refreshPaymentTotals, notifyAdmins } from '@/lib/opsOrderHelpers';
+import { assertCanAccessOrder } from '@/lib/opsStaffAccess';
 
 export async function POST(req, { params }) {
   const { error, access } = await requireAdminPermission('orders', 'write');
@@ -12,6 +13,9 @@ export async function POST(req, { params }) {
   await dbConnect();
   const order = await Order.findById(params.id);
   if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+  if (!assertCanAccessOrder(access, order)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   const contentType = req.headers.get('content-type') || '';
   let amount; let kind; let method; let reference; let paidAt; let notes; let verified = false; let screenshotPath; let screenshotUrl;

@@ -16,6 +16,7 @@ import {
 
 export async function GET(req) {
   const { requireAdminPermission } = await import('@/lib/adminAccess');
+  const { mergeStaffOrderFilter } = await import('@/lib/opsStaffAccess');
   const { error, access } = await requireAdminPermission('orders', 'read');
   if (error) return error;
 
@@ -24,7 +25,7 @@ export async function GET(req) {
   if (parsed.error) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
   await dbConnect();
-  const filter = buildAdminOrderFilter(parsed);
+  const filter = mergeStaffOrderFilter(buildAdminOrderFilter(parsed), access);
   const filename = orderCsvFilename(parsed);
 
   await logAdminAudit({

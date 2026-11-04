@@ -1,7 +1,15 @@
-import { emptyAdminPermissions } from '@/lib/adminPermissions';
+import { emptyAdminPermissions, fullAdminPermissions } from '@/lib/adminPermissions';
 
 /** Production-ready role permission packs for GroveryGiftz ops staff. */
 export const OPS_ROLE_PRESETS = [
+  {
+    name: 'Owner/Admin',
+    slug: 'owner-admin',
+    description: 'Full operational oversight across orders, operations, revenue, and staff workflows (in addition to primary admin).',
+    permissions: {
+      ...fullAdminPermissions(),
+    },
+  },
   {
     name: 'Sales Person',
     slug: 'sales-person',

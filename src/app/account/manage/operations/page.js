@@ -268,6 +268,7 @@ export default function OperationsPage() {
                     <th className="p-2">Parcels</th>
                     <th className="p-2">Status</th>
                     <th className="p-2">Orders</th>
+                    <th className="p-2">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -278,6 +279,30 @@ export default function OperationsPage() {
                       <td className="p-2">{b.parcelCount}</td>
                       <td className="p-2 capitalize">{String(b.status || '').replace(/_/g, ' ')}</td>
                       <td className="p-2 text-xs">{(b.orderNumbers || []).join(', ')}</td>
+                      <td className="p-2">
+                        {writable && b.status !== 'handed_over' && b.status !== 'completed' ? (
+                          <button
+                            type="button"
+                            className="rounded border px-2 py-1 text-xs font-semibold"
+                            onClick={async () => {
+                              const res = await fetch('/api/admin/ops/dispatch-batches', {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ batchId: b._id, confirmPickup: true }),
+                              });
+                              const data = await res.json().catch(() => ({}));
+                              if (!res.ok) {
+                                toast.error(data.error || 'Handover failed');
+                                return;
+                              }
+                              toast.success('Courier handover recorded');
+                              load(activeStatus);
+                            }}
+                          >
+                            Confirm handover
+                          </button>
+                        ) : '—'}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -490,6 +515,32 @@ export default function OperationsPage() {
                         >
                           Done
                         </button>
+                        <select
+                          className="rounded border px-1 py-0.5"
+                          defaultValue=""
+                          onChange={async (e) => {
+                            const assignedTo = e.target.value;
+                            e.target.value = '';
+                            if (!assignedTo) return;
+                            const res = await fetch('/api/admin/ops/tasks', {
+                              method: 'PATCH',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ taskId: task._id, assignedTo }),
+                            });
+                            if (!res.ok) {
+                              const data = await res.json().catch(() => ({}));
+                              toast.error(data.error || 'Reassign failed');
+                              return;
+                            }
+                            toast.success('Task reassigned');
+                            load(activeStatus);
+                          }}
+                        >
+                          <option value="">Reassign…</option>
+                          {staff.map((a) => (
+                            <option key={a._id || a.id} value={a._id || a.id}>{a.name || a.email}</option>
+                          ))}
+                        </select>
                       </div>
                     ) : null}
                   </div>

@@ -119,6 +119,7 @@ export async function loadAdminAccessById(adminId) {
     accessStatus: 'active',
     roleId: String(role._id),
     roleName: role.name,
+    roleSlug: role.slug || '',
     permissions: serializePermissions(role.permissions),
     adminId: String(admin._id),
     email: admin.email,
