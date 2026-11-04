@@ -106,8 +106,6 @@ export function toShippingLabelOrder(order, { origin } = {}) {
     city: trimText(address.city),
     state: trimText(address.state),
     pincode: trimText(address.pincode),
-    // Only when already stored on the order — never invent delivery types.
-    deliveryType: trimText(order.deliveryEstimate),
     items: sanitizeItems(order.items),
     trackUrl,
     token,

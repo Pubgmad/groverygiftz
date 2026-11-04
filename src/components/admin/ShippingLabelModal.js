@@ -246,7 +246,7 @@ export default function ShippingLabelModal({
               onClick={() => generate({ confirmPartial: false })}
               className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl bg-primary-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 sm:w-auto"
             >
-              {generating ? 'Generating PDF…' : checking ? 'Checking orders…' : 'Generate PDF'}
+              {generating ? 'Generating…' : checking ? 'Checking orders…' : 'Generate'}
             </button>
           </div>
         </div>

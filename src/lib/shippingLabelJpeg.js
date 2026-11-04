@@ -40,8 +40,9 @@ export function jpegFilenameFromPdf(pdfName = 'GroveryGiftz-Shipping-Labels.pdf'
 }
 
 export async function downloadShippingLabelJpegs(pdfUrl, pdfName = 'GroveryGiftz-Shipping-Labels.pdf', {
-  scale = 2,
-  quality = 0.92,
+  // ~300 DPI relative to PDF user space (72 pt/in): scale 4 ≈ 288 dpi
+  scale = 4,
+  quality = 0.95,
 } = {}) {
   if (!pdfUrl || typeof document === 'undefined') {
     throw new Error('PDF preview is not ready');

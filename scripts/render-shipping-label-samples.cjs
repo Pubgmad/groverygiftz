@@ -52,7 +52,6 @@ function makeOrder(i, opts = {}) {
     city: 'Coimbatore',
     state: 'Tamil Nadu',
     pincode: '641012',
-    deliveryType: 'Tamil Nadu delivery estimate',
     items: opts.manyItems
       ? [
         { title: 'Photo Cloud Acrylic Frame Premium Edition', quantity: 1, variant: '8x10 Glossy' },
