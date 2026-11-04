@@ -101,9 +101,13 @@ export function toShippingLabelOrder(order, { origin } = {}) {
     phone,
     line1: trimText(address.line1),
     line2: trimText(address.line2),
+    landmark: trimText(address.landmark),
+    district: trimText(address.district),
     city: trimText(address.city),
     state: trimText(address.state),
     pincode: trimText(address.pincode),
+    // Only when already stored on the order — never invent delivery types.
+    deliveryType: trimText(order.deliveryEstimate),
     items: sanitizeItems(order.items),
     trackUrl,
     token,

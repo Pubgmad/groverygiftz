@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
-import { FiDownload, FiPrinter, FiX } from 'react-icons/fi';
+import { FiDownload, FiExternalLink, FiPrinter, FiX } from 'react-icons/fi';
 import AdminSelect from '@/components/admin/AdminSelect';
 import { SHIPPING_LABEL_LAYOUTS, pageCountForLabels } from '@/lib/shippingLabelLayout';
 
@@ -98,7 +98,6 @@ export default function ShippingLabelModal({
     } finally {
       setChecking(false);
     }
-    // orderIdsKey keeps validation stable when parent passes a fresh array with the same IDs
   }, [orderIds, orderIdsKey, layout, revokePdf]);
 
   useEffect(() => {
@@ -159,13 +158,22 @@ export default function ShippingLabelModal({
     link.remove();
   };
 
+  const openPdfTab = () => {
+    if (!pdfUrl) return;
+    window.open(pdfUrl, '_blank', 'noopener,noreferrer');
+  };
+
   const printPdf = () => {
     if (!pdfUrl) return;
     const frame = iframeRef.current;
     if (frame?.contentWindow) {
-      frame.contentWindow.focus();
-      frame.contentWindow.print();
-      return;
+      try {
+        frame.contentWindow.focus();
+        frame.contentWindow.print();
+        return;
+      } catch {
+        /* fall through */
+      }
     }
     const win = window.open(pdfUrl, '_blank', 'noopener,noreferrer');
     if (win) {
@@ -177,8 +185,8 @@ export default function ShippingLabelModal({
         } catch {
           /* wait for PDF viewer */
         }
-      }, 500);
-      setTimeout(() => clearInterval(timer), 8000);
+      }, 600);
+      setTimeout(() => clearInterval(timer), 10000);
     } else {
       toast.error('Allow pop-ups to print, or download the PDF and print it.');
     }
@@ -194,12 +202,12 @@ export default function ShippingLabelModal({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4">
       <div className="flex max-h-[100dvh] w-full max-w-5xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl sm:max-h-[92vh] sm:rounded-2xl">
-        <div className="flex items-start justify-between gap-3 border-b px-4 py-3 sm:px-5">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b px-4 py-3 sm:px-5">
           <div className="min-w-0">
             <h2 className="text-lg font-bold text-gray-900">Shipping labels</h2>
             <p className="text-xs leading-5 text-gray-500">
-              {orderIds.length} selected · Layout {layoutMeta.label} · ~{pageCount || estimatedPages} A4 page(s).
-              Labels never include prices or payment details. Print at A4, 100% / Actual size.
+              {orderIds.length} selected · {layoutMeta.label} · {pageCount || estimatedPages} A4 page(s).
+              Preview is the same PDF you download. Print at A4, 100% / Actual size. No prices or weights.
             </p>
           </div>
           <button type="button" onClick={onClose} className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border" aria-label="Close">
@@ -207,8 +215,8 @@ export default function ShippingLabelModal({
           </button>
         </div>
 
-        <div className="border-b px-4 py-3 sm:px-5">
-          <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+        <div className="shrink-0 border-b px-4 py-3 sm:px-5">
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
             <label className="block min-w-0 text-sm font-medium">
               Label layout
               <AdminSelect className="mt-1" value={layout} onChange={setLayout} options={LAYOUT_OPTIONS} />
@@ -217,32 +225,14 @@ export default function ShippingLabelModal({
               type="button"
               disabled={busy || !orderIds.length}
               onClick={() => generate({ confirmPartial: false })}
-              className="inline-flex min-h-[44px] items-center justify-center rounded-xl bg-primary-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl bg-primary-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 sm:w-auto"
             >
               {generating ? 'Generating PDF…' : checking ? 'Checking orders…' : 'Generate PDF'}
             </button>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                disabled={!pdfUrl || busy}
-                onClick={downloadPdf}
-                className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold disabled:opacity-50 sm:flex-none"
-              >
-                <FiDownload /> Download
-              </button>
-              <button
-                type="button"
-                disabled={!pdfUrl || busy}
-                onClick={printPdf}
-                className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold disabled:opacity-50 sm:flex-none"
-              >
-                <FiPrinter /> Print
-              </button>
-            </div>
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5">
           {validation?.invalid?.length ? (
             <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
               <p className="font-semibold">
@@ -251,12 +241,12 @@ export default function ShippingLabelModal({
               <ul className="mt-2 space-y-2">
                 {validation.invalid.map((row) => (
                   <li key={row.id} className="rounded-lg border border-amber-200 bg-white p-2">
-                    <p className="font-semibold">{row.orderNumber || row.id}</p>
-                    <p className="text-xs">{row.reason}</p>
+                    <p className="font-semibold break-words">{row.orderNumber || row.id}</p>
+                    <p className="text-xs break-words">{row.reason}</p>
                     {onOpenOrder ? (
                       <button
                         type="button"
-                        className="mt-1 text-xs font-semibold text-primary-700 underline"
+                        className="mt-1 min-h-[36px] text-xs font-semibold text-primary-700 underline"
                         onClick={() => onOpenOrder(row.id)}
                       >
                         Open order
@@ -269,21 +259,53 @@ export default function ShippingLabelModal({
           ) : null}
 
           {pdfUrl ? (
-            <div className="min-h-[55vh] overflow-hidden rounded-xl border bg-gray-100">
+            <div className="overflow-hidden rounded-xl border bg-gray-100">
               <iframe
                 ref={iframeRef}
                 title="Shipping labels preview"
                 src={pdfUrl}
-                className="h-[70vh] w-full"
+                className="h-[min(62vh,560px)] w-full bg-white sm:h-[min(68vh,720px)]"
               />
+              <p className="border-t bg-white px-3 py-2 text-[11px] leading-4 text-gray-500 sm:hidden">
+                On some phones the in-page preview is limited — use Open PDF or Download, then print from your PDF app.
+              </p>
             </div>
           ) : (
             <div className="rounded-xl border border-dashed bg-gray-50 p-6 text-sm text-gray-600">
               {checking
                 ? 'Validating selected orders against current shipping addresses…'
-                : 'Choose a layout and generate the PDF to preview labels. Each label includes recipient address, packing contents, company return address when configured, and a secure tracking QR code.'}
+                : 'Choose a layout and generate the PDF. Each label shows logo, FROM + QR, SHIP TO, order info, product/qty table, and footer — never prices or payment details.'}
             </div>
           )}
+        </div>
+
+        <div className="shrink-0 border-t bg-white px-4 py-3 sm:px-5">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-end">
+            <button
+              type="button"
+              disabled={!pdfUrl || busy}
+              onClick={openPdfTab}
+              className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold disabled:opacity-50"
+            >
+              <FiExternalLink /> Open PDF
+            </button>
+            <button
+              type="button"
+              disabled={!pdfUrl || busy}
+              onClick={downloadPdf}
+              className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold disabled:opacity-50"
+            >
+              <FiDownload /> Download
+            </button>
+            <button
+              type="button"
+              disabled={!pdfUrl || busy}
+              onClick={printPdf}
+              className="col-span-2 inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-primary-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50 sm:col-span-1"
+            >
+              <FiPrinter /> Print labels
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -21,6 +21,24 @@ function requestOrigin(req) {
   }
 }
 
+function publicValidationPayload(payload) {
+  return {
+    layout: payload.layout,
+    company: {
+      siteName: payload.company.siteName,
+      tradeName: payload.company.tradeName,
+      hasReturnAddress: Boolean(payload.company.returnAddress),
+      hasPhone: Boolean(payload.company.phone),
+    },
+    valid: payload.valid.map(({ token, trackUrl, ...rest }) => rest),
+    invalid: payload.invalid,
+    pageCount: payload.pageCount,
+    validCount: payload.valid.length,
+    invalidCount: payload.invalid.length,
+    maxOrders: payload.maxOrders,
+  };
+}
+
 async function loadLabelContext(req) {
   const body = await req.json().catch(() => ({}));
   const orderIds = Array.isArray(body.orderIds) ? body.orderIds : [];
@@ -47,7 +65,7 @@ async function loadLabelContext(req) {
   await dbConnect();
   const [orders, settings] = await Promise.all([
     Order.find({ _id: { $in: objectIds } })
-      .select('orderNumber status paymentStatus paidAt createdAt shippingAddress items')
+      .select('orderNumber status paymentStatus paidAt createdAt shippingAddress items deliveryEstimate')
       .lean(),
     Settings.findOne()
       .select('siteName tradeName logo desktopLogo address phone email')
@@ -85,16 +103,7 @@ export async function POST(req) {
     const { payload, generatePdf, confirmPartial } = loaded;
 
     if (!generatePdf) {
-      return NextResponse.json({
-        layout: payload.layout,
-        company: payload.company,
-        valid: payload.valid,
-        invalid: payload.invalid,
-        pageCount: payload.pageCount,
-        validCount: payload.valid.length,
-        invalidCount: payload.invalid.length,
-        maxOrders: payload.maxOrders,
-      }, { headers: { 'Cache-Control': 'no-store' } });
+      return NextResponse.json(publicValidationPayload(payload), { headers: { 'Cache-Control': 'no-store' } });
     }
 
     if (!payload.valid.length) {
@@ -110,13 +119,7 @@ export async function POST(req) {
       return NextResponse.json({
         error: 'Some selected orders are missing required shipping information',
         requiresConfirmation: true,
-        layout: payload.layout,
-        company: payload.company,
-        valid: payload.valid,
-        invalid: payload.invalid,
-        pageCount: payload.pageCount,
-        validCount: payload.valid.length,
-        invalidCount: payload.invalid.length,
+        ...publicValidationPayload(payload),
       }, { status: 409, headers: { 'Cache-Control': 'no-store' } });
     }
 
