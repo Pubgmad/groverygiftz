@@ -418,6 +418,13 @@ export default function AdminOrdersPage() {
     setLabelModalOpen(true);
   };
 
+  const openLabelForOrder = (orderId) => {
+    const id = String(orderId || '');
+    if (!id) return;
+    setCheckedIds(new Set([id]));
+    setLabelModalOpen(true);
+  };
+
   return (
     <div>
       <ReadOnlyBanner show={!writable} />
@@ -628,6 +635,16 @@ export default function AdminOrdersPage() {
                   <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${paymentStatusColors[selected.paymentStatus] || paymentStatusColors.pending}`}>{selected.paymentStatus}</span>
                   <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{selected.paymentMethod || 'Cashfree'}</span>
                 </div>
+                {readable ? (
+                  <button
+                    type="button"
+                    onClick={() => openLabelForOrder(selected._id)}
+                    className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl border border-primary-200 bg-primary-50 px-4 py-2 text-sm font-semibold text-primary-800"
+                  >
+                    Print / download shipping label
+                  </button>
+                ) : null}
+
                 <div className="min-w-0 border rounded-lg p-3 bg-gray-50 space-y-2 break-words">
                   <p className="text-xs text-gray-600 leading-relaxed"><strong>ST Couriers tracking ID:</strong> after booking the parcel with ST Couriers, paste the tracking ID here. Customers can copy it and open the ST website.</p>
                   <label className="text-xs font-medium text-gray-700">Tracking ID</label>

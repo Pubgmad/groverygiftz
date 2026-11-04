@@ -1,6 +1,8 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import QRCode from 'qrcode';
-import bwipjs from 'bwip-js';
+import bwipImport from 'bwip-js';
+
+const bwipjs = bwipImport?.toBuffer ? bwipImport : (bwipImport?.default || bwipImport);
 
 /** A4 in PDF points (1 pt = 1/72 in). 210mm × 297mm. */
 export const A4_WIDTH = 595.28;

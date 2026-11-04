@@ -17,10 +17,19 @@ function triggerDownload(blob, filename) {
 }
 
 async function loadPdfJs() {
-  const pdfjs = await import('pdfjs-dist/build/pdf');
-  if (pdfjs.GlobalWorkerOptions) {
-    pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+  // Prefer the browser build; fall back if a bundler resolves the package root oddly.
+  let mod;
+  try {
+    mod = await import('pdfjs-dist/build/pdf');
+  } catch {
+    mod = await import('pdfjs-dist');
   }
+  const pdfjs = mod?.getDocument ? mod : (mod?.default || mod);
+  if (pdfjs?.GlobalWorkerOptions) {
+    const version = pdfjs.version || '3.11.174';
+    pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${version}/pdf.worker.min.js`;
+  }
+  if (!pdfjs?.getDocument) throw new Error('PDF engine unavailable for JPEG export');
   return pdfjs;
 }
 

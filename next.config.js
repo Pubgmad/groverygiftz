@@ -10,6 +10,15 @@ const nextConfig = {
   experimental: {
     serverComponentsExternalPackages: ['bwip-js', 'pdf-lib', 'qrcode'],
   },
+  webpack: (config) => {
+    // pdfjs optional Node canvas stub — browser JPEG export uses DOM canvas only.
+    config.resolve = config.resolve || {};
+    config.resolve.alias = {
+      ...(config.resolve.alias || {}),
+      canvas: false,
+    };
+    return config;
+  },
   async redirects() {
     return [
       { source: '/admin', destination: '/account/manage', permanent: false },
