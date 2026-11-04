@@ -20,7 +20,7 @@ const bundlePath = path.join(__dirname, '.bundle-shipping-pdf.cjs');
 const esbuildCli = path.join(root, 'node_modules', 'esbuild', 'bin', 'esbuild');
 execFileSync(
   process.execPath,
-  [esbuildCli, 'src/lib/shippingLabelPdf.js', '--bundle', '--platform=node', '--format=cjs', `--outfile=${bundlePath}`, '--external:pdf-lib', '--external:qrcode', '--external:bwip-js'],
+  [esbuildCli, 'src/lib/shippingLabelPdf.js', '--bundle', '--platform=node', '--format=cjs', `--outfile=${bundlePath}`, '--external:pdf-lib'],
   { cwd: root, stdio: 'pipe' },
 );
 

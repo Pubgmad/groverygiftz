@@ -293,7 +293,7 @@ export default function ShippingLabelModal({
             <div className="rounded-xl border border-dashed bg-gray-50 p-6 text-sm text-gray-600">
               {checking
                 ? 'Validating selected orders against current shipping addresses…'
-                : 'Choose a layout and generate the PDF. Each label shows logo, FROM + QR, SHIP TO, order info, product/qty table, and footer — never prices or payment details.'}
+                : 'Choose a layout and generate the PDF. Each label shows logo, FROM, SHIP TO, order info, product/qty table, and footer — never prices or payment details.'}
             </div>
           )}
         </div>

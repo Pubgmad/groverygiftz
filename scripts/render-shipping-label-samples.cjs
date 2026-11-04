@@ -18,8 +18,6 @@ execFileSync(process.execPath, [
   '--format=cjs',
   `--outfile=${bundlePath}`,
   '--external:pdf-lib',
-  '--external:qrcode',
-  '--external:bwip-js',
 ], { cwd: root, stdio: 'pipe' });
 
 const { buildShippingLabelsPdf } = require(bundlePath);
