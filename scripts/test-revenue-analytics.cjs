@@ -201,6 +201,24 @@ assert.ok(JSON.stringify(buildRevenueMatch({
   productIds: ['a', 'b'],
 })).includes('$in'), 'collection multi-product filter must use $in');
 
+const websiteSourceMatch = JSON.stringify(buildRevenueMatch({
+  from: day.from,
+  to: day.to,
+  orderSource: 'website',
+}));
+assert.ok(websiteSourceMatch.includes('orderSource'), 'website source filter must constrain orderSource');
+assert.ok(websiteSourceMatch.includes('$exists') || websiteSourceMatch.includes('null'), 'legacy paid website orders without orderSource must still match');
+
+const whatsappSourceMatch = JSON.stringify(buildRevenueMatch({
+  from: day.from,
+  to: day.to,
+  orderSource: 'whatsapp',
+}));
+assert.ok(whatsappSourceMatch.includes('"orderSource":"whatsapp"') || whatsappSourceMatch.includes("orderSource\":\"whatsapp\""), 'whatsapp source filter must exact-match');
+
+assert.strictEqual(buildRevenueMatch({ from: day.from, to: day.to }).orderSource, undefined, 'default revenue match must not force a channel');
+assert.ok(!JSON.stringify(buildRevenueMatch({ from: day.from, to: day.to })).includes('"orderSource"'), 'unfiltered revenue must not include orderSource constraint');
+
 const monthBucket = new Date('2026-11-01T00:00:00.000+05:30');
 const monthTrend = shapeTrend([{ _id: monthBucket, collected: 1000, orders: 2, productSales: 900 }], 'month');
 assert.strictEqual(monthTrend[0].label, istBucketLabel(monthBucket, 'month'));

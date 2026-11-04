@@ -154,9 +154,32 @@ export default function AdminRolesPage() {
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-6xl">
-      <div className="mb-5 min-w-0">
-        <h1 className="text-2xl font-bold leading-tight">Roles & Permissions</h1>
-        <p className="mt-2 text-sm leading-6 text-gray-500">Create a role, choose Read/Write access, then assign an email. Assigned people sign in at Admin Login. Only the primary admin can manage this section.</p>
+      <div className="mb-5 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold leading-tight">Roles & Permissions</h1>
+          <p className="mt-2 text-sm leading-6 text-gray-500">Create a role, choose Read/Write access, then assign an email. Assigned people sign in at Admin Login. Only the primary admin can manage this section.</p>
+        </div>
+        <button
+          type="button"
+          disabled={saving}
+          onClick={async () => {
+            setSaving(true);
+            try {
+              const res = await fetch('/api/admin/roles/presets', { method: 'POST' });
+              const data = await res.json().catch(() => ({}));
+              if (!res.ok) throw new Error(data.error || 'Unable to seed roles');
+              toast.success(`Presets ready · created ${data.created?.length || 0}, existing ${data.skipped?.length || 0}`);
+              await load();
+            } catch (err) {
+              toast.error(err.message || 'Unable to seed roles');
+            } finally {
+              setSaving(false);
+            }
+          }}
+          className="inline-flex min-h-[44px] items-center justify-center rounded-xl border border-primary-200 bg-primary-50 px-4 py-2 text-sm font-semibold text-primary-800 disabled:opacity-60"
+        >
+          Install Sales / Editor / Production roles
+        </button>
       </div>
 
       <div className="grid min-w-0 gap-4 xl:grid-cols-[220px_minmax(0,1fr)]">

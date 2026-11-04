@@ -108,6 +108,7 @@ async function getRevenueAnalytics(req) {
   const preset = searchParams.get('preset') || 'last30';
   const granularity = searchParams.get('granularity') || 'day';
   const paymentMethod = searchParams.get('paymentMethod') || '';
+  const orderSource = searchParams.get('orderSource') || searchParams.get('source') || '';
   const status = searchParams.get('status') || '';
   const state = searchParams.get('state') || '';
   const city = searchParams.get('city') || '';
@@ -147,6 +148,7 @@ async function getRevenueAnalytics(req) {
     from: range.from,
     to: range.to,
     paymentMethod: paymentMethod || undefined,
+    orderSource: orderSource || undefined,
     status: status || undefined,
     state: state || undefined,
     city: city || undefined,

@@ -10,10 +10,11 @@ import { TASK_TYPES, TASK_PRIORITIES, TASK_STATUSES } from '@/lib/opsConstants';
 import { notifyAdmins } from '@/lib/opsOrderHelpers';
 
 export async function GET(req) {
-  const { error, access } = await requireAdminPermission('operations', 'read');
+  let { error, access } = await requireAdminPermission('operations', 'read');
   if (error) {
     const fallback = await requireAdminPermission('orders', 'read');
     if (fallback.error) return error;
+    access = fallback.access;
   }
   await dbConnect();
   const { searchParams } = new URL(req.url);
@@ -21,10 +22,6 @@ export async function GET(req) {
   const type = searchParams.get('type') || '';
   const filter = {};
   if (type && TASK_TYPES.includes(type)) filter.type = type;
-  if (!access?.isPrimary && access?.adminId) {
-    // Non-primary: show assigned tasks (primary sees all)
-    // Still allow if they have operations write/read — assigned filter optional via mine=1
-  }
   if (searchParams.get('mine') === '1' && access?.adminId) {
     filter.assignedTo = access.adminId;
   }
@@ -55,10 +52,11 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
-  const { error, access } = await requireAdminPermission('operations', 'write');
+  let { error, access } = await requireAdminPermission('operations', 'write');
   if (error) {
     const fallback = await requireAdminPermission('orders', 'write');
     if (fallback.error) return error;
+    access = fallback.access;
   }
   const body = await req.json();
   if (!TASK_TYPES.includes(body.type)) {
@@ -119,10 +117,11 @@ export async function POST(req) {
 }
 
 export async function PATCH(req) {
-  const { error, access } = await requireAdminPermission('operations', 'write');
+  let { error, access } = await requireAdminPermission('operations', 'write');
   if (error) {
     const fallback = await requireAdminPermission('orders', 'write');
     if (fallback.error) return error;
+    access = fallback.access;
   }
   const body = await req.json();
   if (!body.taskId) return NextResponse.json({ error: 'taskId required' }, { status: 400 });

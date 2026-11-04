@@ -127,6 +127,7 @@ export default function RevenueAnalyticsPage() {
   const [to, setTo] = useState('');
   const [granularity, setGranularity] = useState('day');
   const [paymentMethod, setPaymentMethod] = useState('');
+  const [orderSource, setOrderSource] = useState('');
   const [status, setStatus] = useState('');
   const [state, setState] = useState('');
   const [city, setCity] = useState('');
@@ -155,6 +156,7 @@ export default function RevenueAnalyticsPage() {
       if (to) params.set('to', to);
     }
     if (paymentMethod) params.set('paymentMethod', paymentMethod);
+    if (orderSource) params.set('orderSource', orderSource);
     if (status) params.set('status', status);
     if (state) params.set('state', state);
     if (city) params.set('city', city);
@@ -162,7 +164,7 @@ export default function RevenueAnalyticsPage() {
     if (collection) params.set('collection', collection);
     if (variant) params.set('variant', variant);
     return params.toString();
-  }, [preset, granularity, from, to, paymentMethod, status, state, city, product, collection, variant]);
+  }, [preset, granularity, from, to, paymentMethod, orderSource, status, state, city, product, collection, variant]);
 
   const optionsQuery = useMemo(() => {
     const params = new URLSearchParams();
@@ -303,6 +305,7 @@ export default function RevenueAnalyticsPage() {
     setTo('');
     setGranularity('day');
     setPaymentMethod('');
+    setOrderSource('');
     setStatus('');
     setState('');
     setCity('');
@@ -316,6 +319,7 @@ export default function RevenueAnalyticsPage() {
   const activeFilters = [
     preset !== 'last30' ? DATE_PRESETS.find((item) => item.id === preset)?.label || preset : null,
     paymentMethod || null,
+    orderSource ? (orderSource === 'website' ? 'Website' : orderSource === 'whatsapp' ? 'WhatsApp' : 'Instagram') : null,
     status || null,
     state || null,
     city ? formatCityStateLabel(city, state) : null,
@@ -454,6 +458,19 @@ export default function RevenueAnalyticsPage() {
             options={methodOptions}
             loading={optionsLoading}
           />
+          <label className="block min-w-0 text-sm font-medium">Order source
+            <AdminSelect
+              className="mt-1"
+              value={orderSource}
+              onChange={setOrderSource}
+              options={[
+                { value: '', label: 'All sources' },
+                { value: 'website', label: 'Website (GG…)' },
+                { value: 'whatsapp', label: 'WhatsApp (G…)' },
+                { value: 'instagram', label: 'Instagram' },
+              ]}
+            />
+          </label>
           <label className="block min-w-0 text-sm font-medium">Order status
             <AdminSelect
               className="mt-1"

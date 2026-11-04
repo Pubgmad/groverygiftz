@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import useAdminAccess from '@/hooks/useAdminAccess';
@@ -13,28 +13,48 @@ export default function OperationsPage() {
   const readable = canRead('operations') || canRead('orders');
   const writable = canWrite('operations') || canWrite('orders');
   const [board, setBoard] = useState(null);
-  const [activeStatus, setActiveStatus] = useState('');
+  const [activeStatus, setActiveStatus] = useState('ready_to_dispatch');
   const [tasks, setTasks] = useState([]);
   const [taskView, setTaskView] = useState('today');
   const [notifications, setNotifications] = useState([]);
+  const [batches, setBatches] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [courierCompany, setCourierCompany] = useState('ST Couriers');
+  const [pickupDate, setPickupDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [confirmPickup, setConfirmPickup] = useState(false);
+  const [batchBusy, setBatchBusy] = useState(false);
+  const [staff, setStaff] = useState([]);
+  const [taskForm, setTaskForm] = useState({
+    orderNumber: '',
+    type: 'editing',
+    title: '',
+    priority: 'normal',
+    assignedTo: '',
+    dueDate: '',
+    notes: '',
+  });
+  const [taskBusy, setTaskBusy] = useState(false);
 
   const load = async (opsStatus = activeStatus) => {
     setLoading(true);
     try {
       const q = opsStatus ? `?opsStatus=${encodeURIComponent(opsStatus)}` : '';
-      const [boardRes, taskRes, noteRes] = await Promise.all([
+      const [boardRes, taskRes, noteRes, batchRes] = await Promise.all([
         fetch(`/api/admin/ops/board${q}`, { cache: 'no-store' }),
         fetch(`/api/admin/ops/tasks?view=${taskView}`, { cache: 'no-store' }),
         fetch('/api/admin/ops/notifications?unread=1', { cache: 'no-store' }),
+        fetch('/api/admin/ops/dispatch-batches', { cache: 'no-store' }),
       ]);
       const boardData = await boardRes.json();
       const taskData = await taskRes.json();
       const noteData = await noteRes.json();
+      const batchData = batchRes.ok ? await batchRes.json() : { batches: [] };
       if (!boardRes.ok) throw new Error(boardData.error || 'Board failed');
       setBoard(boardData);
       setTasks(taskData.tasks || []);
       setNotifications(noteData.notifications || []);
+      setBatches(batchData.batches || []);
     } catch (err) {
       toast.error(err.message || 'Unable to load operations');
     } finally {
@@ -48,6 +68,53 @@ export default function OperationsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [readable, activeStatus, taskView]);
 
+  useEffect(() => {
+    if (!readable) return;
+    fetch('/api/admin/staff', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : { staff: [] }))
+      .then((d) => setStaff(d.staff || []))
+      .catch(() => setStaff([]));
+  }, [readable]);
+
+  const pageIds = useMemo(() => (board?.orders || []).map((o) => String(o._id)), [board]);
+
+  const createTask = async () => {
+    const orderNumber = String(taskForm.orderNumber || '').trim();
+    if (!orderNumber) {
+      toast.error('Enter order number (G… or GG…)');
+      return;
+    }
+    setTaskBusy(true);
+    try {
+      const lookup = await fetch(`/api/orders?orderId=${encodeURIComponent(orderNumber)}&limit=1`, { cache: 'no-store' });
+      const lookupData = await lookup.json();
+      const order = (lookupData.orders || [])[0];
+      if (!lookup.ok || !order?._id) throw new Error(lookupData.error || 'Order not found');
+      const res = await fetch('/api/admin/ops/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: order._id,
+          type: taskForm.type,
+          title: taskForm.title || `${taskForm.type} · ${order.orderNumber}`,
+          priority: taskForm.priority,
+          assignedTo: taskForm.assignedTo || undefined,
+          dueDate: taskForm.dueDate || undefined,
+          notes: taskForm.notes,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Task create failed');
+      toast.success('Task created');
+      setTaskForm((f) => ({ ...f, title: '', notes: '', orderNumber: '' }));
+      await load(activeStatus);
+    } catch (err) {
+      toast.error(err.message || 'Task create failed');
+    } finally {
+      setTaskBusy(false);
+    }
+  };
+
   if (!readable) {
     return <p className="p-6 text-sm text-gray-600">You do not have permission to view Operations.</p>;
   }
@@ -55,13 +122,43 @@ export default function OperationsPage() {
   const statuses = board?.statuses || Object.keys(OPS_STATUS_LABELS);
   const counts = board?.counts || {};
 
+  const createBatch = async () => {
+    if (!selectedIds.size) {
+      toast.error('Select ready orders first');
+      return;
+    }
+    setBatchBusy(true);
+    try {
+      const res = await fetch('/api/admin/ops/dispatch-batches', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderIds: [...selectedIds],
+          courierCompany,
+          pickupDate,
+          confirmPickup,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Batch failed');
+      toast.success(`Batch ${data.batch.batchCode} · ${data.batch.parcelCount} parcels`);
+      if (data.rejected?.length) toast.error(`${data.rejected.length} order(s) skipped`);
+      setSelectedIds(new Set());
+      await load(activeStatus);
+    } catch (err) {
+      toast.error(err.message || 'Batch failed');
+    } finally {
+      setBatchBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <ReadOnlyBanner show={!writable} />
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold">Operations</h1>
-          <p className="text-sm text-gray-500">Workflow board, work planner, and notifications for sales, editing, printing, and dispatch.</p>
+          <p className="text-sm text-gray-500">Workflow board, courier pickup batches, work planner, and notifications.</p>
         </div>
         <Link href="/account/manage/orders" className="inline-flex min-h-[44px] items-center justify-center rounded-xl border px-4 py-2 text-sm font-semibold">
           Open Orders
@@ -101,8 +198,8 @@ export default function OperationsPage() {
           onClick={() => setActiveStatus('')}
           className={`rounded-xl border p-3 text-left ${!activeStatus ? 'border-primary-500 bg-primary-50' : 'bg-white'}`}
         >
-          <p className="text-xs font-semibold text-gray-500">All active</p>
-          <p className="text-xl font-bold">{Object.values(counts).reduce((a, b) => a + (typeof b === 'number' && b === counts.delayed ? 0 : (Number(b) || 0)), 0) || '—'}</p>
+          <p className="text-xs font-semibold text-gray-500">All listed</p>
+          <p className="text-xl font-bold">{board?.orders?.length || 0}</p>
         </button>
         <button
           type="button"
@@ -125,15 +222,81 @@ export default function OperationsPage() {
         ))}
       </div>
 
+      {writable ? (
+        <div className="rounded-xl border bg-white p-4 space-y-3">
+          <h2 className="font-bold">Daily courier pickup batch</h2>
+          <p className="text-xs text-gray-500">Select eligible orders below (usually Ready to Dispatch), then create a pickup batch. Tracking can be added later.</p>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <input value={courierCompany} onChange={(e) => setCourierCompany(e.target.value)} placeholder="Courier company" className="rounded-xl border px-3 py-2.5 text-sm" />
+            <input type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)} className="rounded-xl border px-3 py-2.5 text-sm" />
+            <label className="flex items-center gap-2 text-sm font-semibold">
+              <input type="checkbox" checked={confirmPickup} onChange={(e) => setConfirmPickup(e.target.checked)} />
+              Mark handed over now
+            </label>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set(pageIds))}
+              className="min-h-[44px] rounded-xl border px-3 py-2 text-sm font-semibold"
+            >
+              Select listed orders
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set())}
+              className="min-h-[44px] rounded-xl border px-3 py-2 text-sm font-semibold"
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              disabled={batchBusy || !selectedIds.size}
+              onClick={createBatch}
+              className="min-h-[44px] rounded-xl bg-primary-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+            >
+              {batchBusy ? 'Creating…' : `Create batch (${selectedIds.size})`}
+            </button>
+          </div>
+          {batches.length > 0 ? (
+            <div className="overflow-x-auto rounded-xl border">
+              <table className="w-full min-w-[640px] text-sm">
+                <thead>
+                  <tr className="bg-gray-50 text-left text-gray-600">
+                    <th className="p-2">Batch</th>
+                    <th className="p-2">Courier</th>
+                    <th className="p-2">Parcels</th>
+                    <th className="p-2">Status</th>
+                    <th className="p-2">Orders</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {batches.slice(0, 10).map((b) => (
+                    <tr key={b._id} className="border-t">
+                      <td className="p-2 font-semibold">{b.batchCode}</td>
+                      <td className="p-2">{b.courierCompany || '—'}</td>
+                      <td className="p-2">{b.parcelCount}</td>
+                      <td className="p-2 capitalize">{String(b.status || '').replace(/_/g, ' ')}</td>
+                      <td className="p-2 text-xs">{(b.orderNumbers || []).join(', ')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="rounded-xl border bg-white overflow-hidden">
         <div className="border-b bg-gray-50 px-4 py-3 font-bold">
           {activeStatus === 'delayed' ? 'Delayed orders' : activeStatus ? OPS_STATUS_LABELS[activeStatus] : 'Orders in view'}
         </div>
         {loading ? <p className="p-6 text-center text-sm">Loading…</p> : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[800px] text-sm">
+            <table className="w-full min-w-[900px] text-sm">
               <thead>
                 <tr className="bg-gray-50 text-left text-gray-600">
+                  <th className="p-3 w-10" />
                   <th className="p-3">Order</th>
                   <th className="p-3">Source</th>
                   <th className="p-3">Customer</th>
@@ -144,28 +307,113 @@ export default function OperationsPage() {
                 </tr>
               </thead>
               <tbody>
-                {(board?.orders || []).map((order) => (
-                  <tr key={order._id} className="border-t">
-                    <td className="p-3 font-bold text-primary-700">
-                      <Link href={`/account/manage/orders?orderId=${encodeURIComponent(order.orderNumber || '')}`}>{order.orderNumber}</Link>
-                      {order.delayed ? <span className="ml-2 text-xs font-semibold text-red-600">Delayed</span> : null}
-                    </td>
-                    <td className="p-3 capitalize">{order.orderSource || 'website'}</td>
-                    <td className="p-3">{order.shippingAddress?.fullName || '—'}</td>
-                    <td className="p-3">{OPS_STATUS_LABELS[order.opsStatus] || order.opsStatus || '—'}</td>
-                    <td className="p-3">{order.assignedToName || '—'}</td>
-                    <td className="p-3 text-xs">{order.expectedDispatchDate ? new Date(order.expectedDispatchDate).toLocaleDateString('en-IN') : '—'}</td>
-                    <td className="p-3 text-right font-semibold">{formatPrice(order.total || 0)}</td>
-                  </tr>
-                ))}
+                {(board?.orders || []).map((order) => {
+                  const id = String(order._id);
+                  return (
+                    <tr key={order._id} className="border-t">
+                      <td className="p-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(id)}
+                          onChange={(e) => {
+                            setSelectedIds((prev) => {
+                              const next = new Set(prev);
+                              if (e.target.checked) next.add(id);
+                              else next.delete(id);
+                              return next;
+                            });
+                          }}
+                        />
+                      </td>
+                      <td className="p-3 font-bold text-primary-700">
+                        <Link href={`/account/manage/orders?orderId=${encodeURIComponent(order.orderNumber || '')}`}>{order.orderNumber}</Link>
+                        {order.delayed ? <span className="ml-2 text-xs font-semibold text-red-600">Delayed</span> : null}
+                      </td>
+                      <td className="p-3 capitalize">{order.orderSource || 'website'}</td>
+                      <td className="p-3">{order.shippingAddress?.fullName || '—'}</td>
+                      <td className="p-3">{OPS_STATUS_LABELS[order.opsStatus] || order.opsStatus || '—'}</td>
+                      <td className="p-3">{order.assignedToName || '—'}</td>
+                      <td className="p-3 text-xs">{order.expectedDispatchDate ? new Date(order.expectedDispatchDate).toLocaleDateString('en-IN') : '—'}</td>
+                      <td className="p-3 text-right font-semibold">{formatPrice(order.total || 0)}</td>
+                    </tr>
+                  );
+                })}
                 {!board?.orders?.length ? (
-                  <tr><td colSpan={7} className="p-6 text-center text-gray-500">No orders in this view.</td></tr>
+                  <tr><td colSpan={8} className="p-6 text-center text-gray-500">No orders in this view.</td></tr>
                 ) : null}
               </tbody>
             </table>
           </div>
         )}
       </div>
+
+      {writable ? (
+        <div className="rounded-xl border bg-white p-4 space-y-3">
+          <h2 className="font-bold">Create task</h2>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <input
+              value={taskForm.orderNumber}
+              onChange={(e) => setTaskForm((f) => ({ ...f, orderNumber: e.target.value }))}
+              placeholder="Order number (G4746 / GG…)"
+              className="rounded-xl border px-3 py-2.5 text-sm"
+            />
+            <select
+              value={taskForm.type}
+              onChange={(e) => setTaskForm((f) => ({ ...f, type: e.target.value }))}
+              className="rounded-xl border px-3 py-2.5 text-sm capitalize"
+            >
+              {TASK_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <select
+              value={taskForm.priority}
+              onChange={(e) => setTaskForm((f) => ({ ...f, priority: e.target.value }))}
+              className="rounded-xl border px-3 py-2.5 text-sm"
+            >
+              <option value="low">Low</option>
+              <option value="normal">Normal</option>
+              <option value="high">High</option>
+              <option value="urgent">Urgent</option>
+            </select>
+            <input
+              value={taskForm.title}
+              onChange={(e) => setTaskForm((f) => ({ ...f, title: e.target.value }))}
+              placeholder="Task title (optional)"
+              className="rounded-xl border px-3 py-2.5 text-sm"
+            />
+            <select
+              value={taskForm.assignedTo}
+              onChange={(e) => setTaskForm((f) => ({ ...f, assignedTo: e.target.value }))}
+              className="rounded-xl border px-3 py-2.5 text-sm"
+            >
+              <option value="">Unassigned</option>
+              {staff.map((a) => (
+                <option key={a._id || a.id} value={a._id || a.id}>{a.name || a.email}</option>
+              ))}
+            </select>
+            <input
+              type="datetime-local"
+              value={taskForm.dueDate}
+              onChange={(e) => setTaskForm((f) => ({ ...f, dueDate: e.target.value }))}
+              className="rounded-xl border px-3 py-2.5 text-sm"
+            />
+          </div>
+          <textarea
+            value={taskForm.notes}
+            onChange={(e) => setTaskForm((f) => ({ ...f, notes: e.target.value }))}
+            placeholder="Notes"
+            rows={2}
+            className="w-full rounded-xl border px-3 py-2.5 text-sm"
+          />
+          <button
+            type="button"
+            disabled={taskBusy}
+            onClick={createTask}
+            className="min-h-[44px] rounded-xl bg-primary-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {taskBusy ? 'Creating…' : 'Create task'}
+          </button>
+        </div>
+      ) : null}
 
       <div className="rounded-xl border bg-white p-4">
         <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -199,6 +447,51 @@ export default function OperationsPage() {
                     <p className="font-semibold">{task.title}</p>
                     <p className="text-gray-600">{task.orderNumber} · {task.status} · {task.priority}</p>
                     {task.dueDate ? <p className="text-gray-500">Due {new Date(task.dueDate).toLocaleString('en-IN')}</p> : null}
+                    {writable && task.status !== 'completed' ? (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {task.status !== 'in_progress' ? (
+                          <button
+                            type="button"
+                            className="rounded border px-2 py-0.5 font-semibold"
+                            onClick={async () => {
+                              const res = await fetch('/api/admin/ops/tasks', {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ taskId: task._id, status: 'in_progress' }),
+                              });
+                              if (!res.ok) {
+                                const data = await res.json().catch(() => ({}));
+                                toast.error(data.error || 'Update failed');
+                                return;
+                              }
+                              load(activeStatus);
+                            }}
+                          >
+                            Start
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          className="rounded border border-green-200 bg-green-50 px-2 py-0.5 font-semibold text-green-900"
+                          onClick={async () => {
+                            const res = await fetch('/api/admin/ops/tasks', {
+                              method: 'PATCH',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ taskId: task._id, status: 'completed' }),
+                            });
+                            if (!res.ok) {
+                              const data = await res.json().catch(() => ({}));
+                              toast.error(data.error || 'Update failed');
+                              return;
+                            }
+                            toast.success('Task completed');
+                            load(activeStatus);
+                          }}
+                        >
+                          Done
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                 )) : <p className="text-xs text-gray-500">No tasks</p>}
               </div>

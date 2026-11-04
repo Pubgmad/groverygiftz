@@ -19,10 +19,11 @@ export async function GET() {
 }
 
 export async function POST(req) {
-  const { error, access } = await requireAdminPermission('operations', 'write');
+  let { error, access } = await requireAdminPermission('operations', 'write');
   if (error) {
     const fallback = await requireAdminPermission('orders', 'write');
     if (fallback.error) return error;
+    access = fallback.access;
   }
   const body = await req.json();
   const ids = (Array.isArray(body.orderIds) ? body.orderIds : [])

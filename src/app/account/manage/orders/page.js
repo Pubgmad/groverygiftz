@@ -9,6 +9,7 @@ import AdminSelect from '@/components/admin/AdminSelect';
 import DownloadCsvButton from '@/components/admin/DownloadCsvButton';
 import ShippingLabelModal from '@/components/admin/ShippingLabelModal';
 import CreateWhatsAppOrderModal from '@/components/admin/CreateWhatsAppOrderModal';
+import OrderOpsPanel from '@/components/admin/OrderOpsPanel';
 import { MAX_SHIPPING_LABEL_ORDERS } from '@/lib/shippingLabelLayout';
 import { ORDER_SOURCE_LABELS, OPS_STATUS_LABELS, DESIGN_APPROVAL_LABELS, isDelayedOrder } from '@/lib/opsConstants';
 import { FiPlus, FiRefreshCw } from 'react-icons/fi';
@@ -689,6 +690,14 @@ export default function AdminOrdersPage() {
                     Print / download shipping label
                   </button>
                 ) : null}
+
+                <OrderOpsPanel
+                  order={selected}
+                  writable={writable}
+                  onUpdated={async () => {
+                    await fetchOrders();
+                  }}
+                />
 
                 <div className="min-w-0 rounded-lg border border-primary-100 bg-primary-50/40 p-3 space-y-2">
                   <h3 className="font-semibold text-primary-900">Design preview & approval</h3>

@@ -300,11 +300,25 @@ export function narrowToMatchingItems({ productId, productIds, variant } = {}) {
   ];
 }
 
-export function buildRevenueMatch({ from, to, paymentMethod, status, state, city, productId, productIds, variant }) {
+export function buildRevenueMatch({ from, to, paymentMethod, status, state, city, productId, productIds, variant, orderSource }) {
   const match = {
     paymentStatus: 'paid',
     status: { $nin: ['cancelled'] },
   };
+  if (orderSource === 'website') {
+    match.$and = [
+      ...(match.$and || []),
+      {
+        $or: [
+          { orderSource: 'website' },
+          { orderSource: { $exists: false } },
+          { orderSource: null },
+        ],
+      },
+    ];
+  } else if (orderSource === 'whatsapp' || orderSource === 'instagram') {
+    match.orderSource = orderSource;
+  }
   if (paymentMethod) {
     // Charts coalesce missing method to Cashfree and fold case via uniquePlaceLabels;
     // the filter must use the same semantics or those rows disappear when Cashfree is selected.
@@ -376,8 +390,8 @@ const orderMetrics = {
   },
 };
 
-export function revenuePipeline({ from, to, paymentMethod, status, state, city, productId, productIds, variant, granularity = 'day' }) {
-  const prefix = buildRevenueMatch({ from, to, paymentMethod, status, state, city, productId, productIds, variant });
+export function revenuePipeline({ from, to, paymentMethod, status, state, city, productId, productIds, variant, orderSource, granularity = 'day' }) {
+  const prefix = buildRevenueMatch({ from, to, paymentMethod, status, state, city, productId, productIds, variant, orderSource });
   const itemFilter = itemMatchAfterUnwind({ productId, productIds, variant });
   return [
     ...prefix,
@@ -502,8 +516,13 @@ export function kpiPipeline(filters = {}) {
   ];
 }
 
-export function refundPipeline({ from, to, paymentMethod, status, state, city, productId, productIds, variant } = {}) {
+export function refundPipeline({ from, to, paymentMethod, status, state, city, productId, productIds, variant, orderSource } = {}) {
   const match = { paymentStatus: 'refunded' };
+  if (orderSource === 'website') {
+    match.$or = [{ orderSource: 'website' }, { orderSource: { $exists: false } }, { orderSource: null }];
+  } else if (orderSource === 'whatsapp' || orderSource === 'instagram') {
+    match.orderSource = orderSource;
+  }
   if (paymentMethod) {
     const target = normalizePlaceLabel(paymentMethod).toLowerCase();
     match.$expr = {
