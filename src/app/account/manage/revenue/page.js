@@ -287,10 +287,15 @@ export default function RevenueAnalyticsPage() {
       setProduct('');
       setVariant('');
     }
+    if (collection && !filterOptions.collections.some((c) => c.id === collection)) {
+      setCollection('');
+      setProduct('');
+      setVariant('');
+    }
     if (variant && !filterOptions.variants.some((v) => v.toLowerCase() === variant.toLowerCase())) {
       setVariant('');
     }
-  }, [optionsLoading, optionsReady, filterOptions, paymentMethod, state, city, product, variant]);
+  }, [optionsLoading, optionsReady, filterOptions, paymentMethod, state, city, product, collection, variant]);
 
   const reset = () => {
     setPreset('last30');
@@ -509,8 +514,16 @@ export default function RevenueAnalyticsPage() {
           />
         </div>
         <div className="mt-4 flex min-w-0 flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => load()}
+            disabled={loading || refreshing}
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-primary-200 bg-primary-50 px-4 py-2 text-sm font-semibold text-primary-800 disabled:opacity-60"
+          >
+            <FiRefreshCw className={refreshing ? 'animate-spin' : undefined} /> Refresh data
+          </button>
           <button type="button" onClick={reset} className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold">
-            <FiRefreshCw /> Reset filters
+            Reset filters
           </button>
           {refreshing ? <span className="text-xs font-medium text-primary-700">Updating analytics…</span> : null}
         </div>
@@ -524,6 +537,7 @@ export default function RevenueAnalyticsPage() {
             Showing {shownFrom} to {shownTo} IST.
             {shownPrevFrom && shownPrevTo ? ` Comparison period: ${shownPrevFrom} to ${shownPrevTo}.` : ''}
             {' '}Trend grouping ({granularity}) only changes chart buckets, not which orders are included.
+            {' '}Figures refresh on page load, filter changes, and Refresh data — not live-polled.
           </p>
         ) : null}
       </section>
