@@ -238,6 +238,7 @@ export default function AdminOrdersPage() {
   const pageSize = 10;
   const dateError = dateFrom && dateTo && dateFrom > dateTo ? 'From date cannot be after To date' : '';
   const checkedCount = checkedIds.size;
+  const selectedLabelIds = useMemo(() => [...checkedIds], [checkedIds]);
   const pageIds = useMemo(() => orders.map((order) => String(order._id)), [orders]);
   const pageSelectedCount = pageIds.filter((id) => checkedIds.has(id)).length;
   const allPageSelected = pageIds.length > 0 && pageSelectedCount === pageIds.length;
@@ -659,7 +660,7 @@ export default function AdminOrdersPage() {
 
       <ShippingLabelModal
         open={labelModalOpen}
-        orderIds={[...checkedIds]}
+        orderIds={selectedLabelIds}
         onClose={() => setLabelModalOpen(false)}
         onOpenOrder={async (id) => {
           setLabelModalOpen(false);

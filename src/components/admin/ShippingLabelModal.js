@@ -75,6 +75,11 @@ export default function ShippingLabelModal({
 
   useEffect(() => () => revokePdf(), [revokePdf]);
 
+  const orderIdsKey = useMemo(
+    () => (Array.isArray(orderIds) ? orderIds.map(String).join('|') : ''),
+    [orderIds],
+  );
+
   const runValidation = useCallback(async () => {
     if (!orderIds.length) return;
     setChecking(true);
@@ -93,11 +98,12 @@ export default function ShippingLabelModal({
     } finally {
       setChecking(false);
     }
-  }, [orderIds, layout, revokePdf]);
+    // orderIdsKey keeps validation stable when parent passes a fresh array with the same IDs
+  }, [orderIds, orderIdsKey, layout, revokePdf]);
 
   useEffect(() => {
-    if (open && orderIds.length) runValidation();
-  }, [open, orderIds, layout, runValidation]);
+    if (open && orderIdsKey) runValidation();
+  }, [open, orderIdsKey, layout, runValidation]);
 
   const generate = async ({ confirmPartial = false } = {}) => {
     if (busy || !orderIds.length) return;
