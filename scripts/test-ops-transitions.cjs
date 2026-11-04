@@ -10,10 +10,11 @@ const ctx = { module: { exports: {} }, exports: {}, console, Math, Date, Number,
 vm.createContext(ctx);
 vm.runInContext(`${src}
 module.exports={
-  canTransitionOpsStatus,requiresPaidRevisionGate,canPrintDesign,OPS_STATUSES,isPaymentSatisfiedForDispatch
+  canTransitionOpsStatus,allowedOpsStatusesFor,requiresPaidRevisionGate,canPrintDesign,OPS_STATUSES,isPaymentSatisfiedForDispatch
 };`, ctx);
 const {
   canTransitionOpsStatus,
+  allowedOpsStatusesFor,
   requiresPaidRevisionGate,
   canPrintDesign,
   OPS_STATUSES,
@@ -48,5 +49,11 @@ assert.strictEqual(isPaymentSatisfiedForDispatch({ paymentStatus: 'paid' }), tru
 assert.strictEqual(isPaymentSatisfiedForDispatch({ balanceStatus: 'fully_paid' }), true);
 assert.strictEqual(isPaymentSatisfiedForDispatch({ paymentException: true }), true);
 assert.strictEqual(isPaymentSatisfiedForDispatch({ paymentStatus: 'pending' }), false);
+
+const allowed = allowedOpsStatusesFor('approved_printing_pending');
+assert.ok(allowed.includes('approved_printing_pending'));
+assert.ok(allowed.includes('printing_assigned'));
+assert.ok(!allowed.includes('completed'));
+assert.strictEqual(JSON.stringify(allowedOpsStatusesFor('completed')), JSON.stringify(['completed']));
 
 console.log('Ops transitions tests passed');

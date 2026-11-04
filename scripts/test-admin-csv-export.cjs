@@ -69,7 +69,14 @@ assert.strictEqual(parsedOrders.status, 'on_process');
 assert.strictEqual(parsedOrders.mobile, '9600253921');
 assert.strictEqual(parsedOrders.name, 'Raj');
 const orderFilter = buildAdminOrderFilter(parsedOrders);
-assert.strictEqual(orderFilter.paymentStatus, 'paid');
+assert.ok(Array.isArray(orderFilter.$or), 'unified filter includes paid website + WhatsApp/Instagram');
+assert.strictEqual(
+  JSON.stringify(orderFilter.$or),
+  JSON.stringify([
+    { paymentStatus: 'paid' },
+    { orderSource: { $in: ['whatsapp', 'instagram'] } },
+  ]),
+);
 assert.deepStrictEqual(JSON.parse(JSON.stringify(orderFilter.status.$in)), ['on_process', 'processing']);
 assert.ok(orderFilter.orderNumber.$regex);
 assert.ok(orderFilter['shippingAddress.fullName'].$regex);
@@ -79,14 +86,33 @@ assert.strictEqual(csvFilename('orders', '2026-11-01', '2026-11-02'), 'orders_20
 assert.strictEqual(orderCsvFilename(parsedOrders), 'orders_2026-11-01_to_2026-11-02.csv');
 
 const emptyOrderFilter = buildAdminOrderFilter(parseOrderReportFilters({ get: () => null }));
-assert.deepStrictEqual(JSON.parse(JSON.stringify(emptyOrderFilter)), { paymentStatus: 'paid' });
+assert.strictEqual(
+  JSON.stringify(emptyOrderFilter),
+  JSON.stringify({
+    $or: [
+      { paymentStatus: 'paid' },
+      { orderSource: { $in: ['whatsapp', 'instagram'] } },
+    ],
+  }),
+);
+
+const websiteOnly = buildAdminOrderFilter(parseOrderReportFilters({
+  get: (k) => (k === 'source' || k === 'orderSource' ? 'website' : null),
+}));
+assert.ok(websiteOnly.$or.some((row) => row.orderSource === 'website' || row.paymentStatus === 'paid'));
 
 const orderRow = orderCsvValues({
   orderNumber: 'GG0001',
+  orderSource: 'website',
   paidAt: new Date('2026-11-01T10:00:00.000+05:30'),
   status: 'on_process',
+  opsStatus: 'editing_in_progress',
+  assignedToName: 'Editor One',
   paymentMethod: 'Cashfree',
   paymentStatus: 'paid',
+  balanceStatus: 'fully_paid',
+  advancePaid: 1000,
+  remainingBalance: 0,
   subtotal: 900,
   shippingCost: 100,
   total: 1000,
@@ -107,12 +133,20 @@ const orderRow = orderCsvValues({
   ],
 });
 assert.strictEqual(orderRow[0], 'GG0001');
-assert.ok(String(orderRow[1]).includes('IST'));
-assert.strictEqual(orderRow[14], 'Size: Large | No variant');
-assert.strictEqual(orderRow[15], '2 | 1');
-assert.strictEqual(orderRow[16], '900.00');
-assert.strictEqual(orderRow[18], '1000.00');
+assert.strictEqual(orderRow[1], 'website');
+assert.ok(String(orderRow[2]).includes('IST'));
+assert.strictEqual(orderRow[13], 'editing_in_progress');
+assert.strictEqual(orderRow[14], 'Editor One');
+assert.strictEqual(orderRow[20], 'Size: Large | No variant');
+assert.strictEqual(orderRow[21], '2 | 1');
+assert.strictEqual(orderRow[22], '900.00');
+assert.strictEqual(orderRow[24], '1000.00');
+assert.strictEqual(orderRow[25], '1000.00');
+assert.strictEqual(orderRow[26], '0.00');
 assert.strictEqual(orderRow.length, ORDER_CSV_HEADERS.length);
+assert.ok(ORDER_CSV_HEADERS.includes('Order Source'));
+assert.ok(ORDER_CSV_HEADERS.includes('Ops Status'));
+assert.ok(ORDER_CSV_HEADERS.includes('Balance Status'));
 assert.ok(!ORDER_CSV_HEADERS.join(' ').toLowerCase().includes('cashfree'));
 assert.ok(!ORDER_CSV_HEADERS.join(' ').toLowerCase().includes('password'));
 assert.ok(!ORDER_CSV_HEADERS.includes('Discounts'));

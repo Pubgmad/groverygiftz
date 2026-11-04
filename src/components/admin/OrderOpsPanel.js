@@ -4,10 +4,11 @@ import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { formatPrice } from '@/lib/utils';
 import {
-  OPS_STATUSES,
   OPS_STATUS_LABELS,
   DESIGN_APPROVAL_LABELS,
   canPrintDesign,
+  canTransitionOpsStatus,
+  allowedOpsStatusesFor,
 } from '@/lib/opsConstants';
 
 export default function OrderOpsPanel({ order, writable, onUpdated }) {
@@ -102,6 +103,26 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
   const printOk = canPrintDesign(order);
   const freeRevisionUsed = Boolean(order.freeRevisionUsed);
   const revisionCount = Number(order.designRevisionCount || 0);
+  const currentOps = order?.opsStatus || 'new_order';
+  const allowedStatuses = allowedOpsStatusesFor(currentOps);
+  const quickActions = [
+    ['editing_in_progress', 'Start editing'],
+    ['preview_waiting', 'Send to preview'],
+    ['printing_assigned', 'Assign printing'],
+    ['printing_in_progress', 'Start printing'],
+    ['printing_completed', 'Printing done'],
+    ['production_pending', 'Production pending'],
+    ['production_in_progress', 'Start production'],
+    ['manufacturing', 'Manufacturing'],
+    ['assembly', 'Assembly'],
+    ['finishing', 'Finishing'],
+    ['quality_check', 'Quality check'],
+    ['packing_pending', 'To packing'],
+    ['ready_to_dispatch', 'Ready to dispatch'],
+    ['tracking_pending', 'Tracking pending'],
+    ['completed', 'Complete'],
+    ['on_hold', 'On hold'],
+  ].filter(([status]) => canTransitionOpsStatus(currentOps, status) && status !== currentOps);
 
   return (
     <div className="space-y-3">
@@ -111,15 +132,16 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
           Ops status
           <select
             disabled={!writable || busy}
-            value={opsStatus}
+            value={allowedStatuses.includes(opsStatus) ? opsStatus : currentOps}
             onChange={(e) => setOpsStatus(e.target.value)}
             className="mt-1 w-full rounded-lg border px-3 py-2 text-sm disabled:bg-gray-100"
           >
-            {OPS_STATUSES.map((s) => (
+            {allowedStatuses.map((s) => (
               <option key={s} value={s}>{OPS_STATUS_LABELS[s] || s}</option>
             ))}
           </select>
         </label>
+        <p className="text-[11px] text-gray-500">Only valid next statuses are listed (server also enforces transitions).</p>
         <label className="block text-xs font-semibold text-gray-600">
           Assign employee
           <select
@@ -160,26 +182,13 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
             Save ops updates
           </button>
         ) : null}
-        {writable ? (
+        {writable && quickActions.length ? (
           <div className="flex flex-wrap gap-2 pt-1">
-            {[
-              ['editing_in_progress', 'Start editing'],
-              ['preview_waiting', 'Send to preview'],
-              ['printing_assigned', 'Assign printing'],
-              ['printing_in_progress', 'Start printing'],
-              ['printing_completed', 'Printing done'],
-              ['production_in_progress', 'Start production'],
-              ['manufacturing', 'Manufacturing'],
-              ['assembly', 'Assembly'],
-              ['finishing', 'Finishing'],
-              ['quality_check', 'Quality check'],
-              ['packing_pending', 'To packing'],
-              ['ready_to_dispatch', 'Ready to dispatch'],
-            ].map(([status, label]) => (
+            {quickActions.map(([status, label]) => (
               <button
                 key={status}
                 type="button"
-                disabled={busy || opsStatus === status}
+                disabled={busy}
                 onClick={() => {
                   setOpsStatus(status);
                   patchOps({

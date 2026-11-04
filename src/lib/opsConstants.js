@@ -99,6 +99,13 @@ export function canTransitionOpsStatus(from, to) {
   return allowed.includes(to);
 }
 
+/** Current status plus allowed next statuses (for UI selects / quick actions). */
+export function allowedOpsStatusesFor(from) {
+  const current = from && OPS_STATUSES.includes(from) ? from : 'new_order';
+  const next = OPS_TRANSITIONS[current] || [];
+  return [current, ...next.filter((s) => s !== current)];
+}
+
 export const DESIGN_APPROVAL_STATUSES = [
   'not_uploaded',
   'awaiting_approval',
