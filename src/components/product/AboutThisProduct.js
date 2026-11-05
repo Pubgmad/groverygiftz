@@ -1,7 +1,7 @@
 'use client';
 
 import { useId, useMemo, useState } from 'react';
-import { FiBookOpen, FiChevronDown, FiHelpCircle, FiInfo } from 'react-icons/fi';
+import { FiBookOpen, FiChevronDown, FiInfo } from 'react-icons/fi';
 import { hasRichTextContent, sanitizeRichHtml } from '@/lib/sanitizeRichHtml';
 
 function AccordionRow({ id, title, icon, open, onToggle, children }) {
@@ -44,23 +44,11 @@ function AccordionRow({ id, title, icon, open, onToggle, children }) {
   );
 }
 
-function normalizeFaqs(list = []) {
-  return (Array.isArray(list) ? list : [])
-    .filter((faq) => faq?.isActive !== false && String(faq?.question || '').trim() && hasRichTextContent(faq?.answer))
-    .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
-}
-
-export default function AboutThisProduct({ product, settings }) {
+export default function AboutThisProduct({ product }) {
   const baseId = useId();
   const about = product?.aboutThisProduct || {};
   const descriptionHtml = sanitizeRichHtml(String(product?.description || ''));
   const instructionsText = String(about.instructions || product?.customizationPreview?.instructions || '').trim();
-  // Global FAQs from settings; fall back to legacy product FAQs only when global list is empty.
-  const faqs = useMemo(() => {
-    const globalFaqs = normalizeFaqs(settings?.productFaqs);
-    if (globalFaqs.length > 0) return globalFaqs;
-    return normalizeFaqs(product?.faqs);
-  }, [product?.faqs, settings?.productFaqs]);
 
   const sections = useMemo(() => {
     const next = [];
@@ -87,35 +75,20 @@ export default function AboutThisProduct({ product, settings }) {
         body: <p className="mx-auto max-w-prose whitespace-pre-wrap break-words text-left">{instructionsText}</p>,
       });
     }
-    faqs.forEach((faq, index) => {
-      next.push({
-        key: `faq-${index}`,
-        title: String(faq.question).trim(),
-        icon: <FiHelpCircle size={15} />,
-        body: (
-          <div className="mx-auto w-full max-w-prose text-left">
-            <div
-              className="prose prose-sm max-w-none break-words text-left text-gray-600 [&_a]:text-primary-700 [&_a]:underline"
-              dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(faq.answer) }}
-            />
-          </div>
-        ),
-      });
-    });
     return next;
-  }, [about.hideDescription, about.hideInstructions, descriptionHtml, faqs, instructionsText]);
+  }, [about.hideDescription, about.hideInstructions, descriptionHtml, instructionsText]);
 
   const [openKey, setOpenKey] = useState('');
 
   if (sections.length === 0) return null;
 
   return (
-    <section className="mb-6 overflow-hidden rounded-2xl border border-gray-200 bg-white" aria-labelledby={`${baseId}-heading`}>
-      <div className="border-b border-gray-100 px-4 py-3">
-        <h2 id={`${baseId}-heading`} className="font-display text-base font-bold text-gray-950">
+    <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm" aria-labelledby={`${baseId}-heading`}>
+      <div className="border-b border-gray-100 px-4 py-3 sm:px-5">
+        <h2 id={`${baseId}-heading`} className="font-display text-base font-bold text-gray-950 sm:text-lg">
           About This Product
         </h2>
-        <p className="mt-0.5 text-xs text-gray-500">Product details and shared store FAQs</p>
+        <p className="mt-0.5 text-xs text-gray-500">Product description and customization instructions</p>
       </div>
       <div className="px-3 sm:px-4">
         {sections.map((section) => (

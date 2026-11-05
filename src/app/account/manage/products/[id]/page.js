@@ -250,7 +250,7 @@ export default function AdminProductForm({ params }) {
           <div className="rounded-xl border border-primary-100 bg-primary-50/30 p-4 space-y-3">
             <div>
               <h3 className="font-semibold text-gray-900">About This Product (customer accordion)</h3>
-              <p className="text-xs text-gray-500">Appears after How to Buy. Description, Instructions, and FAQs only—delivery estimates stay in the assurance panel above the fold.</p>
+              <p className="text-xs text-gray-500">Appears after How to Buy. Description and Instructions only—shared FAQs have their own product-page section. Delivery estimates stay in the assurance panel above the fold.</p>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Instructions</label>

@@ -110,7 +110,7 @@ export default function AdminHomeGiftSettings({ form, setForm }) {
       <div className="bg-white p-6 rounded-xl border space-y-4">
         <div>
           <h2 className="font-bold text-lg">Product page FAQs</h2>
-          <p className="mt-1 text-sm text-gray-500">One shared FAQ list shown in About This Product on every product page. Description and Instructions stay product-specific.</p>
+          <p className="mt-1 text-sm text-gray-500">One shared FAQ list shown in the Frequently Asked Questions section on every product page. Description and Instructions stay product-specific under About This Product.</p>
         </div>
         <ProductFaqEditor
           faqs={form.productFaqs || []}

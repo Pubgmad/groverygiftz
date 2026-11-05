@@ -11,6 +11,13 @@ const ICONS = {
   award: FiAward,
 };
 
+function gridClassForCount(count) {
+  if (count <= 1) return 'grid-cols-1 max-w-sm';
+  if (count === 2) return 'grid-cols-2';
+  if (count === 3) return 'grid-cols-1 sm:grid-cols-3';
+  return 'grid-cols-2 lg:grid-cols-4';
+}
+
 export default function ProductTrustStats({ settings }) {
   const config = settings?.productTrustStats || {};
   const items = useMemo(() => {
@@ -24,22 +31,33 @@ export default function ProductTrustStats({ settings }) {
   const heading = String(config.heading || '').trim();
 
   return (
-    <section className="mt-10 rounded-[1.75rem] border border-primary-100 bg-gradient-to-br from-primary-50/80 via-white to-accent-50/40 p-4 sm:p-6" aria-label={heading || 'Business achievements'}>
+    <section
+      className="rounded-2xl border border-primary-100 bg-gradient-to-br from-primary-50 via-white to-accent-50/50 p-4 sm:p-5 md:p-6"
+      aria-label={heading || 'Business achievements'}
+    >
       {heading ? (
-        <h2 className="mb-4 font-display text-xl font-bold text-primary-900 sm:text-2xl">{heading}</h2>
+        <h2 className="mb-4 font-display text-xl font-bold tracking-tight text-primary-900 sm:mb-5 sm:text-2xl">
+          {heading}
+        </h2>
       ) : null}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4">
+      <div className={`grid gap-3 sm:gap-3.5 ${gridClassForCount(items.length)}`}>
         {items.map((item, index) => {
           const Icon = ICONS[item.icon] || FiAward;
           return (
-            <div
+            <article
               key={`${item.label}-${index}`}
-              className="rounded-2xl border border-primary-900/10 bg-primary-950 px-4 py-5 text-center text-primary-50 shadow-sm"
+              className="flex h-full flex-col rounded-2xl bg-primary-800 px-4 py-4 text-left shadow-brand sm:px-5 sm:py-5"
             >
-              <Icon size={18} className="mx-auto mb-2 text-accent-400" aria-hidden />
-              <p className="font-display text-2xl font-bold tracking-tight sm:text-3xl">{item.value}</p>
-              <p className="mt-1 text-xs font-medium leading-5 text-primary-100/90 sm:text-sm">{item.label}</p>
-            </div>
+              <span className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-accent-300">
+                <Icon size={18} aria-hidden />
+              </span>
+              <p className="font-display text-2xl font-bold leading-tight tracking-tight text-white sm:text-[1.75rem]">
+                {item.value}
+              </p>
+              <p className="mt-1.5 text-xs font-medium leading-5 text-primary-100 sm:text-sm">
+                {item.label}
+              </p>
+            </article>
           );
         })}
       </div>

@@ -20,6 +20,7 @@ import PhotoAdjuster from '@/components/product/PhotoAdjuster';
 import PhotoLimitDialog from '@/components/product/PhotoLimitDialog';
 import ProductAssurancePanel from '@/components/product/ProductAssurancePanel';
 import AboutThisProduct from '@/components/product/AboutThisProduct';
+import ProductFaqs from '@/components/product/ProductFaqs';
 import StockAvailabilityAlert from '@/components/product/StockAvailabilityAlert';
 import PurchaseActivityBadge from '@/components/product/PurchaseActivityBadge';
 import ProductMakingVideos from '@/components/product/ProductMakingVideos';
@@ -1118,10 +1119,12 @@ export default function ProductDetail({ product }) {
   };
 
   return (
-    <div className="product-mobile-safe grid max-w-full grid-cols-1 gap-8 md:grid-cols-2 md:gap-12">
+    <div className="product-mobile-safe max-w-full">
+      {/* Purchase layout: gallery + buy controls only (desktop sticky gallery avoids empty left column) */}
+      <div className="grid max-w-full grid-cols-1 gap-8 lg:grid-cols-2 lg:items-start lg:gap-10 xl:gap-12">
       {/* Product Media Gallery */}
-      <div>
-        <div className="relative rounded-2xl overflow-hidden bg-white mb-4 cursor-pointer" onClick={() => currentMedia?.type === 'image' && setLightboxOpen(true)} onTouchStart={handleGalleryTouchStart} onTouchMove={handleGalleryTouchMove} onTouchEnd={handleGalleryTouchEnd}>
+      <div className="lg:sticky lg:top-24 lg:self-start">
+        <div className="relative mb-4 cursor-pointer overflow-hidden rounded-2xl bg-white" onClick={() => currentMedia?.type === 'image' && setLightboxOpen(true)} onTouchStart={handleGalleryTouchStart} onTouchMove={handleGalleryTouchMove} onTouchEnd={handleGalleryTouchEnd}>
           {currentMedia?.type === 'video' ? (
             <video src={currentMedia.url} controls className="w-full max-h-[70vh] object-contain bg-black" />
           ) : currentMedia?.url ? (
@@ -1531,37 +1534,39 @@ export default function ProductDetail({ product }) {
 
         {!product.isQuoteOnly && !isSoldOut && (
           <div className="mt-5 rounded-2xl border border-primary-100 bg-primary-50/50 p-4">
-            <p className="text-sm font-bold text-gray-900 mb-3">How to buy this gift</p>
-            <div className="grid sm:grid-cols-3 gap-3 text-sm">
-              <div className="rounded-xl bg-white p-3 border border-primary-100">
-                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary-600 text-white text-xs font-bold mb-2">1</span>
+            <p className="mb-3 text-sm font-bold text-gray-900">How to buy this gift</p>
+            <div className="grid gap-3 text-sm sm:grid-cols-3">
+              <div className="rounded-xl border border-primary-100 bg-white p-3">
+                <span className="mb-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary-600 text-xs font-bold text-white">1</span>
                 <p className="font-semibold text-gray-800">Select options</p>
-                <p className="text-xs text-gray-500 mt-1">Choose size, color, upload photo, add custom text, or include gift wrap if available.</p>
+                <p className="mt-1 text-xs text-gray-500">Choose size, color, upload photo, add custom text, or include gift wrap if available.</p>
               </div>
-              <div className="rounded-xl bg-white p-3 border border-primary-100">
-                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent-500 text-white text-xs font-bold mb-2">2</span>
+              <div className="rounded-xl border border-primary-100 bg-white p-3">
+                <span className="mb-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent-500 text-xs font-bold text-white">2</span>
                 <p className="font-semibold text-gray-800">Checkout</p>
-                <p className="text-xs text-gray-500 mt-1">Use Buy It Now for direct checkout or add multiple gifts to cart.</p>
+                <p className="mt-1 text-xs text-gray-500">Use Buy It Now for direct checkout or add multiple gifts to cart.</p>
               </div>
-              <div className="rounded-xl bg-white p-3 border border-primary-100">
-                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary-600 text-white text-xs font-bold mb-2">3</span>
+              <div className="rounded-xl border border-primary-100 bg-white p-3">
+                <span className="mb-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary-600 text-xs font-bold text-white">3</span>
                 <p className="font-semibold text-gray-800">Pay & track</p>
-                <p className="text-xs text-gray-500 mt-1">Pay securely online, then track your order from Track Order.</p>
+                <p className="mt-1 text-xs text-gray-500">Pay securely online, then track your order from Track Order.</p>
               </div>
             </div>
           </div>
         )}
+      </div>
+      </div>
 
-        <div className="mt-6">
-          <AboutThisProduct product={product} settings={settings} />
-        </div>
+      {/* Full-width sections below the purchase grid — avoids empty desktop left column */}
+      <div className="mt-10 space-y-8 pb-20 md:mt-12 md:space-y-10 md:pb-8">
+        <AboutThisProduct product={product} />
+        <ProductFaqs product={product} settings={settings} />
 
-        {/* Product Reviews */}
         {(googleReviews.enabled || reviews.length > 0) && (
-          <div className="mt-8 border-t pt-6">
+          <div className="border-t border-gray-100 pt-8">
             <div className="mb-4 flex items-center gap-2">
               <FiStar className="text-accent-500" />
-              <h2 className="text-xl font-bold">Customer Submitted Reviews</h2>
+              <h2 className="text-xl font-bold text-gray-950">Customer Submitted Reviews</h2>
             </div>
             {googleReviews.enabled && (
               <div className="space-y-4">
