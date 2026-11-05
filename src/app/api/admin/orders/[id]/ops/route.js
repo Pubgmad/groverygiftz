@@ -165,23 +165,17 @@ export async function PATCH(req, { params }) {
   }
 
   if (body.assignedTo !== undefined) {
-    if (!body.assignedTo) {
-      order.assignedTo = undefined;
-      order.assignedToName = '';
-    } else if (mongoose.Types.ObjectId.isValid(String(body.assignedTo))) {
-      const admin = await Admin.findById(body.assignedTo).select('name email isActive').lean();
-      if (!admin || admin.isActive === false) {
-        return NextResponse.json({ error: 'Assignee not found' }, { status: 400 });
-      }
-      order.assignedTo = admin._id;
-      order.assignedToName = admin.name || admin.email || '';
-      await notifyAdmins([admin._id], {
-        type: 'order_assigned',
-        title: 'Order assigned',
-        body: `${order.orderNumber} assigned to you`,
-        order: order._id,
-        orderNumber: order.orderNumber,
-      }).catch(() => {});
+    const { reassignEditor, notifyAssignedEditor } = await import('@/lib/editorAssignment');
+    try {
+      await reassignEditor(order, {
+        editorId: body.assignedTo || null,
+        actorId: access.adminId,
+        actorName: access.name || access.email || '',
+        note: String(body.assignmentNote || '').trim() || 'Manual Editor reassignment',
+      });
+      if (order.assignedTo) await notifyAssignedEditor(order);
+    } catch (err) {
+      return NextResponse.json({ error: err.message || 'Assignment failed' }, { status: 400 });
     }
   }
 

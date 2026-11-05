@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { FiX } from 'react-icons/fi';
 import { parseWhatsAppCustomerDetails, validateParsedCustomer } from '@/lib/whatsappCustomerParse';
 import { fromDatetimeLocalIst, toDatetimeLocalIst } from '@/lib/istTime';
+import { buildComboPhotoSlots } from '@/lib/customizedCombo';
 
 const emptyItem = () => ({
   productId: '',
@@ -41,6 +42,13 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
   const [customerDetailsReviewed, setCustomerDetailsReviewed] = useState(false);
   /** Set when fields came from paste extract or address lookup — review required regardless of clearing paste. */
   const [customerSource, setCustomerSource] = useState(''); // '' | 'paste' | 'lookup'
+  /** catalog = existing Select Product; customized_combo = sizes from Website frame product */
+  const [productMode, setProductMode] = useState('customized_combo');
+  const [comboProduct, setComboProduct] = useState(null);
+  const [comboSizes, setComboSizes] = useState([]);
+  const [comboSelections, setComboSelections] = useState([]); // [{ size, quantity }]
+  const [comboSlotsConfirmed, setComboSlotsConfirmed] = useState(false);
+  const [comboPhotoSlots, setComboPhotoSlots] = useState([]);
   const [form, setForm] = useState({
     orderSource: 'whatsapp',
     customerKind: 'new',
@@ -90,6 +98,15 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
       .then((r) => (r.ok ? r.json() : { staff: [] }))
       .then((d) => { if (!cancelled) setStaff(d.staff || []); })
       .catch(() => { if (!cancelled) setStaff([]); });
+    fetch('/api/admin/customized-combo', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        if (d.product) setComboProduct(d.product);
+        setComboSizes(Array.isArray(d.sizes) ? d.sizes : []);
+        if (d.error) toast.error(d.error);
+      })
+      .catch(() => { if (!cancelled) toast.error('Unable to load Customized Combo sizes'); });
     return () => { cancelled = true; };
   }, [open]);
 
@@ -221,6 +238,41 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
     }
   };
 
+  /** Upload each Customized Combo frame photo mapped to size + frame index. */
+  const uploadComboSlotPhotos = async (orderId, slots) => {
+    // Group slots by size → line item index on the created order
+    const sizeOrder = [];
+    slots.forEach((slot) => {
+      if (!sizeOrder.includes(slot.size)) sizeOrder.push(slot.size);
+    });
+    for (const slot of slots) {
+      if (!slot.file) continue;
+      const itemIndex = sizeOrder.indexOf(slot.size);
+      const body = new FormData();
+      body.append('file', slot.file);
+      body.append('itemIndex', String(Math.max(0, itemIndex)));
+      body.append('mode', 'append');
+      body.append('slotLabel', slot.label || `${slot.size} — Photo ${slot.frameIndex}`);
+      body.append('slotKey', slot.slotKey || `combo-${slot.size}-${slot.frameIndex}`);
+      body.append('reason', `Customized Combo ${slot.size} frame ${slot.frameIndex}`);
+      const res = await fetch(`/api/admin/orders/${orderId}/photos`, { method: 'POST', body });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Photo upload failed for ${slot.label}`);
+    }
+  };
+
+  const confirmComboSizes = () => {
+    const valid = comboSelections.filter((row) => row.size && Number(row.quantity) > 0);
+    if (!valid.length) {
+      toast.error('Add at least one size with quantity');
+      return;
+    }
+    setComboSelections(valid);
+    setComboPhotoSlots(buildComboPhotoSlots(valid));
+    setComboSlotsConfirmed(true);
+    toast.success('Photo slots generated — upload one customer photo per frame');
+  };
+
   const submit = async (e) => {
     e.preventDefault();
     let working = form;
@@ -272,7 +324,33 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
       toast.error('Other charges must be 0 or a positive amount');
       return;
     }
-    if (!form.items.some((item) => item.productId)) {
+    let lineItems = form.items;
+    if (productMode === 'customized_combo') {
+      if (!comboProduct?._id) {
+        toast.error('Customized Combo source product is not available');
+        return;
+      }
+      if (!comboSelections.some((row) => row.size && Number(row.quantity) > 0)) {
+        toast.error('Select at least one Customized Combo size and quantity');
+        return;
+      }
+      if (!comboSlotsConfirmed) {
+        toast.error('Confirm sizes with Done, then upload photos for each frame');
+        return;
+      }
+      lineItems = comboSelections
+        .filter((row) => row.size && Number(row.quantity) > 0)
+        .map((row) => ({
+          productId: comboProduct._id,
+          variant: `Size: ${row.size}`,
+          quantity: Number(row.quantity) || 1,
+          instructions: '',
+          photos: comboPhotoSlots
+            .filter((slot) => slot.size === row.size && slot.file)
+            .map((slot) => slot.file),
+          comboSlots: comboPhotoSlots.filter((slot) => slot.size === row.size),
+        }));
+    } else if (!form.items.some((item) => item.productId)) {
       toast.error('Select at least one product / size');
       return;
     }
@@ -318,12 +396,13 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
         expectedDispatchDate: form.expectedDispatchDate || undefined,
         assignedTo: form.assignedTo || undefined,
         internalNotes: form.internalNotes,
-        items: form.items.map((item) => ({
+        items: lineItems.map((item) => ({
           productId: item.productId,
           variant: item.variant,
           quantity: Number(item.quantity) || 1,
           // Unit prices intentionally omitted — overall price is manualComboPrice
           customizationInstructions: item.instructions,
+          isCustomizedCombo: productMode === 'customized_combo',
         })),
       };
       const res = await fetch('/api/admin/orders', {
@@ -334,11 +413,14 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to create order');
 
-      const hasPhotos = form.items.some((item) => (item.photos || []).length > 0);
       let photoError = '';
-      if (hasPhotos && data.order?._id) {
+      if (data.order?._id) {
         try {
-          await uploadItemPhotos(data.order._id, form.items);
+          if (productMode === 'customized_combo') {
+            await uploadComboSlotPhotos(data.order._id, comboPhotoSlots);
+          } else if (lineItems.some((item) => (item.photos || []).length > 0)) {
+            await uploadItemPhotos(data.order._id, lineItems);
+          }
         } catch (uploadErr) {
           photoError = uploadErr?.message || 'Photo upload failed';
         }
@@ -568,26 +650,161 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
             <label className="text-sm font-semibold">Expected dispatch
               <input type="date" value={form.expectedDispatchDate} onChange={(e) => setField('expectedDispatchDate', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
             </label>
-            <label className="text-sm font-semibold">Assign employee
+            <label className="text-sm font-semibold">Override Editor (optional)
               <select value={form.assignedTo} onChange={(e) => setField('assignedTo', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5">
-                <option value="">Unassigned</option>
+                <option value="">Auto-assign lowest-workload Editor</option>
                 {staff.map((a) => (
                   <option key={a._id || a.id} value={a._id || a.id}>{a.name || a.email}</option>
                 ))}
               </select>
+              <span className="mt-1 block text-[11px] font-normal text-gray-500">
+                Leave blank for automatic Editor assignment. Manual pick overrides auto-assign.
+              </span>
             </label>
           </div>
 
           <div className="space-y-3 rounded-xl border bg-gray-50 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="font-bold text-gray-900">Products / Customized Combo</h3>
+              <div className="flex gap-2 text-xs font-semibold">
+                <button
+                  type="button"
+                  className={`rounded-lg px-3 py-1.5 ${productMode === 'customized_combo' ? 'bg-emerald-700 text-white' : 'border bg-white'}`}
+                  onClick={() => { setProductMode('customized_combo'); setComboSlotsConfirmed(false); }}
+                >
+                  Customized Combo
+                </button>
+                <button
+                  type="button"
+                  className={`rounded-lg px-3 py-1.5 ${productMode === 'catalog' ? 'bg-emerald-700 text-white' : 'border bg-white'}`}
+                  onClick={() => setProductMode('catalog')}
+                >
+                  Select Product
+                </button>
+              </div>
+            </div>
+
+            {productMode === 'customized_combo' ? (
+              <div className="space-y-3">
+                <p className="text-[11px] text-gray-600">
+                  Sizes from Website product:{' '}
+                  <strong>{comboProduct?.title || 'Personalized Single Photo Frame, Premium Frame with Matte Finish'}</strong>
+                  . Select any number of sizes and quantities, then Done to generate one photo upload per frame.
+                </p>
+                {comboSelections.map((row, index) => (
+                  <div key={`combo-${index}`} className="grid gap-2 rounded-xl border bg-white p-3 sm:grid-cols-3">
+                    <label className="text-sm font-semibold sm:col-span-2">Size
+                      <select
+                        value={row.size}
+                        onChange={(e) => {
+                          const size = e.target.value;
+                          setComboSelections((prev) => prev.map((r, i) => (i === index ? { ...r, size } : r)));
+                          setComboSlotsConfirmed(false);
+                        }}
+                        className="mt-1 w-full rounded-xl border px-3 py-2.5"
+                      >
+                        <option value="">Select size</option>
+                        {comboSizes.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="text-sm font-semibold">Qty
+                      <input
+                        type="number"
+                        min="1"
+                        value={row.quantity}
+                        onChange={(e) => {
+                          setComboSelections((prev) => prev.map((r, i) => (i === index ? { ...r, quantity: e.target.value } : r)));
+                          setComboSlotsConfirmed(false);
+                        }}
+                        className="mt-1 w-full rounded-xl border px-3 py-2.5"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="sm:col-span-3 text-left text-xs font-semibold text-red-700"
+                      onClick={() => {
+                        setComboSelections((prev) => prev.filter((_, i) => i !== index));
+                        setComboSlotsConfirmed(false);
+                      }}
+                    >
+                      Remove size
+                    </button>
+                  </div>
+                ))}
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="rounded-xl border bg-white px-3 py-2 text-sm font-semibold"
+                    onClick={() => {
+                      setComboSelections((prev) => [...prev, { size: '', quantity: 1 }]);
+                      setComboSlotsConfirmed(false);
+                    }}
+                  >
+                    + Add size
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-xl bg-emerald-700 px-3 py-2 text-sm font-semibold text-white"
+                    onClick={confirmComboSizes}
+                  >
+                    Done — generate photo slots
+                  </button>
+                </div>
+                {comboSlotsConfirmed && comboPhotoSlots.length > 0 ? (
+                  <div className="space-y-2 rounded-xl border border-emerald-200 bg-white p-3">
+                    <p className="text-xs font-bold text-gray-800">
+                      Customer photos ({comboPhotoSlots.length} frames) — one photo per frame
+                    </p>
+                    {comboPhotoSlots.map((slot, slotIndex) => (
+                      <label key={slot.slotKey} className="block text-sm font-semibold">
+                        {slot.label}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="mt-1 block w-full text-xs"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0] || null;
+                            e.target.value = '';
+                            setComboPhotoSlots((prev) => prev.map((s, i) => (
+                              i === slotIndex
+                                ? { ...s, file, previewUrl: file ? URL.createObjectURL(file) : '' }
+                                : s
+                            )));
+                          }}
+                        />
+                        {slot.file ? (
+                          <span className="mt-1 flex items-center gap-2 text-xs font-normal text-gray-600">
+                            {slot.previewUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={slot.previewUrl} alt="" className="h-12 w-12 rounded object-cover" />
+                            ) : null}
+                            <span className="truncate">{slot.file.name}</span>
+                            <button
+                              type="button"
+                              className="font-semibold text-red-700"
+                              onClick={() => setComboPhotoSlots((prev) => prev.map((s, i) => (
+                                i === slotIndex ? { ...s, file: null, previewUrl: '' } : s
+                              )))}
+                            >
+                              Remove
+                            </button>
+                          </span>
+                        ) : null}
+                      </label>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+            <>
             <div className="flex items-center justify-between">
-              <h3 className="font-bold text-gray-900">Customized combo · sizes & photos</h3>
+              <p className="text-[11px] text-gray-500">Catalog product lines (existing Select Product flow).</p>
               <button type="button" className="text-sm font-semibold text-primary-700" onClick={() => setForm((p) => ({ ...p, items: [...p.items, emptyItem()] }))}>
                 + Add size / product
               </button>
             </div>
-            <p className="text-[11px] text-gray-500">
-              Select each size/quantity line and upload customer photos for that line. Overall price is entered manually below — website catalog prices are not used.
-            </p>
             {form.items.map((item, index) => {
               const product = selectedProduct(item.productId);
               const variants = (product?.variants || []).flatMap((v) => (v.options || []).map((o) => `${v.name}: ${o.label}`));
@@ -606,7 +823,7 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
                     ) : null}
                   </div>
                   <label className="text-sm font-semibold sm:col-span-2">Product
-                    <select required value={item.productId} onChange={(e) => setItem(index, 'productId', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5">
+                    <select required={productMode === 'catalog'} value={item.productId} onChange={(e) => setItem(index, 'productId', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5">
                       <option value="">Select product</option>
                       {products.map((p) => (
                         <option key={p._id} value={p._id}>{p.title}</option>
@@ -679,6 +896,8 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
                 </div>
               );
             })}
+            </>
+            )}
           </div>
 
           <div className="grid gap-3 rounded-xl border border-amber-100 bg-amber-50/40 p-3 sm:grid-cols-2">

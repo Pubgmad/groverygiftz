@@ -7,7 +7,7 @@ import Product from '@/models/Product';
 import Admin from '@/models/Admin';
 import { requireAdminPermission, logAdminAudit } from '@/lib/adminAccess';
 import { getNextWhatsAppOrderNumber } from '@/lib/orderNumbers';
-import { appendTimeline, refreshPaymentTotals, notifyAdmins } from '@/lib/opsOrderHelpers';
+import { appendTimeline, refreshPaymentTotals } from '@/lib/opsOrderHelpers';
 import { snapshotOrderItemCost } from '@/lib/makingCost';
 import MakingCost from '@/models/MakingCost';
 import { assertStockAvailable, getGroupedStockRequests, loadProductsByOrderItems, deductOrderInventory } from '@/lib/inventory';
@@ -284,6 +284,18 @@ export async function POST(req) {
     notes: `${source} order created`,
   });
 
+  // Automatic Editor assignment when Sales did not pick someone (or Super Admin left blank)
+  let assignmentWarning = '';
+  if (!order.assignedTo) {
+    const { autoAssignEditorIfNeeded } = await import('@/lib/editorAssignment');
+    const result = await autoAssignEditorIfNeeded(order, {
+      source: `${source}_create`,
+      actorId: access.adminId,
+      actorName: access.name || access.email || 'Admin',
+    });
+    if (result.warning) assignmentWarning = result.warning;
+  }
+
   if (deductStock) {
     order.inventoryDeductionStartedAt = new Date();
     await deductOrderInventory(itemsWithCost);
@@ -298,17 +310,12 @@ export async function POST(req) {
     action: 'orders.create_whatsapp',
     targetType: 'Order',
     targetId: String(order._id),
-    details: { orderNumber, orderSource: source, total, advancePaid },
+    details: { orderNumber, orderSource: source, total, advancePaid, assignedTo: order.assignedTo },
   });
 
-  if (assignedTo) {
-    await notifyAdmins([assignedTo], {
-      type: 'order_assigned',
-      title: 'New order assigned',
-      body: `${orderNumber} assigned to you`,
-      order: order._id,
-      orderNumber,
-    }).catch(() => {});
+  if (order.assignedTo) {
+    const { notifyAssignedEditor } = await import('@/lib/editorAssignment');
+    await notifyAssignedEditor(order);
   }
 
   return NextResponse.json({
@@ -321,6 +328,9 @@ export async function POST(req) {
       remainingBalance: order.remainingBalance,
       opsStatus: order.opsStatus,
       total: order.total,
+      assignedTo: order.assignedTo,
+      assignedToName: order.assignedToName,
+      assignmentWarning: assignmentWarning || undefined,
     },
   }, { status: 201 });
 }

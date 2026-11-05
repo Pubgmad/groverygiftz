@@ -198,6 +198,19 @@ const OrderSchema = new mongoose.Schema({
   createdByAdmin: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin' },
   assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', index: true },
   assignedToName: String,
+  /** Append-only Editor assignment audit (auto + manual). */
+  assignmentHistory: [{
+    at: { type: Date, default: Date.now },
+    action: { type: String, default: '' },
+    previousAssignee: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin' },
+    previousAssigneeName: { type: String, default: '' },
+    newAssignee: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin' },
+    newAssigneeName: { type: String, default: '' },
+    changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin' },
+    changedByName: { type: String, default: '' },
+    source: { type: String, default: '' },
+    note: { type: String, default: '' },
+  }],
   expectedDispatchDate: { type: Date, index: true },
   previewRequired: { type: Boolean, default: true },
   opsStatus: {

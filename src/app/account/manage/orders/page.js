@@ -231,6 +231,8 @@ export default function AdminOrdersPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [expectedFrom, setExpectedFrom] = useState('');
+  const [expectedTo, setExpectedTo] = useState('');
   const [filtersReady, setFiltersReady] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalOrders, setTotalOrders] = useState(0);
@@ -243,6 +245,9 @@ export default function AdminOrdersPage() {
   const [selectingMatching, setSelectingMatching] = useState(false);
   const pageSize = 10;
   const dateError = dateFrom && dateTo && dateFrom > dateTo ? 'From date cannot be after To date' : '';
+  const expectedError = expectedFrom && expectedTo && expectedFrom > expectedTo
+    ? 'Expected dispatch From cannot be after To'
+    : '';
   const checkedCount = checkedIds.size;
   const selectedLabelIds = useMemo(() => [...checkedIds], [checkedIds]);
   const pageIds = useMemo(() => orders.map((order) => String(order._id)), [orders]);
@@ -266,6 +271,8 @@ export default function AdminOrdersPage() {
     if (sourceFilter) query.set('source', sourceFilter);
     if (dateFrom) query.set('dateFrom', dateFrom);
     if (dateTo) query.set('dateTo', dateTo);
+    if (expectedFrom) query.set('expectedFrom', expectedFrom);
+    if (expectedTo) query.set('expectedTo', expectedTo);
     return query;
   };
 
@@ -295,6 +302,8 @@ export default function AdminOrdersPage() {
     const params = new URLSearchParams(window.location.search);
     setDateFrom(params.get('dateFrom') || '');
     setDateTo(params.get('dateTo') || '');
+    setExpectedFrom(params.get('expectedFrom') || '');
+    setExpectedTo(params.get('expectedTo') || '');
     setStatusFilter(params.get('status') || '');
     setOrderFilter(params.get('orderId') || params.get('orderNumber') || '');
     setNameFilter(params.get('name') || '');
@@ -303,7 +312,7 @@ export default function AdminOrdersPage() {
 
   useEffect(() => {
     if (!filtersReady) return;
-    if (dateError) {
+    if (dateError || expectedError) {
       setOrders([]);
       setTotalOrders(0);
       setTotalPages(1);
@@ -311,7 +320,7 @@ export default function AdminOrdersPage() {
       return;
     }
     fetchOrders();
-  }, [filtersReady, currentPage, orderFilter, nameFilter, mobileFilter, statusFilter, sourceFilter, dateFrom, dateTo, dateError]);
+  }, [filtersReady, currentPage, orderFilter, nameFilter, mobileFilter, statusFilter, sourceFilter, dateFrom, dateTo, dateError, expectedFrom, expectedTo, expectedError]);
 
   useEffect(() => {
     fetch('/api/settings')
@@ -545,14 +554,23 @@ export default function AdminOrdersPage() {
               />
             </div>
             <div className="min-w-0">
-              <label className="mb-1 block text-xs font-semibold text-gray-500">From Date</label>
+              <label className="mb-1 block text-xs font-semibold text-gray-500">Paid From</label>
               <input type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setCurrentPage(1); }} className="min-h-[44px] w-full min-w-0 rounded-lg border px-3 py-2 text-sm" />
             </div>
             <div className="min-w-0">
-              <label className="mb-1 block text-xs font-semibold text-gray-500">To Date</label>
+              <label className="mb-1 block text-xs font-semibold text-gray-500">Paid To</label>
               <input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setCurrentPage(1); }} className="min-h-[44px] w-full min-w-0 rounded-lg border px-3 py-2 text-sm" />
             </div>
+            <div className="min-w-0">
+              <label className="mb-1 block text-xs font-semibold text-gray-500">Expected dispatch From</label>
+              <input type="date" value={expectedFrom} onChange={(e) => { setExpectedFrom(e.target.value); setCurrentPage(1); }} className="min-h-[44px] w-full min-w-0 rounded-lg border px-3 py-2 text-sm" />
+            </div>
+            <div className="min-w-0">
+              <label className="mb-1 block text-xs font-semibold text-gray-500">Expected dispatch To</label>
+              <input type="date" value={expectedTo} onChange={(e) => { setExpectedTo(e.target.value); setCurrentPage(1); }} className="min-h-[44px] w-full min-w-0 rounded-lg border px-3 py-2 text-sm" />
+            </div>
             {dateError ? <p className="text-sm text-red-600 sm:col-span-2 lg:col-span-3 xl:col-span-6">{dateError}</p> : null}
+            {expectedError ? <p className="text-sm text-red-600 sm:col-span-2 lg:col-span-3 xl:col-span-6">{expectedError}</p> : null}
           </div>
 
           {loading ? <p className="p-6 text-center">Loading...</p> : (<>

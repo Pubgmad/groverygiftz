@@ -34,7 +34,7 @@ export function ensureWebsitePaymentRecord(orderDoc) {
     paidAt,
     verified: true,
     verifiedAt: paidAt,
-    notes: 'Website Cashfree payment',
+    notes: 'Website Cashfree collection',
   });
   orderDoc.advancePaid = amount;
   orderDoc.balancePaid = 0;
@@ -222,6 +222,27 @@ export async function finalizeCashfreeOrder(orderId, { retryTracking = false } =
     if (retryTracking) throw new CashfreeFinalizeError('Tracking delivery is awaiting retry.', 503, true);
   }
   if (retryTracking && tracking?.retryable) throw new CashfreeFinalizeError('Tracking delivery is awaiting retry.', 503, true);
+
+  // Automatic Editor assignment (idempotent — skips if already assigned)
+  if (order.paymentStatus === 'paid') {
+    try {
+      const { autoAssignEditorIfNeeded, notifyAssignedEditor } = await import('@/lib/editorAssignment');
+      const fresh = await Order.findById(order._id);
+      if (fresh && !fresh.assignedTo) {
+        await autoAssignEditorIfNeeded(fresh, {
+          source: 'website_cashfree',
+          actorName: 'Website checkout',
+        });
+        await fresh.save();
+        await notifyAssignedEditor(fresh);
+        order.assignedTo = fresh.assignedTo;
+        order.assignedToName = fresh.assignedToName;
+        order.assignmentHistory = fresh.assignmentHistory;
+      }
+    } catch (assignErr) {
+      console.error('Editor auto-assignment after Cashfree finalize failed:', assignErr);
+    }
+  }
 
   return responseForOrder(order, true, settings);
 }

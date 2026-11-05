@@ -237,7 +237,7 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
         </label>
         <p className="text-[11px] text-gray-500">Only valid next statuses are listed (server also enforces transitions).</p>
         <label className="block text-xs font-semibold text-gray-600">
-          Assign employee (general)
+          Assigned Editor
           <select
             disabled={!writable || busy}
             value={assignedTo}
@@ -250,6 +250,30 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
             ))}
           </select>
         </label>
+        {!assignedTo ? (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] font-semibold text-amber-950">
+            Assignment warning: no Editor assigned. New Website/WhatsApp orders auto-assign to the Editor with the lowest pending editing workload when Editors are active.
+          </p>
+        ) : (
+          <p className="text-[11px] text-gray-500">
+            Current Editor: {order?.assignedToName || '—'} (manual reassignment available for Super Admin)
+          </p>
+        )}
+        {Array.isArray(order?.assignmentHistory) && order.assignmentHistory.length > 0 ? (
+          <details className="text-[11px] text-gray-600">
+            <summary className="cursor-pointer font-semibold">Assignment history</summary>
+            <ul className="mt-1 max-h-28 space-y-1 overflow-y-auto">
+              {order.assignmentHistory.slice().reverse().slice(0, 8).map((row, idx) => (
+                <li key={row._id || idx} className="rounded border bg-white px-2 py-1">
+                  {row.action || 'update'}
+                  {row.newAssigneeName ? ` → ${row.newAssigneeName}` : ' → unassigned'}
+                  {row.changedByName ? ` · by ${row.changedByName}` : ''}
+                  {row.at ? ` · ${new Date(row.at).toLocaleString('en-IN')}` : ''}
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
         <label className="block text-xs font-semibold text-gray-600">
           Printing assigned to
           <select
@@ -365,12 +389,41 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
       </div>
 
       <div className="rounded-xl border bg-white p-3 space-y-2">
-        <h3 className="font-semibold text-gray-900">Payments & balance</h3>
+        <h3 className="font-semibold text-gray-900">
+          {order?.orderSource === 'website' ? 'Website Cashfree payment' : 'WhatsApp payments & balance'}
+        </h3>
+        {order?.orderSource === 'website' ? (
+          <div className="space-y-2 text-xs">
+            <p>Total paid (Cashfree): <strong>{formatPrice(order.total || 0)}</strong></p>
+            <p>Payment status: <strong>{order.paymentStatus || '—'}</strong></p>
+            <p>Method: <strong>{order.paymentMethod || 'Cashfree'}</strong></p>
+            {order.cashfreePaymentId || order.cashfreeOrderId ? (
+              <p className="text-gray-600">
+                Cashfree ref: {order.cashfreePaymentId || order.cashfreeOrderId}
+              </p>
+            ) : null}
+            <p className="rounded-lg border border-sky-100 bg-sky-50 px-2 py-1.5 text-[11px] text-sky-950">
+              Website orders use Cashfree only. Manual Advance / Balance recording is for WhatsApp orders.
+            </p>
+            {Array.isArray(order.paymentRecords) && order.paymentRecords.length > 0 ? (
+              <ul className="max-h-40 space-y-1 overflow-y-auto text-xs text-gray-600">
+                {order.paymentRecords.slice().reverse().map((row, idx) => (
+                  <li key={row._id || idx} className="rounded border bg-gray-50 px-2 py-1.5">
+                    Website Cashfree · {formatPrice(row.amount)}
+                    {row.paidAt ? ` · ${formatIstDateTime(row.paidAt)}` : ''}
+                    {row.reference ? ` · ${row.reference}` : ''}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : (
+        <>
         <div className="grid grid-cols-2 gap-2 text-xs">
-          <p>Total: <strong>{formatPrice(order.total || 0)}</strong></p>
-          <p>Advance: <strong>{formatPrice(order.advancePaid || 0)}</strong></p>
-          <p>Balance paid: <strong>{formatPrice(order.balancePaid || 0)}</strong></p>
-          <p>Remaining: <strong>{formatPrice(order.remainingBalance || 0)}</strong></p>
+          <p>Overall order amount: <strong>{formatPrice(order.total || 0)}</strong></p>
+          <p>Advance (verified): <strong>{formatPrice(order.advancePaid || 0)}</strong></p>
+          <p>Balance paid (verified): <strong>{formatPrice(order.balancePaid || 0)}</strong></p>
+          <p>Remaining balance: <strong>{formatPrice(order.remainingBalance || 0)}</strong></p>
           <p className="col-span-2">Status: <strong>{order.balanceStatus || order.paymentStatus || '—'}</strong></p>
           {Number(order.revisionCharges) > 0 ? (
             <p className="col-span-2">Revision charges: <strong>{formatPrice(order.revisionCharges)}</strong>
@@ -494,6 +547,8 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
             ))}
           </ul>
         ) : null}
+        </>
+        )}
         {Array.isArray(order.parcelRefs) && order.parcelRefs.length > 0 ? (
           <div className="border-t pt-2 space-y-1">
             <p className="text-xs font-bold text-gray-800">Parcel dispatch history</p>
@@ -558,62 +613,23 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
         />
       </div>
 
-      <div className="rounded-xl border bg-white p-3 space-y-2">
-        <h3 className="font-semibold text-gray-900">Production video</h3>
-        {writable ? (
-          <input
-            type="file"
-            accept="video/*"
-            disabled={busy}
-            className="block w-full text-xs"
-            onChange={async (e) => {
-              const file = e.target.files?.[0];
-              e.target.value = '';
-              if (!file) return;
-              setBusy(true);
-              try {
-                const body = new FormData();
-                body.append('file', file);
-                const res = await fetch(`/api/admin/orders/${order._id}/production-video`, { method: 'POST', body });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.error || 'Upload failed');
-                toast.success('Production video uploaded');
-                await refresh();
-              } catch (err) {
-                toast.error(err.message || 'Upload failed');
-              } finally {
-                setBusy(false);
-              }
-            }}
-          />
-        ) : null}
-        {(order.productionVideos || []).map((vid, idx) => (
-          <div key={vid._id || idx} className="flex flex-wrap items-center gap-2 text-xs">
-            <a href={vid.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary-700 underline">
-              Video {idx + 1}{vid.uploadedAt ? ` · ${new Date(vid.uploadedAt).toLocaleString('en-IN')}` : ''}
-            </a>
-            {writable ? (
-              <button
-                type="button"
-                className="rounded border border-green-200 bg-green-50 px-2 py-1 font-semibold text-green-900"
-                onClick={async () => {
-                  try {
-                    const res = await fetch(`/api/admin/orders/${order._id}/production-video?videoId=${encodeURIComponent(vid._id || '')}`);
-                    const data = await res.json();
-                    if (!res.ok) throw new Error(data.error || 'Share failed');
-                    if (data.whatsappShareUrl) window.open(data.whatsappShareUrl, '_blank', 'noopener,noreferrer');
-                    toast.success('WhatsApp opened with video link');
-                  } catch (err) {
-                    toast.error(err.message || 'Share failed');
-                  }
-                }}
-              >
-                Share on WhatsApp
-              </button>
-            ) : null}
-          </div>
-        ))}
-      </div>
+      {/* Production videos are shared via the Production WhatsApp Group — no order-level upload needed.
+          Historical videos (if any) remain viewable below for backward compatibility. */}
+      {Array.isArray(order.productionVideos) && order.productionVideos.length > 0 ? (
+        <div className="rounded-xl border bg-white p-3 space-y-2">
+          <h3 className="font-semibold text-gray-900">Historical production videos</h3>
+          <p className="text-[11px] text-gray-500">
+            New videos are shared in the Production WhatsApp Group. Existing uploads are kept for history.
+          </p>
+          {(order.productionVideos || []).map((vid, idx) => (
+            <div key={vid._id || idx} className="flex flex-wrap items-center gap-2 text-xs">
+              <a href={vid.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary-700 underline">
+                Video {idx + 1}{vid.uploadedAt ? ` · ${new Date(vid.uploadedAt).toLocaleString('en-IN')}` : ''}
+              </a>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       <div className="rounded-xl border bg-white p-3 space-y-2">
         <h3 className="font-semibold text-gray-900">Customer photos by product / size</h3>

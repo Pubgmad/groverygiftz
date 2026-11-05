@@ -71,6 +71,11 @@ export function parseOrderReportFilters(params) {
   const dateTo = paramValue(params, 'dateTo');
   const range = parseIstRange(dateFrom, dateTo);
   if (range.error) return { error: range.error };
+  const expectedFrom = paramValue(params, 'expectedFrom', 'expectedDispatchFrom');
+  const expectedTo = paramValue(params, 'expectedTo', 'expectedDispatchTo');
+  const expectedRange = parseIstRange(expectedFrom, expectedTo);
+  if (expectedRange.error) return { error: expectedRange.error };
+  const urgency = paramValue(params, 'urgency');
   const normalizedStatus = status === 'pending' ? 'ordered' : status;
   return {
     orderId,
@@ -84,6 +89,11 @@ export function parseOrderReportFilters(params) {
     dateTo: range.toStr,
     paidAtFrom: range.from,
     paidAtTo: range.to,
+    expectedFrom: expectedRange.fromStr,
+    expectedTo: expectedRange.toStr,
+    expectedDispatchFrom: expectedRange.from,
+    expectedDispatchTo: expectedRange.to,
+    urgency: String(urgency || '').toLowerCase(),
     page: boundedPageNumber(paramValue(params, 'page') || 1),
     limit: boundedLimit(paramValue(params, 'limit') || 20, 20, 100),
   };
@@ -141,6 +151,17 @@ export function buildAdminOrderFilter(filters = {}) {
     filter.paidAt = {};
     if (filters.paidAtFrom) filter.paidAt.$gte = filters.paidAtFrom;
     if (filters.paidAtTo) filter.paidAt.$lte = filters.paidAtTo;
+  }
+  // Expected dispatch date (promised to customer) — not paidAt / actual parcel date
+  if (filters.expectedDispatchFrom || filters.expectedDispatchTo) {
+    filter.expectedDispatchDate = {};
+    if (filters.expectedDispatchFrom) filter.expectedDispatchDate.$gte = filters.expectedDispatchFrom;
+    if (filters.expectedDispatchTo) filter.expectedDispatchDate.$lte = filters.expectedDispatchTo;
+  }
+  if (filters.urgency === 'urgent') {
+    filter.previewRequired = true;
+  } else if (filters.urgency === 'normal') {
+    filter.previewRequired = { $ne: true };
   }
   return filter;
 }

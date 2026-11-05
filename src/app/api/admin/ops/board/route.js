@@ -3,8 +3,9 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import Order from '@/models/Order';
 import { requireAdminPermission } from '@/lib/adminAccess';
-import { OPS_STATUSES, OPS_STATUS_LABELS, isDelayedOrder } from '@/lib/opsConstants';
+import { OPS_STATUSES, OPS_STATUS_LABELS, OPS_STATUS_HELP, isDelayedOrder } from '@/lib/opsConstants';
 import { mergeStaffOrderFilter } from '@/lib/opsStaffAccess';
+import { todayIstYmd, istDayBounds } from '@/lib/istTime';
 
 function paidOpsBase() {
   return {
@@ -29,6 +30,10 @@ export async function GET(req) {
   const opsStatus = searchParams.get('opsStatus') || '';
   const delayedOnly = searchParams.get('delayed') === '1';
 
+  // Overdue = expected dispatch IST calendar day has fully passed (align with isDelayedOrder)
+  const todayBounds = istDayBounds(todayIstYmd());
+  const overdueBefore = todayBounds?.start || new Date();
+
   const counts = {};
   await Promise.all(OPS_STATUSES.map(async (status) => {
     counts[status] = await Order.countDocuments(
@@ -40,20 +45,40 @@ export async function GET(req) {
       { paymentStatus: 'paid' },
       { orderSource: { $in: ['whatsapp', 'instagram'] } },
     ],
-    expectedDispatchDate: { $lt: new Date() },
-    opsStatus: { $nin: ['dispatched', 'completed'] },
+    expectedDispatchDate: { $lt: overdueBefore, $ne: null },
+    opsStatus: { $nin: ['dispatched', 'completed', 'tracking_pending'] },
     status: { $nin: ['dispatched', 'cancelled'] },
   }, access));
 
+  const expectedFrom = searchParams.get('expectedFrom') || '';
+  const expectedTo = searchParams.get('expectedTo') || '';
+  const source = String(searchParams.get('source') || '').toLowerCase();
+  let expectedRange = null;
+  if (expectedFrom || expectedTo) {
+    const { istRangeBoundsSafe } = await import('@/lib/istTime');
+    expectedRange = istRangeBoundsSafe(expectedFrom || expectedTo, expectedTo || expectedFrom);
+  }
+
   const listCriteria = { ...paidOpsBase() };
   if (opsStatus === 'delayed') {
-    listCriteria.expectedDispatchDate = { $lt: new Date() };
-    listCriteria.opsStatus = { $nin: ['dispatched', 'completed'] };
+    listCriteria.expectedDispatchDate = { $lt: overdueBefore, $ne: null };
+    listCriteria.opsStatus = { $nin: ['dispatched', 'completed', 'tracking_pending'] };
   } else if (opsStatus && OPS_STATUSES.includes(opsStatus)) {
     listCriteria.opsStatus = opsStatus;
   } else if (delayedOnly) {
-    listCriteria.expectedDispatchDate = { $lt: new Date() };
-    listCriteria.opsStatus = { $nin: ['dispatched', 'completed'] };
+    listCriteria.expectedDispatchDate = { $lt: overdueBefore, $ne: null };
+    listCriteria.opsStatus = { $nin: ['dispatched', 'completed', 'tracking_pending'] };
+  }
+  if (expectedRange) {
+    listCriteria.expectedDispatchDate = {
+      ...(listCriteria.expectedDispatchDate || {}),
+      $gte: expectedRange.start,
+      $lte: expectedRange.end,
+      $ne: null,
+    };
+  }
+  if (source === 'website' || source === 'whatsapp' || source === 'instagram') {
+    listCriteria.orderSource = source;
   }
 
   const filter = mergeStaffOrderFilter(listCriteria, access);
@@ -63,10 +88,22 @@ export async function GET(req) {
     .limit(100)
     .lean();
 
+  const dueToday = await Order.countDocuments(mergeStaffOrderFilter({
+    ...paidOpsBase(),
+    expectedDispatchDate: { $gte: todayBounds.start, $lte: todayBounds.end },
+    opsStatus: { $nin: ['dispatched', 'completed'] },
+    status: { $ne: 'cancelled' },
+  }, access));
+
   return NextResponse.json({
     counts,
     labels: OPS_STATUS_LABELS,
+    help: OPS_STATUS_HELP,
     statuses: OPS_STATUSES,
+    alerts: {
+      overdue: counts.delayed,
+      dueToday,
+    },
     orders: orders.map((o) => ({ ...o, delayed: isDelayedOrder(o) })),
     access: { adminId: access?.adminId },
   });

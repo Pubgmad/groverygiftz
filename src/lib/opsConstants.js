@@ -47,6 +47,31 @@ export const OPS_STATUS_LABELS = {
   on_hold: 'On Hold',
 };
 
+/** Short tooltips for Operations board status chips. */
+export const OPS_STATUS_HELP = {
+  new_order: 'Newly created orders waiting to enter design/editing.',
+  design_pending: 'Assigned for design; work not started or awaiting assets.',
+  editing_in_progress: 'Editor is actively working on the design.',
+  preview_waiting: 'Design sent; waiting for customer approval.',
+  revision_required: 'Customer requested changes.',
+  approved_printing_pending: 'Design approved; waiting to start print.',
+  printing_assigned: 'Print job assigned to a printer.',
+  printing_in_progress: 'Printing sheets in progress.',
+  printing_completed: 'Printing finished; ready for production.',
+  manufacturing: 'Frame / product manufacturing step.',
+  assembly: 'Assembly of printed sheets into product.',
+  finishing: 'Finishing touches before QC.',
+  production_pending: 'Queued for production.',
+  production_in_progress: 'Production team working on the order.',
+  quality_check: 'Quality check before packing.',
+  packing_pending: 'Ready to pack / packing in progress.',
+  ready_to_dispatch: 'Packed and ready for courier handover.',
+  dispatched: 'Handed to courier (actual dispatch recorded).',
+  tracking_pending: 'Dispatched; tracking ID still being updated.',
+  completed: 'Order fully completed.',
+  on_hold: 'Paused — not progressing until released.',
+};
+
 /** Allowed next ops statuses (linear flow + on_hold from most; recovery from on_hold). */
 export const OPS_TRANSITIONS = {
   new_order: ['design_pending', 'editing_in_progress', 'preview_waiting', 'approved_printing_pending', 'on_hold'],

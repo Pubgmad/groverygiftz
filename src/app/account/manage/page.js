@@ -8,6 +8,7 @@ import useAdminAccess from '@/hooks/useAdminAccess';
 export default function AdminDashboard() {
   const { canRead } = useAdminAccess();
   const [stats, setStats] = useState(null);
+  const [opsAlerts, setOpsAlerts] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -15,7 +16,13 @@ export default function AdminDashboard() {
       .then(r => r.json())
       .then(d => { setStats(d); setLoading(false); })
       .catch(() => setLoading(false));
-  }, []);
+    if (canRead('orders') || canRead('operations')) {
+      fetch('/api/admin/ops/board', { cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => setOpsAlerts(d?.alerts || null))
+        .catch(() => setOpsAlerts(null));
+    }
+  }, [canRead]);
 
   if (loading) return <div className="text-center py-12">Loading dashboard...</div>;
 
@@ -34,6 +41,20 @@ export default function AdminDashboard() {
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6">Dashboard</h1>
+      {(canRead('orders') || canRead('operations')) && opsAlerts ? (
+        <div className="mb-6 grid gap-3 sm:grid-cols-2">
+          <Link href="/account/manage/operations?opsStatus=delayed" className="rounded-xl border border-red-200 bg-red-50 p-4 hover:shadow-sm">
+            <p className="text-2xl font-bold text-red-800">{opsAlerts.overdue ?? 0}</p>
+            <p className="text-sm font-semibold text-red-900">Overdue expected dispatch</p>
+            <p className="text-xs text-red-800/80">Expected day passed · not yet dispatched</p>
+          </Link>
+          <Link href="/account/manage/orders" className="rounded-xl border border-amber-200 bg-amber-50 p-4 hover:shadow-sm">
+            <p className="text-2xl font-bold text-amber-900">{opsAlerts.dueToday ?? 0}</p>
+            <p className="text-sm font-semibold text-amber-950">Dispatch due today</p>
+            <p className="text-xs text-amber-900/80">Expected dispatch date is today (IST)</p>
+          </Link>
+        </div>
+      ) : null}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
         {cards.map(card => (
           <Link key={card.label} href={card.href} className="bg-white p-6 rounded-xl border hover:shadow-md transition-shadow">

@@ -62,13 +62,27 @@ export async function GET(req) {
   await dbConnect();
 
   if (type === 'payments') {
-    const kind = String(searchParams.get('kind') || '').trim();
+    const kindRaw = String(searchParams.get('kind') || '').trim();
     const method = String(searchParams.get('method') || '').trim();
     const staff = String(searchParams.get('staff') || '').trim();
     const verifiedFilter = String(searchParams.get('verified') || '').trim(); // yes|no|''
+    let source = String(searchParams.get('source') || '').trim().toLowerCase(); // website|whatsapp|instagram|manual|''
+    // Report "Website Cashfree" is a classification, not paymentRecords.kind
+    let kind = kindRaw;
+    if (kindRaw === 'website_cashfree') {
+      source = source || 'website';
+      kind = '';
+    } else if (['advance', 'balance', 'revision', 'other'].includes(kindRaw) && !source) {
+      // WhatsApp manual kinds — exclude website Cashfree from these buckets by default
+      source = 'manual';
+    }
 
     const match = {
       'paymentRecords.paidAt': { $gte: bounds.start, $lte: bounds.end, $ne: null, $type: 'date' },
+      ...(source === 'website' ? { $or: [{ orderSource: 'website' }, { orderSource: { $exists: false } }, { orderSource: null }] } : {}),
+      ...(source === 'whatsapp' || source === 'instagram' ? { orderSource: source } : {}),
+      // "manual" = WhatsApp/Instagram only (excludes website Cashfree)
+      ...(source === 'manual' ? { orderSource: { $in: ['whatsapp', 'instagram'] } } : {}),
     };
     // Do not invent dates: only records that already have a real paidAt
 
@@ -107,15 +121,27 @@ export async function GET(req) {
     let legacyWebsite = [];
     const allowLegacy = (!kind || kind === 'advance')
       && verifiedFilter !== 'no'
-      && !staff;
+      && !staff
+      && (!source || source === 'website');
     if (allowLegacy) {
       const legacyFilter = {
         paymentStatus: 'paid',
         paidAt: { $gte: bounds.start, $lte: bounds.end, $ne: null, $type: 'date' },
-        $or: [
-          { paymentRecords: { $exists: false } },
-          { paymentRecords: { $size: 0 } },
-          { paymentRecords: null },
+        $and: [
+          {
+            $or: [
+              { paymentRecords: { $exists: false } },
+              { paymentRecords: { $size: 0 } },
+              { paymentRecords: null },
+            ],
+          },
+          {
+            $or: [
+              { orderSource: 'website' },
+              { orderSource: { $exists: false } },
+              { orderSource: null },
+            ],
+          },
         ],
       };
       if (method) {
@@ -176,15 +202,18 @@ export async function GET(req) {
 
     const payments = rows.map((row) => {
       const p = row.payment || {};
+      const isWebsite = !row.orderSource || row.orderSource === 'website';
       const mapped = {
         orderId: row.orderId,
         orderNumber: row.orderNumber,
-        orderSource: row.orderSource,
+        orderSource: row.orderSource || (isWebsite ? 'website' : ''),
         customerName: row.customerName,
         phone: row.phone,
         salesStaff: row.assignedToName || '',
         paymentId: p._id,
-        kind: p.kind,
+        // Website Cashfree must not appear as WhatsApp "Advance" in reports
+        kind: isWebsite ? 'website_cashfree' : p.kind,
+        reportKindLabel: isWebsite ? 'Website Cashfree' : (p.kind || 'other'),
         amount: Number(p.amount) || 0,
         method: p.method || '',
         reference: p.reference || '',
@@ -192,7 +221,7 @@ export async function GET(req) {
         paidAtIst: formatIstDateTime(p.paidAt),
         verified: Boolean(p.verified),
         verifiedAtIst: p.verifiedAt ? formatIstDateTime(p.verifiedAt) : '',
-        enteredBy: p.recordedByName || '',
+        enteredBy: p.recordedByName || (isWebsite ? 'Website checkout' : 'Unknown'),
         proof: p.screenshotUrl || p.screenshotPath || '',
         legacyWebsite: false,
       };
@@ -209,7 +238,8 @@ export async function GET(req) {
         phone: o.shippingAddress?.phone || '',
         salesStaff: o.assignedToName || '',
         paymentId: `legacy-${o._id}`,
-        kind: 'advance',
+        kind: 'website_cashfree',
+        reportKindLabel: 'Website Cashfree',
         amount: Number(o.total) || 0,
         method: o.paymentMethod || 'Cashfree',
         reference: o.cashfreePaymentId || o.cashfreeOrderId || '',

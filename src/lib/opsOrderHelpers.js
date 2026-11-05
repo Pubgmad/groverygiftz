@@ -180,7 +180,7 @@ export function ensureLegacyWebsitePaymentRecord(order) {
     paidAt,
     verified: true,
     verifiedAt: paidAt,
-    notes: 'Website Cashfree payment',
+    notes: 'Website Cashfree collection',
     recordedByName: 'Website checkout',
   });
   return true;

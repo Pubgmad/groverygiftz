@@ -5,7 +5,7 @@ import Link from 'next/link';
 import toast from 'react-hot-toast';
 import useAdminAccess from '@/hooks/useAdminAccess';
 import ReadOnlyBanner from '@/components/admin/ReadOnlyBanner';
-import { OPS_STATUS_LABELS, TASK_TYPES } from '@/lib/opsConstants';
+import { OPS_STATUS_LABELS, OPS_STATUS_HELP, TASK_TYPES } from '@/lib/opsConstants';
 import { formatPrice } from '@/lib/utils';
 import { fromDatetimeLocalIst, toDatetimeLocalIst, formatIstDateTime, todayIstYmd } from '@/lib/istTime';
 
@@ -276,7 +276,7 @@ export default function OperationsPage() {
           onClick={() => setActiveStatus('delayed')}
           className={`rounded-xl border p-3 text-left ${activeStatus === 'delayed' ? 'border-red-500 bg-red-50' : 'bg-white'}`}
         >
-          <p className="text-xs font-semibold text-red-600">Delayed / Overdue</p>
+          <p className="text-xs font-semibold text-red-600" title="Expected dispatch IST day has fully passed and order is not yet dispatched">Delayed / Overdue</p>
           <p className="text-xl font-bold text-red-700">{counts.delayed || 0}</p>
         </button>
         {statuses.map((status) => (
@@ -286,7 +286,7 @@ export default function OperationsPage() {
             onClick={() => setActiveStatus(status)}
             className={`rounded-xl border p-3 text-left ${activeStatus === status ? 'border-primary-500 bg-primary-50' : 'bg-white'}`}
           >
-            <p className="text-xs font-semibold text-gray-500">{OPS_STATUS_LABELS[status] || status}</p>
+            <p className="text-xs font-semibold text-gray-500" title={OPS_STATUS_HELP[status] || ''}>{OPS_STATUS_LABELS[status] || status}</p>
             <p className="text-xl font-bold">{counts[status] || 0}</p>
           </button>
         ))}
@@ -538,6 +538,9 @@ export default function OperationsPage() {
       {writable ? (
         <div className="rounded-xl border bg-white p-4 space-y-3">
           <h2 className="font-bold">Create task</h2>
+          <p className="text-xs text-gray-500">
+            Extra internal work only (follow-ups, corrections, packing issues). Does not replace automatic Editor assignment or the normal order workflow.
+          </p>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             <input
               value={taskForm.orderNumber}
@@ -606,6 +609,9 @@ export default function OperationsPage() {
       <div className="rounded-xl border bg-white p-4">
         <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="font-bold">Work planner</h2>
+          <p className="text-xs text-gray-500">
+            Shows Create Task items by due date across Sales / Editing / Printing / Production / Packing / Dispatch. Order board status chips above remain the source of truth for order workflow.
+          </p>
           <div className="flex flex-wrap gap-2">
             {[
               ['today', "Today's Tasks"],

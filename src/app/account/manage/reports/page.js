@@ -32,6 +32,7 @@ export default function AdminReportsPage() {
   const [verified, setVerified] = useState('');
   const [method, setMethod] = useState('');
   const [staff, setStaff] = useState('');
+  const [paySource, setPaySource] = useState('');
   const [courier, setCourier] = useState('');
   const [state, setState] = useState('');
   const [combined, setCombined] = useState(emptyCombined);
@@ -48,6 +49,7 @@ export default function AdminReportsPage() {
         if (verified) params.set('verified', verified);
         if (method) params.set('method', method);
         if (staff) params.set('staff', staff);
+        if (paySource) params.set('source', paySource);
       }
       if (tab === 'dispatch') {
         if (courier) params.set('courier', courier);
@@ -68,7 +70,7 @@ export default function AdminReportsPage() {
     } finally {
       setLoading(false);
     }
-  }, [readable, tab, from, to, kind, verified, method, staff, courier, state, combined]);
+  }, [readable, tab, from, to, kind, verified, method, staff, paySource, courier, state, combined]);
 
   useEffect(() => {
     load();
@@ -135,8 +137,15 @@ export default function AdminReportsPage() {
 
         {tab === 'payments' ? (
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <select value={paySource} onChange={(e) => setPaySource(e.target.value)} className="rounded-xl border px-3 py-2 text-sm">
+              <option value="">All sources</option>
+              <option value="website">Website Cashfree only</option>
+              <option value="manual">WhatsApp / Instagram manual only</option>
+              <option value="whatsapp">WhatsApp only</option>
+            </select>
             <select value={kind} onChange={(e) => setKind(e.target.value)} className="rounded-xl border px-3 py-2 text-sm">
               <option value="">All kinds</option>
+              <option value="website_cashfree">Website Cashfree collections</option>
               <option value="advance">Advance</option>
               <option value="balance">Balance</option>
               <option value="revision">Revision</option>
@@ -230,7 +239,10 @@ export default function AdminReportsPage() {
                       <Link href={`/account/manage/orders?orderId=${encodeURIComponent(p.orderNumber || '')}`}>{p.orderNumber}</Link>
                       <p className="text-[11px] font-normal text-gray-500">{p.customerName}</p>
                     </td>
-                    <td className="p-3 capitalize">{p.kind}</td>
+                    <td className="p-3 capitalize">
+                      {p.reportKindLabel || p.kind}
+                      <p className="text-[10px] font-normal text-gray-500">{p.orderSource || '—'}</p>
+                    </td>
                     <td className="p-3 font-semibold">{formatPrice(p.amount)}</td>
                     <td className="p-3">{p.method || '—'}</td>
                     <td className="p-3 text-xs font-mono">{p.reference || '—'}</td>
