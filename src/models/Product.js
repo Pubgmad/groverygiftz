@@ -97,6 +97,13 @@ const ProductSchema = new mongoose.Schema({
     timeUnit: { type: String, enum: ['hours', 'days'], default: 'hours' },
     labelTemplate: { type: String, default: '' },
   },
+  /** Promotional estimated interest (not verified live analytics). */
+  productInterest: {
+    enabled: { type: Boolean, default: true },
+    minViews: { type: Number, default: 250 },
+    maxViews: { type: Number, default: 1000 },
+    labelTemplate: { type: String, default: '' },
+  },
   regularPrice: { type: Number, required: true },
   salePrice: { type: Number },
   offerStartsAt: Date,

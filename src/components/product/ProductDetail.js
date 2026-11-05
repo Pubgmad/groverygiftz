@@ -22,6 +22,7 @@ import ProductAssurancePanel from '@/components/product/ProductAssurancePanel';
 import AboutThisProduct from '@/components/product/AboutThisProduct';
 import ProductFaqs from '@/components/product/ProductFaqs';
 import StockAvailabilityAlert from '@/components/product/StockAvailabilityAlert';
+import ProductInterestIndicator from '@/components/product/ProductInterestIndicator';
 import PurchaseActivityBadge from '@/components/product/PurchaseActivityBadge';
 import ProductMakingVideos from '@/components/product/ProductMakingVideos';
 import ProductTrustStats from '@/components/product/ProductTrustStats';
@@ -1177,7 +1178,6 @@ export default function ProductDetail({ product }) {
       {/* Product Info */}
       <div>
         <h1 className="text-2xl md:text-3xl font-display font-bold mb-3">{product.title}</h1>
-        <PurchaseActivityBadge product={product} />
 
         <div className="flex flex-wrap items-center gap-3 mb-3">
           <span className="text-3xl font-bold text-primary-600">{showContactOnlyPrice ? 'Contact for Price' : formatPrice(finalUnitPrice)}</span>
@@ -1191,6 +1191,11 @@ export default function ProductDetail({ product }) {
         </div>
 
         <StockAvailabilityAlert product={product} selectedOptions={selectedVariantOptions} />
+
+        <div className="mb-4 flex flex-col gap-2 empty:mb-0 empty:hidden sm:flex-row sm:flex-wrap sm:items-stretch">
+          <ProductInterestIndicator product={product} />
+          <PurchaseActivityBadge product={product} />
+        </div>
 
         {!product.isQuoteOnly && (
           <div className="mb-4 rounded-2xl border border-primary-100 bg-white p-4 shadow-sm">

@@ -19,7 +19,7 @@ export function formatPurchaseActivityMessage({
   const unit = UNIT_LABEL[unitKey];
   const unitText = amount === 1 ? unit.one : unit.many;
   const template = String(labelTemplate || '').trim()
-    || '{count} people purchased this product in the last {time} {unit}';
+    || '{count} orders placed in the last {time} {unit}';
 
   return template
     .replace(/\{count\}/gi, String(count))

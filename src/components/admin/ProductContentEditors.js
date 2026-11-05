@@ -204,36 +204,68 @@ export function ProductStockAlertEditor({ stockAlert = {}, onChange }) {
   );
 }
 
+export function ProductInterestEditor({ productInterest = {}, onChange }) {
+  const value = productInterest || {};
+  return (
+    <div className="rounded-xl border border-sky-100 bg-sky-50/40 p-4 space-y-3">
+      <h3 className="font-semibold text-gray-900">Estimated product interest</h3>
+      <p className="text-xs text-gray-500">
+        Promotional estimate only (not verified live visitors). Shows a product-specific number that refreshes within the range. Use {'{count}'} in the label.
+      </p>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={value.enabled !== false} onChange={(e) => onChange({ ...value, enabled: e.target.checked })} />
+        Show estimated interest indicator
+      </label>
+      <div className="grid md:grid-cols-3 gap-3">
+        <div>
+          <label className="block text-xs font-medium mb-1">Min views</label>
+          <input type="number" min="1" value={value.minViews ?? 250} onChange={(e) => onChange({ ...value, minViews: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium mb-1">Max views</label>
+          <input type="number" min="2" value={value.maxViews ?? 1000} onChange={(e) => onChange({ ...value, maxViews: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium mb-1">Label template</label>
+          <input value={value.labelTemplate || ''} onChange={(e) => onChange({ ...value, labelTemplate: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" placeholder="{count} estimated product views" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ProductPurchaseActivityEditor({ purchaseActivity = {}, onChange }) {
   const value = purchaseActivity || {};
   return (
     <div className="rounded-xl border border-primary-100 bg-primary-50/30 p-4 space-y-3">
-      <h3 className="font-semibold text-gray-900">Purchase activity indicator</h3>
-      <p className="text-xs text-gray-500">Admin-entered promotional values for this product only — not calculated from orders. Use {'{count}'}, {'{time}'}, and {'{unit}'} in the optional template.</p>
+      <h3 className="font-semibold text-gray-900">Sales milestone indicator</h3>
+      <p className="text-xs text-gray-500">
+        Product-specific Admin-entered milestone (e.g. 100 orders in 50 days). Manually maintained — not auto-calculated from verified order analytics. Use {'{count}'}, {'{time}'}, and {'{unit}'}.
+      </p>
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={!!value.enabled} onChange={(e) => onChange({ ...value, enabled: e.target.checked })} />
-        Show purchase activity on product page
+        Show sales milestone on product page
       </label>
       <div className="grid md:grid-cols-3 gap-3">
         <div>
-          <label className="block text-xs font-medium mb-1">Purchase count</label>
+          <label className="block text-xs font-medium mb-1">Number of orders</label>
           <input type="number" min="0" value={value.purchaseCount ?? 0} onChange={(e) => onChange({ ...value, purchaseCount: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" />
         </div>
         <div>
-          <label className="block text-xs font-medium mb-1">Time quantity</label>
+          <label className="block text-xs font-medium mb-1">Number of days / hours</label>
           <input type="number" min="1" value={value.timeQuantity ?? 24} onChange={(e) => onChange({ ...value, timeQuantity: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" />
         </div>
         <div>
           <label className="block text-xs font-medium mb-1">Time unit</label>
-          <select value={value.timeUnit || 'hours'} onChange={(e) => onChange({ ...value, timeUnit: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white">
-            <option value="hours">Hours</option>
+          <select value={value.timeUnit || 'days'} onChange={(e) => onChange({ ...value, timeUnit: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white">
             <option value="days">Days</option>
+            <option value="hours">Hours</option>
           </select>
         </div>
       </div>
       <div>
-        <label className="block text-xs font-medium mb-1">Optional label template</label>
-        <input value={value.labelTemplate || ''} onChange={(e) => onChange({ ...value, labelTemplate: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" placeholder="{count} people purchased this product in the last {time} {unit}" />
+        <label className="block text-xs font-medium mb-1">Optional display text</label>
+        <input value={value.labelTemplate || ''} onChange={(e) => onChange({ ...value, labelTemplate: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" placeholder="{count} orders placed in the last {time} {unit}" />
       </div>
     </div>
   );

@@ -3,14 +3,24 @@
 import { FiShoppingBag } from 'react-icons/fi';
 import { formatPurchaseActivityMessage } from '@/lib/purchaseActivityMessage';
 
+/**
+ * Admin-configured sales milestone — promotional / manually maintained figures,
+ * not auto-verified order analytics.
+ */
 export default function PurchaseActivityBadge({ product }) {
   const message = formatPurchaseActivityMessage(product?.purchaseActivity || {});
   if (!message) return null;
 
   return (
-    <div className="mb-3 inline-flex max-w-full items-center gap-2 rounded-full border border-primary-100 bg-primary-50/80 px-3 py-1.5 text-xs font-semibold text-primary-800 sm:text-sm">
-      <FiShoppingBag size={14} className="shrink-0 text-primary-600" aria-hidden />
-      <span className="min-w-0 leading-snug">{message}</span>
+    <div
+      className="product-sales-milestone w-full min-w-0 sm:w-auto"
+      role="status"
+      title="Admin-configured sales milestone — not automatically verified from order records"
+    >
+      <span className="product-sales-milestone__icon" aria-hidden>
+        <FiShoppingBag size={14} />
+      </span>
+      <span className="product-sales-milestone__text min-w-0 leading-snug">{message}</span>
     </div>
   );
 }

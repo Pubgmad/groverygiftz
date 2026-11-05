@@ -88,6 +88,16 @@ export function sanitizeProductPayload(payload = {}) {
       labelTemplate: String(body.purchaseActivity.labelTemplate || ''),
     };
   }
+  if (body.productInterest) {
+    const minViews = Math.max(1, toNumber(body.productInterest.minViews, 250));
+    const maxViews = Math.max(minViews + 1, toNumber(body.productInterest.maxViews, 1000));
+    body.productInterest = {
+      enabled: body.productInterest.enabled !== false,
+      minViews,
+      maxViews,
+      labelTemplate: String(body.productInterest.labelTemplate || ''),
+    };
+  }
   if (Array.isArray(body.collageTemplates)) body.collageTemplates = body.collageTemplates.map((template) => ({ ...template, minImages: toNumber(template.minImages, 1), maxImages: toNumber(template.maxImages, 1) }));
   if (body.customizationPreview) {
     const preview = { ...body.customizationPreview };

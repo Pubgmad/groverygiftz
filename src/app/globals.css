@@ -387,6 +387,95 @@
   }
 }
 
+@keyframes productInterestPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(37, 150, 190, 0), 0 1px 2px rgba(15, 76, 99, 0.06); }
+  50% { box-shadow: 0 0 0 4px rgba(37, 150, 190, 0.12), 0 4px 14px rgba(37, 150, 190, 0.16); }
+}
+
+@keyframes productInterestIcon {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+
+@keyframes productSalesGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(244, 121, 32, 0), 0 1px 2px rgba(146, 64, 14, 0.06); }
+  50% { box-shadow: 0 0 0 4px rgba(244, 121, 32, 0.12), 0 4px 14px rgba(244, 121, 32, 0.16); }
+}
+
+.product-interest {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  max-width: 100%;
+  border-radius: 9999px;
+  border: 1.5px solid rgba(37, 150, 190, 0.35);
+  background: linear-gradient(90deg, #eff9fc 0%, #e0f4fa 55%, #d7eef8 100%);
+  color: #0f4c63;
+  padding: 0.5rem 0.85rem;
+  font-size: 0.8125rem;
+  font-weight: 800;
+  animation: stockAlertIn 0.4s ease-out both, productInterestPulse 3.4s ease-in-out 0.4s infinite;
+  transition: transform 0.25s ease;
+}
+.product-interest--tick {
+  transform: translateY(-1px);
+}
+.product-interest__icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 9999px;
+  background: #2596be;
+  color: #fff;
+  animation: productInterestIcon 2.6s ease-in-out infinite;
+}
+.product-interest__text {
+  flex: 1 1 auto;
+}
+
+.product-sales-milestone {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  max-width: 100%;
+  border-radius: 9999px;
+  border: 1.5px solid rgba(244, 121, 32, 0.4);
+  background: linear-gradient(90deg, #fff7ed 0%, #ffedd5 50%, #fed7aa 100%);
+  color: #9a3412;
+  padding: 0.5rem 0.85rem;
+  font-size: 0.8125rem;
+  font-weight: 800;
+  animation: stockAlertIn 0.4s ease-out both, productSalesGlow 3s ease-in-out 0.45s infinite;
+}
+.product-sales-milestone__icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 9999px;
+  background: #f47920;
+  color: #fff;
+}
+.product-sales-milestone__text {
+  flex: 1 1 auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .product-interest,
+  .product-interest__icon,
+  .product-sales-milestone {
+    animation: none !important;
+  }
+  .product-interest--tick {
+    transform: none;
+  }
+}
+
 .dots-pattern {
   background-image: radial-gradient(circle, rgba(36,86,216,0.08) 1px, transparent 1px);
   background-size: 24px 24px;

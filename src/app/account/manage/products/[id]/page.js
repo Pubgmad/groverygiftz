@@ -10,6 +10,7 @@ import { FiPlus, FiX, FiVideo, FiUpload, FiImage, FiLoader } from 'react-icons/f
 import useAdminAccess from '@/hooks/useAdminAccess';
 import ReadOnlyBanner from '@/components/admin/ReadOnlyBanner';
 import {
+  ProductInterestEditor,
   ProductMakingVideosEditor,
   ProductPurchaseActivityEditor,
   ProductStockAlertEditor,
@@ -58,7 +59,7 @@ export default function AdminProductForm({ params }) {
   const [videoUploading, setVideoUploading] = useState(false);
   const [form, setForm] = useState({
     title: '', description: '', aboutThisProduct: { instructions: '', deliveryNotes: '', hideDescription: false, hideInstructions: false, hideDelivery: true }, images: [], responsiveImages: { desktop: [], tablet: [], mobile: [] }, productVideo: { url: '', name: '', poster: '' }, makingVideosSection: { enabled: true, heading: 'See How Your Gift Is Made' }, makingVideos: [], customizationPreview: { enabled: false, title: 'Preview your personalized gift', frameImage: '', aspectRatio: '1:1', shape: 'rectangle', instructions: '', shortGuidance: '', requiredImageCount: 0, maxImageCount: 0, areas: [] }, delivery: defaultDelivery(), regularPrice: '', salePrice: '', offerStartsAt: '', offerEndsAt: '',
-    stock: 100, stockAlert: { enabled: true, lowStockThreshold: 5, mediumStockThreshold: 20, lowStockLabel: '', mediumStockLabel: '', highStockLabel: '', soldOutLabel: '' }, purchaseActivity: { enabled: false, purchaseCount: 0, timeQuantity: 24, timeUnit: 'hours', labelTemplate: '' }, collections: [], variants: [], customFields: [], collageEnabled: false, collageTemplates: [],
+    stock: 100, stockAlert: { enabled: true, lowStockThreshold: 5, mediumStockThreshold: 20, lowStockLabel: '', mediumStockLabel: '', highStockLabel: '', soldOutLabel: '' }, purchaseActivity: { enabled: false, purchaseCount: 0, timeQuantity: 50, timeUnit: 'days', labelTemplate: '' }, productInterest: { enabled: true, minViews: 250, maxViews: 1000, labelTemplate: '' }, collections: [], variants: [], customFields: [], collageEnabled: false, collageTemplates: [],
     giftWrap: { enabled: false, price: 0 }, giftMessage: false, customerNotesEnabled: true,
     isQuoteOnly: false, isOffer: false, isFeatured: false, isBestSeller: false, isActive: true,
     seoTitle: '', seoDescription: '',
@@ -100,9 +101,15 @@ export default function AdminProductForm({ params }) {
           purchaseActivity: {
             enabled: !!d.purchaseActivity?.enabled,
             purchaseCount: d.purchaseActivity?.purchaseCount ?? 0,
-            timeQuantity: d.purchaseActivity?.timeQuantity ?? d.purchaseActivity?.periodDays ?? 24,
-            timeUnit: d.purchaseActivity?.timeUnit || 'hours',
+            timeQuantity: d.purchaseActivity?.timeQuantity ?? d.purchaseActivity?.periodDays ?? 50,
+            timeUnit: d.purchaseActivity?.timeUnit || 'days',
             labelTemplate: d.purchaseActivity?.labelTemplate || '',
+          },
+          productInterest: {
+            enabled: d.productInterest?.enabled !== false,
+            minViews: d.productInterest?.minViews ?? 250,
+            maxViews: d.productInterest?.maxViews ?? 1000,
+            labelTemplate: d.productInterest?.labelTemplate || '',
           },
           collections: d.collections?.map(c => c._id || c) || [],
           variants: d.variants || [], customFields: d.customFields || [], collageEnabled: !!d.collageEnabled, collageTemplates: d.collageTemplates || [],
@@ -394,6 +401,7 @@ export default function AdminProductForm({ params }) {
             </div>
           </div>
           <ProductStockAlertEditor stockAlert={form.stockAlert || {}} onChange={(stockAlert) => setForm((p) => ({ ...p, stockAlert }))} />
+          <ProductInterestEditor productInterest={form.productInterest || {}} onChange={(productInterest) => setForm((p) => ({ ...p, productInterest }))} />
           <ProductPurchaseActivityEditor purchaseActivity={form.purchaseActivity || {}} onChange={(purchaseActivity) => setForm((p) => ({ ...p, purchaseActivity }))} />
           <div className="grid md:grid-cols-2 gap-4">
             <div>
