@@ -16,12 +16,25 @@ function digitsPhone(value = '') {
   return String(value || '').replace(/\D/g, '');
 }
 
-function normalizeItem(bodyItem = {}, product) {
+/** Indian mobile: 10 digits starting 6–9 (strip +91 / leading 0). */
+function normalizeIndianMobile(value = '') {
+  let d = digitsPhone(value);
+  if (d.length === 12 && d.startsWith('91')) d = d.slice(2);
+  if (d.length === 11 && d.startsWith('0')) d = d.slice(1);
+  if (d.length !== 10 || !/^[6-9]/.test(d)) return '';
+  return d;
+}
+
+function normalizeItem(bodyItem = {}, product, { useCatalogPrice = true } = {}) {
   const quantity = Math.max(1, Number(bodyItem.quantity) || 1);
-  const price = Number(bodyItem.price);
-  const unit = Number.isFinite(price) && price >= 0
-    ? price
-    : Number(product?.salePrice > 0 ? product.salePrice : product?.regularPrice) || 0;
+  let unit = 0;
+  if (useCatalogPrice) {
+    const price = Number(bodyItem.price);
+    unit = Number.isFinite(price) && price >= 0
+      ? price
+      : Number(product?.salePrice > 0 ? product.salePrice : product?.regularPrice) || 0;
+  }
+  // Manual WhatsApp combo: never store catalog/body unit prices on line items
   return {
     product: product?._id,
     title: product?.title || bodyItem.title || 'Product',
@@ -53,8 +66,8 @@ export async function POST(req) {
   }
 
   const fullName = String(body.customerName || body.shippingAddress?.fullName || '').trim();
-  const phone = digitsPhone(body.phone || body.shippingAddress?.phone);
-  const whatsappNumber = digitsPhone(body.whatsappNumber || body.shippingAddress?.whatsappNumber || phone);
+  const phone = normalizeIndianMobile(body.phone || body.shippingAddress?.phone);
+  const whatsappNumber = normalizeIndianMobile(body.whatsappNumber || body.shippingAddress?.whatsappNumber) || phone;
   const line1 = String(body.line1 || body.shippingAddress?.line1 || '').trim();
   const city = String(body.city || body.shippingAddress?.city || '').trim();
   const state = String(body.state || body.shippingAddress?.state || '').trim();
@@ -64,9 +77,9 @@ export async function POST(req) {
   const line2 = String(body.line2 || body.shippingAddress?.line2 || '').trim();
 
   if (!fullName) return NextResponse.json({ error: 'Customer name is required' }, { status: 400 });
-  if (phone.length < 10) return NextResponse.json({ error: 'Valid phone number is required' }, { status: 400 });
-  if (!line1 || !city || !state || pincode.length < 6) {
-    return NextResponse.json({ error: 'Complete delivery address with city, state, and pincode is required' }, { status: 400 });
+  if (!phone) return NextResponse.json({ error: 'Valid 10-digit phone number is required' }, { status: 400 });
+  if (!line1 || !city || !state || pincode.length !== 6) {
+    return NextResponse.json({ error: 'Complete delivery address with city, state, and 6-digit pincode is required' }, { status: 400 });
   }
 
   const rawItems = Array.isArray(body.items) ? body.items : [];
@@ -80,12 +93,33 @@ export async function POST(req) {
   const products = await Product.find({ _id: { $in: productIds } }).lean();
   const productsById = Object.fromEntries(products.map((p) => [String(p._id), p]));
 
+  /**
+   * WhatsApp/Instagram customized combo: Sales enters overall price manually.
+   * Do not auto-calculate from website catalog unit prices.
+   */
+  const isManualChannel = source === 'whatsapp' || source === 'instagram';
+  const rawManualCombo = body.manualComboPrice;
+  const hasExplicitManualCombo = rawManualCombo !== undefined
+    && rawManualCombo !== null
+    && String(rawManualCombo).trim() !== '';
+  // WhatsApp/Instagram customized combos MUST use manual overall price — never catalog fallback
+  const manualPriceEntered = isManualChannel
+    || body.manualPriceEntered === true
+    || body.manualPriceEntered === 'true'
+    || hasExplicitManualCombo;
+  const manualComboPrice = hasExplicitManualCombo ? Number(rawManualCombo) : NaN;
+  if (isManualChannel && (!Number.isFinite(manualComboPrice) || manualComboPrice < 0)) {
+    return NextResponse.json({
+      error: 'Manual overall combo / order price is required for WhatsApp / Instagram orders',
+    }, { status: 400 });
+  }
+
   const orderItems = [];
   for (const raw of rawItems) {
     const pid = String(raw.productId || raw.product || '');
     const product = productsById[pid];
     if (!product) return NextResponse.json({ error: `Product not found: ${pid}` }, { status: 400 });
-    orderItems.push(normalizeItem(raw, product));
+    orderItems.push(normalizeItem(raw, product, { useCatalogPrice: !manualPriceEntered }));
   }
 
   const costs = await MakingCost.find({ product: { $in: productIds } }).lean().catch(() => []);
@@ -101,18 +135,39 @@ export async function POST(req) {
     return { ...item, ...snapshot };
   });
 
-  const subtotal = itemsWithCost.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 1), 0);
   const shippingCost = Math.max(0, Number(body.shippingCost) || 0);
-  const total = Number.isFinite(Number(body.total)) && Number(body.total) >= 0
-    ? Number(body.total)
-    : subtotal + shippingCost;
+  // Kept in additionalCharges only — refreshPaymentTotals does owed = total + additionalCharges
+  const otherCharges = Math.max(0, Number(body.otherCharges || body.additionalCharges) || 0);
+  let subtotal;
+  let total;
+  if (manualPriceEntered) {
+    if (!Number.isFinite(manualComboPrice) || manualComboPrice < 0) {
+      return NextResponse.json({ error: 'Manual overall combo / order price is required for WhatsApp customized pricing' }, { status: 400 });
+    }
+    subtotal = manualComboPrice;
+    // Prefer explicit total only if staff sent one that already includes shipping; otherwise compute.
+    // Do NOT bake otherCharges into total — that would double-count with additionalCharges.
+    if (Number.isFinite(Number(body.total)) && Number(body.total) >= 0 && body.totalIncludesShipping === true) {
+      total = Number(body.total);
+    } else {
+      total = manualComboPrice + shippingCost;
+    }
+  } else {
+    subtotal = itemsWithCost.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 1), 0);
+    total = Number.isFinite(Number(body.total)) && Number(body.total) >= 0
+      ? Number(body.total)
+      : subtotal + shippingCost;
+  }
   const advancePaid = Math.max(0, Number(body.advancePayment ?? body.advancePaid) || 0);
-  if (advancePaid > total + 0.01) {
+  const orderOwed = total + otherCharges;
+  if (advancePaid > orderOwed + 0.01) {
     return NextResponse.json({ error: 'Advance payment cannot exceed total amount' }, { status: 400 });
   }
 
   const previewRequired = !(body.previewRequired === false || body.previewRequired === 'no' || body.previewRequired === 'No');
-  const markPaid = advancePaid >= total && total > 0;
+  // Stock may be deducted only when advance is verified and covers the amount owed
+  const advanceVerified = Boolean(body.paymentVerified === true);
+  const markPaid = advanceVerified && advancePaid >= orderOwed && orderOwed > 0;
   const deductStock = markPaid || body.deductInventory === true;
 
   if (deductStock) {
@@ -126,16 +181,26 @@ export async function POST(req) {
 
   let assignedTo = null;
   let assignedToName = '';
-  if (body.assignedTo && mongoose.Types.ObjectId.isValid(String(body.assignedTo))) {
-    const admin = await Admin.findById(body.assignedTo).select('name email isActive').lean();
-    if (admin && admin.isActive !== false) {
-      assignedTo = admin._id;
-      assignedToName = admin.name || admin.email || '';
+  if (body.assignedTo) {
+    if (!mongoose.Types.ObjectId.isValid(String(body.assignedTo))) {
+      return NextResponse.json({ error: 'Invalid assigned staff' }, { status: 400 });
     }
+    const admin = await Admin.findById(body.assignedTo).select('name email isActive').lean();
+    if (!admin || admin.isActive === false) {
+      return NextResponse.json({ error: 'Assigned staff not found or inactive' }, { status: 400 });
+    }
+    assignedTo = admin._id;
+    assignedToName = admin.name || admin.email || '';
   }
 
   const orderNumber = await getNextWhatsAppOrderNumber();
-  const expectedDispatchDate = body.expectedDispatchDate ? new Date(body.expectedDispatchDate) : null;
+  let expectedDispatchDate = null;
+  if (body.expectedDispatchDate) {
+    const rawExpected = String(body.expectedDispatchDate).trim();
+    expectedDispatchDate = /^\d{4}-\d{2}-\d{2}$/.test(rawExpected)
+      ? new Date(`${rawExpected}T00:00:00.000+05:30`)
+      : new Date(rawExpected);
+  }
 
   const order = new Order({
     orderNumber,
@@ -156,10 +221,12 @@ export async function POST(req) {
     },
     subtotal,
     shippingCost,
+    additionalCharges: otherCharges > 0 ? otherCharges : 0,
     total,
+    manualPriceEntered: Boolean(manualPriceEntered),
+    manualComboPrice: manualPriceEntered ? manualComboPrice : null,
     paymentMethod: String(body.paymentMethod || 'WhatsApp').trim() || 'WhatsApp',
-    paymentStatus: markPaid ? 'paid' : 'pending',
-    paidAt: markPaid ? new Date() : undefined,
+    paymentStatus: 'pending',
     status: 'ordered',
     opsStatus: 'new_order',
     previewRequired,
@@ -179,21 +246,35 @@ export async function POST(req) {
     historicalWhatsAppOrderRef: String(body.historicalWhatsAppOrderRef || body.historicalOrderId || '').trim(),
   });
 
+  let paymentPaidAt = null;
   if (advancePaid > 0) {
+    const rawPaid = body.paymentDate || body.paidAt;
+    if (!rawPaid) {
+      return NextResponse.json({ error: 'Actual payment date/time is required when recording advance' }, { status: 400 });
+    }
+    paymentPaidAt = new Date(rawPaid);
+    if (Number.isNaN(paymentPaidAt.getTime())) {
+      return NextResponse.json({ error: 'Invalid payment date/time' }, { status: 400 });
+    }
     order.paymentRecords.push({
       kind: 'advance',
       amount: advancePaid,
       method: String(body.paymentMethod || 'WhatsApp').trim(),
       reference: String(body.paymentReference || '').trim(),
-      paidAt: body.paymentDate ? new Date(body.paymentDate) : new Date(),
-      verified: Boolean(body.paymentVerified === true),
-      verifiedBy: body.paymentVerified === true ? access.adminId : undefined,
-      verifiedAt: body.paymentVerified === true ? new Date() : undefined,
+      paidAt: paymentPaidAt,
+      verified: advanceVerified,
+      verifiedBy: advanceVerified ? access.adminId : undefined,
+      verifiedAt: advanceVerified ? new Date() : undefined,
       recordedBy: access.adminId,
+      recordedByName: access.name || access.email || '',
       notes: String(body.paymentNotes || '').trim(),
     });
   }
   refreshPaymentTotals(order);
+  // Prefer the actual payment receipt time over "now" when the order becomes fully paid
+  if (order.paymentStatus === 'paid' && paymentPaidAt) {
+    order.paidAt = paymentPaidAt;
+  }
 
   appendTimeline(order, {
     type: 'order_created',

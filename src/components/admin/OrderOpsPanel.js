@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { formatPrice } from '@/lib/utils';
+import { formatIstDateTime, fromDatetimeLocalIst, toDatetimeLocalIst } from '@/lib/istTime';
 import {
   OPS_STATUS_LABELS,
   DESIGN_APPROVAL_LABELS,
@@ -54,8 +55,15 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
   const [printingAssignedTo, setPrintingAssignedTo] = useState(
     order?.printingAssignedTo ? String(order.printingAssignedTo) : '',
   );
+  const toYmdIst = (value) => {
+    if (!value) return '';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '';
+    const ist = new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
+    return `${ist.getUTCFullYear()}-${String(ist.getUTCMonth() + 1).padStart(2, '0')}-${String(ist.getUTCDate()).padStart(2, '0')}`;
+  };
   const [expectedDispatchDate, setExpectedDispatchDate] = useState(
-    order?.expectedDispatchDate ? String(order.expectedDispatchDate).slice(0, 10) : '',
+    () => toYmdIst(order?.expectedDispatchDate),
   );
   const [busy, setBusy] = useState(false);
   const [pay, setPay] = useState({
@@ -65,6 +73,7 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
     reference: '',
     verified: false,
     notes: '',
+    paidAt: toDatetimeLocalIst(new Date()),
   });
   const [revisionCharge, setRevisionCharge] = useState('');
   const [courierCompany, setCourierCompany] = useState(order?.courierCompany || '');
@@ -77,7 +86,7 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
     setOpsStatus(order?.opsStatus || 'new_order');
     setAssignedTo(order?.assignedTo ? String(order.assignedTo) : '');
     setPrintingAssignedTo(order?.printingAssignedTo ? String(order.printingAssignedTo) : '');
-    setExpectedDispatchDate(order?.expectedDispatchDate ? String(order.expectedDispatchDate).slice(0, 10) : '');
+    setExpectedDispatchDate(toYmdIst(order?.expectedDispatchDate));
     setCourierCompany(order?.courierCompany || '');
     setTrackingUrl(order?.trackingUrl || '');
     setComms(order?.salesCommsChecklist || {});
@@ -139,12 +148,18 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
       body.append('reference', override.reference || pay.reference);
       body.append('notes', override.notes || pay.notes);
       body.append('verified', String(Boolean(override.verified ?? pay.verified)));
+      const paidAtLocal = override.paidAt || pay.paidAt;
+      const paidAtDate = paidAtLocal ? fromDatetimeLocalIst(paidAtLocal) : null;
+      if (!paidAtDate) {
+        throw new Error('Actual payment date/time is required');
+      }
+      body.append('paidAt', paidAtDate.toISOString());
       if (override.file) body.append('screenshot', override.file);
       const res = await fetch(`/api/admin/orders/${order._id}/payments`, { method: 'POST', body });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Payment failed');
       toast.success(`Payment recorded · balance ${data.balanceStatus}`);
-      setPay((p) => ({ ...p, amount: '', reference: '', notes: '' }));
+      setPay((p) => ({ ...p, amount: '', reference: '', notes: '', paidAt: toDatetimeLocalIst(new Date()) }));
       await refresh();
     } catch (err) {
       toast.error(err.message || 'Payment failed');
@@ -266,13 +281,18 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
           <button
             type="button"
             disabled={busy}
-            onClick={() => patchOps({
-              opsStatus,
-              assignedTo: assignedTo || null,
-              printingAssignedTo: printingAssignedTo || null,
-              expectedDispatchDate: expectedDispatchDate || null,
-              courierCompany,
-              trackingUrl,
+            onClick={() => {
+              const payload = {
+                opsStatus,
+                assignedTo: assignedTo || null,
+                printingAssignedTo: printingAssignedTo || null,
+                expectedDispatchDate: expectedDispatchDate || null,
+              };
+              // Only send tracking/courier when staff actually entered values
+              // (avoids marking every ops save as a tracking touch)
+              if (String(courierCompany || '').trim()) payload.courierCompany = courierCompany.trim();
+              if (String(trackingUrl || '').trim()) payload.trackingUrl = trackingUrl.trim();
+              return patchOps(payload);
             })}
             className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl bg-primary-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
           >
@@ -293,8 +313,6 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
                     assignedTo: assignedTo || null,
                     printingAssignedTo: printingAssignedTo || null,
                     expectedDispatchDate: expectedDispatchDate || null,
-                    courierCompany,
-                    trackingUrl,
                     notes: `Quick action: ${label}`,
                   });
                 }}
@@ -372,6 +390,21 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
               </select>
               <input placeholder="Method" value={pay.method} onChange={(e) => setPay((p) => ({ ...p, method: e.target.value }))} className="rounded-lg border px-3 py-2 text-sm" />
               <input placeholder="Reference" value={pay.reference} onChange={(e) => setPay((p) => ({ ...p, reference: e.target.value }))} className="rounded-lg border px-3 py-2 text-sm" />
+              <label className="sm:col-span-2 text-xs font-semibold text-gray-700">
+                Payment date & time (IST) — actual receipt date, not verification date
+                <input
+                  type="datetime-local"
+                  value={pay.paidAt}
+                  onChange={(e) => setPay((p) => ({ ...p, paidAt: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                />
+              </label>
+              <input
+                placeholder="Notes (optional)"
+                value={pay.notes}
+                onChange={(e) => setPay((p) => ({ ...p, notes: e.target.value }))}
+                className="sm:col-span-2 rounded-lg border px-3 py-2 text-sm"
+              />
             </div>
             <label className="flex items-center gap-2 text-xs font-semibold">
               <input type="checkbox" checked={pay.verified} onChange={(e) => setPay((p) => ({ ...p, verified: e.target.checked }))} />
@@ -402,13 +435,78 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
           </div>
         ) : null}
         {Array.isArray(order.paymentRecords) && order.paymentRecords.length > 0 ? (
-          <ul className="max-h-40 space-y-1 overflow-y-auto text-xs text-gray-600">
+          <ul className="max-h-52 space-y-1 overflow-y-auto text-xs text-gray-600">
             {order.paymentRecords.slice().reverse().map((row, idx) => (
-              <li key={row._id || idx} className="rounded border bg-gray-50 px-2 py-1">
-                {row.kind} {formatPrice(row.amount)} · {row.method || '—'} · {row.verified ? 'verified' : 'unverified'}
+              <li key={row._id || idx} className="rounded border bg-gray-50 px-2 py-1.5 space-y-0.5">
+                <p>
+                  <strong className="capitalize">{row.kind}</strong> {formatPrice(row.amount)}
+                  {' · '}{row.method || '—'}
+                  {' · '}{row.verified ? 'verified' : 'unverified'}
+                </p>
+                <p className="text-[11px] text-gray-500">
+                  Paid: {row.paidAt ? formatIstDateTime(row.paidAt) : '— (no historical date)'}
+                  {row.verifiedAt ? ` · Verified: ${formatIstDateTime(row.verifiedAt)}` : ''}
+                  {row.recordedByName ? ` · By ${row.recordedByName}` : ''}
+                  {row.reference ? ` · Ref ${row.reference}` : ''}
+                  {row.notes ? ` · ${row.notes}` : ''}
+                  {(row.screenshotUrl || row.screenshotPath) ? (
+                    <>
+                      {' · '}
+                      <a
+                        href={row.screenshotUrl || row.screenshotPath}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-semibold text-primary-700 underline"
+                      >
+                        Proof
+                      </a>
+                    </>
+                  ) : null}
+                </p>
+                {!row.verified && writable && row._id ? (
+                  <button
+                    type="button"
+                    className="text-[11px] font-semibold text-primary-700 underline"
+                    disabled={busy}
+                    onClick={async () => {
+                      setBusy(true);
+                      try {
+                        const res = await fetch(`/api/admin/orders/${order._id}/payments`, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ paymentId: row._id, verified: true }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error || 'Verify failed');
+                        toast.success('Payment verified (original paid date kept)');
+                        await refresh();
+                      } catch (err) {
+                        toast.error(err.message || 'Verify failed');
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                  >
+                    Verify without changing paid date
+                  </button>
+                ) : null}
               </li>
             ))}
           </ul>
+        ) : null}
+        {Array.isArray(order.parcelRefs) && order.parcelRefs.length > 0 ? (
+          <div className="border-t pt-2 space-y-1">
+            <p className="text-xs font-bold text-gray-800">Parcel dispatch history</p>
+            <ul className="max-h-36 space-y-1 overflow-y-auto text-xs text-gray-600">
+              {order.parcelRefs.map((p, idx) => (
+                <li key={String(p.parcelId || idx)} className="rounded border bg-gray-50 px-2 py-1">
+                  {p.parcelCode || 'Parcel'} · {p.trackingNumber || 'no tracking'} · {p.courierCompany || '—'}
+                  <br />
+                  Dispatched: {p.dispatchedAt ? formatIstDateTime(p.dispatchedAt) : '—'}
+                </li>
+              ))}
+            </ul>
+          </div>
         ) : null}
       </div>
 

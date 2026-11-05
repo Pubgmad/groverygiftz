@@ -48,7 +48,13 @@ export default function AdminManageClientLayout({ children }) {
       return access.accessStatus === 'role-inactive' ? 'This role is inactive. Ask the primary admin to restore access.' : 'Your admin access has been revoked.';
     }
     if (moduleId === 'roles' && !access.isPrimary) return 'Only the primary admin can manage roles and permissions.';
-    if (moduleId && moduleId !== 'roles' && !access.canRead(moduleId)) return 'You do not have permission to view this section.';
+    // Reports is readable with orders or operations until roles are explicitly granted the new module.
+    if (moduleId === 'reports' && !(access.canRead('reports') || access.canRead('orders') || access.canRead('operations'))) {
+      return 'You do not have permission to view this section.';
+    }
+    if (moduleId && moduleId !== 'roles' && moduleId !== 'reports' && !access.canRead(moduleId)) {
+      return 'You do not have permission to view this section.';
+    }
     if ((pathname === ADMIN_BASE_PATH || pathname === `${ADMIN_BASE_PATH}/`) && !access.canRead('dashboard') && !ADMIN_MODULES.some((module) => access.canRead(module.id))) {
       return 'No dashboard modules have been assigned to your role yet.';
     }

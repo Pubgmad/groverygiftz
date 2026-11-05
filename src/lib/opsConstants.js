@@ -208,11 +208,14 @@ export function isPaymentGatedOpsStatus(status) {
 export const DISPATCH_PAYMENT_REQUIRED_OPS = PAYMENT_GATED_OPS;
 
 export function isPaymentSatisfiedForDispatch(order = {}) {
-  return (
-    order.paymentStatus === 'paid'
-    || order.balanceStatus === 'fully_paid'
-    || order.paymentException === true
-  );
+  if (order.paymentException === true) return true;
+  if (order.balanceStatus === 'fully_paid') return true;
+  // When paymentRecords exist, trust verified totals (balanceStatus) — not sticky paymentStatus
+  if (Array.isArray(order.paymentRecords) && order.paymentRecords.length > 0) {
+    return false;
+  }
+  // Legacy website / Cashfree: paid without paymentRecords
+  return order.paymentStatus === 'paid';
 }
 
 /** Paid revision required after free revision already used and a second change request. */
@@ -228,7 +231,16 @@ export function isDelayedOrder(order, now = new Date()) {
   if (['dispatched', 'completed'].includes(String(order.opsStatus || ''))) return false;
   const due = new Date(order.expectedDispatchDate);
   if (Number.isNaN(due.getTime())) return false;
-  return due.getTime() < now.getTime();
+  // Treat date-only expectations as end of that IST calendar day
+  const istOffset = 5.5 * 60 * 60 * 1000;
+  const ist = new Date(due.getTime() + istOffset);
+  const endIstUtc = Date.UTC(
+    ist.getUTCFullYear(),
+    ist.getUTCMonth(),
+    ist.getUTCDate(),
+    23, 59, 59, 999,
+  ) - istOffset;
+  return endIstUtc < now.getTime();
 }
 
 export function computeBalanceStatus({ total = 0, advancePaid = 0, additionalCharges = 0, balancePaid = 0, verificationRequired = false } = {}) {

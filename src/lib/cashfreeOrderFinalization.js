@@ -11,6 +11,38 @@ import { getOrderDeliveryEstimate } from '@/lib/orderDeliveryEstimate';
 
 export const CASHFREE_VERSION = '2025-01-01';
 
+/**
+ * Ensure website Cashfree payments appear in paymentRecords.
+ * Append-only; uses existing order.paidAt only — never invents "now".
+ */
+export function ensureWebsitePaymentRecord(orderDoc) {
+  if (!orderDoc) return false;
+  if (!orderDoc.paidAt) return false;
+  const records = Array.isArray(orderDoc.paymentRecords) ? orderDoc.paymentRecords : [];
+  const hasVerified = records.some((r) => r?.verified && Number(r.amount) > 0);
+  if (hasVerified) return false;
+  const amount = Number(orderDoc.total) || 0;
+  if (amount <= 0) return false;
+  const paidAt = new Date(orderDoc.paidAt);
+  if (Number.isNaN(paidAt.getTime())) return false;
+  if (!orderDoc.paymentRecords) orderDoc.paymentRecords = [];
+  orderDoc.paymentRecords.push({
+    kind: 'advance',
+    amount,
+    method: orderDoc.paymentMethod || 'Cashfree',
+    reference: orderDoc.cashfreePaymentId || orderDoc.cashfreeOrderId || '',
+    paidAt,
+    verified: true,
+    verifiedAt: paidAt,
+    notes: 'Website Cashfree payment',
+  });
+  orderDoc.advancePaid = amount;
+  orderDoc.balancePaid = 0;
+  orderDoc.remainingBalance = 0;
+  orderDoc.balanceStatus = 'fully_paid';
+  return true;
+}
+
 const endpointFor = (environment, orderId) => environment === 'production'
   ? `https://api.cashfree.com/pg/orders/${encodeURIComponent(orderId)}`
   : `https://sandbox.cashfree.com/pg/orders/${encodeURIComponent(orderId)}`;
@@ -111,6 +143,17 @@ export async function finalizeCashfreeOrder(orderId, { retryTracking = false } =
       order.shippingCost = currentOrder.shippingCost;
       order.total = currentOrder.total;
       order.deliveryEstimate = currentOrder.deliveryEstimate;
+      // Forward-only history for reports: append paymentRecords using existing paidAt (never invent).
+      if (currentOrder.paymentStatus === 'paid' && currentOrder.paidAt) {
+        const beforeLen = Array.isArray(currentOrder.paymentRecords) ? currentOrder.paymentRecords.length : 0;
+        ensureWebsitePaymentRecord(currentOrder);
+        if ((currentOrder.paymentRecords || []).length > beforeLen) {
+          await currentOrder.save();
+        }
+        order.paymentRecords = currentOrder.paymentRecords;
+        order.advancePaid = currentOrder.advancePaid;
+        order.balanceStatus = currentOrder.balanceStatus;
+      }
     } else {
       try {
         await deductOrderInventory(claimed.items || []);
@@ -120,6 +163,7 @@ export async function finalizeCashfreeOrder(orderId, { retryTracking = false } =
         if (!claimed.opsStatus) claimed.opsStatus = 'new_order';
         if (claimed.balanceStatus == null) claimed.balanceStatus = 'fully_paid';
         if (!claimed.paidAt) claimed.paidAt = new Date();
+        ensureWebsitePaymentRecord(claimed);
         if (!isFinalOrderNumber(claimed.orderNumber)) {
           claimed.orderNumber = await getNextPaidOrderNumber();
         }
@@ -136,6 +180,9 @@ export async function finalizeCashfreeOrder(orderId, { retryTracking = false } =
         order.shippingCost = claimed.shippingCost;
         order.total = claimed.total;
         order.deliveryEstimate = claimed.deliveryEstimate;
+        order.paymentRecords = claimed.paymentRecords;
+        order.advancePaid = claimed.advancePaid;
+        order.balanceStatus = claimed.balanceStatus;
       } catch (inventoryError) {
         await Order.updateOne(
           { _id: order._id },
@@ -154,6 +201,7 @@ export async function finalizeCashfreeOrder(orderId, { retryTracking = false } =
     if (!order.opsStatus) order.opsStatus = 'new_order';
     if (order.balanceStatus == null) order.balanceStatus = 'fully_paid';
     if (!order.paidAt) order.paidAt = new Date();
+    ensureWebsitePaymentRecord(order);
     if (!isFinalOrderNumber(order.orderNumber)) {
       order.orderNumber = await getNextPaidOrderNumber();
     }

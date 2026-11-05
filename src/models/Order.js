@@ -77,12 +77,14 @@ const PaymentRecordSchema = new mongoose.Schema({
   reference: String,
   screenshotPath: String,
   screenshotUrl: String,
+  /** Actual payment date/time as received — never overwritten on later verification. Absent on legacy rows. */
   paidAt: Date,
   verified: { type: Boolean, default: false },
   verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin' },
   verifiedAt: Date,
   notes: String,
   recordedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin' },
+  recordedByName: String,
 }, { _id: true, timestamps: true });
 
 const ProductionVideoSchema = new mongoose.Schema({
@@ -164,6 +166,15 @@ const OrderSchema = new mongoose.Schema({
     default: '',
   },
   dispatchBatch: { type: mongoose.Schema.Types.ObjectId, ref: 'DispatchBatch' },
+  /** Append-only refs to parcel dispatch history (multi-parcel safe). */
+  parcelRefs: [{
+    batchId: { type: mongoose.Schema.Types.ObjectId, ref: 'DispatchBatch' },
+    parcelId: { type: mongoose.Schema.Types.ObjectId },
+    parcelCode: String,
+    trackingNumber: { type: String, default: '' },
+    dispatchedAt: Date,
+    courierCompany: String,
+  }],
   metaConversionPurchaseEventId: String,
   metaConversionPurchaseSentAt: Date,
   metaConversionPurchaseStartedAt: Date,
@@ -257,6 +268,12 @@ const OrderSchema = new mongoose.Schema({
     enum: ['new', 'existing_whatsapp', ''],
     default: '',
   },
+  /**
+   * WhatsApp customized combo / order total was entered manually by Sales
+   * (not auto-calculated from website catalog unit prices).
+   */
+  manualPriceEntered: { type: Boolean, default: false },
+  manualComboPrice: { type: Number, default: null },
 
   photoHistory: [PhotoHistorySchema],
   productionVideos: [ProductionVideoSchema],
@@ -287,5 +304,10 @@ OrderSchema.index({ customer: 1, paymentStatus: 1, status: 1 });
 OrderSchema.index({ orderSource: 1, paymentStatus: 1, paidAt: -1 });
 OrderSchema.index({ opsStatus: 1, expectedDispatchDate: 1 });
 OrderSchema.index({ assignedTo: 1, opsStatus: 1 });
+OrderSchema.index({ 'paymentRecords.paidAt': -1 });
+OrderSchema.index({ 'paymentRecords.kind': 1, 'paymentRecords.paidAt': -1 });
+OrderSchema.index({ 'parcelRefs.dispatchedAt': -1 });
+OrderSchema.index({ dispatchDate: -1 });
+OrderSchema.index({ trackingNumber: 1 });
 
 export default mongoose.models.Order || mongoose.model('Order', OrderSchema);

@@ -14,6 +14,7 @@ const iconMap = {
   'estimated-delivery': FiClock,
   orders: FiShoppingCart,
   operations: FiClipboard,
+  reports: FiBarChart2,
   revenue: FiBarChart2,
   customers: FiUsers,
   reviews: FiStar,
@@ -35,6 +36,7 @@ const navItems = [
   { id: 'estimated-delivery', href: `${ADMIN_BASE_PATH}/estimated-delivery`, label: 'Estimated Delivery Days' },
   { id: 'orders', href: `${ADMIN_BASE_PATH}/orders`, label: 'Orders' },
   { id: 'operations', href: `${ADMIN_BASE_PATH}/operations`, label: 'Operations' },
+  { id: 'reports', href: `${ADMIN_BASE_PATH}/reports`, label: 'Payment & Dispatch Reports' },
   { id: 'revenue', href: `${ADMIN_BASE_PATH}/revenue`, label: 'Revenue Analytics' },
   { id: 'customers', href: `${ADMIN_BASE_PATH}/customers`, label: 'Customers' },
   { id: 'reviews', href: `${ADMIN_BASE_PATH}/reviews`, label: 'Reviews' },
@@ -50,7 +52,12 @@ const navItems = [
 export default function AdminSidebar({ mobileOpen = false, onClose = () => {} }) {
   const pathname = usePathname();
   const { isPrimary, canRead, roleName } = useAdminAccess();
-  const visibleItems = navItems.filter((item) => canRead(item.id));
+  const visibleItems = navItems.filter((item) => {
+    if (canRead(item.id)) return true;
+    // New reports module: allow via orders/operations until roles are updated
+    if (item.id === 'reports') return canRead('orders') || canRead('operations');
+    return false;
+  });
 
   return (
     <aside className={`w-64 bg-gray-900 text-white fixed lg:static inset-y-0 left-0 z-40 overflow-y-auto transform transition-transform duration-200 ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>

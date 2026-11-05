@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import Order from '@/models/Order';
+import DispatchBatch from '@/models/DispatchBatch';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { can, getRequestAdminAccess, requireAdminPermission } from '@/lib/adminAccess';
@@ -73,12 +74,23 @@ export async function PUT(req, { params }) {
       }, { status: 409 });
     }
     order.status = patch.status;
-    if (patch.status === 'dispatched' && !order.dispatchDate) order.dispatchDate = new Date();
+    // Never invent dispatchDate from status change — actual date comes from parcel handover.
+    if (patch.status === 'dispatched' && !order.dispatchDate && Array.isArray(order.parcelRefs) && order.parcelRefs.length) {
+      const earliest = order.parcelRefs
+        .map((p) => (p.dispatchedAt ? new Date(p.dispatchedAt).getTime() : NaN))
+        .filter((t) => Number.isFinite(t))
+        .sort((a, b) => a - b)[0];
+      if (earliest) order.dispatchDate = new Date(earliest);
+    }
   }
-  if (trackingTouched && ['pickup_pending', 'pickup_arranged'].includes(String(order.pickupStatus || ''))) {
-    return NextResponse.json({
-      error: 'Courier handover must be recorded before tracking details',
-    }, { status: 409 });
+  if (trackingTouched) {
+    const handedOver = order.pickupStatus === 'handed_over'
+      || (Array.isArray(order.parcelRefs) && order.parcelRefs.length > 0);
+    if (!handedOver) {
+      return NextResponse.json({
+        error: 'Courier handover must be recorded before tracking details',
+      }, { status: 409 });
+    }
   }
   if (patch.trackingNumber !== undefined) {
     order.trackingNumber = patch.trackingNumber;
@@ -91,6 +103,29 @@ export async function PUT(req, { params }) {
   }
   if (trackingTouched) {
     order.trackingUpdatedAt = new Date();
+    // Sync tracking onto existing parcel refs without changing their dispatchedAt history
+    if (Array.isArray(order.parcelRefs) && order.parcelRefs.length) {
+      const last = order.parcelRefs[order.parcelRefs.length - 1];
+      if (patch.trackingNumber !== undefined) last.trackingNumber = patch.trackingNumber;
+      if (patch.courierCompany !== undefined) last.courierCompany = patch.courierCompany;
+
+      // Keep DispatchBatch.parcels in sync (tracking only — never touch dispatchedAt)
+      if (last.batchId && last.parcelId) {
+        const batch = await DispatchBatch.findById(last.batchId);
+        if (batch) {
+          const parcel = (batch.parcels || []).id(last.parcelId)
+            || (batch.parcels || []).find((p) => String(p._id) === String(last.parcelId));
+          if (parcel) {
+            const originalDispatchedAt = parcel.dispatchedAt;
+            if (patch.trackingNumber !== undefined) parcel.trackingNumber = patch.trackingNumber;
+            if (patch.trackingUrl !== undefined) parcel.trackingUrl = patch.trackingUrl;
+            if (patch.courierCompany !== undefined) parcel.courierCompany = patch.courierCompany;
+            parcel.dispatchedAt = originalDispatchedAt;
+            await batch.save();
+          }
+        }
+      }
+    }
     if (order.trackingNumber && order.opsStatus === 'tracking_pending') {
       order.opsStatus = 'completed';
     } else if (order.trackingNumber && order.opsStatus === 'dispatched') {

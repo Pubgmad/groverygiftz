@@ -32,7 +32,10 @@ export function appendTimeline(order, {
 /**
  * Pure payment totals — only VERIFIED records credit paid amounts.
  * Unverified screenshots never inflate paid balances.
- * Verified revision payments reduce remaining balance.
+ *
+ * Legacy website Cashfree: empty paymentRecords + paymentStatus paid → fully_paid
+ * (preserves remainingBalance / paidAt; never invents dates).
+ * Call ensureLegacyWebsitePaymentRecord before refresh when adding new records.
  */
 export function computePaymentTotals({
   total = 0,
@@ -44,11 +47,34 @@ export function computePaymentTotals({
   revisionPaymentVerified = false,
 } = {}) {
   const records = Array.isArray(paymentRecords) ? paymentRecords : [];
+  const nextAdditional = Number(additionalCharges) || 0;
+  let revisionCharged = Number(revisionCharges) || 0;
+  const owedBase = Math.max(0, Number(total || 0) + nextAdditional + revisionCharged);
+
+  // Legacy Cashfree / website: paid with no paymentRecords — do not corrupt on ops save
+  if (!records.length && paymentStatus === 'paid') {
+    return {
+      advancePaid: owedBase,
+      balancePaid: 0,
+      revisionCharges: revisionCharged,
+      additionalCharges: nextAdditional,
+      remainingBalance: 0,
+      balanceStatus: 'fully_paid',
+      paymentStatus: 'paid',
+      paidAt: paidAt || null,
+      revisionPaymentVerified,
+      paid: owedBase,
+      owed: owedBase,
+      verificationRequired: false,
+      hasUnverifiedPositive: false,
+    };
+  }
+
   let advance = 0;
   let balance = 0;
   let revisionPaid = 0;
-  let revisionCharged = Number(revisionCharges) || 0;
   let hasUnverifiedPositive = false;
+  let hasVerifiedPositive = false;
 
   records.forEach((row) => {
     const amount = Number(row?.amount) || 0;
@@ -59,12 +85,12 @@ export function computePaymentTotals({
       if (amount > 0) hasUnverifiedPositive = true;
       return;
     }
+    if (amount > 0) hasVerifiedPositive = true;
     if (row.kind === 'balance') balance += amount;
     else if (row.kind === 'revision') revisionPaid += amount;
     else advance += amount;
   });
 
-  const nextAdditional = Number(additionalCharges) || 0;
   const owed = Math.max(0, Number(total || 0) + nextAdditional + revisionCharged);
   const paid = advance + balance + revisionPaid;
   const remainingBalance = Math.max(0, Math.round((owed - paid) * 100) / 100);
@@ -80,14 +106,30 @@ export function computePaymentTotals({
 
   let nextPaymentStatus = paymentStatus;
   let nextPaidAt = paidAt;
-  if (balanceStatus === 'fully_paid' && paymentStatus !== 'refunded') {
+
+  if (paymentStatus === 'refunded') {
+    // leave refunded alone
+  } else if (balanceStatus === 'fully_paid') {
     nextPaymentStatus = 'paid';
-    if (!nextPaidAt) nextPaidAt = new Date();
-  } else if (balanceStatus === 'verification_required') {
-    // Do not treat unpaid/unverified as paid
-    if (paymentStatus === 'paid' && !records.some((r) => r.verified && (Number(r.amount) || 0) > 0)) {
-      nextPaymentStatus = 'pending';
-    }
+    const earliest = records
+      .filter((r) => r?.verified && r.paidAt && (Number(r.amount) || 0) > 0)
+      .map((r) => new Date(r.paidAt).getTime())
+      .filter((t) => Number.isFinite(t))
+      .sort((a, b) => a - b)[0];
+    if (earliest) nextPaidAt = new Date(earliest);
+    // else keep existing paidAt — never invent "now"
+  } else if (hasVerifiedPositive) {
+    // Verified totals no longer cover owed — demote sticky paid
+    nextPaymentStatus = 'pending';
+    nextPaidAt = null;
+  } else if (paymentStatus === 'paid' && paidAt && !hasVerifiedPositive) {
+    // Unverified-only extras on a paid legacy order: keep paid/paidAt
+    // (refreshPaymentTotals backfills a verified website record first)
+    nextPaymentStatus = 'paid';
+    nextPaidAt = paidAt;
+  } else if (paymentStatus === 'paid' && !hasVerifiedPositive) {
+    nextPaymentStatus = 'pending';
+    nextPaidAt = null;
   }
 
   const nextRevisionVerified = revisionPaid > 0 && revisionPaid + 0.009 >= revisionCharged
@@ -99,19 +141,53 @@ export function computePaymentTotals({
     balancePaid: balance,
     revisionCharges: revisionCharged,
     additionalCharges: nextAdditional,
-    remainingBalance,
-    balanceStatus,
+    remainingBalance: (paymentStatus === 'paid' && paidAt && !hasVerifiedPositive && balanceStatus !== 'fully_paid')
+      ? 0
+      : remainingBalance,
+    balanceStatus: (paymentStatus === 'paid' && paidAt && !hasVerifiedPositive && balanceStatus !== 'fully_paid')
+      ? (verificationRequired ? 'verification_required' : 'fully_paid')
+      : balanceStatus,
     paymentStatus: nextPaymentStatus,
     paidAt: nextPaidAt,
     revisionPaymentVerified: nextRevisionVerified,
-    paid,
+    paid: (paymentStatus === 'paid' && paidAt && !hasVerifiedPositive) ? owed : paid,
     owed,
     verificationRequired,
     hasUnverifiedPositive,
   };
 }
 
+/**
+ * Backfill a verified Cashfree/website paymentRecord from existing order.paidAt only.
+ * Never invents dates. Safe to call before refreshPaymentTotals on ops/payment paths.
+ */
+export function ensureLegacyWebsitePaymentRecord(order) {
+  if (!order) return false;
+  if (order.paymentStatus !== 'paid') return false;
+  if (!order.paidAt) return false;
+  const records = Array.isArray(order.paymentRecords) ? order.paymentRecords : [];
+  if (records.some((r) => r?.verified && (Number(r.amount) || 0) > 0)) return false;
+  const amount = Number(order.total) || 0;
+  if (amount <= 0) return false;
+  const paidAt = new Date(order.paidAt);
+  if (Number.isNaN(paidAt.getTime())) return false;
+  if (!order.paymentRecords) order.paymentRecords = [];
+  order.paymentRecords.push({
+    kind: 'advance',
+    amount,
+    method: order.paymentMethod || 'Cashfree',
+    reference: order.cashfreePaymentId || order.cashfreeOrderId || '',
+    paidAt,
+    verified: true,
+    verifiedAt: paidAt,
+    notes: 'Website Cashfree payment',
+    recordedByName: 'Website checkout',
+  });
+  return true;
+}
+
 export function refreshPaymentTotals(order) {
+  ensureLegacyWebsitePaymentRecord(order);
   const totals = computePaymentTotals({
     total: order.total,
     additionalCharges: order.additionalCharges,
@@ -128,7 +204,12 @@ export function refreshPaymentTotals(order) {
   order.remainingBalance = totals.remainingBalance;
   order.balanceStatus = totals.balanceStatus;
   order.paymentStatus = totals.paymentStatus;
-  if (totals.paidAt) order.paidAt = totals.paidAt;
+  if (totals.paymentStatus === 'paid') {
+    if (totals.paidAt) order.paidAt = totals.paidAt;
+  } else if (totals.paymentStatus !== 'refunded') {
+    // Clear order-level paidAt when no longer fully paid; per-record paidAt history stays intact
+    order.paidAt = undefined;
+  }
   if (totals.revisionPaymentVerified) order.revisionPaymentVerified = true;
   return order;
 }

@@ -1,17 +1,32 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { FiX } from 'react-icons/fi';
+import { parseWhatsAppCustomerDetails, validateParsedCustomer } from '@/lib/whatsappCustomerParse';
+import { fromDatetimeLocalIst, toDatetimeLocalIst } from '@/lib/istTime';
 
 const emptyItem = () => ({
   productId: '',
   variant: '',
   quantity: 1,
-  price: '',
   instructions: '',
   photos: [],
 });
+
+const emptyCustomer = {
+  customerName: '',
+  phone: '',
+  whatsappNumber: '',
+  email: '',
+  line1: '',
+  line2: '',
+  landmark: '',
+  district: '',
+  city: '',
+  state: '',
+  pincode: '',
+};
 
 export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
   const [products, setProducts] = useState([]);
@@ -19,27 +34,26 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
   const [saving, setSaving] = useState(false);
   const [lookupBusy, setLookupBusy] = useState(false);
   const [lookup, setLookup] = useState(null);
+  const [pasteText, setPasteText] = useState('');
+  const [parseMeta, setParseMeta] = useState({ warnings: [], unmatchedLines: [], confidence: {} });
+  const [showParsedEditor, setShowParsedEditor] = useState(false);
+  /** Staff must explicitly confirm extracted/pasted/reused details before save. */
+  const [customerDetailsReviewed, setCustomerDetailsReviewed] = useState(false);
+  /** Set when fields came from paste extract or address lookup — review required regardless of clearing paste. */
+  const [customerSource, setCustomerSource] = useState(''); // '' | 'paste' | 'lookup'
   const [form, setForm] = useState({
     orderSource: 'whatsapp',
     customerKind: 'new',
     historicalWhatsAppOrderRef: '',
-    customerName: '',
-    phone: '',
-    whatsappNumber: '',
-    email: '',
-    line1: '',
-    line2: '',
-    landmark: '',
-    district: '',
-    city: '',
-    state: 'Tamil Nadu',
-    pincode: '',
-    total: '',
+    ...emptyCustomer,
+    manualComboPrice: '',
     shippingCost: '0',
+    otherCharges: '0',
     advancePayment: '',
     paymentMethod: 'UPI',
     paymentReference: '',
     paymentVerified: false,
+    paymentDate: toDatetimeLocalIst(new Date()),
     previewRequired: 'no',
     expectedDispatchDate: '',
     assignedTo: '',
@@ -49,29 +63,60 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
 
   useEffect(() => {
     if (!open) return;
-    fetch('/api/products?all=true&limit=100', { cache: 'no-store' })
-      .then((r) => r.json())
-      .then((d) => setProducts(d.products || []))
-      .catch(() => toast.error('Unable to load products'));
+    let cancelled = false;
+    (async () => {
+      try {
+        const all = [];
+        let page = 1;
+        let total = Infinity;
+        while (all.length < total && page <= 20) {
+          const res = await fetch(`/api/products?all=true&limit=100&page=${page}`, { cache: 'no-store' });
+          const d = await res.json();
+          const batch = d.products || [];
+          all.push(...batch);
+          total = Number(d.total) || all.length;
+          if (!batch.length) break;
+          page += 1;
+        }
+        if (!cancelled) setProducts(all);
+        if (!cancelled && Number.isFinite(total) && all.length < total) {
+          toast.error(`Loaded ${all.length} of ${total} products — some may be missing`);
+        }
+      } catch {
+        if (!cancelled) toast.error('Unable to load products');
+      }
+    })();
     fetch('/api/admin/staff', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : { staff: [] }))
-      .then((d) => setStaff(d.staff || []))
-      .catch(() => setStaff([]));
+      .then((d) => { if (!cancelled) setStaff(d.staff || []); })
+      .catch(() => { if (!cancelled) setStaff([]); });
+    return () => { cancelled = true; };
   }, [open]);
+
+  const orderTotalPreview = useMemo(() => {
+    const combo = Number(String(form.manualComboPrice ?? '').trim());
+    const ship = Number(String(form.shippingCost ?? '').trim());
+    const other = Number(String(form.otherCharges ?? '').trim());
+    if (!Number.isFinite(combo) || combo < 0) return null;
+    const shipSafe = Number.isFinite(ship) && ship >= 0 ? ship : 0;
+    const otherSafe = Number.isFinite(other) && other >= 0 ? other : 0;
+    return Math.round((combo + shipSafe + otherSafe) * 100) / 100;
+  }, [form.manualComboPrice, form.shippingCost, form.otherCharges]);
 
   if (!open) return null;
 
-  const setField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
+  const customerFieldKeys = new Set([
+    'customerName', 'phone', 'whatsappNumber', 'line1', 'line2', 'landmark', 'district', 'city', 'state', 'pincode',
+  ]);
+  const setField = (key, value) => {
+    if (customerFieldKeys.has(key)) setCustomerDetailsReviewed(false);
+    setForm((prev) => ({ ...prev, [key]: value }));
+  };
   const setItem = (index, key, value) => {
     setForm((prev) => {
       const items = [...prev.items];
       items[index] = { ...items[index], [key]: value };
-      if (key === 'productId') {
-        const product = products.find((p) => String(p._id) === String(value));
-        const price = product?.salePrice > 0 ? product.salePrice : product?.regularPrice;
-        items[index].price = price != null ? String(price) : '';
-        items[index].variant = '';
-      }
+      if (key === 'productId') items[index].variant = '';
       return { ...prev, items };
     });
   };
@@ -82,19 +127,54 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
     if (!addr) return;
     setForm((prev) => ({
       ...prev,
-      customerName: addr.fullName || prev.customerName,
-      phone: addr.phone || prev.phone,
-      whatsappNumber: addr.whatsappNumber || addr.phone || prev.whatsappNumber,
-      email: addr.email || prev.email,
-      line1: addr.line1 || prev.line1,
+      customerName: addr.fullName || '',
+      phone: addr.phone || '',
+      whatsappNumber: addr.whatsappNumber || addr.phone || '',
+      email: addr.email || '',
+      line1: addr.line1 || '',
       line2: addr.line2 || '',
       landmark: addr.landmark || '',
       district: addr.district || '',
-      city: addr.city || prev.city,
-      state: addr.state || prev.state,
-      pincode: addr.pincode || prev.pincode,
+      city: addr.city || '',
+      state: addr.state || '',
+      pincode: addr.pincode || '',
     }));
-    toast.success(`Address reused from ${addr.fromOrderNumber || 'previous order'}`);
+    setShowParsedEditor(true);
+    setCustomerSource('lookup');
+    setCustomerDetailsReviewed(false);
+    toast.success(`Address reused from ${addr.fromOrderNumber || 'previous order'} — review before saving`);
+  };
+
+  const runParse = (raw = pasteText) => {
+    const result = parseWhatsAppCustomerDetails(raw);
+    setParseMeta({
+      warnings: result.warnings || [],
+      unmatchedLines: result.unmatchedLines || [],
+      confidence: result.confidence || {},
+    });
+    // Full replace — never merge with previous customer (prevents stale contamination)
+    setForm((prev) => ({
+      ...prev,
+      customerName: result.fields.customerName || '',
+      phone: result.fields.phone || '',
+      whatsappNumber: result.fields.whatsappNumber || '',
+      line1: result.fields.line1 || '',
+      line2: result.fields.line2 || '',
+      landmark: result.fields.landmark || '',
+      district: result.fields.district || '',
+      city: result.fields.city || '',
+      state: result.fields.state || '',
+      pincode: result.fields.pincode || '',
+    }));
+    setShowParsedEditor(true);
+    setCustomerSource('paste');
+    setCustomerDetailsReviewed(false);
+    if (result.warnings?.length) {
+      toast((result.warnings[0]), { icon: '⚠️' });
+    } else {
+      toast.success('Customer details extracted — review and confirm before saving');
+    }
+    return result;
   };
 
   const lookupPhone = async () => {
@@ -143,6 +223,69 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
 
   const submit = async (e) => {
     e.preventDefault();
+    let working = form;
+    // Never auto-save immediately after first parse — force staff review/correction first.
+    if (String(pasteText || '').trim() && !String(form.customerName || '').trim() && !showParsedEditor) {
+      runParse(pasteText);
+      toast('Review the extracted fields, correct if needed, then create the order.', { icon: '✏️' });
+      return;
+    }
+    const needsReview = Boolean(customerSource) || Boolean(String(pasteText || '').trim());
+    if (needsReview && !showParsedEditor) {
+      if (String(pasteText || '').trim() && !String(form.customerName || '').trim()) runParse(pasteText);
+      else setShowParsedEditor(true);
+      toast('Open and review the customer fields before creating the order.', { icon: '✏️' });
+      return;
+    }
+    const uncertain = (parseMeta.warnings || []).length > 0
+      || Object.values(parseMeta.confidence || {}).some((c) => c === 'low');
+    if (needsReview && !customerDetailsReviewed) {
+      toast.error(
+        uncertain
+          ? 'Parsing was uncertain — correct the fields and confirm review before saving'
+          : 'Confirm you reviewed the customer details before saving',
+      );
+      setShowParsedEditor(true);
+      return;
+    }
+    const validation = validateParsedCustomer(working);
+    if (!validation.ok) {
+      toast.error(validation.errors[0] || 'Fix customer details');
+      setShowParsedEditor(true);
+      return;
+    }
+    const comboRaw = String(form.manualComboPrice ?? '').trim();
+    const combo = Number(comboRaw);
+    if (!comboRaw || !Number.isFinite(combo) || combo < 0) {
+      toast.error('Enter the overall customized combo / order price');
+      return;
+    }
+    const shipRaw = String(form.shippingCost ?? '').trim();
+    const ship = shipRaw === '' ? 0 : Number(shipRaw);
+    if (!Number.isFinite(ship) || ship < 0) {
+      toast.error('Shipping must be 0 or a positive amount');
+      return;
+    }
+    const otherRaw = String(form.otherCharges ?? '').trim();
+    const other = otherRaw === '' ? 0 : Number(otherRaw);
+    if (!Number.isFinite(other) || other < 0) {
+      toast.error('Other charges must be 0 or a positive amount');
+      return;
+    }
+    if (!form.items.some((item) => item.productId)) {
+      toast.error('Select at least one product / size');
+      return;
+    }
+    let paymentDateIso;
+    if (form.paymentDate) {
+      const paidAtDate = fromDatetimeLocalIst(form.paymentDate);
+      if (!paidAtDate) {
+        toast.error('Payment date/time is invalid');
+        return;
+      }
+      paymentDateIso = paidAtDate.toISOString();
+    }
+
     setSaving(true);
     try {
       const payload = {
@@ -151,23 +294,26 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
         historicalWhatsAppOrderRef: form.customerKind === 'existing_whatsapp'
           ? form.historicalWhatsAppOrderRef
           : '',
-        customerName: form.customerName,
-        phone: form.phone,
-        whatsappNumber: form.whatsappNumber || form.phone,
-        email: form.email,
-        line1: form.line1,
-        line2: form.line2,
-        landmark: form.landmark,
-        district: form.district,
-        city: form.city,
-        state: form.state,
-        pincode: form.pincode,
-        shippingCost: Number(form.shippingCost) || 0,
-        total: form.total === '' ? undefined : Number(form.total),
+        customerName: working.customerName,
+        phone: validation.phone,
+        whatsappNumber: working.whatsappNumber || validation.phone,
+        email: working.email,
+        line1: working.line1,
+        line2: working.line2,
+        landmark: working.landmark,
+        district: working.district,
+        city: working.city,
+        state: working.state,
+        pincode: validation.pincode,
+        shippingCost: ship,
+        otherCharges: other,
+        manualPriceEntered: true,
+        manualComboPrice: combo,
         advancePayment: Number(form.advancePayment) || 0,
         paymentMethod: form.paymentMethod,
         paymentReference: form.paymentReference,
         paymentVerified: form.paymentVerified,
+        paymentDate: paymentDateIso,
         previewRequired: form.previewRequired === 'yes',
         expectedDispatchDate: form.expectedDispatchDate || undefined,
         assignedTo: form.assignedTo || undefined,
@@ -176,7 +322,7 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
           productId: item.productId,
           variant: item.variant,
           quantity: Number(item.quantity) || 1,
-          price: item.price === '' ? undefined : Number(item.price),
+          // Unit prices intentionally omitted — overall price is manualComboPrice
           customizationInstructions: item.instructions,
         })),
       };
@@ -189,32 +335,43 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
       if (!res.ok) throw new Error(data.error || 'Failed to create order');
 
       const hasPhotos = form.items.some((item) => (item.photos || []).length > 0);
+      let photoError = '';
       if (hasPhotos && data.order?._id) {
-        await uploadItemPhotos(data.order._id, form.items);
+        try {
+          await uploadItemPhotos(data.order._id, form.items);
+        } catch (uploadErr) {
+          photoError = uploadErr?.message || 'Photo upload failed';
+        }
       }
 
       toast.success(`Created ${data.order.orderNumber}`);
       onCreated?.(data.order);
+
+      if (photoError) {
+        // Keep modal open with photos so staff can retry — do not wipe local files
+        toast.error(`Order saved, but photos failed: ${photoError}. Re-upload from this form or order detail.`);
+        return;
+      }
+
       onClose?.();
       setLookup(null);
+      setPasteText('');
+      setParseMeta({ warnings: [], unmatchedLines: [], confidence: {} });
+      setShowParsedEditor(false);
+      setCustomerDetailsReviewed(false);
+      setCustomerSource('');
       setForm((prev) => ({
         ...prev,
         customerKind: 'new',
         historicalWhatsAppOrderRef: '',
-        customerName: '',
-        phone: '',
-        whatsappNumber: '',
-        email: '',
-        line1: '',
-        line2: '',
-        landmark: '',
-        district: '',
-        city: '',
-        pincode: '',
-        total: '',
+        ...emptyCustomer,
+        manualComboPrice: '',
+        shippingCost: '0',
+        otherCharges: '0',
         advancePayment: '',
         paymentReference: '',
         paymentVerified: false,
+        paymentDate: toDatetimeLocalIst(new Date()),
         expectedDispatchDate: '',
         assignedTo: '',
         internalNotes: '',
@@ -227,13 +384,20 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
     }
   };
 
+  const confidenceHint = (key) => {
+    const level = parseMeta.confidence?.[key];
+    if (!level) return null;
+    const color = level === 'high' ? 'text-green-700' : level === 'medium' ? 'text-amber-700' : 'text-red-700';
+    return <span className={`ml-1 text-[10px] font-normal uppercase ${color}`}>{level}</span>;
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4">
       <div className="w-full max-w-3xl max-h-[92dvh] overflow-y-auto rounded-t-2xl sm:rounded-2xl bg-white shadow-xl">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white px-4 py-3 sm:px-6">
           <div>
             <h2 className="text-lg font-bold text-gray-900">Create WhatsApp Order</h2>
-            <p className="text-xs text-gray-500">Creates a new G… order ID. Unverified advance is never counted as paid.</p>
+            <p className="text-xs text-gray-500">Paste customer details · manual combo price · unverified advance never counts as paid.</p>
           </div>
           <button type="button" onClick={onClose} className="min-h-[44px] min-w-[44px] rounded-xl border p-2" aria-label="Close">
             <FiX size={18} />
@@ -257,21 +421,11 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
               <legend className="px-1 text-sm font-bold text-gray-900">Customer</legend>
               <div className="flex flex-wrap gap-3 text-sm font-semibold">
                 <label className="inline-flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="customerKind"
-                    checked={form.customerKind === 'new'}
-                    onChange={() => setField('customerKind', 'new')}
-                  />
+                  <input type="radio" name="customerKind" checked={form.customerKind === 'new'} onChange={() => setField('customerKind', 'new')} />
                   New customer
                 </label>
                 <label className="inline-flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="customerKind"
-                    checked={form.customerKind === 'existing_whatsapp'}
-                    onChange={() => setField('customerKind', 'existing_whatsapp')}
-                  />
+                  <input type="radio" name="customerKind" checked={form.customerKind === 'existing_whatsapp'} onChange={() => setField('customerKind', 'existing_whatsapp')} />
                   Existing WhatsApp customer
                 </label>
               </div>
@@ -284,82 +438,133 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
                     placeholder="e.g. G1234 — does not need to exist in this database"
                     className="mt-1 w-full rounded-xl border px-3 py-2.5"
                   />
-                  <span className="mt-1 block text-[11px] font-normal text-gray-500">
-                    Stored as a reference only. Every new purchase still gets a fresh G… ID.
-                  </span>
                 </label>
               ) : null}
             </fieldset>
-            <label className="text-sm font-semibold sm:col-span-2">Customer name
-              <input required value={form.customerName} onChange={(e) => setField('customerName', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
+          </div>
+
+          <div className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-3 space-y-2">
+            <label className="block text-sm font-bold text-gray-900">
+              Paste Customer Details
+              <textarea
+                value={pasteText}
+                onChange={(e) => {
+                  setPasteText(e.target.value);
+                  if (customerSource === 'paste') setCustomerDetailsReviewed(false);
+                }}
+                rows={7}
+                placeholder={'Name\n9876543210\nAddress line…\nLandmark…\nCity\nState\n600001'}
+                className="mt-2 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 font-mono text-sm leading-relaxed"
+              />
             </label>
-            <label className="text-sm font-semibold">Phone
-              <div className="mt-1 flex gap-2">
-                <input required value={form.phone} onChange={(e) => setField('phone', e.target.value)} className="min-w-0 flex-1 rounded-xl border px-3 py-2.5" />
-                <button
-                  type="button"
-                  disabled={lookupBusy}
-                  onClick={lookupPhone}
-                  className="shrink-0 rounded-xl border bg-white px-3 py-2 text-xs font-semibold disabled:opacity-50"
-                >
-                  {lookupBusy ? '…' : 'Lookup'}
-                </button>
-              </div>
-            </label>
-            <label className="text-sm font-semibold">WhatsApp
-              <input value={form.whatsappNumber} onChange={(e) => setField('whatsappNumber', e.target.value)} placeholder="Same as phone if empty" className="mt-1 w-full rounded-xl border px-3 py-2.5" />
-            </label>
-            {lookup?.matchedInDatabase ? (
-              <div className="sm:col-span-2 rounded-xl border border-sky-100 bg-sky-50/70 p-3 text-xs text-gray-700 space-y-2">
-                <p className="font-semibold text-sky-900">
-                  Found {lookup.orderCount} previous order(s) in website database
-                </p>
-                {lookup.addresses?.length > 1 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {lookup.addresses.map((addr) => (
-                      <button
-                        key={addr.fromOrderNumber}
-                        type="button"
-                        onClick={() => applyAddress(addr)}
-                        className="rounded-lg border bg-white px-2 py-1 font-semibold"
-                      >
-                        Reuse {addr.fromOrderNumber} address
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-                <ul className="max-h-28 space-y-1 overflow-y-auto">
-                  {(lookup.previousOrders || []).map((row) => (
-                    <li key={row._id} className="rounded border bg-white px-2 py-1">
-                      <strong>{row.orderNumber}</strong>
-                      {row.createdAt ? ` · ${new Date(row.createdAt).toLocaleDateString('en-IN')}` : ''}
-                      {row.itemSummary ? ` · ${row.itemSummary}` : ''}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+            <p className="text-[11px] text-gray-600">
+              Paste the full WhatsApp message. Original text is kept until the order is saved successfully.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={!String(pasteText || '').trim()}
+                onClick={() => runParse()}
+                className="min-h-[40px] rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                Extract fields
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowParsedEditor((v) => !v)}
+                className="min-h-[40px] rounded-xl border bg-white px-4 py-2 text-sm font-semibold"
+              >
+                {showParsedEditor ? 'Hide' : 'Show'} structured fields
+              </button>
+            </div>
+            {parseMeta.warnings?.length ? (
+              <ul className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950 space-y-1">
+                {parseMeta.warnings.map((w) => <li key={w}>• {w}</li>)}
+              </ul>
             ) : null}
-            <label className="text-sm font-semibold sm:col-span-2">Address line 1
-              <input required value={form.line1} onChange={(e) => setField('line1', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
-            </label>
-            <label className="text-sm font-semibold">Line 2
-              <input value={form.line2} onChange={(e) => setField('line2', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
-            </label>
-            <label className="text-sm font-semibold">Landmark
-              <input value={form.landmark} onChange={(e) => setField('landmark', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
-            </label>
-            <label className="text-sm font-semibold">District
-              <input value={form.district} onChange={(e) => setField('district', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
-            </label>
-            <label className="text-sm font-semibold">City
-              <input required value={form.city} onChange={(e) => setField('city', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
-            </label>
-            <label className="text-sm font-semibold">State
-              <input required value={form.state} onChange={(e) => setField('state', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
-            </label>
-            <label className="text-sm font-semibold">Pincode
-              <input required value={form.pincode} onChange={(e) => setField('pincode', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
-            </label>
+            {parseMeta.unmatchedLines?.length ? (
+              <p className="text-[11px] text-gray-500">Unmatched lines kept for review: {parseMeta.unmatchedLines.join(' · ')}</p>
+            ) : null}
+            {(customerSource || String(pasteText || '').trim()) ? (
+              <label className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={customerDetailsReviewed}
+                  onChange={(e) => setCustomerDetailsReviewed(e.target.checked)}
+                />
+                <span>
+                  I reviewed the customer details and corrected any mistakes.
+                  {(parseMeta.warnings || []).length || Object.values(parseMeta.confidence || {}).some((c) => c === 'low')
+                    ? ' Parsing was uncertain for some fields — do not save until corrected.'
+                    : ''}
+                </span>
+              </label>
+            ) : null}
+          </div>
+
+          {showParsedEditor ? (
+            <div className="grid gap-3 rounded-xl border bg-white p-3 sm:grid-cols-2">
+              <p className="sm:col-span-2 text-xs font-bold uppercase tracking-wide text-gray-500">Extracted details (editable)</p>
+              <label className="text-sm font-semibold sm:col-span-2">Customer name{confidenceHint('customerName')}
+                <input required value={form.customerName} onChange={(e) => setField('customerName', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
+              </label>
+              <label className="text-sm font-semibold">Phone{confidenceHint('phone')}
+                <div className="mt-1 flex gap-2">
+                  <input required value={form.phone} onChange={(e) => setField('phone', e.target.value)} className="min-w-0 flex-1 rounded-xl border px-3 py-2.5" />
+                  <button type="button" disabled={lookupBusy} onClick={lookupPhone} className="shrink-0 rounded-xl border bg-white px-3 py-2 text-xs font-semibold disabled:opacity-50">
+                    {lookupBusy ? '…' : 'Lookup'}
+                  </button>
+                </div>
+              </label>
+              <label className="text-sm font-semibold">WhatsApp{confidenceHint('whatsappNumber')}
+                <input value={form.whatsappNumber} onChange={(e) => setField('whatsappNumber', e.target.value)} placeholder="Same as phone if empty" className="mt-1 w-full rounded-xl border px-3 py-2.5" />
+              </label>
+              {lookup?.matchedInDatabase ? (
+                <div className="sm:col-span-2 rounded-xl border border-sky-100 bg-sky-50/70 p-3 text-xs text-gray-700 space-y-2">
+                  <p className="font-semibold text-sky-900">Found {lookup.orderCount} previous order(s) in website database</p>
+                  {lookup.addresses?.length > 1 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {lookup.addresses.map((addr) => (
+                        <button key={addr.fromOrderNumber} type="button" onClick={() => applyAddress(addr)} className="rounded-lg border bg-white px-2 py-1 font-semibold">
+                          Reuse {addr.fromOrderNumber} address
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              <label className="text-sm font-semibold sm:col-span-2">Address line 1{confidenceHint('line1')}
+                <input required value={form.line1} onChange={(e) => setField('line1', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
+              </label>
+              <label className="text-sm font-semibold">Line 2{confidenceHint('line2')}
+                <input value={form.line2} onChange={(e) => setField('line2', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
+              </label>
+              <label className="text-sm font-semibold">Landmark{confidenceHint('landmark')}
+                <input value={form.landmark} onChange={(e) => setField('landmark', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
+              </label>
+              <label className="text-sm font-semibold">District{confidenceHint('district')}
+                <input value={form.district} onChange={(e) => setField('district', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
+              </label>
+              <label className="text-sm font-semibold">City{confidenceHint('city')}
+                <input required value={form.city} onChange={(e) => setField('city', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
+              </label>
+              <label className="text-sm font-semibold">State{confidenceHint('state')}
+                <input required value={form.state} onChange={(e) => setField('state', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
+              </label>
+              <label className="text-sm font-semibold">Pincode{confidenceHint('pincode')}
+                <input required value={form.pincode} onChange={(e) => setField('pincode', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
+              </label>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-500">
+              {form.customerName || form.phone
+                ? `Ready: ${form.customerName || '—'} · ${form.phone || '—'} · ${form.city || '—'} ${form.pincode || ''}`
+                : 'Extract or open structured fields before creating the order.'}
+            </p>
+          )}
+
+          <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-sm font-semibold">Expected dispatch
               <input type="date" value={form.expectedDispatchDate} onChange={(e) => setField('expectedDispatchDate', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
             </label>
@@ -375,19 +580,21 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
 
           <div className="space-y-3 rounded-xl border bg-gray-50 p-3">
             <div className="flex items-center justify-between">
-              <h3 className="font-bold text-gray-900">Products & customer photos</h3>
+              <h3 className="font-bold text-gray-900">Customized combo · sizes & photos</h3>
               <button type="button" className="text-sm font-semibold text-primary-700" onClick={() => setForm((p) => ({ ...p, items: [...p.items, emptyItem()] }))}>
-                + Add item
+                + Add size / product
               </button>
             </div>
-            <p className="text-[11px] text-gray-500">Each product/size has its own photo uploads. Photos are stored against that line item.</p>
+            <p className="text-[11px] text-gray-500">
+              Select each size/quantity line and upload customer photos for that line. Overall price is entered manually below — website catalog prices are not used.
+            </p>
             {form.items.map((item, index) => {
               const product = selectedProduct(item.productId);
               const variants = (product?.variants || []).flatMap((v) => (v.options || []).map((o) => `${v.name}: ${o.label}`));
               return (
                 <div key={index} className="grid gap-2 rounded-xl border bg-white p-3 sm:grid-cols-2">
                   <div className="sm:col-span-2 flex items-center justify-between">
-                    <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Item {index + 1}</p>
+                    <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Size / item {index + 1}</p>
                     {form.items.length > 1 ? (
                       <button
                         type="button"
@@ -419,14 +626,11 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
                   <label className="text-sm font-semibold">Qty
                     <input type="number" min="1" value={item.quantity} onChange={(e) => setItem(index, 'quantity', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
                   </label>
-                  <label className="text-sm font-semibold">Unit price
-                    <input type="number" min="0" step="0.01" value={item.price} onChange={(e) => setItem(index, 'price', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
-                  </label>
                   <label className="text-sm font-semibold sm:col-span-2">Customization instructions
                     <textarea value={item.instructions} onChange={(e) => setItem(index, 'instructions', e.target.value)} rows={2} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
                   </label>
                   <label className="text-sm font-semibold sm:col-span-2">
-                    Customer photos for this product/size
+                    Customer photos for this size / quantity
                     <input
                       type="file"
                       accept="image/*"
@@ -477,15 +681,44 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
             })}
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="text-sm font-semibold">Total amount (optional override)
-              <input type="number" min="0" step="0.01" value={form.total} onChange={(e) => setField('total', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
+          <div className="grid gap-3 rounded-xl border border-amber-100 bg-amber-50/40 p-3 sm:grid-cols-2">
+            <label className="text-sm font-bold text-gray-900 sm:col-span-2">
+              Overall customized combo price (manual) *
+              <input
+                required
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.manualComboPrice}
+                onChange={(e) => setField('manualComboPrice', e.target.value)}
+                placeholder="Enter total combo price agreed with customer"
+                className="mt-1 w-full rounded-xl border border-amber-200 bg-white px-3 py-2.5 font-semibold"
+              />
+              <span className="mt-1 block text-[11px] font-normal text-gray-600">
+                Not calculated from website product prices. This value is stored on the order and not auto-overwritten.
+              </span>
             </label>
             <label className="text-sm font-semibold">Shipping cost
               <input type="number" min="0" step="0.01" value={form.shippingCost} onChange={(e) => setField('shippingCost', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
             </label>
+            <label className="text-sm font-semibold">Other charges
+              <input type="number" min="0" step="0.01" value={form.otherCharges} onChange={(e) => setField('otherCharges', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
+            </label>
+            <p className="sm:col-span-2 rounded-lg border bg-white px-3 py-2 text-sm">
+              Amount owed:{' '}
+              <strong>
+                {orderTotalPreview != null ? `₹${orderTotalPreview.toLocaleString('en-IN')}` : '—'}
+              </strong>
+              <span className="ml-2 text-xs font-normal text-gray-500">
+                (combo ₹{Number(form.manualComboPrice) || 0} + shipping ₹{Number(form.shippingCost) || 0}
+                {Number(form.otherCharges) > 0 ? ` + other ₹${Number(form.otherCharges)}` : ''})
+              </span>
+            </p>
             <label className="text-sm font-semibold">Advance payment
               <input type="number" min="0" step="0.01" value={form.advancePayment} onChange={(e) => setField('advancePayment', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
+            </label>
+            <label className="text-sm font-semibold">Payment date & time (IST)
+              <input type="datetime-local" value={form.paymentDate} onChange={(e) => setField('paymentDate', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
             </label>
             <label className="text-sm font-semibold">Payment method
               <input value={form.paymentMethod} onChange={(e) => setField('paymentMethod', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5" />

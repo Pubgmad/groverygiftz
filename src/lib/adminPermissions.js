@@ -9,6 +9,7 @@ export const ADMIN_MODULES = [
   { id: 'estimated-delivery', label: 'Estimated Delivery Days', href: `${ADMIN_BASE_PATH}/estimated-delivery`, writeSupported: true, description: 'Central Tamil Nadu and other-state delivery estimates.' },
   { id: 'orders', label: 'Orders', href: `${ADMIN_BASE_PATH}/orders`, writeSupported: true, description: 'Website and WhatsApp orders, status, tracking, shipping labels, and customer upload originals.' },
   { id: 'operations', label: 'Operations', href: `${ADMIN_BASE_PATH}/operations`, writeSupported: true, description: 'Ops board, tasks, design approval, printing, production, packing, and dispatch.' },
+  { id: 'reports', label: 'Reports', href: `${ADMIN_BASE_PATH}/reports`, writeSupported: false, description: 'Payment and parcel dispatch date reports, staff collections, and combined order history (IST).' },
   { id: 'revenue', label: 'Revenue Analytics', href: `${ADMIN_BASE_PATH}/revenue`, writeSupported: false, description: 'Aggregated paid-order revenue, geography, products, and timing. Read-only.' },
   { id: 'customers', label: 'Customers', href: `${ADMIN_BASE_PATH}/customers`, writeSupported: false, description: 'Customer account list. No admin edits exist in this module.' },
   { id: 'reviews', label: 'Reviews', href: `${ADMIN_BASE_PATH}/reviews`, writeSupported: false, description: 'Verified customer reviews. No admin edits exist in this module.' },

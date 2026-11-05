@@ -7,6 +7,7 @@ import useAdminAccess from '@/hooks/useAdminAccess';
 import ReadOnlyBanner from '@/components/admin/ReadOnlyBanner';
 import { OPS_STATUS_LABELS, TASK_TYPES } from '@/lib/opsConstants';
 import { formatPrice } from '@/lib/utils';
+import { fromDatetimeLocalIst, toDatetimeLocalIst, formatIstDateTime, todayIstYmd } from '@/lib/istTime';
 
 export default function OperationsPage() {
   const { canRead, canWrite } = useAdminAccess();
@@ -21,9 +22,15 @@ export default function OperationsPage() {
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [courierCompany, setCourierCompany] = useState('ST Couriers');
-  const [pickupDate, setPickupDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [confirmPickup, setConfirmPickup] = useState(false);
+  const [pickupDate, setPickupDate] = useState(() => todayIstYmd());
+  const [confirmPickup, setConfirmPickup] = useState(true);
   const [batchBusy, setBatchBusy] = useState(false);
+  const [parcelWeight, setParcelWeight] = useState('');
+  const [parcelTracking, setParcelTracking] = useState('');
+  const [dispatchedAt, setDispatchedAt] = useState(() => toDatetimeLocalIst(new Date()));
+  const [manualCourierCost, setManualCourierCost] = useState('');
+  const [calculatedCourierCost, setCalculatedCourierCost] = useState('');
+  const [destinationState, setDestinationState] = useState('');
   const [staff, setStaff] = useState([]);
   const [taskForm, setTaskForm] = useState({
     orderNumber: '',
@@ -137,16 +144,74 @@ export default function OperationsPage() {
           courierCompany,
           pickupDate,
           confirmPickup,
+          trackingNumber: parcelTracking || undefined,
+          weightKg: parcelWeight !== '' ? Number(parcelWeight) : undefined,
+          dispatchedAt: (() => {
+            if (!confirmPickup) return undefined;
+            const d = dispatchedAt ? fromDatetimeLocalIst(dispatchedAt) : null;
+            if (!d) throw new Error('Actual dispatch date/time is required for handover');
+            return d.toISOString();
+          })(),
+          manualCourierCost: manualCourierCost !== '' ? Number(manualCourierCost) : undefined,
+          calculatedCourierCost: calculatedCourierCost !== '' ? Number(calculatedCourierCost) : undefined,
+          destinationState: destinationState || undefined,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Batch failed');
-      toast.success(`Batch ${data.batch.batchCode} · ${data.batch.parcelCount} parcels`);
+      toast.success(
+        confirmPickup
+          ? `Batch ${data.batch.batchCode} · ${data.batch.parcelCount} parcel(s) · dispatch date stored`
+          : `Batch ${data.batch.batchCode} arranged · awaiting courier handover (no dispatch date yet)`,
+      );
       if (data.rejected?.length) toast.error(`${data.rejected.length} order(s) skipped`);
       setSelectedIds(new Set());
+      setParcelTracking('');
+      setParcelWeight('');
+      setManualCourierCost('');
+      setCalculatedCourierCost('');
       await load(activeStatus);
     } catch (err) {
       toast.error(err.message || 'Batch failed');
+    } finally {
+      setBatchBusy(false);
+    }
+  };
+
+  const addParcelToBatch = async (batchId) => {
+    if (!selectedIds.size) {
+      toast.error('Select order(s) to include in the new parcel');
+      return;
+    }
+    setBatchBusy(true);
+    try {
+      const res = await fetch('/api/admin/ops/dispatch-batches', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          batchId,
+          action: 'add_parcel',
+          orderIds: [...selectedIds],
+          courierCompany,
+          trackingNumber: parcelTracking || undefined,
+          weightKg: parcelWeight !== '' ? Number(parcelWeight) : undefined,
+          dispatchedAt: (() => {
+            const d = dispatchedAt ? fromDatetimeLocalIst(dispatchedAt) : null;
+            if (!d) throw new Error('Actual dispatch date/time is required');
+            return d.toISOString();
+          })(),
+          manualCourierCost: manualCourierCost !== '' ? Number(manualCourierCost) : undefined,
+          calculatedCourierCost: calculatedCourierCost !== '' ? Number(calculatedCourierCost) : undefined,
+          destinationState: destinationState || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Add parcel failed');
+      toast.success(`Parcel ${data.parcel?.parcelCode} recorded`);
+      setSelectedIds(new Set());
+      await load(activeStatus);
+    } catch (err) {
+      toast.error(err.message || 'Add parcel failed');
     } finally {
       setBatchBusy(false);
     }
@@ -160,9 +225,14 @@ export default function OperationsPage() {
           <h1 className="text-2xl font-bold">Operations</h1>
           <p className="text-sm text-gray-500">Workflow board, courier pickup batches, work planner, and notifications.</p>
         </div>
-        <Link href="/account/manage/orders" className="inline-flex min-h-[44px] items-center justify-center rounded-xl border px-4 py-2 text-sm font-semibold">
-          Open Orders
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/account/manage/reports" className="inline-flex min-h-[44px] items-center justify-center rounded-xl border px-4 py-2 text-sm font-semibold">
+            Payment & dispatch reports
+          </Link>
+          <Link href="/account/manage/orders" className="inline-flex min-h-[44px] items-center justify-center rounded-xl border px-4 py-2 text-sm font-semibold">
+            Open Orders
+          </Link>
+        </div>
       </div>
 
       {notifications.length > 0 ? (
@@ -224,14 +294,38 @@ export default function OperationsPage() {
 
       {writable ? (
         <div className="rounded-xl border bg-white p-4 space-y-3">
-          <h2 className="font-bold">Daily courier pickup batch</h2>
-          <p className="text-xs text-gray-500">Select eligible orders below (usually Ready to Dispatch), then create a pickup batch. Tracking can be added later.</p>
-          <div className="grid gap-2 sm:grid-cols-3">
-            <input value={courierCompany} onChange={(e) => setCourierCompany(e.target.value)} placeholder="Courier company" className="rounded-xl border px-3 py-2.5 text-sm" />
-            <input type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)} className="rounded-xl border px-3 py-2.5 text-sm" />
+          <h2 className="font-bold">Courier pickup / parcel dispatch</h2>
+          <p className="text-xs text-gray-500">
+            Select orders, then create a batch parcel. Actual dispatch date/time is stored per parcel. Tracking can be updated later without changing the dispatch date. Multiple parcels per order and multiple orders per parcel are supported.
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <label className="text-xs font-semibold text-gray-600">Courier company
+              <input value={courierCompany} onChange={(e) => setCourierCompany(e.target.value)} placeholder="Courier company" className="mt-1 w-full rounded-xl border px-3 py-2.5 text-sm font-normal" />
+            </label>
+            <label className="text-xs font-semibold text-gray-600">Scheduled pickup date (not actual dispatch)
+              <input type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5 text-sm font-normal" />
+            </label>
+            <label className="text-xs font-semibold text-gray-600">Actual handover date & time (IST)
+              <input type="datetime-local" value={dispatchedAt} onChange={(e) => setDispatchedAt(e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5 text-sm font-normal" />
+            </label>
+            <label className="text-xs font-semibold text-gray-600">Tracking ID
+              <input value={parcelTracking} onChange={(e) => setParcelTracking(e.target.value)} placeholder="Optional" className="mt-1 w-full rounded-xl border px-3 py-2.5 text-sm font-normal" />
+            </label>
+            <label className="text-xs font-semibold text-gray-600">Weight (kg)
+              <input type="number" min="0" step="0.01" value={parcelWeight} onChange={(e) => setParcelWeight(e.target.value)} placeholder="Optional" className="mt-1 w-full rounded-xl border px-3 py-2.5 text-sm font-normal" />
+            </label>
+            <label className="text-xs font-semibold text-gray-600">Destination state
+              <input value={destinationState} onChange={(e) => setDestinationState(e.target.value)} placeholder="Optional" className="mt-1 w-full rounded-xl border px-3 py-2.5 text-sm font-normal" />
+            </label>
+            <label className="text-xs font-semibold text-gray-600">Calculated courier cost
+              <input type="number" min="0" step="0.01" value={calculatedCourierCost} onChange={(e) => setCalculatedCourierCost(e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5 text-sm font-normal" />
+            </label>
+            <label className="text-xs font-semibold text-gray-600">Manual courier cost override
+              <input type="number" min="0" step="0.01" value={manualCourierCost} onChange={(e) => setManualCourierCost(e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5 text-sm font-normal" />
+            </label>
             <label className="flex items-center gap-2 text-sm font-semibold">
               <input type="checkbox" checked={confirmPickup} onChange={(e) => setConfirmPickup(e.target.checked)} />
-              Mark handed over now
+              Record handover / dispatch now
             </label>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -273,22 +367,47 @@ export default function OperationsPage() {
                 </thead>
                 <tbody>
                   {batches.slice(0, 10).map((b) => (
-                    <tr key={b._id} className="border-t">
+                    <tr key={b._id} className="border-t align-top">
                       <td className="p-2 font-semibold">{b.batchCode}</td>
                       <td className="p-2">{b.courierCompany || '—'}</td>
-                      <td className="p-2">{b.parcelCount}</td>
+                      <td className="p-2">
+                        <p>{b.parcelCount || (b.parcels || []).length || 0}</p>
+                        <ul className="mt-1 space-y-1 text-[11px] text-gray-600">
+                          {(b.parcels || []).map((p) => (
+                            <li key={p._id || p.parcelCode} className="rounded border bg-gray-50 px-1.5 py-1">
+                              {p.parcelCode}: {(p.orderNumbers || []).join(', ') || `${(p.orderIds || []).length} order(s)`}
+                              <br />
+                              AWB {p.trackingNumber || '—'} · {p.dispatchedAt ? formatIstDateTime(p.dispatchedAt) : 'pending'}
+                              <br />
+                              Wt {p.weightKg != null ? `${p.weightKg} kg` : '—'}
+                              {' · '}{p.destinationState || '—'}
+                              {' · '}Cost {p.manualCourierCost != null ? `₹${p.manualCourierCost}` : (p.calculatedCourierCost != null ? `₹${p.calculatedCourierCost}` : '—')}
+                              {p.recordedByName ? ` · By ${p.recordedByName}` : ''}
+                            </li>
+                          ))}
+                        </ul>
+                      </td>
                       <td className="p-2 capitalize">{String(b.status || '').replace(/_/g, ' ')}</td>
                       <td className="p-2 text-xs">{(b.orderNumbers || []).join(', ')}</td>
-                      <td className="p-2">
+                      <td className="p-2 space-y-1">
                         {writable && b.status !== 'handed_over' && b.status !== 'completed' ? (
                           <button
                             type="button"
                             className="rounded border px-2 py-1 text-xs font-semibold"
                             onClick={async () => {
+                              const handoverAt = dispatchedAt ? fromDatetimeLocalIst(dispatchedAt) : null;
+                              if (!handoverAt) {
+                                toast.error('Actual dispatch date/time is required for handover');
+                                return;
+                              }
                               const res = await fetch('/api/admin/ops/dispatch-batches', {
                                 method: 'PATCH',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ batchId: b._id, confirmPickup: true }),
+                                body: JSON.stringify({
+                                  batchId: b._id,
+                                  confirmPickup: true,
+                                  dispatchedAt: handoverAt.toISOString(),
+                                }),
                               });
                               const data = await res.json().catch(() => ({}));
                               if (!res.ok) {
@@ -301,7 +420,51 @@ export default function OperationsPage() {
                           >
                             Confirm handover
                           </button>
-                        ) : '—'}
+                        ) : null}
+                        {writable ? (
+                          <button
+                            type="button"
+                            disabled={batchBusy || !selectedIds.size}
+                            className="block rounded border px-2 py-1 text-xs font-semibold disabled:opacity-50"
+                            onClick={() => addParcelToBatch(b._id)}
+                          >
+                            Add parcel with selected
+                          </button>
+                        ) : null}
+                        {writable && (b.parcels || []).length ? (
+                          <div className="space-y-1 pt-1">
+                            {(b.parcels || []).map((p) => (
+                              <button
+                                key={`trk-${p._id || p.parcelCode}`}
+                                type="button"
+                                className="block rounded border px-2 py-1 text-[11px] font-semibold"
+                                onClick={async () => {
+                                  const next = window.prompt(`Update tracking for ${p.parcelCode} (dispatch date kept)`, p.trackingNumber || '');
+                                  if (next == null) return;
+                                  const res = await fetch('/api/admin/ops/dispatch-batches', {
+                                    method: 'PATCH',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                      batchId: b._id,
+                                      action: 'update_tracking',
+                                      parcelId: p._id,
+                                      trackingNumber: next,
+                                    }),
+                                  });
+                                  const data = await res.json().catch(() => ({}));
+                                  if (!res.ok) {
+                                    toast.error(data.error || 'Tracking update failed');
+                                    return;
+                                  }
+                                  toast.success('Tracking updated · dispatch date preserved');
+                                  load(activeStatus);
+                                }}
+                              >
+                                Edit AWB {p.parcelCode}
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
                       </td>
                     </tr>
                   ))}
