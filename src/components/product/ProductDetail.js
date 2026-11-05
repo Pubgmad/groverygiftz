@@ -26,6 +26,7 @@ import ProductMakingVideos from '@/components/product/ProductMakingVideos';
 import ProductTrustStats from '@/components/product/ProductTrustStats';
 import { imagePerfMark, imagePerfMeasure } from '@/lib/imagePerf';
 import { readJsonResponse } from '@/lib/safeJsonResponse';
+import { durableUploadRef } from '@/lib/cartPersist';
 
 /** Session caches for Apply/cart canvas work — avoid re-decoding the same URLs. */
 const previewImageCache = new Map();
@@ -407,42 +408,77 @@ export default function ProductDetail({ product }) {
       throw new Error(error.message || 'Unable to store the customized preview. Please try again.');
     }
   };
+  const resolveDurableFinalPreview = async ({ previewKey, area, uploadedFile, areaLabel, uploadIndex }) => {
+    const adjustments = getAreaAdjustments(previewKey);
+    const adjustmentsKey = JSON.stringify(adjustments);
+    const saved = savedPreviewFilesRef.current[previewKey];
+    const matches = saved?.sourceUrl === uploadedFile.url && saved?.adjustments === adjustmentsKey;
+    // Only reuse a durable server URL — never blob/data cache as cart final preview.
+    if (matches && saved?.file?.url && !saved?.pending) {
+      return durableUploadRef(saved.file) || saved.file;
+    }
+    // Already-baked local Apply preview: upload that blob without re-rendering the canvas.
+    const localPreview = String(saved?.file?.previewUrl || '');
+    if (matches && (localPreview.startsWith('blob:') || localPreview.startsWith('data:'))) {
+      const file = await uploadRenderedPreviewImage(localPreview, areaLabel, uploadIndex, { localPreviewUrl: localPreview });
+      savedPreviewFilesRef.current[previewKey] = {
+        file,
+        sourceUrl: uploadedFile.url,
+        adjustments: adjustmentsKey,
+        pending: false,
+      };
+      return durableUploadRef(file) || file;
+    }
+    const renderedPreview = await renderFinalPreviewImage(area, previewKey, uploadedFile);
+    const file = await uploadRenderedPreviewImage(renderedPreview, areaLabel, uploadIndex);
+    savedPreviewFilesRef.current[previewKey] = {
+      file,
+      sourceUrl: uploadedFile.url,
+      adjustments: adjustmentsKey,
+      pending: false,
+    };
+    return durableUploadRef(file) || file;
+  };
+
   const buildCustomizationPreviewPayload = async () => {
-    const previews = [];
+    const jobs = [];
 
     if (previewEnabled) {
-      for (let idx = 0; idx < previewAreas.length; idx += 1) {
-        const area = previewAreas[idx];
+      previewAreas.forEach((area, idx) => {
         const uploadedFile = customerPhotos[idx] || null;
-        if (!uploadedFile?.url) continue;
-        const areaLabel = area.label || ('Photo ' + (idx + 1));
-        const saved = savedPreviewFilesRef.current[idx];
-        const cached = saved?.sourceUrl === uploadedFile.url && saved?.adjustments === JSON.stringify(getAreaAdjustments(idx)) ? saved.file : null;
-        const renderedPreview = cached ? null : await renderFinalPreviewImage(area, idx, uploadedFile);
-        const finalPreviewImage = cached || await uploadRenderedPreviewImage(renderedPreview, areaLabel, idx);
-        const finalPreviewDataUrl = finalPreviewImage?.url ? '' : (finalPreviewImage?.previewUrl || '');
-        const adjustments = getAreaAdjustments(idx);
-        const oriented = getFrameSize(area, adjustments.orientation);
-        previews.push({
-          areaLabel,
-          width: oriented.width,
-          height: oriented.height,
-          configuredWidth: area.width || '',
-          configuredHeight: area.height || '',
-          unit: area.unit || 'inch',
-          instructions: area.instructions || '',
-          frameImage: area.frameImage || '',
-          uploadedFile,
-          adjustments,
-          finalPreviewImage,
-          finalPreviewDataUrl,
+        if (!uploadedFile?.url) return;
+        const areaLabel = area.label || (`Photo ${idx + 1}`);
+        jobs.push(async () => {
+          const adjustments = getAreaAdjustments(idx);
+          const oriented = getFrameSize(area, adjustments.orientation);
+          const finalPreviewImage = await resolveDurableFinalPreview({
+            previewKey: idx,
+            area,
+            uploadedFile,
+            areaLabel,
+            uploadIndex: idx,
+          });
+          return {
+            areaLabel,
+            width: oriented.width,
+            height: oriented.height,
+            configuredWidth: area.width || '',
+            configuredHeight: area.height || '',
+            unit: area.unit || 'inch',
+            instructions: area.instructions || '',
+            frameImage: area.frameImage || '',
+            uploadedFile: durableUploadRef(uploadedFile) || uploadedFile,
+            adjustments,
+            finalPreviewImage,
+            finalPreviewDataUrl: '',
+          };
         });
-      }
+      });
     }
 
-    for (const selected of selectedVariantUploadOptions) {
+    selectedVariantUploadOptions.forEach((selected, variantIndex) => {
       const uploadedFile = variantLabelUploads[selected.label] || null;
-      if (!uploadedFile?.url) continue;
+      if (!uploadedFile?.url) return;
       const previewKey = `variant-${selected.label}`;
       const area = {
         label: selected.label,
@@ -453,30 +489,38 @@ export default function ProductDetail({ product }) {
         instructions: selected.previewInstructions || '',
       };
       const areaLabel = `Variant: ${selected.label}`;
-      const saved = savedPreviewFilesRef.current[previewKey];
-      const cached = saved?.sourceUrl === uploadedFile.url && saved?.adjustments === JSON.stringify(getAreaAdjustments(previewKey)) ? saved.file : null;
-      const renderedPreview = cached ? null : await renderFinalPreviewImage(area, previewKey, uploadedFile);
-      const finalPreviewImage = cached || await uploadRenderedPreviewImage(renderedPreview, areaLabel, previews.length);
-      const adjustments = getAreaAdjustments(previewKey);
-      const oriented = getFrameSize(area, adjustments.orientation);
-      previews.push({
-        areaLabel,
-        width: oriented.width,
-        height: oriented.height,
-        configuredWidth: area.width || '',
-        configuredHeight: area.height || '',
-        unit: area.unit || 'inch',
-        instructions: area.instructions || '',
-        frameImage: area.frameImage || '',
-        uploadedFile,
-        adjustments,
-        finalPreviewImage,
-        finalPreviewDataUrl: finalPreviewImage?.url ? '' : (finalPreviewImage?.previewUrl || ''),
-        sourceType: 'variant',
+      jobs.push(async () => {
+        const adjustments = getAreaAdjustments(previewKey);
+        const oriented = getFrameSize(area, adjustments.orientation);
+        const finalPreviewImage = await resolveDurableFinalPreview({
+          previewKey,
+          area,
+          uploadedFile,
+          areaLabel,
+          uploadIndex: variantIndex,
+        });
+        return {
+          areaLabel,
+          width: oriented.width,
+          height: oriented.height,
+          configuredWidth: area.width || '',
+          configuredHeight: area.height || '',
+          unit: area.unit || 'inch',
+          instructions: area.instructions || '',
+          frameImage: area.frameImage || '',
+          uploadedFile: durableUploadRef(uploadedFile) || uploadedFile,
+          adjustments,
+          finalPreviewImage,
+          finalPreviewDataUrl: '',
+          sourceType: 'variant',
+        };
       });
-    }
+    });
 
-    if (previews.length === 0) return null;
+    if (jobs.length === 0) return null;
+    imagePerfMark('cart:preview-payload:start');
+    const previews = await Promise.all(jobs.map((job) => job()));
+    imagePerfMeasure('cart:preview-payload', 'cart:preview-payload:start');
     return { previewTitle: previewConfig.title || 'Customization preview', previews };
   };
   const savePreviewArea = async (idx, overrideAdjustments) => {
@@ -549,6 +593,11 @@ export default function ProductDetail({ product }) {
             imagePerfMeasure('apply:total', 'apply:total:start');
           } catch (error) {
             if (photoUploadTokenRef.current[`persist-${idx}`] === persistToken) {
+              // Keep local blob for UI, but mark pending so Add/Buy will persist durably.
+              const current = savedPreviewFilesRef.current[idx];
+              if (current && !current.file?.url) {
+                savedPreviewFilesRef.current[idx] = { ...current, pending: true, durableFailed: true };
+              }
               toast.error(error.message || 'Unable to save preview. Please try again.');
             }
           } finally {
@@ -723,69 +772,64 @@ export default function ProductDetail({ product }) {
     if (jobs.length === 0) return;
     const openEditor = selectedFiles.length === 1 && jobs.length === 1;
     setUploadingCustomerPhotos(true);
-    const uploadPromises = [];
     try {
-      for (const job of jobs) {
+      // Prepare + upload each slot independently so multi-select is parallel (including HEIC decode).
+      await Promise.all(jobs.map(async (job) => {
         const token = (photoUploadTokenRef.current[job.index] || 0) + 1;
         photoUploadTokenRef.current[job.index] = token;
         setUploadingPhotoSlots((prev) => ({ ...prev, [job.index]: true }));
         imagePerfMark('upload:job:start');
-        const prepared = await prepareImageUpload(job.file);
-        // Instant local preview (Genie-style) — network continues in the background.
-        const localPreview = {
-          previewUrl: prepared.previewUrl || '',
-          width: prepared.width || 0,
-          height: prepared.height || 0,
-        };
-        if (localPreview.previewUrl) {
-          const areaEarly = previewAreas[job.index] || null;
-          const adjustmentsEarly = adjustmentsForUploadedPhoto(prepared.width, prepared.height, areaEarly);
-          setActivePreviewSlot(job.index);
-          editPreviewArea(job.index);
-          setPreviewAdjustments((prev) => ({ ...prev, [job.index]: adjustmentsEarly }));
-          setCustomerPhotos((prev) => setPhotoSlot(alignPhotoSlots(prev, photoSlotCount), job.index, localPreview));
-        }
-        if (openEditor && localPreview.previewUrl) setEditorSlotKey(job.index);
+        let localPreview = { previewUrl: '', width: 0, height: 0 };
+        try {
+          const prepared = await prepareImageUpload(job.file);
+          localPreview = {
+            previewUrl: prepared.previewUrl || '',
+            width: prepared.width || 0,
+            height: prepared.height || 0,
+          };
+          if (localPreview.previewUrl) {
+            const areaEarly = previewAreas[job.index] || null;
+            const adjustmentsEarly = adjustmentsForUploadedPhoto(prepared.width, prepared.height, areaEarly);
+            setActivePreviewSlot(job.index);
+            editPreviewArea(job.index);
+            setPreviewAdjustments((prev) => ({ ...prev, [job.index]: adjustmentsEarly }));
+            setCustomerPhotos((prev) => setPhotoSlot(alignPhotoSlots(prev, photoSlotCount), job.index, localPreview));
+          }
+          if (openEditor && localPreview.previewUrl) setEditorSlotKey(job.index);
 
-        const uploadTask = (async () => {
-          imagePerfMark('upload:network:start');
-          const formData = new FormData();
-          appendImageUpload(formData, job.file, prepared);
-          const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
-          const data = await readJsonResponse(res, { fallbackError: `Failed to upload ${job.file.name}` });
-          imagePerfMeasure('upload:network', 'upload:network:start');
-          if (photoUploadTokenRef.current[job.index] !== token) return null;
-          const uploadedFile = attachLocalPreview(data, prepared);
-          // Preserve any edits already made in the editor — only attach durable URLs.
-          setCustomerPhotos((prev) => setPhotoSlot(alignPhotoSlots(prev, photoSlotCount), job.index, uploadedFile));
-          setUploadingPhotoSlots((prev) => ({ ...prev, [job.index]: false }));
-          imagePerfMeasure('upload:job', 'upload:job:start');
+          const uploadTask = (async () => {
+            imagePerfMark('upload:network:start');
+            const formData = new FormData();
+            appendImageUpload(formData, job.file, prepared);
+            const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
+            const data = await readJsonResponse(res, { fallbackError: `Failed to upload ${job.file.name}` });
+            imagePerfMeasure('upload:network', 'upload:network:start');
+            if (photoUploadTokenRef.current[job.index] !== token) return null;
+            const uploadedFile = attachLocalPreview(data, prepared);
+            setCustomerPhotos((prev) => setPhotoSlot(alignPhotoSlots(prev, photoSlotCount), job.index, uploadedFile));
+            setUploadingPhotoSlots((prev) => ({ ...prev, [job.index]: false }));
+            imagePerfMeasure('upload:job', 'upload:job:start');
+            return uploadedFile;
+          })();
+          photoUploadPromiseRef.current[job.index] = uploadTask;
+          const uploadedFile = await uploadTask;
+          delete photoUploadPromiseRef.current[job.index];
+          if (!uploadedFile && photoUploadTokenRef.current[job.index] === token) {
+            throw new Error(`Failed to upload ${job.file.name}`);
+          }
+          if (openEditor && uploadedFile && !localPreview.previewUrl) setEditorSlotKey(job.index);
           return uploadedFile;
-        })();
-        photoUploadPromiseRef.current[job.index] = uploadTask;
-        uploadPromises.push(
-          uploadTask
-            .then((uploadedFile) => {
-              delete photoUploadPromiseRef.current[job.index];
-              if (!uploadedFile && photoUploadTokenRef.current[job.index] === token) {
-                throw new Error(`Failed to upload ${job.file.name}`);
-              }
-              if (openEditor && uploadedFile && !localPreview.previewUrl) setEditorSlotKey(job.index);
-              return uploadedFile;
-            })
-            .catch((error) => {
-              delete photoUploadPromiseRef.current[job.index];
-              setUploadingPhotoSlots((prev) => ({ ...prev, [job.index]: false }));
-              setCustomerPhotos((prev) => {
-                const next = alignPhotoSlots(prev, photoSlotCount);
-                if (next[job.index] && !next[job.index].url) return clearPhotoSlot(next, job.index);
-                return next;
-              });
-              throw error;
-            })
-        );
-      }
-      await Promise.all(uploadPromises);
+        } catch (error) {
+          delete photoUploadPromiseRef.current[job.index];
+          setUploadingPhotoSlots((prev) => ({ ...prev, [job.index]: false }));
+          setCustomerPhotos((prev) => {
+            const next = alignPhotoSlots(prev, photoSlotCount);
+            if (next[job.index] && !next[job.index].url) return clearPhotoSlot(next, job.index);
+            return next;
+          });
+          throw error;
+        }
+      }));
       toast.success(jobs.length === 1 ? 'Photo ready' : `${jobs.length} photos ready`);
       trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'customer_photos', photo_count: jobs.length }));
     } catch (error) {
@@ -893,17 +937,15 @@ export default function ProductDetail({ product }) {
     }
     setUploadingCollageLabels((prev) => ({ ...prev, [label]: true }));
     try {
-      const uploaded = [];
-      for (const file of selectedFiles) {
+      const uploaded = await Promise.all(selectedFiles.map(async (file) => {
         const prepared = await prepareImageUpload(file);
         const formData = new FormData();
         appendImageUpload(formData, file, prepared);
         const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
         const data = await readJsonResponse(res, { fallbackError: `Failed to upload ${file.name}` });
-        const uploadedFile = attachLocalPreview(data, prepared);
-        uploaded.push(uploadedFile);
-        setCollageUploads((prev) => ({ ...prev, [label]: [...(prev[label] || []), uploadedFile] }));
-      }
+        return attachLocalPreview(data, prepared);
+      }));
+      setCollageUploads((prev) => ({ ...prev, [label]: [...(prev[label] || []), ...uploaded] }));
       toast.success(`${label}: ${uploaded.length} image${uploaded.length === 1 ? '' : 's'} uploaded`);
       trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'collage_upload', collage_label: label, photo_count: uploaded.length }));
     } catch (error) {
@@ -974,11 +1016,29 @@ export default function ProductDetail({ product }) {
     })).filter((group) => group.images.length > 0);
     const variantUploads = Object.fromEntries(Object.entries(variantLabelUploads).filter(([, value]) => value?.url));
     const productCustomerNote = customerNotesEnabled ? customerNote.trim() : '';
-    const uploadedCustomerPhotos = filledPhotos(customerPhotos);
-    const allCustomFields = { ...customFieldValues, ...(productCustomerNote ? { 'Customer Note': productCustomerNote } : {}), ...(uploadedCustomerPhotos.length > 0 ? { 'Customer Photos': uploadedCustomerPhotos } : {}), ...(Object.keys(variantUploads).length > 0 ? { 'Variant Label Uploads': variantUploads } : {}) };
+    const uploadedCustomerPhotos = filledPhotos(customerPhotos).map((photo) => durableUploadRef(photo) || photo);
+    const durableVariantUploads = Object.fromEntries(
+      Object.entries(variantUploads).map(([key, value]) => [key, durableUploadRef(value) || value])
+    );
+    const durableCustomFieldValues = Object.fromEntries(
+      Object.entries(customFieldValues).map(([key, value]) => [
+        key,
+        value && typeof value === 'object' && value.url ? (durableUploadRef(value) || value) : value,
+      ])
+    );
+    const durableCollageGroups = collageGroups.map((group) => ({
+      ...group,
+      images: (group.images || []).map((photo) => durableUploadRef(photo) || photo),
+    }));
+    const allCustomFields = {
+      ...durableCustomFieldValues,
+      ...(productCustomerNote ? { 'Customer Note': productCustomerNote } : {}),
+      ...(uploadedCustomerPhotos.length > 0 ? { 'Customer Photos': uploadedCustomerPhotos } : {}),
+      ...(Object.keys(durableVariantUploads).length > 0 ? { 'Variant Label Uploads': durableVariantUploads } : {}),
+    };
 
     const customizationPreviewPayload = await buildCustomizationPreviewPayload();
-    const hasConfiguredAssets = Object.keys(allCustomFields).length > 0 || collageGroups.length > 0 || Boolean(customizationPreviewPayload) || giftWrap || Boolean(giftMessage.trim());
+    const hasConfiguredAssets = Object.keys(allCustomFields).length > 0 || durableCollageGroups.length > 0 || Boolean(customizationPreviewPayload) || giftWrap || Boolean(giftMessage.trim());
 
     const addedQuantity = addToCart({
       productId: product._id,
@@ -992,7 +1052,7 @@ export default function ProductDetail({ product }) {
       variant: variantStr,
       customFields: allCustomFields,
       customerNotesEnabled,
-      collageUploads: collageGroups,
+      collageUploads: durableCollageGroups,
       giftWrap,
       giftMessage,
       delivery: product.delivery || null,

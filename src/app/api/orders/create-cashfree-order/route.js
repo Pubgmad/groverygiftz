@@ -16,6 +16,7 @@ import { randomUUID } from 'node:crypto';
 import { PAYMENT_RETURN_PATH } from '@/lib/checkoutPayment';
 import MakingCost from '@/models/MakingCost';
 import { snapshotOrderItemCost } from '@/lib/makingCost';
+import { stripDisplayOnlyPreviewData } from '@/lib/cartPersist';
 
 const CASHFREE_VERSION = '2025-01-01';
 const endpointFor = (environment) => environment === 'production'
@@ -47,18 +48,6 @@ const resolveCurrentVariantDelivery = (item, product) => {
   const stateOverrides = selectedOptions.flatMap((option) => option.stateOverrides || []);
   return stateOverrides.length ? { stateOverrides } : null;
 };
-
-const stripDisplayOnlyPreviewData = (value) => {
-  if (Array.isArray(value)) return value.map(stripDisplayOnlyPreviewData);
-  if (!value || typeof value !== 'object') return value;
-
-  return Object.fromEntries(
-    Object.entries(value)
-      .filter(([key]) => key !== 'previewUrl')
-      .map(([key, entry]) => [key, stripDisplayOnlyPreviewData(entry)])
-  );
-};
-
 
 const resolveItemDelivery = (item, productsById, state, settings) => {
   const product = productsById[String(item.productId || item.product || '')];

@@ -4,6 +4,7 @@ import dbConnect from '@/lib/db';
 import Order from '@/models/Order';
 import { requireAdminPermission, logAdminAudit } from '@/lib/adminAccess';
 import { saveUploadFile } from '@/lib/uploadStorage';
+import { buildCustomerDisplayUrl } from '@/lib/customerFileAccess';
 import { PRINTING_STARTED_OPS } from '@/lib/opsConstants';
 import { appendTimeline, notifyAdmins } from '@/lib/opsOrderHelpers';
 import { assertCanAccessOrder } from '@/lib/opsStaffAccess';
@@ -12,41 +13,45 @@ function assetUrl(value) {
   if (!value) return '';
   if (typeof value === 'string') return value.trim();
   if (typeof value === 'object') {
-    return String(value.url || value.displayUrl || value.previewUrl || value.originalUrl || '').trim();
+    return String(value.displayUrl || value.url || value.previewUrl || value.originalUrl || '').trim();
   }
   return '';
 }
 
 function isImageLike(value) {
   if (!value) return false;
-  if (typeof value === 'string') return /^https?:\/\//i.test(value) || value.startsWith('/') || /\.(png|jpe?g|webp|gif|avif|svg)(\?|#|$)/i.test(value);
+  if (typeof value === 'string') return /^https?:\/\//i.test(value) || value.startsWith('/') || /\.(png|jpe?g|webp|gif|avif|svg|heic|heif)(\?|#|$)/i.test(value);
   if (typeof value !== 'object') return false;
   const type = String(value.type || '').toLowerCase();
   const url = assetUrl(value).toLowerCase();
   if (!url) return false;
-  return type.startsWith('image/') || /\.(png|jpe?g|webp|gif|avif|svg)(\?|#|$)/.test(url) || url.startsWith('data:image/') || url.includes('/api/customization-upload/');
+  return type.startsWith('image/') || /\.(png|jpe?g|webp|gif|avif|svg|heic|heif)(\?|#|$)/.test(url) || url.startsWith('data:image/') || url.includes('/api/customization-upload/') || url.includes('/media/customizations/');
 }
 
 function buildReplacementAsset(previous, saved, file) {
   const type = String(file?.type || 'image/jpeg');
-  if (previous && typeof previous === 'object') {
-    return {
-      ...previous,
-      url: saved.url,
-      displayUrl: saved.url,
-      previewUrl: saved.url,
-      originalUrl: saved.url,
-      type: type || previous.type || 'image',
-      name: file?.name || previous.name || 'customer-photo',
-    };
-  }
-  return {
-    url: saved.url,
-    displayUrl: saved.url,
-    originalUrl: saved.url,
-    type: type || 'image',
-    name: file?.name || 'customer-photo',
+  const encodedPath = String(saved.relativePath || '')
+    .split('/')
+    .map(encodeURIComponent)
+    .join('/');
+  const originalUrl = encodedPath
+    ? `/api/customization-upload/original-file/${encodedPath}?name=${encodeURIComponent(file?.name || previous?.name || 'customer-photo')}`
+    : saved.url;
+  const displayUrl = buildCustomerDisplayUrl(saved.relativePath) || saved.url;
+  const base = {
+    url: originalUrl,
+    originalUrl,
+    displayUrl,
+    storagePath: saved.relativePath || '',
+    previewStoragePath: '',
+    type: type || previous?.type || 'image',
+    name: file?.name || previous?.name || 'customer-photo',
+    size: Number(file?.size || previous?.size || 0) || undefined,
   };
+  if (previous && typeof previous === 'object') {
+    return { ...previous, ...base };
+  }
+  return base;
 }
 
 function parseFieldPath(fieldPath = '') {

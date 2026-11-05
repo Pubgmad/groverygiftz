@@ -20,13 +20,14 @@ const context = {
 };
 vm.createContext(context);
 vm.runInContext(`${source}
-module.exports = { buildCustomerDisplayUrl, verifyCustomerDisplayAccess, extractCustomizationPathFromUrl, resignCustomerDisplayUrls };
+module.exports = { buildCustomerDisplayUrl, verifyCustomerDisplayAccess, extractCustomizationPathFromUrl, resolveCustomerDisplayPath, resignCustomerDisplayUrls };
 `, context);
 
 const {
   buildCustomerDisplayUrl,
   verifyCustomerDisplayAccess,
   extractCustomizationPathFromUrl,
+  resolveCustomerDisplayPath,
   resignCustomerDisplayUrls,
 } = context.module.exports;
 
@@ -56,5 +57,20 @@ const cart = resignCustomerDisplayUrls([{
   },
 }]);
 assert.ok(cart[0].customFields['Customer Photos'][0].displayUrl.includes('sig='));
+
+assert.strictEqual(
+  extractCustomizationPathFromUrl('/media/customizations/legacy-photo.jpg'),
+  'customizations/legacy-photo.jpg'
+);
+
+const heic = {
+  storagePath: 'customizations/phone.heic',
+  previewStoragePath: 'customizations/previews/phone.jpg',
+  displayUrl: '/api/customization-upload/customer-file/customizations/phone.heic',
+  url: '/api/customization-upload/original-file/customizations/phone.heic',
+};
+assert.strictEqual(resolveCustomerDisplayPath(heic), 'customizations/previews/phone.jpg');
+const heicResigned = resignCustomerDisplayUrls([{ customFields: { 'Customer Photos': [heic] } }]);
+assert.ok(heicResigned[0].customFields['Customer Photos'][0].displayUrl.includes('customizations/previews/phone.jpg'));
 
 console.log('Customer file access tests passed');

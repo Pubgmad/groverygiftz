@@ -11,6 +11,7 @@ import { appendTimeline } from '@/lib/opsOrderHelpers';
 import { assertCanAccessOrder } from '@/lib/opsStaffAccess';
 import { isPaymentSatisfiedForDispatch } from '@/lib/opsConstants';
 import { logAdminAudit } from '@/lib/adminAccess';
+import { resignCustomerDisplayUrls } from '@/lib/customerFileAccess';
 
 export async function GET(req, { params }) {
   const session = await getServerSession(authOptions);
@@ -35,7 +36,9 @@ export async function GET(req, { params }) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  return NextResponse.json(session.user.type === 'admin' ? order : stripMakingCostFromOrder(order));
+  // Re-sign display URLs and prefer HEIC JPEG previews for cart/admin <img> tags.
+  const withDisplay = resignCustomerDisplayUrls(order);
+  return NextResponse.json(session.user.type === 'admin' ? withDisplay : stripMakingCostFromOrder(withDisplay));
 }
 
 export async function PUT(req, { params }) {

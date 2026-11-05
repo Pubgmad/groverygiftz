@@ -89,8 +89,32 @@ export function extractCustomizationPathFromUrl(url = '') {
     if (!encodedPath) continue;
     return normalizeRelativePath(encodedPath);
   }
+  const mediaMarker = '/media/customizations/';
+  const mediaIndex = raw.indexOf(mediaMarker);
+  if (mediaIndex !== -1) {
+    const rest = raw.slice(mediaIndex + mediaMarker.length).split('?')[0];
+    if (rest) return normalizeRelativePath(`customizations/${rest}`);
+  }
   if (raw.startsWith('customizations/')) return normalizeRelativePath(raw);
   return '';
+}
+
+/**
+ * Prefer JPEG/PNG preview path for HEIC/HEIF originals so <img> works in Chrome/Firefox.
+ * Falls back to original storagePath, then any path parsed from existing URLs.
+ */
+export function resolveCustomerDisplayPath(asset = {}) {
+  const previewPath = normalizeRelativePath(asset?.previewStoragePath || '');
+  if (previewPath.startsWith('customizations/')) return previewPath;
+
+  const storagePath = normalizeRelativePath(asset?.storagePath || '');
+  // Prefer non-HEIC storage when preview path is missing but URL already points at a preview.
+  const fromDisplay = extractCustomizationPathFromUrl(asset?.displayUrl || '');
+  if (fromDisplay.startsWith('customizations/previews/')) return fromDisplay;
+  if (storagePath.startsWith('customizations/')) return storagePath;
+
+  const fromUrl = extractCustomizationPathFromUrl(asset?.displayUrl || asset?.url || asset?.originalUrl || '');
+  return fromUrl.startsWith('customizations/') ? fromUrl : '';
 }
 
 export function resignCustomerDisplayUrls(value) {
@@ -101,9 +125,7 @@ export function resignCustomerDisplayUrls(value) {
     Object.entries(value).map(([key, entry]) => [key, resignCustomerDisplayUrls(entry)])
   );
 
-  const storagePath = normalizeRelativePath(next.storagePath || next.previewStoragePath || '');
-  const fromUrl = extractCustomizationPathFromUrl(next.displayUrl || next.url || next.originalUrl || '');
-  const path = (storagePath.startsWith('customizations/') ? storagePath : '') || fromUrl;
+  const path = resolveCustomerDisplayPath(next);
   if (path.startsWith('customizations/')) {
     next.displayUrl = buildCustomerDisplayUrl(path);
   }

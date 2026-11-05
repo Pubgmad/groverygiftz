@@ -16,6 +16,34 @@ import {
   PRINTING_STARTED_OPS,
 } from '@/lib/opsConstants';
 
+function customerFileFromOriginal(url = '') {
+  const raw = String(url || '');
+  const marker = '/api/customization-upload/original-file/';
+  const index = raw.indexOf(marker);
+  if (index === -1) return '';
+  const encodedPath = raw.slice(index + marker.length).split('?')[0];
+  return encodedPath ? `/api/customization-upload/customer-file/${encodedPath}` : '';
+}
+
+function pickDisplayUrl(asset) {
+  if (!asset) return '';
+  if (typeof asset === 'string') {
+    return customerFileFromOriginal(asset) || asset.trim();
+  }
+  // Prefer signed/customer display URLs — original-file is octet-stream and breaks <img>.
+  const preferred = String(asset.displayUrl || asset.previewUrl || '').trim();
+  if (preferred && !preferred.includes('/original-file/')) return preferred;
+  return customerFileFromOriginal(asset.url)
+    || customerFileFromOriginal(asset.originalUrl)
+    || String(asset.displayUrl || asset.url || asset.originalUrl || '').trim();
+}
+
+function pickDownloadUrl(asset) {
+  if (!asset) return '';
+  if (typeof asset === 'string') return asset.trim();
+  return String(asset.originalUrl || asset.url || asset.displayUrl || '').trim();
+}
+
 function assetListFromItem(item) {
   const out = [];
   const fields = item?.customFields;
@@ -23,26 +51,52 @@ function assetListFromItem(item) {
     Object.entries(fields).forEach(([label, value]) => {
       if (label === 'Variant Label Uploads' && value && typeof value === 'object') {
         Object.entries(value).forEach(([vk, vv]) => {
-          const url = typeof vv === 'string' ? vv : (vv?.url || vv?.displayUrl || '');
-          if (url) out.push({ label: `${label}: ${vk}`, url, fieldPath: `customFields.Variant Label Uploads.${vk}` });
+          const displayUrl = pickDisplayUrl(vv);
+          if (displayUrl) {
+            out.push({
+              label: `${label}: ${vk}`,
+              url: displayUrl,
+              downloadUrl: pickDownloadUrl(vv),
+              fieldPath: `customFields.Variant Label Uploads.${vk}`,
+            });
+          }
         });
       } else if (Array.isArray(value)) {
         value.forEach((entry, idx) => {
-          const url = typeof entry === 'string' ? entry : (entry?.url || entry?.displayUrl || '');
-          if (url) out.push({ label: `${label} #${idx + 1}`, url, fieldPath: `customFields.${label}.${idx}` });
+          const displayUrl = pickDisplayUrl(entry);
+          if (displayUrl) {
+            out.push({
+              label: `${label} #${idx + 1}`,
+              url: displayUrl,
+              downloadUrl: pickDownloadUrl(entry),
+              fieldPath: `customFields.${label}.${idx}`,
+            });
+          }
         });
       } else {
-        const url = typeof value === 'string' ? value : (value?.url || value?.displayUrl || '');
-        if (url && (/\.(png|jpe?g|webp|gif)/i.test(url) || url.includes('/media/') || url.includes('/api/customization'))) {
-          out.push({ label, url, fieldPath: `customFields.${label}` });
+        const displayUrl = pickDisplayUrl(value);
+        if (displayUrl && (/\.(png|jpe?g|webp|gif|heic|heif)/i.test(displayUrl) || displayUrl.includes('/media/') || displayUrl.includes('/api/customization'))) {
+          out.push({
+            label,
+            url: displayUrl,
+            downloadUrl: pickDownloadUrl(value),
+            fieldPath: `customFields.${label}`,
+          });
         }
       }
     });
   }
   (item?.collageUploads || []).forEach((group, g) => {
     (group?.images || []).forEach((img, idx) => {
-      const url = typeof img === 'string' ? img : (img?.url || img?.displayUrl || '');
-      if (url) out.push({ label: `${group.label || `Collage ${g + 1}`} #${idx + 1}`, url, fieldPath: `collageUploads.${g}.images.${idx}` });
+      const displayUrl = pickDisplayUrl(img);
+      if (displayUrl) {
+        out.push({
+          label: `${group.label || `Collage ${g + 1}`} #${idx + 1}`,
+          url: displayUrl,
+          downloadUrl: pickDownloadUrl(img),
+          fieldPath: `collageUploads.${g}.images.${idx}`,
+        });
+      }
     });
   });
   return out;
@@ -646,10 +700,20 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
                 Item {idx + 1}: {[item.title, item.variant].filter(Boolean).join(' · ') || 'Product'}
               </p>
               {photos.length ? (
-                <ul className="mt-1 space-y-1">
+                <ul className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
                   {photos.map((photo) => (
-                    <li key={photo.fieldPath} className="flex flex-wrap items-center gap-2">
-                      <a href={photo.url} target="_blank" rel="noopener noreferrer" className="text-primary-700 underline">{photo.label}</a>
+                    <li key={photo.fieldPath} className="min-w-0 space-y-1">
+                      <a
+                        href={photo.downloadUrl || photo.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="relative block aspect-square overflow-hidden rounded-md border bg-white"
+                        title={photo.label}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={photo.url} alt={photo.label} className="h-full w-full object-cover" />
+                      </a>
+                      <p className="truncate text-[10px] font-semibold text-gray-700">{photo.label}</p>
                     </li>
                   ))}
                 </ul>

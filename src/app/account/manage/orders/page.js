@@ -112,18 +112,45 @@ function DownloadButton({ href, filename, children, tone = 'primary' }) {
   );
 }
 
+function CustomerPhotoThumb({ file, index, label }) {
+  const displayUrl = file?.displayUrl || file?.url || '';
+  const downloadHref = originalDownloadHref(file);
+  if (!displayUrl && !downloadHref) return null;
+  return (
+    <span className="inline-flex min-w-0 max-w-[9rem] flex-col gap-1">
+      {displayUrl ? (
+        <a href={downloadHref || displayUrl} target="_blank" rel="noopener noreferrer" className="relative block aspect-square overflow-hidden rounded-lg border bg-white">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={displayUrl} alt={file?.name || `${label || 'Photo'} ${index + 1}`} className="h-full w-full object-cover" />
+        </a>
+      ) : null}
+      <DownloadButton href={downloadHref} filename={buildDownloadName('original-upload', file?.name || label || 'custom-file', index, file)}>
+        Download original {index + 1}{file?.name ? ` (${file.name})` : ''}
+      </DownloadButton>
+    </span>
+  );
+}
+
 function CustomValue({ value }) {
   if (Array.isArray(value)) {
+    const uploaded = value.filter((file) => isUploadedFile(file));
+    if (uploaded.length > 0) {
+      return (
+        <span className="flex min-w-0 max-w-full flex-wrap gap-2 break-words">
+          {uploaded.map((file, idx) => (
+            <CustomerPhotoThumb key={file.url || file.displayUrl || idx} file={file} index={idx} />
+          ))}
+        </span>
+      );
+    }
     return (
       <span className="flex min-w-0 max-w-full flex-col gap-2 break-words sm:flex-row sm:flex-wrap">
-        {value.map((file, idx) => isUploadedFile(file) ? (
-          <DownloadButton key={file.url || idx} href={originalDownloadHref(file)} filename={buildDownloadName('original-upload', file.name || 'custom-file', idx, file)}>Download original {idx + 1}{file.name ? ` (${file.name})` : ''}</DownloadButton>
-        ) : <span key={idx} className="break-words">{String(file || '-')}</span>)}
+        {value.map((file, idx) => <span key={idx} className="break-words">{String(file || '-')}</span>)}
       </span>
     );
   }
   if (isUploadedFile(value)) {
-    return <DownloadButton href={originalDownloadHref(value)} filename={buildDownloadName('original-upload', value.name || 'custom-file', 0, value)}>Download original{value.name ? ` (${value.name})` : ''}</DownloadButton>;
+    return <CustomerPhotoThumb file={value} index={0} />;
   }
   if (value && typeof value === 'object') {
     return (
@@ -154,7 +181,8 @@ function CollageUploadDetails({ groups }) {
           <div className="grid min-w-0 max-w-full grid-cols-3 gap-2 sm:grid-cols-5">
             {group.images.map((image, index) => (
               <div key={image.url || index} className="min-w-0 space-y-1">
-                <a href={image.url} target="_blank" rel="noopener noreferrer" className="relative block aspect-square overflow-hidden rounded-lg border bg-white">
+                <a href={originalDownloadHref(image) || image.displayUrl || image.url} target="_blank" rel="noopener noreferrer" className="relative block aspect-square overflow-hidden rounded-lg border bg-white">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={image.displayUrl || image.url} alt={`${group.label} ${index + 1}`} className="h-full w-full object-cover" />
                   <span className="absolute left-1 top-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[10px] font-bold text-white">{index + 1}</span>
                 </a>
@@ -175,7 +203,9 @@ function PreviewDetails({ preview }) {
         <p className="font-semibold text-primary-800">Saved preview / crop instructions</p>
         <p><span className="font-medium">Preview:</span> {preview.previewTitle || '-'}</p>
         {previews.map((entry, index) => {
-          const finalPreviewUrl = entry.finalPreviewImage?.displayUrl || entry.finalPreviewImage?.url || entry.finalPreviewDataUrl;
+          const finalPreviewUrl = entry.finalPreviewImage?.displayUrl
+            || (entry.finalPreviewImage?.url && !String(entry.finalPreviewImage.url).startsWith('blob:') ? entry.finalPreviewImage.url : '')
+            || (entry.finalPreviewDataUrl && !String(entry.finalPreviewDataUrl).startsWith('blob:') && !String(entry.finalPreviewDataUrl).startsWith('data:') ? entry.finalPreviewDataUrl : '');
           return (
             <div key={`${entry.areaLabel || 'area'}-${index}`} className="min-w-0 max-w-full overflow-hidden rounded-md border border-primary-100 bg-white p-2 space-y-3">
               <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">

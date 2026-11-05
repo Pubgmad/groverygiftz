@@ -5,19 +5,10 @@ import { getServerSession } from 'next-auth';
 import dbConnect from '@/lib/db';
 import Customer from '@/models/Customer';
 import { authOptions } from '@/lib/auth';
+import { stripDisplayOnlyPreviewData } from '@/lib/cartPersist';
 
 const MAX_CART_ITEMS = 100;
 const MAX_WISHLIST_ITEMS = 300;
-
-const stripDisplayOnlyPreviewData = (value) => {
-  if (Array.isArray(value)) return value.map(stripDisplayOnlyPreviewData);
-  if (!value || typeof value !== 'object') return value;
-  return Object.fromEntries(
-    Object.entries(value)
-      .filter(([key]) => key !== 'previewUrl')
-      .map(([key, entry]) => [key, stripDisplayOnlyPreviewData(entry)])
-  );
-};
 
 const normalizeList = (value, maxItems) => Array.isArray(value)
   ? stripDisplayOnlyPreviewData(value).slice(0, maxItems)

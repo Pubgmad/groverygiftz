@@ -1,4 +1,7 @@
+import { isEphemeralMediaUrl } from '@/lib/cartPersist';
+
 const hasUrl = (value) => value && typeof value === 'object' && typeof value.url === 'string' && value.url.trim();
+
 const customerFileUrlFromOriginal = (url = '') => {
   const raw = String(url || '');
   const marker = '/api/customization-upload/original-file/';
@@ -7,26 +10,53 @@ const customerFileUrlFromOriginal = (url = '') => {
   const encodedPath = raw.slice(index + marker.length).split('?')[0];
   return encodedPath ? `/api/customization-upload/customer-file/${encodedPath}` : '';
 };
+
+const firstDurable = (...candidates) => {
+  for (const candidate of candidates) {
+    const url = String(candidate || '').trim();
+    if (url && !isEphemeralMediaUrl(url)) return url;
+  }
+  return '';
+};
+
 // Prefer durable displayUrl over ephemeral blob previewUrl (which dies after refresh / revoke).
-const displayUrlFor = (asset) => asset?.displayUrl || asset?.previewUrl || customerFileUrlFromOriginal(asset?.url) || asset?.url;
-const linkUrlFor = (asset) => asset?.originalUrl || asset?.url || asset?.displayUrl || asset?.previewUrl;
+const displayUrlFor = (asset) => firstDurable(
+  asset?.displayUrl,
+  asset?.previewUrl,
+  customerFileUrlFromOriginal(asset?.url),
+  asset?.url,
+) || String(asset?.previewUrl || asset?.url || '').trim();
+
+const linkUrlFor = (asset) => firstDurable(
+  asset?.originalUrl,
+  asset?.url,
+  asset?.displayUrl,
+) || String(asset?.previewUrl || '').trim();
 
 export const isConfiguredImageAsset = (value) => hasUrl(value);
 
 export const isImageAsset = (asset) => {
   const type = String(asset?.type || '').toLowerCase();
   const url = String(displayUrlFor(asset) || '').toLowerCase();
-  return type.startsWith('image/') || /\.(png|jpe?g|webp|gif|avif|svg)(\?|#|$)/.test(url) || url.startsWith('data:image/');
+  if (type.startsWith('image/')) return true;
+  if (url.startsWith('data:image/') || url.startsWith('blob:')) return true;
+  // Include HEIC/HEIF so cart UI still attempts display (displayUrl should be JPEG preview).
+  return /\.(png|jpe?g|webp|gif|avif|svg|heic|heif)(\?|#|$)/.test(url)
+    || url.includes('/api/customization-upload/customer-file/')
+    || url.includes('/api/customization-upload/original-file/');
 };
 
 const normalizeAsset = (asset, caption) => {
   if (!asset) return null;
   if (typeof asset === 'string') {
-    return asset.trim() ? { url: asset, name: caption, caption, type: 'image' } : null;
+    if (!asset.trim() || isEphemeralMediaUrl(asset)) return null;
+    return { url: asset, name: caption, caption, type: 'image' };
   }
   if (!hasUrl(asset)) return null;
+  const display = displayUrlFor(asset);
+  if (!display) return null;
   return {
-    url: displayUrlFor(asset),
+    url: display,
     originalUrl: linkUrlFor(asset),
     name: asset.name || caption,
     type: asset.type || '',
@@ -81,8 +111,11 @@ const collectPreviewSections = (sections, preview) => {
     const label = entry.areaLabel || `Preview ${index + 1}`;
     const assets = [];
     if (entry.uploadedFile?.url) assets.push({ ...entry.uploadedFile, caption: 'Original upload' });
-    if (entry.finalPreviewImage?.url) assets.push({ ...entry.finalPreviewImage, caption: 'Final saved preview' });
-    else if (entry.finalPreviewDataUrl) assets.push({ url: entry.finalPreviewDataUrl, type: 'image/jpeg', caption: 'Final saved preview', name: `${label} final preview` });
+    if (entry.finalPreviewImage?.url) {
+      assets.push({ ...entry.finalPreviewImage, caption: 'Final saved preview' });
+    } else if (entry.finalPreviewDataUrl && !isEphemeralMediaUrl(entry.finalPreviewDataUrl)) {
+      assets.push({ url: entry.finalPreviewDataUrl, type: 'image/jpeg', caption: 'Final saved preview', name: `${label} final preview` });
+    }
     pushSection(sections, `Preview: ${label}`, assets);
   });
 };

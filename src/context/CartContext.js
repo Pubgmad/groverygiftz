@@ -2,6 +2,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { trackGA4Ecommerce } from '@/lib/ga4';
+import { cartItemHasConfiguredImages, stripDisplayOnlyPreviewData } from '@/lib/cartPersist';
 
 const CartContext = createContext();
 
@@ -26,8 +27,20 @@ const mergeCartItems = (accountCart = [], localCart = []) => {
     const existingIndex = !item.cartItemId ? merged.findIndex((entry) => isSameCartLine(entry, item.productId, item.variant)) : -1;
     if (existingIndex >= 0) {
       const existing = merged[existingIndex];
+      const guestHasImages = cartItemHasConfiguredImages(item);
+      const accountHasImages = cartItemHasConfiguredImages(existing);
+      // Prefer guest customization when the account line has no durable images yet.
+      const keepGuestConfig = guestHasImages && !accountHasImages;
       merged[existingIndex] = {
         ...existing,
+        ...(keepGuestConfig ? {
+          customFields: item.customFields,
+          collageUploads: item.collageUploads,
+          customizationPreview: item.customizationPreview,
+          giftWrap: item.giftWrap,
+          giftMessage: item.giftMessage,
+          cartItemId: item.cartItemId || existing.cartItemId,
+        } : {}),
         quantity: capQuantity(Number(existing.quantity || 0) + Number(item.quantity || 1), existing.availableStock ?? item.availableStock),
       };
       return;
@@ -35,16 +48,6 @@ const mergeCartItems = (accountCart = [], localCart = []) => {
     merged.push({ ...item, quantity: capQuantity(Number(item.quantity || 1), item.availableStock) });
   });
   return merged;
-};
-
-const stripDisplayOnlyPreviewData = (value) => {
-  if (Array.isArray(value)) return value.map(stripDisplayOnlyPreviewData);
-  if (!value || typeof value !== 'object') return value;
-  return Object.fromEntries(
-    Object.entries(value)
-      .filter(([key]) => key !== 'previewUrl')
-      .map(([key, entry]) => [key, stripDisplayOnlyPreviewData(entry)])
-  );
 };
 
 const persistGuestCart = (items) => {
@@ -64,7 +67,7 @@ const readGuestCart = () => {
     const saved = localStorage.getItem('groverygiftz-cart');
     if (!saved) return [];
     const parsed = JSON.parse(saved);
-    if (Array.isArray(parsed)) return parsed;
+    if (Array.isArray(parsed)) return stripDisplayOnlyPreviewData(parsed);
     removeGuestCart();
   } catch {
     removeGuestCart();
@@ -173,11 +176,18 @@ export function CartProvider({ children }) {
       return;
     }
     if (status !== 'loading' && activeCustomerRef.current) {
+      // Keep the current cart as a guest snapshot so customization images stay visible after logout.
+      const snapshot = stripDisplayOnlyPreviewData(cartRef.current || []);
       activeCustomerRef.current = '';
       syncedCustomerRef.current = '';
       syncingRef.current = false;
-      removeGuestCart();
-      applyCart([]);
+      if (snapshot.length) {
+        persistGuestCart(snapshot);
+        applyCart(snapshot);
+      } else {
+        removeGuestCart();
+        applyCart([]);
+      }
     }
   }, [status, session?.user?.id, session?.user?.type]);
 
@@ -240,7 +250,7 @@ export function CartProvider({ children }) {
     applyCart(nextCart);
     if (!isAuthenticatedCustomer) persistGuestCart(nextCart);
     previous.forEach((item) => {
-      const updated = nextCart.find((entry) => isSameCartLine(entry, productId, variant, cartItemId));
+      const updated = nextCart.find((entry) => isSameCartLine(entry, item.productId, item.variant, cartItemId));
       const difference = Number(updated?.quantity || 0) - Number(item.quantity || 0);
       if (difference) trackGA4Ecommerce(difference > 0 ? 'add_to_cart' : 'remove_from_cart', [{ ...item, quantity: Math.abs(difference) }]);
     });
