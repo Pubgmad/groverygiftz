@@ -8,31 +8,36 @@ import {
   nextInterestPace,
   nudgeInterestEstimate,
 } from '@/lib/productInterest';
+import { isProductSoldOut } from '@/lib/stock';
 
 /**
  * Live-style product views counter with natural fluctuating pace.
+ * When stock is over, the count stays very low but still fluctuates.
  */
 export default function ProductInterestIndicator({ product }) {
   const config = product?.productInterest || {};
   if (config.enabled === false) return null;
 
   const productId = product?._id || product?.slug || product?.title || 'product';
+  const soldOut = isProductSoldOut(product);
   const [displayCount, setDisplayCount] = useState(null);
   const [animating, setAnimating] = useState(false);
   const currentRef = useRef(null);
   const timerRef = useRef(null);
   const paceUntilRef = useRef(0);
   const paceRef = useRef(nextInterestPace());
+  const soldOutRef = useRef(soldOut);
 
   useEffect(() => {
-    const next = generateProductInterestEstimate(productId, config);
+    soldOutRef.current = soldOut;
+    const next = generateProductInterestEstimate(productId, config, { soldOut });
     currentRef.current = next;
     setDisplayCount(next);
     setAnimating(true);
     const t = setTimeout(() => setAnimating(false), 500);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- new value on each product mount / remount (refresh)
-  }, [productId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refresh estimate when product or stock state changes
+  }, [productId, soldOut]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -53,7 +58,12 @@ export default function ProductInterestIndicator({ product }) {
 
       const pace = paceRef.current;
       if (currentRef.current != null) {
-        const next = nudgeInterestEstimate(currentRef.current, config, pace.mode);
+        const next = nudgeInterestEstimate(
+          currentRef.current,
+          config,
+          pace.mode,
+          { soldOut: soldOutRef.current },
+        );
         if (next !== currentRef.current) {
           currentRef.current = next;
           setDisplayCount(next);
@@ -71,7 +81,7 @@ export default function ProductInterestIndicator({ product }) {
       clearTimeout(timerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [productId]);
+  }, [productId, soldOut]);
 
   if (displayCount == null) return null;
 
