@@ -1,6 +1,6 @@
 /**
- * Promotional product-interest estimate (not verified live analytics).
- * Each product gets a stable base from its id; page loads add a small jitter.
+ * Live-style product interest count helpers.
+ * Each product has a preferred band; refreshes and live ticks vary within min–max.
  */
 
 const DEFAULT_MIN = 250;
@@ -24,7 +24,7 @@ export function getInterestBounds(config = {}) {
   return { min, max };
 }
 
-/** Stable per-product base within [min, max]. */
+/** Stable per-product center within [min, max]. */
 export function getProductInterestBase(productId, config = {}) {
   const { min, max } = getInterestBounds(config);
   const span = max - min;
@@ -32,25 +32,49 @@ export function getProductInterestBase(productId, config = {}) {
   return min + (seed % (span + 1));
 }
 
-/** Refresh-time estimate: product base + small random jitter, clamped. */
+/**
+ * Fresh value on page/tab refresh — clearly different each load,
+ * still biased toward the product's base so products stay distinct.
+ */
 export function generateProductInterestEstimate(productId, config = {}) {
   const { min, max } = getInterestBounds(config);
   const base = getProductInterestBase(productId, config);
-  const jitterSpan = Math.min(80, Math.max(20, Math.floor((max - min) * 0.08)));
-  const jitter = Math.floor(Math.random() * (jitterSpan * 2 + 1)) - jitterSpan;
-  return Math.min(max, Math.max(min, base + jitter));
+  const span = max - min;
+  // Large refresh swing so reload visibly changes the number
+  const swing = Math.max(120, Math.floor(span * 0.35));
+  const jitter = Math.floor(Math.random() * (swing * 2 + 1)) - swing;
+  // Extra full-range noise so slow refreshes also jump
+  const noise = Math.floor(Math.random() * Math.max(60, Math.floor(span * 0.15))) - Math.floor(span * 0.075);
+  return Math.min(max, Math.max(min, base + jitter + noise));
 }
 
-/** Soft live-style nudge while viewing the page. */
-export function nudgeInterestEstimate(current, config = {}) {
+/** Live tick delta — often larger for a fast-moving feel. */
+export function nudgeInterestEstimate(current, config = {}, intensity = 'fast') {
   const { min, max } = getInterestBounds(config);
-  const delta = Math.floor(Math.random() * 9) - 4; // -4..+4
-  if (delta === 0) return current;
-  return Math.min(max, Math.max(min, Number(current) + delta));
+  let magnitude;
+  if (intensity === 'burst') magnitude = 8 + Math.floor(Math.random() * 18); // 8–25
+  else if (intensity === 'slow') magnitude = 1 + Math.floor(Math.random() * 3); // 1–3
+  else magnitude = 3 + Math.floor(Math.random() * 8); // 3–10
+
+  const sign = Math.random() < 0.55 ? 1 : -1;
+  const next = Number(current) + sign * magnitude;
+  return Math.min(max, Math.max(min, next));
 }
 
 export function formatInterestLabel(count, config = {}) {
   const template = String(config.labelTemplate || '').trim()
     || '{count} live product views';
   return template.replace(/\{count\}/gi, String(count));
+}
+
+/** Pick next pace mode for fluctuating animation speed. */
+export function nextInterestPace() {
+  const roll = Math.random();
+  if (roll < 0.45) {
+    return { mode: 'burst', delayMs: 35 + Math.floor(Math.random() * 45) }; // very fast
+  }
+  if (roll < 0.75) {
+    return { mode: 'fast', delayMs: 90 + Math.floor(Math.random() * 90) };
+  }
+  return { mode: 'slow', delayMs: 450 + Math.floor(Math.random() * 550) }; // sometimes slow
 }

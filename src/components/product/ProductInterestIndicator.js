@@ -5,11 +5,12 @@ import { FiEye } from 'react-icons/fi';
 import {
   formatInterestLabel,
   generateProductInterestEstimate,
+  nextInterestPace,
   nudgeInterestEstimate,
 } from '@/lib/productInterest';
 
 /**
- * Promotional estimated product-interest indicator (not verified concurrent viewers).
+ * Live-style product views counter with fluctuating fast/slow pacing.
  */
 export default function ProductInterestIndicator({ product }) {
   const config = product?.productInterest || {};
@@ -19,16 +20,18 @@ export default function ProductInterestIndicator({ product }) {
   const [displayCount, setDisplayCount] = useState(null);
   const [animating, setAnimating] = useState(false);
   const currentRef = useRef(null);
-  const frameRef = useRef(null);
+  const timerRef = useRef(null);
+  const paceUntilRef = useRef(0);
+  const paceRef = useRef(nextInterestPace());
 
   useEffect(() => {
     const next = generateProductInterestEstimate(productId, config);
     currentRef.current = next;
     setDisplayCount(next);
     setAnimating(true);
-    const t = setTimeout(() => setAnimating(false), 700);
+    const t = setTimeout(() => setAnimating(false), 400);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- refresh when product changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- new value on each product mount / remount (refresh)
   }, [productId]);
 
   useEffect(() => {
@@ -36,36 +39,38 @@ export default function ProductInterestIndicator({ product }) {
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (reduceMotion) return undefined;
 
-    const animateTo = (next) => {
-      const start = currentRef.current ?? next;
-      if (start === next) return;
-      currentRef.current = next;
-      setAnimating(true);
-      const diff = next - start;
-      const steps = 8;
-      let step = 0;
-      cancelAnimationFrame(frameRef.current);
-      const run = () => {
-        step += 1;
-        setDisplayCount(Math.round(start + (diff * step) / steps));
-        if (step < steps) {
-          frameRef.current = requestAnimationFrame(run);
-        } else {
+    const schedule = () => {
+      const now = Date.now();
+      if (now >= paceUntilRef.current) {
+        paceRef.current = nextInterestPace();
+        // Stay in this pace for a short burst window
+        const hold = paceRef.current.mode === 'burst'
+          ? 900 + Math.floor(Math.random() * 1400)
+          : paceRef.current.mode === 'slow'
+            ? 1600 + Math.floor(Math.random() * 2200)
+            : 1200 + Math.floor(Math.random() * 1800);
+        paceUntilRef.current = now + hold;
+      }
+
+      const pace = paceRef.current;
+      if (currentRef.current != null) {
+        const next = nudgeInterestEstimate(currentRef.current, config, pace.mode);
+        if (next !== currentRef.current) {
+          currentRef.current = next;
           setDisplayCount(next);
-          setAnimating(false);
+          setAnimating(true);
         }
-      };
-      frameRef.current = requestAnimationFrame(run);
+      }
+
+      timerRef.current = setTimeout(schedule, pace.delayMs);
     };
 
-    const id = setInterval(() => {
-      if (currentRef.current == null) return;
-      animateTo(nudgeInterestEstimate(currentRef.current, config));
-    }, 14000 + Math.floor(Math.random() * 6000));
+    timerRef.current = setTimeout(schedule, 80);
+    const clearAnim = setInterval(() => setAnimating(false), 280);
 
     return () => {
-      clearInterval(id);
-      cancelAnimationFrame(frameRef.current);
+      clearTimeout(timerRef.current);
+      clearInterval(clearAnim);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productId]);
@@ -76,7 +81,7 @@ export default function ProductInterestIndicator({ product }) {
     <div
       className={`product-interest ${animating ? 'product-interest--tick' : ''} w-full min-w-0 sm:w-auto`}
       role="status"
-      aria-live="polite"
+      aria-live="off"
     >
       <span className="product-interest__icon" aria-hidden>
         <FiEye size={14} />

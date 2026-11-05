@@ -415,10 +415,14 @@
   font-size: 0.8125rem;
   font-weight: 800;
   animation: stockAlertIn 0.4s ease-out both, productInterestPulse 3.4s ease-in-out 0.4s infinite;
-  transition: transform 0.25s ease;
+  transition: transform 0.08s ease;
 }
 .product-interest--tick {
-  transform: translateY(-1px);
+  transform: translateY(-1px) scale(1.01);
+}
+.product-interest__text {
+  font-variant-numeric: tabular-nums;
+  transition: opacity 0.05s linear;
 }
 .product-interest__icon {
   display: inline-flex;
