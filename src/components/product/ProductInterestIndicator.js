@@ -10,7 +10,7 @@ import {
 } from '@/lib/productInterest';
 
 /**
- * Live-style product views counter with fluctuating fast/slow pacing.
+ * Live-style product views counter with natural fluctuating pace.
  */
 export default function ProductInterestIndicator({ product }) {
   const config = product?.productInterest || {};
@@ -29,7 +29,7 @@ export default function ProductInterestIndicator({ product }) {
     currentRef.current = next;
     setDisplayCount(next);
     setAnimating(true);
-    const t = setTimeout(() => setAnimating(false), 400);
+    const t = setTimeout(() => setAnimating(false), 500);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- new value on each product mount / remount (refresh)
   }, [productId]);
@@ -43,12 +43,11 @@ export default function ProductInterestIndicator({ product }) {
       const now = Date.now();
       if (now >= paceUntilRef.current) {
         paceRef.current = nextInterestPace();
-        // Stay in this pace for a short burst window
-        const hold = paceRef.current.mode === 'burst'
-          ? 900 + Math.floor(Math.random() * 1400)
+        const hold = paceRef.current.mode === 'quicker'
+          ? 4000 + Math.floor(Math.random() * 4000)
           : paceRef.current.mode === 'slow'
-            ? 1600 + Math.floor(Math.random() * 2200)
-            : 1200 + Math.floor(Math.random() * 1800);
+            ? 8000 + Math.floor(Math.random() * 8000)
+            : 6000 + Math.floor(Math.random() * 6000);
         paceUntilRef.current = now + hold;
       }
 
@@ -59,18 +58,17 @@ export default function ProductInterestIndicator({ product }) {
           currentRef.current = next;
           setDisplayCount(next);
           setAnimating(true);
+          setTimeout(() => setAnimating(false), 450);
         }
       }
 
       timerRef.current = setTimeout(schedule, pace.delayMs);
     };
 
-    timerRef.current = setTimeout(schedule, 80);
-    const clearAnim = setInterval(() => setAnimating(false), 280);
+    timerRef.current = setTimeout(schedule, 2500 + Math.floor(Math.random() * 1500));
 
     return () => {
       clearTimeout(timerRef.current);
-      clearInterval(clearAnim);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productId]);
@@ -81,7 +79,7 @@ export default function ProductInterestIndicator({ product }) {
     <div
       className={`product-interest ${animating ? 'product-interest--tick' : ''} w-full min-w-0 sm:w-auto`}
       role="status"
-      aria-live="off"
+      aria-live="polite"
     >
       <span className="product-interest__icon" aria-hidden>
         <FiEye size={14} />

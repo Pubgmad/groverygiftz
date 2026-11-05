@@ -40,23 +40,20 @@ export function generateProductInterestEstimate(productId, config = {}) {
   const { min, max } = getInterestBounds(config);
   const base = getProductInterestBase(productId, config);
   const span = max - min;
-  // Large refresh swing so reload visibly changes the number
-  const swing = Math.max(120, Math.floor(span * 0.35));
+  const swing = Math.max(80, Math.floor(span * 0.28));
   const jitter = Math.floor(Math.random() * (swing * 2 + 1)) - swing;
-  // Extra full-range noise so slow refreshes also jump
-  const noise = Math.floor(Math.random() * Math.max(60, Math.floor(span * 0.15))) - Math.floor(span * 0.075);
-  return Math.min(max, Math.max(min, base + jitter + noise));
+  return Math.min(max, Math.max(min, base + jitter));
 }
 
-/** Live tick delta — often larger for a fast-moving feel. */
-export function nudgeInterestEstimate(current, config = {}, intensity = 'fast') {
+/** Gentle live tick — small natural changes. */
+export function nudgeInterestEstimate(current, config = {}, intensity = 'normal') {
   const { min, max } = getInterestBounds(config);
   let magnitude;
-  if (intensity === 'burst') magnitude = 8 + Math.floor(Math.random() * 18); // 8–25
-  else if (intensity === 'slow') magnitude = 1 + Math.floor(Math.random() * 3); // 1–3
-  else magnitude = 3 + Math.floor(Math.random() * 8); // 3–10
+  if (intensity === 'quicker') magnitude = 1 + Math.floor(Math.random() * 3); // 1–3
+  else if (intensity === 'slow') magnitude = 1; // ±1
+  else magnitude = 1 + Math.floor(Math.random() * 2); // 1–2
 
-  const sign = Math.random() < 0.55 ? 1 : -1;
+  const sign = Math.random() < 0.52 ? 1 : -1;
   const next = Number(current) + sign * magnitude;
   return Math.min(max, Math.max(min, next));
 }
@@ -67,14 +64,14 @@ export function formatInterestLabel(count, config = {}) {
   return template.replace(/\{count\}/gi, String(count));
 }
 
-/** Pick next pace mode for fluctuating animation speed. */
+/** Natural fluctuating pace — mostly calm, occasionally a bit quicker. */
 export function nextInterestPace() {
   const roll = Math.random();
-  if (roll < 0.45) {
-    return { mode: 'burst', delayMs: 35 + Math.floor(Math.random() * 45) }; // very fast
+  if (roll < 0.25) {
+    return { mode: 'quicker', delayMs: 1800 + Math.floor(Math.random() * 1400) }; // ~1.8–3.2s
   }
-  if (roll < 0.75) {
-    return { mode: 'fast', delayMs: 90 + Math.floor(Math.random() * 90) };
+  if (roll < 0.7) {
+    return { mode: 'normal', delayMs: 3200 + Math.floor(Math.random() * 2800) }; // ~3.2–6s
   }
-  return { mode: 'slow', delayMs: 450 + Math.floor(Math.random() * 550) }; // sometimes slow
+  return { mode: 'slow', delayMs: 5500 + Math.floor(Math.random() * 4500) }; // ~5.5–10s
 }
