@@ -56,8 +56,13 @@ export async function POST(req, { params }) {
   if (!Number.isFinite(amount) || amount <= 0) {
     return NextResponse.json({ error: 'Valid payment amount is required' }, { status: 400 });
   }
-  if (!['advance', 'balance', 'revision', 'other'].includes(kind)) {
+  if (!['advance', 'balance', 'additional', 'revision', 'other'].includes(kind)) {
     return NextResponse.json({ error: 'Invalid payment kind' }, { status: 400 });
+  }
+  if (String(order.orderSource || '').toLowerCase() === 'website') {
+    return NextResponse.json({
+      error: 'Manual payments are for WhatsApp orders only. Website orders use Cashfree.',
+    }, { status: 400 });
   }
 
   const paymentPaidAt = parsePaidAt(paidAtRaw);
@@ -146,7 +151,17 @@ export async function PATCH(req, { params }) {
   if (!record) return NextResponse.json({ error: 'Payment record not found' }, { status: 404 });
 
   const originalPaidAt = record.paidAt;
-  if (body.verified === true) {
+  if (body.rejected === true) {
+    record.rejected = true;
+    record.verified = false;
+    record.verifiedBy = undefined;
+    record.verifiedAt = undefined;
+    record.rejectedBy = access.adminId;
+    record.rejectedAt = new Date();
+  } else if (body.verified === true) {
+    record.rejected = false;
+    record.rejectedBy = undefined;
+    record.rejectedAt = undefined;
     record.verified = true;
     record.verifiedBy = access.adminId;
     record.verifiedAt = new Date();

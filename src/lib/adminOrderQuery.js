@@ -158,10 +158,11 @@ export function buildAdminOrderFilter(filters = {}) {
     if (filters.expectedDispatchFrom) filter.expectedDispatchDate.$gte = filters.expectedDispatchFrom;
     if (filters.expectedDispatchTo) filter.expectedDispatchDate.$lte = filters.expectedDispatchTo;
   }
+  // Prefer explicit orderPriority (WhatsApp urgent). Legacy urgency=urgent also matched previewRequired.
   if (filters.urgency === 'urgent') {
-    filter.previewRequired = true;
+    filter.orderPriority = 'urgent';
   } else if (filters.urgency === 'normal') {
-    filter.previewRequired = { $ne: true };
+    filter.orderPriority = { $ne: 'urgent' };
   }
   return filter;
 }

@@ -66,8 +66,26 @@ export async function POST(req) {
     return NextResponse.json({ error: 'Invalid task type' }, { status: 400 });
   }
   await dbConnect();
-  const order = await Order.findById(body.orderId).select('orderNumber').lean();
-  if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+
+  let order = null;
+  if (body.orderId) {
+    order = await Order.findById(body.orderId).select('orderNumber').lean();
+    if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+  } else if (body.orderNumber) {
+    const num = String(body.orderNumber || '').trim();
+    if (num) {
+      order = await Order.findOne({ orderNumber: new RegExp(`^${num.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') })
+        .select('_id orderNumber')
+        .lean();
+      if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+    }
+  }
+
+  const title = String(body.title || '').trim()
+    || (order ? `${body.type} · ${order.orderNumber}` : `${body.type} internal task`);
+  if (!title) {
+    return NextResponse.json({ error: 'Task title is required for independent tasks' }, { status: 400 });
+  }
 
   let assignedTo = null;
   if (body.assignedTo && mongoose.Types.ObjectId.isValid(String(body.assignedTo))) {
@@ -76,10 +94,10 @@ export async function POST(req) {
   }
 
   const task = await OpsTask.create({
-    order: order._id,
-    orderNumber: order.orderNumber,
+    order: order?._id || undefined,
+    orderNumber: order?.orderNumber || '',
     type: body.type,
-    title: String(body.title || `${body.type} task`).trim(),
+    title,
     priority: TASK_PRIORITIES.includes(body.priority) ? body.priority : 'normal',
     status: 'pending',
     assignedTo: assignedTo || undefined,
@@ -92,7 +110,7 @@ export async function POST(req) {
       by: access.adminId,
       action: 'created',
       to: 'pending',
-      note: 'Task created',
+      note: order ? 'Order-linked task created' : 'Independent internal task created',
     }],
   });
 
@@ -100,9 +118,9 @@ export async function POST(req) {
     await notifyAdmins([assignedTo], {
       type: 'task_assigned',
       title: 'New task assigned',
-      body: `${task.title} · ${order.orderNumber}`,
-      order: order._id,
-      orderNumber: order.orderNumber,
+      body: `${task.title}${order ? ` · ${order.orderNumber}` : ' · internal'}`,
+      order: order?._id,
+      orderNumber: order?.orderNumber || '',
       task: task._id,
     }).catch(() => {});
   }
@@ -113,7 +131,7 @@ export async function POST(req) {
     action: 'ops.task_create',
     targetType: 'OpsTask',
     targetId: String(task._id),
-    details: { orderNumber: order.orderNumber, type: task.type },
+    details: { orderNumber: order?.orderNumber || null, type: task.type, independent: !order },
   });
 
   return NextResponse.json({ task }, { status: 201 });

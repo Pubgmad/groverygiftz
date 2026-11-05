@@ -229,6 +229,7 @@ export async function POST(req) {
     paymentStatus: 'pending',
     status: 'ordered',
     opsStatus: 'new_order',
+    orderPriority: String(body.orderPriority || '').toLowerCase() === 'urgent' ? 'urgent' : 'normal',
     previewRequired,
     expectedDispatchDate: expectedDispatchDate && !Number.isNaN(expectedDispatchDate.getTime()) ? expectedDispatchDate : undefined,
     internalNotes: String(body.internalNotes || '').trim(),
@@ -294,6 +295,17 @@ export async function POST(req) {
       actorName: access.name || access.email || 'Admin',
     });
     if (result.warning) assignmentWarning = result.warning;
+  } else if (order.opsStatus === 'new_order') {
+    // Manual Editor override still moves workflow into editing
+    order.opsStatus = 'editing_in_progress';
+    appendTimeline(order, {
+      type: 'ops_status',
+      previousStatus: 'new_order',
+      newStatus: 'editing_in_progress',
+      employee: access.adminId,
+      employeeName: access.name || access.email || '',
+      notes: 'Ops status set to Editing in Progress after manual Editor assignment',
+    });
   }
 
   if (deductStock) {

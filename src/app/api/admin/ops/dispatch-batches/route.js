@@ -70,6 +70,16 @@ async function attachParcelToOrders(orders, batch, parcel, access) {
       trackingNumber: parcel.trackingNumber || '',
       dispatchedAt: parcel.dispatchedAt,
       courierCompany: parcel.courierCompany || batch.courierCompany || '',
+      weightKg: parcel.weightKg != null ? parcel.weightKg : null,
+      destinationState: parcel.destinationState || '',
+      courierCharges: parcel.manualCourierCost != null
+        ? parcel.manualCourierCost
+        : (parcel.calculatedCourierCost != null ? parcel.calculatedCourierCost : null),
+      calculatedCourierCost: parcel.calculatedCourierCost != null ? parcel.calculatedCourierCost : null,
+      dispatchedBy: parcel.recordedBy || access.adminId,
+      dispatchedByName: parcel.recordedByName || access.name || access.email || '',
+      notes: parcel.notes || '',
+      source: 'dispatch_batch',
     });
     appendTimeline(order, {
       type: 'parcel_dispatched',

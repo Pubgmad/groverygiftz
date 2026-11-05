@@ -165,20 +165,39 @@ export function ProductStockAlertEditor({ stockAlert = {}, onChange }) {
   const value = stockAlert || {};
   return (
     <div className="rounded-xl border border-amber-100 bg-amber-50/40 p-4 space-y-3">
-      <h3 className="font-semibold text-gray-900">Low-stock urgency alert</h3>
-      <p className="text-xs text-gray-500">Shown near the price in addition to the original stock display. Uses real inventory. Use {'{count}'} for the quantity.</p>
+      <h3 className="font-semibold text-gray-900">Animated stock availability indicator</h3>
+      <p className="text-xs text-gray-500">
+        Shown directly under the product price. Quantities always come from Admin inventory. Use {'{count}'} in labels.
+        Defaults: low ≤ 5 (red), medium ≤ 20 (amber), above that green, 0 = sold out.
+      </p>
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={value.enabled !== false} onChange={(e) => onChange({ ...value, enabled: e.target.checked })} />
-        Show animated low-stock alert
+        Show animated stock indicator
       </label>
       <div className="grid md:grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs font-medium mb-1">Low-stock threshold</label>
+          <label className="block text-xs font-medium mb-1">Low-stock threshold (red)</label>
           <input type="number" min="1" value={value.lowStockThreshold ?? 5} onChange={(e) => onChange({ ...value, lowStockThreshold: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" />
         </div>
         <div>
-          <label className="block text-xs font-medium mb-1">Alert label</label>
-          <input value={value.lowStockLabel || ''} onChange={(e) => onChange({ ...value, lowStockLabel: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" placeholder="Hurry! Only {count} left in stock" />
+          <label className="block text-xs font-medium mb-1">Medium-stock threshold (amber)</label>
+          <input type="number" min="2" value={value.mediumStockThreshold ?? 20} onChange={(e) => onChange({ ...value, mediumStockThreshold: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium mb-1">Low-stock label</label>
+          <input value={value.lowStockLabel || ''} onChange={(e) => onChange({ ...value, lowStockLabel: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" placeholder="Hurry! Only {count} Left in Stock" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium mb-1">Medium-stock label</label>
+          <input value={value.mediumStockLabel || ''} onChange={(e) => onChange({ ...value, mediumStockLabel: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" placeholder="Only {count} Left in Stock" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium mb-1">High-stock label</label>
+          <input value={value.highStockLabel || ''} onChange={(e) => onChange({ ...value, highStockLabel: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" placeholder="In Stock — {count} Available" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium mb-1">Sold-out label</label>
+          <input value={value.soldOutLabel || ''} onChange={(e) => onChange({ ...value, soldOutLabel: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" placeholder="Currently Sold Out" />
         </div>
       </div>
     </div>

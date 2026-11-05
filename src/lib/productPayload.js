@@ -63,10 +63,19 @@ export function sanitizeProductPayload(payload = {}) {
     };
   }
   if (body.stockAlert) {
+    const lowStockThreshold = Math.max(1, toNumber(body.stockAlert.lowStockThreshold, 5));
+    const mediumStockThreshold = Math.max(
+      lowStockThreshold + 1,
+      toNumber(body.stockAlert.mediumStockThreshold, 20),
+    );
     body.stockAlert = {
       enabled: body.stockAlert.enabled !== false,
-      lowStockThreshold: Math.max(1, toNumber(body.stockAlert.lowStockThreshold, 5)),
+      lowStockThreshold,
+      mediumStockThreshold,
       lowStockLabel: String(body.stockAlert.lowStockLabel || ''),
+      mediumStockLabel: String(body.stockAlert.mediumStockLabel || ''),
+      highStockLabel: String(body.stockAlert.highStockLabel || ''),
+      soldOutLabel: String(body.stockAlert.soldOutLabel || ''),
     };
   }
   if (body.purchaseActivity) {

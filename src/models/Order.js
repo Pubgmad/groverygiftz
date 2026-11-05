@@ -71,7 +71,11 @@ const PhotoHistorySchema = new mongoose.Schema({
 }, { _id: true });
 
 const PaymentRecordSchema = new mongoose.Schema({
-  kind: { type: String, enum: ['advance', 'balance', 'revision', 'other'], default: 'advance' },
+  kind: {
+    type: String,
+    enum: ['advance', 'balance', 'additional', 'revision', 'other'],
+    default: 'advance',
+  },
   amount: { type: Number, required: true },
   method: String,
   reference: String,
@@ -80,6 +84,10 @@ const PaymentRecordSchema = new mongoose.Schema({
   /** Actual payment date/time as received — never overwritten on later verification. Absent on legacy rows. */
   paidAt: Date,
   verified: { type: Boolean, default: false },
+  /** rejected payments never count toward verified collections */
+  rejected: { type: Boolean, default: false },
+  rejectedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin' },
+  rejectedAt: Date,
   verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin' },
   verifiedAt: Date,
   notes: String,
@@ -166,7 +174,7 @@ const OrderSchema = new mongoose.Schema({
     default: '',
   },
   dispatchBatch: { type: mongoose.Schema.Types.ObjectId, ref: 'DispatchBatch' },
-  /** Append-only refs to parcel dispatch history (multi-parcel safe). */
+  /** Append-only parcel dispatch history on the Order ID (multi-parcel safe). */
   parcelRefs: [{
     batchId: { type: mongoose.Schema.Types.ObjectId, ref: 'DispatchBatch' },
     parcelId: { type: mongoose.Schema.Types.ObjectId },
@@ -174,6 +182,14 @@ const OrderSchema = new mongoose.Schema({
     trackingNumber: { type: String, default: '' },
     dispatchedAt: Date,
     courierCompany: String,
+    weightKg: { type: Number, default: null },
+    destinationState: { type: String, default: '' },
+    courierCharges: { type: Number, default: null },
+    calculatedCourierCost: { type: Number, default: null },
+    dispatchedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin' },
+    dispatchedByName: { type: String, default: '' },
+    notes: { type: String, default: '' },
+    source: { type: String, default: 'order_details' },
   }],
   metaConversionPurchaseEventId: String,
   metaConversionPurchaseSentAt: Date,
@@ -212,6 +228,13 @@ const OrderSchema = new mongoose.Schema({
     note: { type: String, default: '' },
   }],
   expectedDispatchDate: { type: Date, index: true },
+  /** WhatsApp-only business priority. Website orders stay `normal`. */
+  orderPriority: {
+    type: String,
+    enum: ['normal', 'urgent'],
+    default: 'normal',
+    index: true,
+  },
   previewRequired: { type: Boolean, default: true },
   opsStatus: {
     type: String,

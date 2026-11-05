@@ -63,6 +63,19 @@ export function todayIstYmd() {
   return `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`;
 }
 
+/** Next IST calendar day as YYYY-MM-DD. */
+export function tomorrowIstYmd() {
+  const today = todayIstYmd();
+  if (!today) return '';
+  const bounds = istDayBounds(today);
+  if (!bounds) return '';
+  const next = new Date(bounds.start.getTime() + 24 * 60 * 60 * 1000 + IST_OFFSET_MS);
+  const y = next.getUTCFullYear();
+  const m = String(next.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(next.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 function pad2(n) {
   return String(n).padStart(2, '0');
 }

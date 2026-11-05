@@ -169,7 +169,12 @@ export const TASK_TYPES = [
   'production',
   'packing',
   'dispatch',
+  'admin',
+  'other',
 ];
+
+/** Board chips to hide (legacy category removed from workflow UI; status kept for history). */
+export const HIDDEN_OPS_BOARD_STATUSES = ['printing_assigned'];
 
 export const TASK_PRIORITIES = ['low', 'normal', 'high', 'urgent'];
 

@@ -1,20 +1,55 @@
 'use client';
 
-import { resolveLowStockAlert } from '@/lib/stockAlert';
+import { resolveStockAvailabilityIndicator } from '@/lib/stockAlert';
 
-/** Compact animated low-stock urgency chip — does not replace the original stock display. */
+const LEVEL_UI = {
+  high: {
+    className: 'stock-avail stock-avail--high',
+    icon: '●',
+    iconClass: 'stock-avail__dot',
+  },
+  medium: {
+    className: 'stock-avail stock-avail--medium',
+    icon: '!',
+    iconClass: 'stock-avail__badge',
+  },
+  low: {
+    className: 'stock-avail stock-avail--low',
+    icon: '!',
+    iconClass: 'stock-avail__badge',
+  },
+  sold_out: {
+    className: 'stock-avail stock-avail--soldout',
+    icon: '○',
+    iconClass: 'stock-avail__dot',
+  },
+};
+
+/**
+ * Animated stock availability indicator — placed directly under product price.
+ * Quantity and state come from Admin Panel inventory (selected variant when chosen).
+ */
 export default function StockAvailabilityAlert({ product, selectedOptions = [] }) {
-  const alert = resolveLowStockAlert(product, selectedOptions);
+  const alert = resolveStockAvailabilityIndicator(product, selectedOptions);
   if (!alert) return null;
+
+  const ui = LEVEL_UI[alert.level] || LEVEL_UI.high;
 
   return (
     <div
-      className="stock-urgency-alert mb-4 inline-flex max-w-full items-center gap-2.5 rounded-full border border-amber-300/80 bg-gradient-to-r from-amber-50 via-orange-50 to-accent-50 px-3.5 py-2 text-sm font-bold text-amber-950"
+      className={`${ui.className} mb-4 w-full max-w-xl`}
       role="status"
       aria-live="polite"
+      data-stock-level={alert.level}
+      data-stock-qty={alert.quantity}
     >
-      <span className="stock-urgency-alert__icon text-base leading-none" aria-hidden>🔥</span>
-      <span className="min-w-0 leading-snug">{alert.label}</span>
+      <span className={`stock-avail__icon ${ui.iconClass}`} aria-hidden>
+        {ui.icon}
+      </span>
+      <span className="stock-avail__text min-w-0 leading-snug">{alert.label}</span>
+      {alert.level !== 'sold_out' && Number.isFinite(alert.quantity) ? (
+        <span className="stock-avail__qty tabular-nums">{alert.quantity}</span>
+      ) : null}
     </div>
   );
 }

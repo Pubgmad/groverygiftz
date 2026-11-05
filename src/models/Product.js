@@ -84,7 +84,11 @@ const ProductSchema = new mongoose.Schema({
   stockAlert: {
     enabled: { type: Boolean, default: true },
     lowStockThreshold: { type: Number, default: 5 },
+    mediumStockThreshold: { type: Number, default: 20 },
     lowStockLabel: { type: String, default: '' },
+    mediumStockLabel: { type: String, default: '' },
+    highStockLabel: { type: String, default: '' },
+    soldOutLabel: { type: String, default: '' },
   },
   purchaseActivity: {
     enabled: { type: Boolean, default: false },

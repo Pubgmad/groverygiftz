@@ -130,8 +130,14 @@ export async function autoAssignEditorIfNeeded(order, {
 
   const prevId = order.assignedTo;
   const prevName = order.assignedToName || '';
+  const prevOps = order.opsStatus || 'new_order';
   order.assignedTo = pick.editor._id;
   order.assignedToName = pick.editor.name || pick.editor.email || '';
+
+  // Spec: Order Created → Auto Editor assign → Editing in Progress
+  if (!force && (prevOps === 'new_order' || prevOps === 'design_pending' || !prevOps)) {
+    order.opsStatus = 'editing_in_progress';
+  }
 
   pushAssignmentHistory(order, {
     action: force ? 'reassigned' : 'auto_assigned',
@@ -153,6 +159,17 @@ export async function autoAssignEditorIfNeeded(order, {
     employeeName: actorName,
     notes: `Editor auto-assigned: ${order.assignedToName}`,
   });
+
+  if (order.opsStatus === 'editing_in_progress' && prevOps !== 'editing_in_progress') {
+    appendTimeline(order, {
+      type: 'ops_status',
+      previousStatus: prevOps,
+      newStatus: 'editing_in_progress',
+      employee: actorId || undefined,
+      employeeName: actorName,
+      notes: 'Ops status set to Editing in Progress after Editor assignment',
+    });
+  }
 
   return { assigned: true, editor: pick.editor, workload: pick.workload };
 }

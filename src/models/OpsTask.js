@@ -1,11 +1,12 @@
 import mongoose from 'mongoose';
 
 const OpsTaskSchema = new mongoose.Schema({
-  order: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', required: true, index: true },
+  /** Optional — independent internal tasks may omit Order ID. */
+  order: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', required: false, index: true },
   orderNumber: { type: String, default: '', index: true },
   type: {
     type: String,
-    enum: ['sales', 'editing', 'printing', 'production', 'packing', 'dispatch'],
+    enum: ['sales', 'editing', 'printing', 'production', 'packing', 'dispatch', 'admin', 'other'],
     required: true,
     index: true,
   },

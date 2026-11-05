@@ -106,9 +106,6 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
   const [opsStatus, setOpsStatus] = useState(order?.opsStatus || 'new_order');
   const [staff, setStaff] = useState([]);
   const [assignedTo, setAssignedTo] = useState(order?.assignedTo ? String(order.assignedTo) : '');
-  const [printingAssignedTo, setPrintingAssignedTo] = useState(
-    order?.printingAssignedTo ? String(order.printingAssignedTo) : '',
-  );
   const toYmdIst = (value) => {
     if (!value) return '';
     const d = new Date(value);
@@ -130,16 +127,49 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
     paidAt: toDatetimeLocalIst(new Date()),
   });
   const [revisionCharge, setRevisionCharge] = useState('');
+  const [showPayForm, setShowPayForm] = useState(false);
   const [courierCompany, setCourierCompany] = useState(order?.courierCompany || '');
   const [trackingUrl, setTrackingUrl] = useState(order?.trackingUrl || '');
+  const [parcelForm, setParcelForm] = useState({
+    courierCompany: order?.courierCompany || 'ST Couriers',
+    trackingNumber: '',
+    weightKg: '',
+    destinationState: '',
+    courierCharges: '',
+    dispatchedAt: toDatetimeLocalIst(new Date()),
+    notes: '',
+  });
   const [photoItemIndex, setPhotoItemIndex] = useState(0);
   const [photoSlot, setPhotoSlot] = useState('');
   const [comms, setComms] = useState(order?.salesCommsChecklist || {});
 
+  const paymentSummary = useMemo(() => {
+    const rows = Array.isArray(order?.paymentRecords) ? order.paymentRecords : [];
+    let verifiedPaid = 0;
+    let unverifiedPaid = 0;
+    rows.forEach((row) => {
+      if (row?.rejected) return;
+      const amount = Number(row?.amount) || 0;
+      if (row?.verified) verifiedPaid += amount;
+      else unverifiedPaid += amount;
+    });
+    return {
+      verifiedPaid: Math.round(verifiedPaid * 100) / 100,
+      unverifiedPaid: Math.round(unverifiedPaid * 100) / 100,
+      remaining: Math.max(0, Math.round(((Number(order?.total) || 0) - verifiedPaid) * 100) / 100),
+    };
+  }, [order?.paymentRecords, order?.total]);
+
+  const totalCourierExpense = useMemo(() => (
+    (Array.isArray(order?.parcelRefs) ? order.parcelRefs : []).reduce(
+      (sum, p) => sum + (Number(p.courierCharges) || Number(p.calculatedCourierCost) || 0),
+      0,
+    )
+  ), [order?.parcelRefs]);
+
   useEffect(() => {
     setOpsStatus(order?.opsStatus || 'new_order');
     setAssignedTo(order?.assignedTo ? String(order.assignedTo) : '');
-    setPrintingAssignedTo(order?.printingAssignedTo ? String(order.printingAssignedTo) : '');
     setExpectedDispatchDate(toYmdIst(order?.expectedDispatchDate));
     setCourierCompany(order?.courierCompany || '');
     setTrackingUrl(order?.trackingUrl || '');
@@ -148,7 +178,6 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
     order?._id,
     order?.opsStatus,
     order?.assignedTo,
-    order?.printingAssignedTo,
     order?.expectedDispatchDate,
     order?.courierCompany,
     order?.trackingUrl,
@@ -214,9 +243,50 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
       if (!res.ok) throw new Error(data.error || 'Payment failed');
       toast.success(`Payment recorded · balance ${data.balanceStatus}`);
       setPay((p) => ({ ...p, amount: '', reference: '', notes: '', paidAt: toDatetimeLocalIst(new Date()) }));
+      setShowPayForm(false);
       await refresh();
     } catch (err) {
       toast.error(err.message || 'Payment failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const recordParcel = async () => {
+    if (!writable) return;
+    setBusy(true);
+    try {
+      const dispatchedAtDate = parcelForm.dispatchedAt
+        ? fromDatetimeLocalIst(parcelForm.dispatchedAt)
+        : null;
+      if (!dispatchedAtDate) throw new Error('Actual dispatch / handover date-time is required');
+      const res = await fetch(`/api/admin/orders/${order._id}/parcels`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          courierCompany: parcelForm.courierCompany,
+          trackingNumber: parcelForm.trackingNumber,
+          weightKg: parcelForm.weightKg !== '' ? Number(parcelForm.weightKg) : null,
+          destinationState: parcelForm.destinationState,
+          courierCharges: parcelForm.courierCharges !== '' ? Number(parcelForm.courierCharges) : null,
+          dispatchedAt: dispatchedAtDate.toISOString(),
+          notes: parcelForm.notes,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Parcel save failed');
+      toast.success(`Parcel ${data.parcel?.parcelCode || ''} recorded`);
+      setParcelForm((p) => ({
+        ...p,
+        trackingNumber: '',
+        weightKg: '',
+        courierCharges: '',
+        notes: '',
+        dispatchedAt: toDatetimeLocalIst(new Date()),
+      }));
+      await refresh();
+    } catch (err) {
+      toast.error(err.message || 'Parcel save failed');
     } finally {
       setBusy(false);
     }
@@ -238,7 +308,6 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
   const quickActions = [
     ['editing_in_progress', 'Start editing'],
     ['preview_waiting', 'Send to preview'],
-    ['printing_assigned', 'Assign printing'],
     ['printing_in_progress', 'Start printing'],
     ['printing_completed', 'Printing done'],
     ['production_pending', 'Production pending'],
@@ -329,23 +398,6 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
           </details>
         ) : null}
         <label className="block text-xs font-semibold text-gray-600">
-          Printing assigned to
-          <select
-            disabled={!writable || busy}
-            value={printingAssignedTo}
-            onChange={(e) => setPrintingAssignedTo(e.target.value)}
-            className="mt-1 w-full rounded-lg border px-3 py-2 text-sm disabled:bg-gray-100"
-          >
-            <option value="">Unassigned</option>
-            {staff.map((a) => (
-              <option key={`print-${a._id || a.id}`} value={a._id || a.id}>{a.name || a.email}</option>
-            ))}
-          </select>
-        </label>
-        {order?.printingAssignedToName ? (
-          <p className="text-[11px] text-gray-500">Current printer: {order.printingAssignedToName}</p>
-        ) : null}
-        <label className="block text-xs font-semibold text-gray-600">
           Expected dispatch
           <input
             type="date"
@@ -363,7 +415,6 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
               const payload = {
                 opsStatus,
                 assignedTo: assignedTo || null,
-                printingAssignedTo: printingAssignedTo || null,
                 expectedDispatchDate: expectedDispatchDate || null,
               };
               // Only send tracking/courier when staff actually entered values
@@ -385,13 +436,25 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
                 type="button"
                 disabled={busy}
                 onClick={() => {
+                  let notes = `Quick action: ${label}`;
+                  if (status === 'on_hold') {
+                    const reason = typeof window !== 'undefined'
+                      ? window.prompt('On Hold reason (required for clarification / pause)')
+                      : '';
+                    if (reason == null) return;
+                    const trimmed = String(reason).trim();
+                    if (!trimmed) {
+                      toast.error('Record an On Hold reason before pausing the order');
+                      return;
+                    }
+                    notes = `On Hold: ${trimmed}`;
+                  }
                   setOpsStatus(status);
                   patchOps({
                     opsStatus: status,
                     assignedTo: assignedTo || null,
-                    printingAssignedTo: printingAssignedTo || null,
                     expectedDispatchDate: expectedDispatchDate || null,
-                    notes: `Quick action: ${label}`,
+                    notes,
                   });
                 }}
                 className="rounded-lg border bg-white px-2.5 py-1.5 text-[11px] font-semibold text-gray-800 disabled:opacity-40"
@@ -474,11 +537,11 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
         ) : (
         <>
         <div className="grid grid-cols-2 gap-2 text-xs">
-          <p>Overall order amount: <strong>{formatPrice(order.total || 0)}</strong></p>
-          <p>Advance (verified): <strong>{formatPrice(order.advancePaid || 0)}</strong></p>
-          <p>Balance paid (verified): <strong>{formatPrice(order.balancePaid || 0)}</strong></p>
-          <p>Remaining balance: <strong>{formatPrice(order.remainingBalance || 0)}</strong></p>
-          <p className="col-span-2">Status: <strong>{order.balanceStatus || order.paymentStatus || '—'}</strong></p>
+          <p>Total order amount: <strong>{formatPrice(order.total || 0)}</strong></p>
+          <p>Verified paid: <strong>{formatPrice(paymentSummary.verifiedPaid)}</strong></p>
+          <p>Unverified payments: <strong>{formatPrice(paymentSummary.unverifiedPaid)}</strong></p>
+          <p>Remaining balance: <strong>{formatPrice(paymentSummary.remaining)}</strong></p>
+          <p className="col-span-2">Payment status: <strong>{order.balanceStatus || order.paymentStatus || '—'}</strong></p>
           {Number(order.revisionCharges) > 0 ? (
             <p className="col-span-2">Revision charges: <strong>{formatPrice(order.revisionCharges)}</strong>
               {order.revisionPaymentVerified ? ' · verified' : ' · awaiting verification'}
@@ -487,50 +550,65 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
         </div>
         {writable ? (
           <div className="space-y-2 border-t pt-2">
-            <div className="grid gap-2 sm:grid-cols-2">
-              <input type="number" min="0" step="0.01" placeholder="Amount" value={pay.amount} onChange={(e) => setPay((p) => ({ ...p, amount: e.target.value }))} className="rounded-lg border px-3 py-2 text-sm" />
-              <select value={pay.kind} onChange={(e) => setPay((p) => ({ ...p, kind: e.target.value }))} className="rounded-lg border px-3 py-2 text-sm">
-                <option value="advance">Advance</option>
-                <option value="balance">Balance</option>
-                <option value="revision">Revision charge</option>
-                <option value="other">Other</option>
-              </select>
-              <input placeholder="Method" value={pay.method} onChange={(e) => setPay((p) => ({ ...p, method: e.target.value }))} className="rounded-lg border px-3 py-2 text-sm" />
-              <input placeholder="Reference" value={pay.reference} onChange={(e) => setPay((p) => ({ ...p, reference: e.target.value }))} className="rounded-lg border px-3 py-2 text-sm" />
-              <label className="sm:col-span-2 text-xs font-semibold text-gray-700">
-                Payment date & time (IST) — actual receipt date, not verification date
-                <input
-                  type="datetime-local"
-                  value={pay.paidAt}
-                  onChange={(e) => setPay((p) => ({ ...p, paidAt: e.target.value }))}
-                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
-                />
-              </label>
-              <input
-                placeholder="Notes (optional)"
-                value={pay.notes}
-                onChange={(e) => setPay((p) => ({ ...p, notes: e.target.value }))}
-                className="sm:col-span-2 rounded-lg border px-3 py-2 text-sm"
-              />
-            </div>
-            <label className="flex items-center gap-2 text-xs font-semibold">
-              <input type="checkbox" checked={pay.verified} onChange={(e) => setPay((p) => ({ ...p, verified: e.target.checked }))} />
-              Mark verified (screenshot alone does not verify)
-            </label>
-            <input
-              type="file"
-              accept="image/*,application/pdf"
-              className="block w-full text-xs"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = '';
-                if (!file) return;
-                recordPayment({ file });
-              }}
-            />
-            <button type="button" disabled={busy} onClick={() => recordPayment()} className="min-h-[44px] w-full rounded-xl border px-3 py-2 text-sm font-semibold disabled:opacity-60">
-              Record payment
+            <button
+              type="button"
+              onClick={() => setShowPayForm((v) => !v)}
+              className="min-h-[44px] w-full rounded-xl bg-emerald-700 px-3 py-2 text-sm font-bold text-white"
+            >
+              {showPayForm ? 'Hide payment form' : '+ ADD PAYMENT'}
             </button>
+            {showPayForm ? (
+              <>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <input type="number" min="0" step="0.01" placeholder="Amount received" value={pay.amount} onChange={(e) => setPay((p) => ({ ...p, amount: e.target.value }))} className="rounded-lg border px-3 py-2 text-sm" />
+                  <select value={pay.kind} onChange={(e) => setPay((p) => ({ ...p, kind: e.target.value }))} className="rounded-lg border px-3 py-2 text-sm">
+                    <option value="advance">Advance</option>
+                    <option value="balance">Balance</option>
+                    <option value="additional">Additional Payment</option>
+                    <option value="revision">Revision Payment</option>
+                    <option value="other">Other</option>
+                  </select>
+                  <input placeholder="Payment method" value={pay.method} onChange={(e) => setPay((p) => ({ ...p, method: e.target.value }))} className="rounded-lg border px-3 py-2 text-sm" />
+                  <input placeholder="Transaction reference" value={pay.reference} onChange={(e) => setPay((p) => ({ ...p, reference: e.target.value }))} className="rounded-lg border px-3 py-2 text-sm" />
+                  <label className="sm:col-span-2 text-xs font-semibold text-gray-700">
+                    Payment date & time (IST) — actual receipt date, not verification date
+                    <input
+                      type="datetime-local"
+                      value={pay.paidAt}
+                      onChange={(e) => setPay((p) => ({ ...p, paidAt: e.target.value }))}
+                      className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal"
+                    />
+                  </label>
+                  <input
+                    placeholder="Internal notes (optional)"
+                    value={pay.notes}
+                    onChange={(e) => setPay((p) => ({ ...p, notes: e.target.value }))}
+                    className="sm:col-span-2 rounded-lg border px-3 py-2 text-sm"
+                  />
+                </div>
+                <label className="flex items-center gap-2 text-xs font-semibold">
+                  <input type="checkbox" checked={pay.verified} onChange={(e) => setPay((p) => ({ ...p, verified: e.target.checked }))} />
+                  Mark verified (screenshot alone does not verify)
+                </label>
+                <label className="block text-xs font-semibold text-gray-700">
+                  Upload payment screenshot
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    className="mt-1 block w-full text-xs font-normal"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = '';
+                      if (!file) return;
+                      recordPayment({ file });
+                    }}
+                  />
+                </label>
+                <button type="button" disabled={busy} onClick={() => recordPayment()} className="min-h-[44px] w-full rounded-xl border px-3 py-2 text-sm font-semibold disabled:opacity-60">
+                  Save payment
+                </button>
+              </>
+            ) : null}
             <button
               type="button"
               disabled={busy}
@@ -541,14 +619,16 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
             </button>
           </div>
         ) : null}
-        {Array.isArray(order.paymentRecords) && order.paymentRecords.length > 0 ? (
+        <div className="border-t pt-2">
+          <p className="mb-1 text-xs font-bold text-gray-800">Payment history</p>
+          {Array.isArray(order.paymentRecords) && order.paymentRecords.length > 0 ? (
           <ul className="max-h-52 space-y-1 overflow-y-auto text-xs text-gray-600">
             {order.paymentRecords.slice().reverse().map((row, idx) => (
               <li key={row._id || idx} className="rounded border bg-gray-50 px-2 py-1.5 space-y-0.5">
                 <p>
                   <strong className="capitalize">{row.kind}</strong> {formatPrice(row.amount)}
                   {' · '}{row.method || '—'}
-                  {' · '}{row.verified ? 'verified' : 'unverified'}
+                  {' · '}{row.rejected ? 'rejected' : row.verified ? 'verified' : 'unverified'}
                 </p>
                 <p className="text-[11px] text-gray-500">
                   Paid: {row.paidAt ? formatIstDateTime(row.paidAt) : '— (no historical date)'}
@@ -565,58 +645,74 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
                         rel="noreferrer"
                         className="font-semibold text-primary-700 underline"
                       >
-                        Proof
+                        Screenshot
                       </a>
                     </>
                   ) : null}
                 </p>
-                {!row.verified && writable && row._id ? (
-                  <button
-                    type="button"
-                    className="text-[11px] font-semibold text-primary-700 underline"
-                    disabled={busy}
-                    onClick={async () => {
-                      setBusy(true);
-                      try {
-                        const res = await fetch(`/api/admin/orders/${order._id}/payments`, {
-                          method: 'PATCH',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ paymentId: row._id, verified: true }),
-                        });
-                        const data = await res.json();
-                        if (!res.ok) throw new Error(data.error || 'Verify failed');
-                        toast.success('Payment verified (original paid date kept)');
-                        await refresh();
-                      } catch (err) {
-                        toast.error(err.message || 'Verify failed');
-                      } finally {
-                        setBusy(false);
-                      }
-                    }}
-                  >
-                    Verify without changing paid date
-                  </button>
+                {!row.rejected && !row.verified && writable && row._id ? (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="text-[11px] font-semibold text-primary-700 underline"
+                      disabled={busy}
+                      onClick={async () => {
+                        setBusy(true);
+                        try {
+                          const res = await fetch(`/api/admin/orders/${order._id}/payments`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ paymentId: row._id, verified: true }),
+                          });
+                          const data = await res.json();
+                          if (!res.ok) throw new Error(data.error || 'Verify failed');
+                          toast.success('Payment verified (original paid date kept)');
+                          await refresh();
+                        } catch (err) {
+                          toast.error(err.message || 'Verify failed');
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                    >
+                      Verify
+                    </button>
+                    <button
+                      type="button"
+                      className="text-[11px] font-semibold text-red-700 underline"
+                      disabled={busy}
+                      onClick={async () => {
+                        setBusy(true);
+                        try {
+                          const res = await fetch(`/api/admin/orders/${order._id}/payments`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ paymentId: row._id, rejected: true }),
+                          });
+                          const data = await res.json();
+                          if (!res.ok) throw new Error(data.error || 'Reject failed');
+                          toast.success('Payment rejected');
+                          await refresh();
+                        } catch (err) {
+                          toast.error(err.message || 'Reject failed');
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                    >
+                      Reject
+                    </button>
+                  </div>
                 ) : null}
               </li>
             ))}
           </ul>
-        ) : null}
+          ) : (
+            <p className="text-xs text-gray-500">No payment records yet.</p>
+          )}
+        </div>
         </>
         )}
-        {Array.isArray(order.parcelRefs) && order.parcelRefs.length > 0 ? (
-          <div className="border-t pt-2 space-y-1">
-            <p className="text-xs font-bold text-gray-800">Parcel dispatch history</p>
-            <ul className="max-h-36 space-y-1 overflow-y-auto text-xs text-gray-600">
-              {order.parcelRefs.map((p, idx) => (
-                <li key={String(p.parcelId || idx)} className="rounded border bg-gray-50 px-2 py-1">
-                  {p.parcelCode || 'Parcel'} · {p.trackingNumber || 'no tracking'} · {p.courierCompany || '—'}
-                  <br />
-                  Dispatched: {p.dispatchedAt ? formatIstDateTime(p.dispatchedAt) : '—'}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
       </div>
 
       <div className="rounded-xl border bg-white p-3 space-y-2">
@@ -650,21 +746,120 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
       </div>
 
       <div className="rounded-xl border bg-white p-3 space-y-2">
-        <h3 className="font-semibold text-gray-900">Tracking & courier</h3>
-        <input
-          disabled={!writable || busy}
-          placeholder="Courier company"
-          value={courierCompany}
-          onChange={(e) => setCourierCompany(e.target.value)}
-          className="w-full rounded-lg border px-3 py-2 text-sm disabled:bg-gray-100"
-        />
-        <input
-          disabled={!writable || busy}
-          placeholder="Tracking URL"
-          value={trackingUrl}
-          onChange={(e) => setTrackingUrl(e.target.value)}
-          className="w-full rounded-lg border px-3 py-2 text-sm disabled:bg-gray-100"
-        />
+        <h3 className="font-semibold text-gray-900">Courier &amp; Dispatch Details</h3>
+        <p className="text-[11px] text-gray-500">
+          Expected dispatch date is set above. Actual dispatch is recorded per parcel when handed to the courier.
+          {order?.orderSource === 'website'
+            ? ' Website ST Couriers tracking for customers can still be updated from the order Tracking section.'
+            : ' WhatsApp tracking is shared manually with the customer.'}
+        </p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <input
+            disabled={!writable || busy}
+            placeholder="Courier company (legacy / quick)"
+            value={courierCompany}
+            onChange={(e) => setCourierCompany(e.target.value)}
+            className="rounded-lg border px-3 py-2 text-sm disabled:bg-gray-100"
+          />
+          <input
+            disabled={!writable || busy}
+            placeholder="Tracking URL (optional)"
+            value={trackingUrl}
+            onChange={(e) => setTrackingUrl(e.target.value)}
+            className="rounded-lg border px-3 py-2 text-sm disabled:bg-gray-100"
+          />
+        </div>
+        {writable ? (
+          <div className="space-y-2 rounded-lg border border-emerald-100 bg-emerald-50/40 p-2">
+            <p className="text-xs font-bold text-gray-800">+ Add parcel under this Order ID</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <input
+                placeholder="Courier company *"
+                value={parcelForm.courierCompany}
+                onChange={(e) => setParcelForm((p) => ({ ...p, courierCompany: e.target.value }))}
+                className="rounded-lg border bg-white px-3 py-2 text-sm"
+              />
+              <input
+                placeholder="Tracking ID"
+                value={parcelForm.trackingNumber}
+                onChange={(e) => setParcelForm((p) => ({ ...p, trackingNumber: e.target.value }))}
+                className="rounded-lg border bg-white px-3 py-2 text-sm"
+              />
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Parcel weight (kg)"
+                value={parcelForm.weightKg}
+                onChange={(e) => setParcelForm((p) => ({ ...p, weightKg: e.target.value }))}
+                className="rounded-lg border bg-white px-3 py-2 text-sm"
+              />
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Courier charges ₹"
+                value={parcelForm.courierCharges}
+                onChange={(e) => setParcelForm((p) => ({ ...p, courierCharges: e.target.value }))}
+                className="rounded-lg border bg-white px-3 py-2 text-sm"
+              />
+              <input
+                placeholder="Destination state"
+                value={parcelForm.destinationState}
+                onChange={(e) => setParcelForm((p) => ({ ...p, destinationState: e.target.value }))}
+                className="rounded-lg border bg-white px-3 py-2 text-sm"
+              />
+              <label className="text-xs font-semibold text-gray-700">
+                Actual handover date &amp; time (IST) *
+                <input
+                  type="datetime-local"
+                  value={parcelForm.dispatchedAt}
+                  onChange={(e) => setParcelForm((p) => ({ ...p, dispatchedAt: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm font-normal"
+                />
+              </label>
+              <input
+                placeholder="Internal notes"
+                value={parcelForm.notes}
+                onChange={(e) => setParcelForm((p) => ({ ...p, notes: e.target.value }))}
+                className="sm:col-span-2 rounded-lg border bg-white px-3 py-2 text-sm"
+              />
+            </div>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={recordParcel}
+              className="min-h-[40px] w-full rounded-xl bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
+            >
+              Save parcel dispatch
+            </button>
+          </div>
+        ) : null}
+        {Array.isArray(order.parcelRefs) && order.parcelRefs.length > 0 ? (
+          <div className="space-y-1">
+            <p className="text-xs font-bold text-gray-800">
+              Parcel history · Total courier expense {formatPrice(totalCourierExpense)}
+            </p>
+            <ul className="max-h-44 space-y-1 overflow-y-auto text-xs text-gray-600">
+              {order.parcelRefs.map((p, idx) => (
+                <li key={String(p.parcelId || p.parcelCode || idx)} className="rounded border bg-gray-50 px-2 py-1.5">
+                  <strong>{p.parcelCode || `Parcel ${idx + 1}`}</strong>
+                  {' · '}{p.courierCompany || '—'}
+                  {' · '}{p.trackingNumber || 'no tracking'}
+                  {p.weightKg != null ? ` · ${p.weightKg} kg` : ''}
+                  {p.courierCharges != null ? ` · ${formatPrice(p.courierCharges)}` : ''}
+                  {p.destinationState ? ` · ${p.destinationState}` : ''}
+                  <br />
+                  Actual dispatch: {p.dispatchedAt ? formatIstDateTime(p.dispatchedAt) : '—'}
+                  {p.dispatchedByName ? ` · By ${p.dispatchedByName}` : ''}
+                  {p.notes ? ` · ${p.notes}` : ''}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <p className="text-xs text-gray-500">No parcels recorded on this order yet.</p>
+        )}
       </div>
 
       {/* Production videos are shared via the Production WhatsApp Group — no order-level upload needed.

@@ -13,6 +13,7 @@ import OrderOpsPanel from '@/components/admin/OrderOpsPanel';
 import OrderDesignSheetsPanel from '@/components/admin/OrderDesignSheetsPanel';
 import { MAX_SHIPPING_LABEL_ORDERS } from '@/lib/shippingLabelLayout';
 import { ORDER_SOURCE_LABELS, OPS_STATUS_LABELS, isDelayedOrder } from '@/lib/opsConstants';
+import { todayIstYmd, tomorrowIstYmd } from '@/lib/istTime';
 import { FiPlus, FiRefreshCw } from 'react-icons/fi';
 
 const statusOptions = [
@@ -263,6 +264,7 @@ export default function AdminOrdersPage() {
   const [dateTo, setDateTo] = useState('');
   const [expectedFrom, setExpectedFrom] = useState('');
   const [expectedTo, setExpectedTo] = useState('');
+  const [urgencyFilter, setUrgencyFilter] = useState('');
   const [filtersReady, setFiltersReady] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalOrders, setTotalOrders] = useState(0);
@@ -303,6 +305,7 @@ export default function AdminOrdersPage() {
     if (dateTo) query.set('dateTo', dateTo);
     if (expectedFrom) query.set('expectedFrom', expectedFrom);
     if (expectedTo) query.set('expectedTo', expectedTo);
+    if (urgencyFilter) query.set('urgency', urgencyFilter);
     return query;
   };
 
@@ -335,6 +338,7 @@ export default function AdminOrdersPage() {
     setExpectedFrom(params.get('expectedFrom') || '');
     setExpectedTo(params.get('expectedTo') || '');
     setStatusFilter(params.get('status') || '');
+    setUrgencyFilter(params.get('urgency') || '');
     setOrderFilter(params.get('orderId') || params.get('orderNumber') || '');
     setNameFilter(params.get('name') || '');
     setFiltersReady(true);
@@ -350,7 +354,7 @@ export default function AdminOrdersPage() {
       return;
     }
     fetchOrders();
-  }, [filtersReady, currentPage, orderFilter, nameFilter, mobileFilter, statusFilter, sourceFilter, dateFrom, dateTo, dateError, expectedFrom, expectedTo, expectedError]);
+  }, [filtersReady, currentPage, orderFilter, nameFilter, mobileFilter, statusFilter, sourceFilter, dateFrom, dateTo, dateError, expectedFrom, expectedTo, expectedError, urgencyFilter]);
 
   useEffect(() => {
     fetch('/api/settings')
@@ -599,6 +603,58 @@ export default function AdminOrdersPage() {
               <label className="mb-1 block text-xs font-semibold text-gray-500">Expected dispatch To</label>
               <input type="date" value={expectedTo} onChange={(e) => { setExpectedTo(e.target.value); setCurrentPage(1); }} className="min-h-[44px] w-full min-w-0 rounded-lg border px-3 py-2 text-sm" />
             </div>
+            <div className="min-w-0 sm:col-span-2">
+              <label className="mb-1 block text-xs font-semibold text-gray-500">Expected dispatch shortcuts</label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="min-h-[40px] rounded-lg border bg-white px-3 py-1.5 text-xs font-semibold"
+                  onClick={() => {
+                    const d = todayIstYmd();
+                    setExpectedFrom(d);
+                    setExpectedTo(d);
+                    setCurrentPage(1);
+                  }}
+                >
+                  Today
+                </button>
+                <button
+                  type="button"
+                  className="min-h-[40px] rounded-lg border bg-white px-3 py-1.5 text-xs font-semibold"
+                  onClick={() => {
+                    const d = tomorrowIstYmd();
+                    setExpectedFrom(d);
+                    setExpectedTo(d);
+                    setCurrentPage(1);
+                  }}
+                >
+                  Tomorrow
+                </button>
+                <button
+                  type="button"
+                  className="min-h-[40px] rounded-lg border bg-white px-3 py-1.5 text-xs font-semibold text-gray-600"
+                  onClick={() => {
+                    setExpectedFrom('');
+                    setExpectedTo('');
+                    setCurrentPage(1);
+                  }}
+                >
+                  Clear dates
+                </button>
+              </div>
+            </div>
+            <div className="min-w-0">
+              <label className="mb-1 block text-xs font-semibold text-gray-500">Priority</label>
+              <AdminSelect
+                value={urgencyFilter}
+                onChange={(next) => { setUrgencyFilter(next); setCurrentPage(1); }}
+                options={[
+                  { value: '', label: 'All priorities' },
+                  { value: 'normal', label: 'Normal' },
+                  { value: 'urgent', label: 'Urgent' },
+                ]}
+              />
+            </div>
             {dateError ? <p className="text-sm text-red-600 sm:col-span-2 lg:col-span-3 xl:col-span-6">{dateError}</p> : null}
             {expectedError ? <p className="text-sm text-red-600 sm:col-span-2 lg:col-span-3 xl:col-span-6">{expectedError}</p> : null}
           </div>
@@ -652,9 +708,14 @@ export default function AdminOrdersPage() {
                         <td className="p-4 font-semibold text-gray-500 cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>{(currentPage - 1) * pageSize + idx + 1}</td>
                         <td className="p-4 font-bold text-primary-700 cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>{order.orderNumber}</td>
                         <td className="p-4 cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>
-                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${order.orderSource === 'whatsapp' ? 'bg-green-50 text-green-800 border border-green-200' : order.orderSource === 'instagram' ? 'bg-pink-50 text-pink-800 border border-pink-200' : 'bg-sky-50 text-sky-800 border border-sky-200'}`}>
-                            {ORDER_SOURCE_LABELS[order.orderSource] || 'Website'}
-                          </span>
+                          <div className="flex flex-wrap items-center gap-1">
+                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${order.orderSource === 'whatsapp' ? 'bg-green-50 text-green-800 border border-green-200' : order.orderSource === 'instagram' ? 'bg-pink-50 text-pink-800 border border-pink-200' : 'bg-sky-50 text-sky-800 border border-sky-200'}`}>
+                              {ORDER_SOURCE_LABELS[order.orderSource] || 'Website'}
+                            </span>
+                            {order.orderPriority === 'urgent' ? (
+                              <span className="rounded-full border border-amber-300 bg-amber-100 px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-amber-900">Urgent</span>
+                            ) : null}
+                          </div>
                         </td>
                         <td className="p-4 text-gray-600 whitespace-nowrap cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>{formatDate(order.paidAt || order.createdAt)}</td>
                         <td className="p-4 cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}><p className="font-medium text-gray-900">{order.shippingAddress?.fullName || '-'}</p><p className="text-xs text-gray-500">{order.shippingAddress?.email || order.guestEmail || '-'}</p></td>

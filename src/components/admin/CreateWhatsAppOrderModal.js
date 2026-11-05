@@ -6,6 +6,7 @@ import { FiX } from 'react-icons/fi';
 import { parseWhatsAppCustomerDetails, validateParsedCustomer } from '@/lib/whatsappCustomerParse';
 import { fromDatetimeLocalIst, toDatetimeLocalIst } from '@/lib/istTime';
 import { buildComboPhotoSlots } from '@/lib/customizedCombo';
+import AdminWebsitePhotoSlot from '@/components/admin/AdminWebsitePhotoSlot';
 
 const emptyItem = () => ({
   productId: '',
@@ -13,7 +14,35 @@ const emptyItem = () => ({
   quantity: 1,
   instructions: '',
   photos: [],
+  customFieldValues: {},
+  photoSlots: [],
 });
+
+function photoSlotCountForProduct(product) {
+  const preview = product?.customizationPreview || {};
+  const areas = Array.isArray(preview.areas) ? preview.areas.length : 0;
+  const required = Math.max(0, Number(preview.requiredImageCount || 0));
+  const max = Math.max(0, Number(preview.maxImageCount || 0));
+  return Math.max(areas, required, max, 0);
+}
+
+function buildCatalogPhotoSlots(product) {
+  const count = photoSlotCountForProduct(product);
+  const areas = Array.isArray(product?.customizationPreview?.areas) ? product.customizationPreview.areas : [];
+  return Array.from({ length: count }, (_, index) => {
+    const area = areas[index] || {};
+    return {
+      slotKey: `catalog-${index}`,
+      label: area.label || `Photo ${index + 1}`,
+      sizeLabel: area.width && area.height ? `${area.width}×${area.height} ${area.unit || 'inch'}` : '',
+      frameImage: area.frameImage || product?.customizationPreview?.frameImage || '',
+      instructions: area.instructions || '',
+      required: area.required !== false,
+      photo: null,
+      reference: null,
+    };
+  });
+}
 
 const emptyCustomer = {
   customerName: '',
@@ -63,6 +92,7 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
     paymentVerified: false,
     paymentDate: toDatetimeLocalIst(new Date()),
     previewRequired: 'no',
+    orderPriority: 'normal',
     expectedDispatchDate: '',
     assignedTo: '',
     internalNotes: '',
@@ -221,6 +251,39 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
 
   const uploadItemPhotos = async (orderId, items) => {
     for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
+      const slots = Array.isArray(items[itemIndex].photoSlots) ? items[itemIndex].photoSlots : [];
+      if (slots.length) {
+        for (let p = 0; p < slots.length; p += 1) {
+          const slot = slots[p];
+          const printFile = slot.photo?.file;
+          if (printFile) {
+            const body = new FormData();
+            body.append('file', printFile);
+            body.append('itemIndex', String(itemIndex));
+            body.append('mode', 'append');
+            body.append('slotLabel', slot.label || `Photo ${p + 1}`);
+            body.append('slotKey', slot.slotKey || `catalog-${itemIndex}-${p}`);
+            body.append('reason', 'Uploaded at WhatsApp order creation');
+            const res = await fetch(`/api/admin/orders/${orderId}/photos`, { method: 'POST', body });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || `Photo upload failed for item ${itemIndex + 1}`);
+          }
+          const refFile = slot.reference?.file;
+          if (refFile) {
+            const refBody = new FormData();
+            refBody.append('file', refFile);
+            refBody.append('itemIndex', String(itemIndex));
+            refBody.append('mode', 'append');
+            refBody.append('slotLabel', `Reference — ${slot.label || `Photo ${p + 1}`}`);
+            refBody.append('slotKey', `${slot.slotKey || `catalog-${itemIndex}-${p}`}-reference`);
+            refBody.append('reason', 'Reference image at WhatsApp order creation');
+            const refRes = await fetch(`/api/admin/orders/${orderId}/photos`, { method: 'POST', body: refBody });
+            const refData = await refRes.json().catch(() => ({}));
+            if (!refRes.ok) throw new Error(refData.error || `Reference upload failed for item ${itemIndex + 1}`);
+          }
+        }
+        continue;
+      }
       const photos = items[itemIndex].photos || [];
       for (let p = 0; p < photos.length; p += 1) {
         const file = photos[p];
@@ -238,18 +301,18 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
     }
   };
 
-  /** Upload each Customized Combo frame photo mapped to size + frame index. */
+  /** Upload each Customized Combo frame photo (and optional reference) mapped to size + frame. */
   const uploadComboSlotPhotos = async (orderId, slots) => {
-    // Group slots by size → line item index on the created order
     const sizeOrder = [];
     slots.forEach((slot) => {
       if (!sizeOrder.includes(slot.size)) sizeOrder.push(slot.size);
     });
     for (const slot of slots) {
-      if (!slot.file) continue;
+      const printFile = slot.photo?.file || slot.file;
+      if (!printFile) continue;
       const itemIndex = sizeOrder.indexOf(slot.size);
       const body = new FormData();
-      body.append('file', slot.file);
+      body.append('file', printFile);
       body.append('itemIndex', String(Math.max(0, itemIndex)));
       body.append('mode', 'append');
       body.append('slotLabel', slot.label || `${slot.size} — Photo ${slot.frameIndex}`);
@@ -258,6 +321,20 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
       const res = await fetch(`/api/admin/orders/${orderId}/photos`, { method: 'POST', body });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `Photo upload failed for ${slot.label}`);
+
+      const refFile = slot.reference?.file;
+      if (refFile) {
+        const refBody = new FormData();
+        refBody.append('file', refFile);
+        refBody.append('itemIndex', String(Math.max(0, itemIndex)));
+        refBody.append('mode', 'append');
+        refBody.append('slotLabel', `Reference — ${slot.label || slot.size}`);
+        refBody.append('slotKey', `${slot.slotKey || 'combo'}-reference`);
+        refBody.append('reason', `Reference image for ${slot.size} frame ${slot.frameIndex}`);
+        const refRes = await fetch(`/api/admin/orders/${orderId}/photos`, { method: 'POST', body: refBody });
+        const refData = await refRes.json().catch(() => ({}));
+        if (!refRes.ok) throw new Error(refData.error || `Reference upload failed for ${slot.label}`);
+      }
     }
   };
 
@@ -346,8 +423,8 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
           quantity: Number(row.quantity) || 1,
           instructions: '',
           photos: comboPhotoSlots
-            .filter((slot) => slot.size === row.size && slot.file)
-            .map((slot) => slot.file),
+            .filter((slot) => slot.size === row.size && (slot.photo?.file || slot.file))
+            .map((slot) => slot.photo?.file || slot.file),
           comboSlots: comboPhotoSlots.filter((slot) => slot.size === row.size),
         }));
     } else if (!form.items.some((item) => item.productId)) {
@@ -393,6 +470,7 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
         paymentVerified: form.paymentVerified,
         paymentDate: paymentDateIso,
         previewRequired: form.previewRequired === 'yes',
+        orderPriority: form.orderPriority === 'urgent' ? 'urgent' : 'normal',
         expectedDispatchDate: form.expectedDispatchDate || undefined,
         assignedTo: form.assignedTo || undefined,
         internalNotes: form.internalNotes,
@@ -402,6 +480,7 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
           quantity: Number(item.quantity) || 1,
           // Unit prices intentionally omitted — overall price is manualComboPrice
           customizationInstructions: item.instructions,
+          customFields: item.customFieldValues || undefined,
           isCustomizedCombo: productMode === 'customized_combo',
         })),
       };
@@ -418,7 +497,10 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
         try {
           if (productMode === 'customized_combo') {
             await uploadComboSlotPhotos(data.order._id, comboPhotoSlots);
-          } else if (lineItems.some((item) => (item.photos || []).length > 0)) {
+          } else if (lineItems.some((item) => (
+            (item.photos || []).length > 0
+            || (item.photoSlots || []).some((s) => s?.photo?.file || s?.reference?.file)
+          ))) {
             await uploadItemPhotos(data.order._id, lineItems);
           }
         } catch (uploadErr) {
@@ -647,6 +729,17 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
           )}
 
           <div className="grid gap-3 sm:grid-cols-2">
+            <label className="text-sm font-semibold">Order priority
+              <select value={form.orderPriority} onChange={(e) => setField('orderPriority', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5">
+                <option value="normal">Normal</option>
+                <option value="urgent">Urgent</option>
+              </select>
+              {form.orderPriority === 'urgent' ? (
+                <span className="mt-1 block text-[11px] font-semibold text-amber-700">
+                  Urgent WhatsApp only — set Expected dispatch to the customer deadline. Does not change order creation date.
+                </span>
+              ) : null}
+            </label>
             <label className="text-sm font-semibold">Expected dispatch
               <input type="date" value={form.expectedDispatchDate} onChange={(e) => setField('expectedDispatchDate', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
             </label>
@@ -753,47 +846,30 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
                   </button>
                 </div>
                 {comboSlotsConfirmed && comboPhotoSlots.length > 0 ? (
-                  <div className="space-y-2 rounded-xl border border-emerald-200 bg-white p-3">
+                  <div className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/30 p-3">
                     <p className="text-xs font-bold text-gray-800">
-                      Customer photos ({comboPhotoSlots.length} frames) — one photo per frame
+                      Customer photos ({comboPhotoSlots.length} frames) — website-identical upload &amp; edit per frame
                     </p>
-                    {comboPhotoSlots.map((slot, slotIndex) => (
-                      <label key={slot.slotKey} className="block text-sm font-semibold">
-                        {slot.label}
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="mt-1 block w-full text-xs"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0] || null;
-                            e.target.value = '';
-                            setComboPhotoSlots((prev) => prev.map((s, i) => (
-                              i === slotIndex
-                                ? { ...s, file, previewUrl: file ? URL.createObjectURL(file) : '' }
-                                : s
-                            )));
-                          }}
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {comboPhotoSlots.map((slot, slotIndex) => (
+                        <AdminWebsitePhotoSlot
+                          key={slot.slotKey}
+                          label={slot.label}
+                          sizeLabel={slot.size}
+                          required
+                          value={slot.photo || null}
+                          referenceValue={slot.reference || null}
+                          onChange={(photo) => setComboPhotoSlots((prev) => prev.map((s, i) => (
+                            i === slotIndex
+                              ? { ...s, photo, file: photo?.file || null, previewUrl: photo?.previewUrl || '' }
+                              : s
+                          )))}
+                          onReferenceChange={(reference) => setComboPhotoSlots((prev) => prev.map((s, i) => (
+                            i === slotIndex ? { ...s, reference } : s
+                          )))}
                         />
-                        {slot.file ? (
-                          <span className="mt-1 flex items-center gap-2 text-xs font-normal text-gray-600">
-                            {slot.previewUrl ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img src={slot.previewUrl} alt="" className="h-12 w-12 rounded object-cover" />
-                            ) : null}
-                            <span className="truncate">{slot.file.name}</span>
-                            <button
-                              type="button"
-                              className="font-semibold text-red-700"
-                              onClick={() => setComboPhotoSlots((prev) => prev.map((s, i) => (
-                                i === slotIndex ? { ...s, file: null, previewUrl: '' } : s
-                              )))}
-                            >
-                              Remove
-                            </button>
-                          </span>
-                        ) : null}
-                      </label>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 ) : null}
               </div>
@@ -808,6 +884,8 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
             {form.items.map((item, index) => {
               const product = selectedProduct(item.productId);
               const variants = (product?.variants || []).flatMap((v) => (v.options || []).map((o) => `${v.name}: ${o.label}`));
+              const customFields = Array.isArray(product?.customFields) ? product.customFields : [];
+              const slots = Array.isArray(item.photoSlots) ? item.photoSlots : [];
               return (
                 <div key={index} className="grid gap-2 rounded-xl border bg-white p-3 sm:grid-cols-2">
                   <div className="sm:col-span-2 flex items-center justify-between">
@@ -823,7 +901,27 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
                     ) : null}
                   </div>
                   <label className="text-sm font-semibold sm:col-span-2">Product
-                    <select required={productMode === 'catalog'} value={item.productId} onChange={(e) => setItem(index, 'productId', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5">
+                    <select
+                      required={productMode === 'catalog'}
+                      value={item.productId}
+                      onChange={(e) => {
+                        const productId = e.target.value;
+                        const nextProduct = products.find((p) => String(p._id) === String(productId));
+                        setForm((prev) => {
+                          const items = [...prev.items];
+                          items[index] = {
+                            ...items[index],
+                            productId,
+                            variant: '',
+                            customFieldValues: {},
+                            photoSlots: buildCatalogPhotoSlots(nextProduct),
+                            photos: [],
+                          };
+                          return { ...prev, items };
+                        });
+                      }}
+                      className="mt-1 w-full rounded-xl border px-3 py-2.5"
+                    >
                       <option value="">Select product</option>
                       {products.map((p) => (
                         <option key={p._id} value={p._id}>{p.title}</option>
@@ -837,62 +935,96 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
                         {variants.map((v) => <option key={v} value={v}>{v}</option>)}
                       </select>
                     ) : (
-                      <input value={item.variant} onChange={(e) => setItem(index, 'variant', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
+                      <input value={item.variant} onChange={(e) => setItem(index, 'variant', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5" placeholder="No variants on this product" />
                     )}
                   </label>
                   <label className="text-sm font-semibold">Qty
                     <input type="number" min="1" value={item.quantity} onChange={(e) => setItem(index, 'quantity', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
                   </label>
-                  <label className="text-sm font-semibold sm:col-span-2">Customization instructions
-                    <textarea value={item.instructions} onChange={(e) => setItem(index, 'instructions', e.target.value)} rows={2} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
-                  </label>
-                  <label className="text-sm font-semibold sm:col-span-2">
-                    Customer photos for this size / quantity
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      className="mt-1 block w-full text-xs"
-                      onChange={(e) => {
-                        const files = Array.from(e.target.files || []);
-                        e.target.value = '';
-                        if (!files.length) return;
-                        setForm((prev) => {
-                          const items = [...prev.items];
-                          items[index] = {
-                            ...items[index],
-                            photos: [...(items[index].photos || []), ...files],
-                          };
-                          return { ...prev, items };
-                        });
-                      }}
-                    />
-                    {(item.photos || []).length ? (
-                      <ul className="mt-2 space-y-1 text-xs text-gray-600">
-                        {item.photos.map((file, pi) => (
-                          <li key={`${file.name}-${pi}`} className="flex items-center justify-between gap-2 rounded border bg-gray-50 px-2 py-1">
-                            <span className="truncate">{file.name}</span>
-                            <button
-                              type="button"
-                              className="shrink-0 font-semibold text-red-700"
-                              onClick={() => setForm((prev) => {
+                  {customFields.length ? (
+                    <div className="sm:col-span-2 space-y-2 rounded-xl border border-primary-50 bg-primary-50/40 p-3">
+                      <p className="text-xs font-bold text-gray-800">Product custom fields (from Website config)</p>
+                      {customFields.map((field) => (
+                        <label key={field.label} className="block text-sm font-semibold">
+                          {field.label}{field.required ? ' *' : ''}
+                          {field.type === 'textarea' ? (
+                            <textarea
+                              value={item.customFieldValues?.[field.label] || ''}
+                              onChange={(e) => setForm((prev) => {
                                 const items = [...prev.items];
                                 items[index] = {
                                   ...items[index],
-                                  photos: (items[index].photos || []).filter((_, i) => i !== pi),
+                                  customFieldValues: { ...(items[index].customFieldValues || {}), [field.label]: e.target.value },
                                 };
                                 return { ...prev, items };
                               })}
-                            >
-                              Remove
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <span className="mt-1 block text-[11px] font-normal text-gray-500">Optional — can also be added later before printing starts.</span>
-                    )}
+                              rows={2}
+                              className="mt-1 w-full rounded-xl border bg-white px-3 py-2.5 font-normal"
+                            />
+                          ) : (
+                            <input
+                              value={item.customFieldValues?.[field.label] || ''}
+                              onChange={(e) => setForm((prev) => {
+                                const items = [...prev.items];
+                                items[index] = {
+                                  ...items[index],
+                                  customFieldValues: { ...(items[index].customFieldValues || {}), [field.label]: e.target.value },
+                                };
+                                return { ...prev, items };
+                              })}
+                              className="mt-1 w-full rounded-xl border bg-white px-3 py-2.5 font-normal"
+                            />
+                          )}
+                        </label>
+                      ))}
+                    </div>
+                  ) : null}
+                  <label className="text-sm font-semibold sm:col-span-2">Customization instructions
+                    <textarea value={item.instructions} onChange={(e) => setItem(index, 'instructions', e.target.value)} rows={2} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
                   </label>
+                  {slots.length > 0 ? (
+                    <div className="sm:col-span-2 space-y-2">
+                      <p className="text-xs font-bold text-gray-800">
+                        Customer photos ({slots.length}) — from Website product photo configuration
+                      </p>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {slots.map((slot, slotIndex) => (
+                          <AdminWebsitePhotoSlot
+                            key={slot.slotKey}
+                            label={slot.label}
+                            sizeLabel={slot.sizeLabel}
+                            frameImage={slot.frameImage}
+                            instructions={slot.instructions}
+                            required={slot.required !== false}
+                            value={slot.photo || null}
+                            referenceValue={slot.reference || null}
+                            onChange={(photo) => setForm((prev) => {
+                              const items = [...prev.items];
+                              const nextSlots = [...(items[index].photoSlots || [])];
+                              nextSlots[slotIndex] = { ...nextSlots[slotIndex], photo };
+                              items[index] = {
+                                ...items[index],
+                                photoSlots: nextSlots,
+                                photos: nextSlots.map((s) => s.photo?.file).filter(Boolean),
+                              };
+                              return { ...prev, items };
+                            })}
+                            onReferenceChange={(reference) => setForm((prev) => {
+                              const items = [...prev.items];
+                              const nextSlots = [...(items[index].photoSlots || [])];
+                              nextSlots[slotIndex] = { ...nextSlots[slotIndex], reference };
+                              items[index] = { ...items[index], photoSlots: nextSlots };
+                              return { ...prev, items };
+                            })}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ) : product ? (
+                    <p className="sm:col-span-2 text-[11px] text-gray-500">
+                      This Website product has no configured photo slots. Photos can still be added later in Order Details.
+                    </p>
+                  ) : null}
                 </div>
               );
             })}

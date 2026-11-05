@@ -77,6 +77,7 @@ export function computePaymentTotals({
   let hasVerifiedPositive = false;
 
   records.forEach((row) => {
+    if (row?.rejected) return;
     const amount = Number(row?.amount) || 0;
     if (row?.kind === 'revision') {
       revisionCharged = Math.max(revisionCharged, amount);
@@ -88,7 +89,7 @@ export function computePaymentTotals({
     if (amount > 0) hasVerifiedPositive = true;
     if (row.kind === 'balance') balance += amount;
     else if (row.kind === 'revision') revisionPaid += amount;
-    else advance += amount;
+    else advance += amount; // advance, additional, other
   });
 
   const owed = Math.max(0, Number(total || 0) + nextAdditional + revisionCharged);

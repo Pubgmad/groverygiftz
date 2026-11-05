@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic';
 import dbConnect from '@/lib/db';
 import Product from '@/models/Product';
+import '@/models/Collection'; // register model for populate('collections')
 import ProductDetail from '@/components/product/ProductDetail';
 import ProductCard from '@/components/product/ProductCard';
 import Breadcrumbs from '@/components/ui/Breadcrumbs';

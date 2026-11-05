@@ -238,6 +238,7 @@ export async function finalizeCashfreeOrder(orderId, { retryTracking = false } =
         order.assignedTo = fresh.assignedTo;
         order.assignedToName = fresh.assignedToName;
         order.assignmentHistory = fresh.assignmentHistory;
+        order.opsStatus = fresh.opsStatus;
       }
     } catch (assignErr) {
       console.error('Editor auto-assignment after Cashfree finalize failed:', assignErr);

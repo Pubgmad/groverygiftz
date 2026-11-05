@@ -58,7 +58,7 @@ export default function AdminProductForm({ params }) {
   const [videoUploading, setVideoUploading] = useState(false);
   const [form, setForm] = useState({
     title: '', description: '', aboutThisProduct: { instructions: '', deliveryNotes: '', hideDescription: false, hideInstructions: false, hideDelivery: true }, images: [], responsiveImages: { desktop: [], tablet: [], mobile: [] }, productVideo: { url: '', name: '', poster: '' }, makingVideosSection: { enabled: true, heading: 'See How Your Gift Is Made' }, makingVideos: [], customizationPreview: { enabled: false, title: 'Preview your personalized gift', frameImage: '', aspectRatio: '1:1', shape: 'rectangle', instructions: '', shortGuidance: '', requiredImageCount: 0, maxImageCount: 0, areas: [] }, delivery: defaultDelivery(), regularPrice: '', salePrice: '', offerStartsAt: '', offerEndsAt: '',
-    stock: 100, stockAlert: { enabled: true, lowStockThreshold: 5, lowStockLabel: '' }, purchaseActivity: { enabled: false, purchaseCount: 0, timeQuantity: 24, timeUnit: 'hours', labelTemplate: '' }, collections: [], variants: [], customFields: [], collageEnabled: false, collageTemplates: [],
+    stock: 100, stockAlert: { enabled: true, lowStockThreshold: 5, mediumStockThreshold: 20, lowStockLabel: '', mediumStockLabel: '', highStockLabel: '', soldOutLabel: '' }, purchaseActivity: { enabled: false, purchaseCount: 0, timeQuantity: 24, timeUnit: 'hours', labelTemplate: '' }, collections: [], variants: [], customFields: [], collageEnabled: false, collageTemplates: [],
     giftWrap: { enabled: false, price: 0 }, giftMessage: false, customerNotesEnabled: true,
     isQuoteOnly: false, isOffer: false, isFeatured: false, isBestSeller: false, isActive: true,
     seoTitle: '', seoDescription: '',
@@ -91,7 +91,11 @@ export default function AdminProductForm({ params }) {
           stockAlert: {
             enabled: d.stockAlert?.enabled !== false,
             lowStockThreshold: d.stockAlert?.lowStockThreshold ?? 5,
+            mediumStockThreshold: d.stockAlert?.mediumStockThreshold ?? 20,
             lowStockLabel: d.stockAlert?.lowStockLabel || '',
+            mediumStockLabel: d.stockAlert?.mediumStockLabel || '',
+            highStockLabel: d.stockAlert?.highStockLabel || '',
+            soldOutLabel: d.stockAlert?.soldOutLabel || '',
           },
           purchaseActivity: {
             enabled: !!d.purchaseActivity?.enabled,

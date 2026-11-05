@@ -5,7 +5,7 @@ import Link from 'next/link';
 import toast from 'react-hot-toast';
 import useAdminAccess from '@/hooks/useAdminAccess';
 import ReadOnlyBanner from '@/components/admin/ReadOnlyBanner';
-import { OPS_STATUS_LABELS, OPS_STATUS_HELP, TASK_TYPES } from '@/lib/opsConstants';
+import { OPS_STATUS_LABELS, OPS_STATUS_HELP, TASK_TYPES, HIDDEN_OPS_BOARD_STATUSES } from '@/lib/opsConstants';
 import { formatPrice } from '@/lib/utils';
 import { fromDatetimeLocalIst, toDatetimeLocalIst, formatIstDateTime, todayIstYmd } from '@/lib/istTime';
 
@@ -42,26 +42,31 @@ export default function OperationsPage() {
     notes: '',
   });
   const [taskBusy, setTaskBusy] = useState(false);
+  const [showBatchTools, setShowBatchTools] = useState(false);
+  const [editorWorkload, setEditorWorkload] = useState([]);
 
   const load = async (opsStatus = activeStatus) => {
     setLoading(true);
     try {
       const q = opsStatus ? `?opsStatus=${encodeURIComponent(opsStatus)}` : '';
-      const [boardRes, taskRes, noteRes, batchRes] = await Promise.all([
+      const [boardRes, taskRes, noteRes, batchRes, editorsRes] = await Promise.all([
         fetch(`/api/admin/ops/board${q}`, { cache: 'no-store' }),
         fetch(`/api/admin/ops/tasks?view=${taskView}`, { cache: 'no-store' }),
         fetch('/api/admin/ops/notifications?unread=1', { cache: 'no-store' }),
         fetch('/api/admin/ops/dispatch-batches', { cache: 'no-store' }),
+        fetch('/api/admin/editors/workload', { cache: 'no-store' }),
       ]);
       const boardData = await boardRes.json();
       const taskData = await taskRes.json();
       const noteData = await noteRes.json();
       const batchData = batchRes.ok ? await batchRes.json() : { batches: [] };
+      const editorsData = editorsRes.ok ? await editorsRes.json() : { editors: [] };
       if (!boardRes.ok) throw new Error(boardData.error || 'Board failed');
       setBoard(boardData);
       setTasks(taskData.tasks || []);
       setNotifications(noteData.notifications || []);
       setBatches(batchData.batches || []);
+      setEditorWorkload(editorsData.editors || editorsData.workloads || []);
     } catch (err) {
       toast.error(err.message || 'Unable to load operations');
     } finally {
@@ -87,23 +92,28 @@ export default function OperationsPage() {
 
   const createTask = async () => {
     const orderNumber = String(taskForm.orderNumber || '').trim();
-    if (!orderNumber) {
-      toast.error('Enter order number (G… or GG…)');
+    const title = String(taskForm.title || '').trim();
+    if (!orderNumber && !title) {
+      toast.error('Enter a task title (Order ID is optional for independent internal tasks)');
       return;
     }
     setTaskBusy(true);
     try {
-      const lookup = await fetch(`/api/orders?orderId=${encodeURIComponent(orderNumber)}&limit=1`, { cache: 'no-store' });
-      const lookupData = await lookup.json();
-      const order = (lookupData.orders || [])[0];
-      if (!lookup.ok || !order?._id) throw new Error(lookupData.error || 'Order not found');
+      let orderId;
+      if (orderNumber) {
+        const lookup = await fetch(`/api/orders?orderId=${encodeURIComponent(orderNumber)}&limit=1`, { cache: 'no-store' });
+        const lookupData = await lookup.json();
+        const order = (lookupData.orders || [])[0];
+        if (!lookup.ok || !order?._id) throw new Error(lookupData.error || 'Order not found');
+        orderId = order._id;
+      }
       const res = await fetch('/api/admin/ops/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          orderId: order._id,
+          orderId: orderId || undefined,
           type: taskForm.type,
-          title: taskForm.title || `${taskForm.type} · ${order.orderNumber}`,
+          title: title || undefined,
           priority: taskForm.priority,
           assignedTo: taskForm.assignedTo || undefined,
           dueDate: taskForm.dueDate || undefined,
@@ -112,7 +122,7 @@ export default function OperationsPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Task create failed');
-      toast.success('Task created');
+      toast.success(orderId ? 'Order-linked task created' : 'Independent internal task created');
       setTaskForm((f) => ({ ...f, title: '', notes: '', orderNumber: '' }));
       await load(activeStatus);
     } catch (err) {
@@ -126,7 +136,8 @@ export default function OperationsPage() {
     return <p className="p-6 text-sm text-gray-600">You do not have permission to view Operations.</p>;
   }
 
-  const statuses = board?.statuses || Object.keys(OPS_STATUS_LABELS);
+  const statuses = (board?.statuses || Object.keys(OPS_STATUS_LABELS))
+    .filter((s) => !HIDDEN_OPS_BOARD_STATUSES.includes(s));
   const counts = board?.counts || {};
 
   const createBatch = async () => {
@@ -294,9 +305,23 @@ export default function OperationsPage() {
 
       {writable ? (
         <div className="rounded-xl border bg-white p-4 space-y-3">
-          <h2 className="font-bold">Courier pickup / parcel dispatch</h2>
+          <h2 className="font-bold">Dispatch overview (read + optional batch tools)</h2>
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+            Primary courier / parcel entry is on each <strong>Order Details → Courier &amp; Dispatch</strong> page.
+            Prefer recording handover, tracking, weight, and charges there so history stays on the Order ID.
+            This Operations section remains available as an overview / batch helper and does not replace Order Details.
+          </p>
+          <button
+            type="button"
+            onClick={() => setShowBatchTools((v) => !v)}
+            className="text-left text-xs font-semibold text-primary-700 underline"
+          >
+            {showBatchTools ? 'Hide optional legacy batch tools' : 'Show optional legacy batch tools (not required)'}
+          </button>
+          {showBatchTools ? (
+          <>
           <p className="text-xs text-gray-500">
-            Select orders, then create a batch parcel. Actual dispatch date/time is stored per parcel. Tracking can be updated later without changing the dispatch date. Multiple parcels per order and multiple orders per parcel are supported.
+            Optional: select orders to create a batch parcel. Prefer Order Details for day-to-day courier entry.
           </p>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             <label className="text-xs font-semibold text-gray-600">Courier company
@@ -472,6 +497,12 @@ export default function OperationsPage() {
               </table>
             </div>
           ) : null}
+          </>
+          ) : (
+            <p className="text-xs text-gray-500">
+              Use Order Details → Courier &amp; Dispatch for parcel entry. Historical batches remain visible when you expand batch tools.
+            </p>
+          )}
         </div>
       ) : null}
 
@@ -545,7 +576,7 @@ export default function OperationsPage() {
             <input
               value={taskForm.orderNumber}
               onChange={(e) => setTaskForm((f) => ({ ...f, orderNumber: e.target.value }))}
-              placeholder="Order number (G4746 / GG…)"
+              placeholder="Order ID optional (G4746 / GG…)"
               className="rounded-xl border px-3 py-2.5 text-sm"
             />
             <select
@@ -606,18 +637,15 @@ export default function OperationsPage() {
         </div>
       ) : null}
 
-      <div className="rounded-xl border bg-white p-4">
-        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="rounded-xl border bg-white p-4 space-y-4">
+        <div className="mb-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="font-bold">Work planner</h2>
-          <p className="text-xs text-gray-500">
-            Shows Create Task items by due date across Sales / Editing / Printing / Production / Packing / Dispatch. Order board status chips above remain the source of truth for order workflow.
-          </p>
           <div className="flex flex-wrap gap-2">
             {[
-              ['today', "Today's Tasks"],
-              ['tomorrow', "Tomorrow's Tasks"],
+              ['today', "Today's Work"],
+              ['tomorrow', "Tomorrow's Work"],
               ['week', 'Upcoming 7 Days'],
-              ['overdue', 'Overdue Tasks'],
+              ['overdue', 'Overdue'],
             ].map(([id, label]) => (
               <button
                 key={id}
@@ -630,6 +658,57 @@ export default function OperationsPage() {
             ))}
           </div>
         </div>
+        <div className="rounded-xl border border-sky-100 bg-sky-50/50 p-3">
+          <h3 className="mb-1 text-sm font-bold text-sky-950">Order workflow workload (live orders)</h3>
+          <p className="mb-2 text-[11px] text-sky-900">
+            Same Editor pending-editing counts used by automatic Editor assignment. Board status chips above cover printing / production / packing / dispatch.
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {(editorWorkload || []).length ? editorWorkload.map((ed) => (
+              <div key={ed.id || ed._id} className="rounded-lg border bg-white px-3 py-2 text-xs">
+                <p className="font-semibold">{ed.name || ed.email || 'Editor'}</p>
+                <p className="text-gray-600">
+                  Pending editing: <strong>{ed.pendingEditing ?? ed.pending ?? 0}</strong>
+                </p>
+              </div>
+            )) : (
+              <p className="text-xs text-gray-500 sm:col-span-3">No active Editors / workload data.</p>
+            )}
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+            {[
+              ['editing_in_progress', 'Editing'],
+              ['printing_in_progress', 'Printing'],
+              ['production_in_progress', 'Production'],
+              ['packing_pending', 'Packing'],
+              ['ready_to_dispatch', 'Dispatch ready'],
+              ['dispatched', 'Dispatched'],
+            ].map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setActiveStatus(key)}
+                className="rounded-lg border bg-white px-2 py-1.5 text-left"
+              >
+                <p className="font-semibold text-gray-700">{label}</p>
+                <p className="text-lg font-bold">{counts[key] || 0}</p>
+              </button>
+            ))}
+            <div className="rounded-lg border border-red-100 bg-red-50 px-2 py-1.5">
+              <p className="font-semibold text-red-700">Overdue</p>
+              <p className="text-lg font-bold text-red-800">{counts.delayed || 0}</p>
+            </div>
+            <div className="rounded-lg border border-amber-100 bg-amber-50 px-2 py-1.5">
+              <p className="font-semibold text-amber-800">Due today</p>
+              <p className="text-lg font-bold text-amber-900">{board?.alerts?.dueToday || 0}</p>
+            </div>
+          </div>
+        </div>
+        <div>
+          <h3 className="mb-2 text-sm font-bold text-gray-900">Additional internal tasks (Create Task)</h3>
+          <p className="mb-2 text-[11px] text-gray-500">
+            Distinct from order workflow. Optional Order ID. Does not drive Editor assignment.
+          </p>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {TASK_TYPES.map((type) => {
             const rows = tasks.filter((t) => t.type === type);
@@ -639,7 +718,7 @@ export default function OperationsPage() {
                 {rows.length ? rows.map((task) => (
                   <div key={task._id} className="mb-2 rounded-lg border bg-white p-2 text-xs">
                     <p className="font-semibold">{task.title}</p>
-                    <p className="text-gray-600">{task.orderNumber} · {task.status} · {task.priority}</p>
+                    <p className="text-gray-600">{task.orderNumber || 'No order link'} · {task.status} · {task.priority}</p>
                     {task.dueDate ? <p className="text-gray-500">Due {new Date(task.dueDate).toLocaleString('en-IN')}</p> : null}
                     {writable && task.status !== 'completed' ? (
                       <div className="mt-1 flex flex-wrap gap-1">
@@ -717,6 +796,7 @@ export default function OperationsPage() {
               </div>
             );
           })}
+        </div>
         </div>
       </div>
     </div>

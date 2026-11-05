@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useCart } from '@/context/CartContext';
 import { formatPrice, calcSavings, getEffectivePrice, isOfferActive, getVariantRegularPrice, getVariantSalePrice, getVariantEffectivePrice } from '@/lib/utils';
-import { getProductAvailableStock, getSelectedAvailableStock, hasVariantManagedStock, isProductSoldOut, isVariantOptionSoldOut } from '@/lib/stock';
+import { getSelectedAvailableStock, isProductSoldOut, isVariantOptionSoldOut } from '@/lib/stock';
 import { getCentralDeliveryEstimate } from '@/lib/centralDeliveryEstimates';
 import useDeliverySettings from '@/hooks/useDeliverySettings';
 import { buildProductMetaPayload, META_READY_EVENT, trackMetaCustomEvent, trackMetaEvent } from '@/lib/metaPixel';
@@ -214,10 +214,10 @@ export default function ProductDetail({ product }) {
     });
   }, [product._id, product.variants]);
   const selectedVariantOptions = Object.values(selectedVariants).filter(Boolean);
-  const variantManagedStock = hasVariantManagedStock(product);
-  const availableStock = getProductAvailableStock(product);
   const selectedAvailableStock = getSelectedAvailableStock(product, selectedVariantOptions);
   const purchaseLimit = Math.max(0, selectedAvailableStock);
+  /** Zero stock (product or selected variant) blocks uploads and purchase — Admin inventory only. */
+  const stockLocked = !product.isQuoteOnly && (isSoldOut || selectedAvailableStock <= 0);
   const selectedVariantUploadOptions = selectedVariantOptions.filter((selected) => selected?.requiresImageUpload && selected?.label);
   const selectedOwnPriceOption = selectedVariantOptions.find((selected) => selected?.useOwnPrice && getOptionRegularPrice(selected) > 0);
   const baseRegularPrice = selectedOwnPriceOption ? getOptionRegularPrice(selectedOwnPriceOption) : Number(product.regularPrice || 0);
@@ -744,6 +744,10 @@ export default function ProductDetail({ product }) {
 
   const handleCustomizationFileUpload = async (fieldLabel, file) => {
     if (!file) return;
+    if (stockLocked) {
+      toast.error('This product is currently sold out');
+      return;
+    }
     setUploadingFields((prev) => ({ ...prev, [fieldLabel]: true }));
     try {
       const prepared = await prepareImageUpload(file);
@@ -762,6 +766,10 @@ export default function ProductDetail({ product }) {
     }
   };
   const handleCustomerPhotoUpload = async (files, slotIndex = null) => {
+    if (stockLocked) {
+      toast.error('This product is currently sold out — photo upload is unavailable');
+      return;
+    }
     const selectedFiles = Array.from(files || []);
     if (selectedFiles.length === 0) return;
     const plan = planPhotoUploads(customerPhotos, selectedFiles, slotIndex, photoSlotCount);
@@ -869,6 +877,10 @@ export default function ProductDetail({ product }) {
 
 
   const handleVariantLabelUpload = async (label, file) => {
+    if (stockLocked) {
+      toast.error('This product is currently sold out — photo upload is unavailable');
+      return;
+    }
     if (!label || !file) return;
     const previewKey = `variant-${label}`;
     setUploadingVariantLabels((prev) => ({ ...prev, [label]: true }));
@@ -921,6 +933,10 @@ export default function ProductDetail({ product }) {
     }
   };
   const handleCollageUpload = async (label, files) => {
+    if (stockLocked) {
+      toast.error('This product is currently sold out — photo upload is unavailable');
+      return;
+    }
     const template = collageTemplates.find((entry) => entry.label === label);
     const selectedFiles = Array.from(files || []);
     if (!template || selectedFiles.length === 0) return;
@@ -997,7 +1013,7 @@ export default function ProductDetail({ product }) {
       toast.error('Please wait for your images and previews to finish saving.');
       return false;
     }
-    if (isSoldOut) {
+    if (stockLocked || isSoldOut) {
       toast.error('This product is currently sold out');
       return false;
     }
@@ -1199,27 +1215,6 @@ export default function ProductDetail({ product }) {
 
         <ProductAssurancePanel settings={settings} selectedDeliveryState={selectedDeliveryState} />
 
-        {(isSoldOut || variantManagedStock || Number(product.stock) > 0) ? (
-          <div className="mb-6 rounded-xl bg-primary-50/60 px-4 py-3">
-            {isSoldOut ? (
-              <p className="text-sm font-semibold text-red-600">Out of stock</p>
-            ) : variantManagedStock ? (
-              <p className="text-sm text-gray-600">{availableStock} in stock across variants</p>
-            ) : Number(product.stock) > 0 && Number(product.stock) <= 15 ? (
-              <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-amber-800">
-                <span className="inline-flex items-center rounded-md bg-amber-100 px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-amber-900">
-                  Almost gone
-                </span>
-                Only {product.stock} in stock - order soon!
-              </p>
-            ) : Number(product.stock) > 0 && Number(product.stock) <= 40 ? (
-              <p className="text-sm font-medium text-amber-700">{product.stock} in stock - selling fast</p>
-            ) : Number(product.stock) > 0 ? (
-              <p className="text-sm text-gray-600">{product.stock} in stock</p>
-            ) : null}
-          </div>
-        ) : null}
-
         {/* Variants */}
         {product.variants?.map((variant, vIdx) => (
           <div key={vIdx} className="mb-6">
@@ -1281,11 +1276,11 @@ export default function ProductDetail({ product }) {
               />
             ) : field.type === 'file' ? (
               <div className="rounded-2xl border-2 border-dashed border-primary-200 bg-primary-50/40 p-4">
-                <label className={`relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl bg-white px-4 py-5 text-center transition-colors hover:bg-primary-50 ${uploadingFields[field.label] ? 'pointer-events-none opacity-80' : ''}`}>
+                <label className={`relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl bg-white px-4 py-5 text-center transition-colors hover:bg-primary-50 ${stockLocked || uploadingFields[field.label] ? 'pointer-events-none opacity-80' : ''}`}>
                   {uploadingFields[field.label] ? <FiLoader size={28} className="animate-spin text-primary-600" /> : <FiUpload size={24} className="text-primary-600" />}
-                  <span className="text-sm font-semibold text-gray-800">{uploadingFields[field.label] ? 'Uploading file...' : 'Upload photo or artwork'}</span>
+                  <span className="text-sm font-semibold text-gray-800">{uploadingFields[field.label] ? 'Uploading file...' : (stockLocked ? 'Sold out — upload unavailable' : 'Upload photo or artwork')}</span>
                   <span className="text-xs text-gray-500">JPG, PNG, WEBP, GIF, HEIC, HEIF or PDF up to 200 MB</span>
-                  <input type="file" accept="image/*,.heic,.heif,.pdf" className="sr-only" disabled={uploadingFields[field.label]}
+                  <input type="file" accept="image/*,.heic,.heif,.pdf" className="sr-only" disabled={stockLocked || uploadingFields[field.label]}
                     onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; handleCustomizationFileUpload(field.label, file); }} />
                 </label>
                 {uploadingFields[field.label] && <p className="mt-2 text-xs font-semibold text-primary-600">Uploading original file...</p>}
@@ -1316,10 +1311,15 @@ export default function ProductDetail({ product }) {
 
 
         {(needsCustomerPhotos || selectedVariantUploadOptions.length > 0 || needsCollageUploads) && (
-          <div className="mb-5 rounded-2xl border border-primary-100 bg-white p-4">
+          <div className={`mb-5 rounded-2xl border p-4 ${stockLocked ? 'border-gray-200 bg-gray-50' : 'border-primary-100 bg-white'}`}>
             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
                 <p className="font-display text-sm font-bold text-gray-950 sm:text-base">{previewConfig.title || 'Preview Your Personalized Gift'}</p>
+                {stockLocked ? (
+                  <p className="mt-1 text-xs font-semibold leading-5 text-red-700">
+                    This item is currently sold out. Photo upload and customization are unavailable until stock is replenished.
+                  </p>
+                ) : (
                 <p className="mt-1 text-xs leading-5 text-gray-600">
                   {String(previewConfig.shortGuidance || '').trim()
                     || (needsCustomerPhotos
@@ -1328,13 +1328,16 @@ export default function ProductDetail({ product }) {
                         : `You can upload up to ${maxPhotoCount} photo${maxPhotoCount === 1 ? '' : 's'} for this product.`}${photoSlotCount > 1 ? ' You can select several photos at once; each photo fills the next empty frame.' : ''}`
                       : 'Upload your favorite photos and adjust them to create your perfect gift.')}
                 </p>
+                )}
               </div>
-              {needsCustomerPhotos ? (
+              {needsCustomerPhotos && !stockLocked ? (
                 <span className="self-start rounded-full border border-accent-100 bg-accent-50 px-3 py-1 text-xs font-bold text-accent-700">
                   {uploadedPhotoCount}/{requiredPhotoCount || maxPhotoCount}
                 </span>
               ) : null}
             </div>
+            {stockLocked ? null : (
+            <>
 
             {selectedVariantUploadOptions.length > 0 && (
               <div className={`mb-4 ${needsCustomerPhotos || needsCollageUploads ? 'pb-4 border-b border-primary-50' : ''}`}>
@@ -1480,6 +1483,8 @@ export default function ProductDetail({ product }) {
             })}
               </div>
             )}
+            </>
+            )}
           </div>
         )}
         {/* Gift Wrap */}
@@ -1512,7 +1517,7 @@ export default function ProductDetail({ product }) {
             <span className="w-12 text-center font-bold text-lg">{quantity}</span>
             <button
               onClick={() => setQuantity(q => Math.min(purchaseLimit || q + 1, q + 1))}
-              disabled={!product.isQuoteOnly && (isSoldOut || quantity >= purchaseLimit)}
+              disabled={!product.isQuoteOnly && (stockLocked || quantity >= purchaseLimit)}
               className="w-10 h-10 flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-600">
               <FiPlus size={16} />
             </button>
@@ -1521,18 +1526,18 @@ export default function ProductDetail({ product }) {
         </div>
 
         <div className="mb-16 flex flex-col gap-3 pb-4 sm:mb-0 sm:flex-row">
-          <button onClick={handleAddToCart} disabled={isSoldOut || Boolean(actionLoading)}
-            className={`btn-primary flex-1 flex items-center justify-center gap-2 text-center ${isSoldOut || actionLoading ? 'opacity-60 cursor-not-allowed' : ''}`}>
-            {actionLoading === 'cart' ? <><FiLoader size={18} className="animate-spin" /> Adding...</> : <><FiShoppingCart size={18} /> {isSoldOut ? 'Sold Out' : product.isQuoteOnly ? 'Contact for Price' : 'Add To Cart'}</>}
+          <button onClick={handleAddToCart} disabled={stockLocked || Boolean(actionLoading)}
+            className={`btn-primary flex-1 flex items-center justify-center gap-2 text-center ${stockLocked || actionLoading ? 'opacity-60 cursor-not-allowed' : ''}`}>
+            {actionLoading === 'cart' ? <><FiLoader size={18} className="animate-spin" /> Adding...</> : <><FiShoppingCart size={18} /> {stockLocked ? 'Sold Out' : product.isQuoteOnly ? 'Contact for Price' : 'Add To Cart'}</>}
           </button>
-          {!product.isQuoteOnly && !isSoldOut && (
+          {!product.isQuoteOnly && !stockLocked && (
             <button onClick={handleBuyNow} disabled={Boolean(actionLoading)} className={`btn-accent flex-1 flex items-center justify-center gap-2 text-center ${actionLoading ? 'opacity-60 cursor-not-allowed' : ''}`}>
               {actionLoading === 'buy' ? <><FiLoader size={18} className="animate-spin" /> Processing...</> : <><FiZap size={18} /> Buy It Now</>}
             </button>
           )}
         </div>
 
-        {!product.isQuoteOnly && !isSoldOut && (
+        {!product.isQuoteOnly && !stockLocked && (
           <div className="mt-5 rounded-2xl border border-primary-100 bg-primary-50/50 p-4">
             <p className="mb-3 text-sm font-bold text-gray-900">How to buy this gift</p>
             <div className="grid gap-3 text-sm sm:grid-cols-3">
