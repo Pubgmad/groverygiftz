@@ -293,7 +293,7 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
               if (String(courierCompany || '').trim()) payload.courierCompany = courierCompany.trim();
               if (String(trackingUrl || '').trim()) payload.trackingUrl = trackingUrl.trim();
               return patchOps(payload);
-            })}
+            }}
             className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl bg-primary-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
           >
             Save ops updates
