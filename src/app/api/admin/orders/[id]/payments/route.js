@@ -2,10 +2,21 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import Order from '@/models/Order';
-import { requireAdminPermission, logAdminAudit } from '@/lib/adminAccess';
+import { can, requireAdminPermission, logAdminAudit } from '@/lib/adminAccess';
 import { saveUploadFile } from '@/lib/uploadStorage';
 import { appendTimeline, refreshPaymentTotals, notifyAdmins } from '@/lib/opsOrderHelpers';
 import { assertCanAccessOrder } from '@/lib/opsStaffAccess';
+
+function paymentWriteActionForKind(kind) {
+  if (kind === 'advance') return 'add_advance_payment';
+  if (kind === 'balance') return 'add_balance_payment';
+  if (kind === 'additional') return 'add_additional_payment';
+  return 'edit_payment_records';
+}
+
+function denyAction() {
+  return NextResponse.json({ error: 'You do not have permission to perform this action' }, { status: 403 });
+}
 
 function parsePaidAt(raw) {
   if (raw == null || String(raw).trim() === '') return null;
@@ -59,6 +70,9 @@ export async function POST(req, { params }) {
   if (!['advance', 'balance', 'additional', 'revision', 'other'].includes(kind)) {
     return NextResponse.json({ error: 'Invalid payment kind' }, { status: 400 });
   }
+  if (!can(access, 'orders', paymentWriteActionForKind(kind))) return denyAction();
+  if (verified && !can(access, 'orders', 'verify_payments')) return denyAction();
+  if (screenshotPath && !can(access, 'orders', 'upload_payment_screenshot')) return denyAction();
   if (String(order.orderSource || '').toLowerCase() === 'website') {
     return NextResponse.json({
       error: 'Manual payments are for WhatsApp orders only. Website orders use Cashfree.',
@@ -152,6 +166,7 @@ export async function PATCH(req, { params }) {
 
   const originalPaidAt = record.paidAt;
   if (body.rejected === true) {
+    if (!can(access, 'orders', 'reject_payments')) return denyAction();
     record.rejected = true;
     record.verified = false;
     record.verifiedBy = undefined;
@@ -159,6 +174,7 @@ export async function PATCH(req, { params }) {
     record.rejectedBy = access.adminId;
     record.rejectedAt = new Date();
   } else if (body.verified === true) {
+    if (!can(access, 'orders', 'verify_payments')) return denyAction();
     record.rejected = false;
     record.rejectedBy = undefined;
     record.rejectedAt = undefined;
@@ -166,6 +182,7 @@ export async function PATCH(req, { params }) {
     record.verifiedBy = access.adminId;
     record.verifiedAt = new Date();
   } else if (body.verified === false) {
+    if (!can(access, 'orders', 'verify_payments')) return denyAction();
     record.verified = false;
     record.verifiedBy = undefined;
     record.verifiedAt = undefined;

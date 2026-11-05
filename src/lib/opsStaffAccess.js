@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { roleSlugFromName } from '@/lib/adminPermissions';
+import { normalizeDataVisibility } from '@/lib/adminPermissionCatalog';
 
 const OVERSIGHT_SLUGS = new Set(['owner-admin', 'owner', 'admin', 'superadmin']);
 const OVERSIGHT_NAMES = new Set(['owner/admin', 'owner', 'admin', 'superadmin', 'primary admin']);
@@ -12,16 +13,39 @@ export function isOpsOversight(access) {
   const name = String(access.roleName || '').toLowerCase().trim();
   if (OVERSIGHT_SLUGS.has(slug)) return true;
   if (OVERSIGHT_NAMES.has(name)) return true;
-  // Permissions that imply full ops oversight (primary-equivalent)
   if (access.isPrimary === true) return true;
   return false;
 }
 
+/** Broader order access only when Super Admin explicitly enabled these actions (no RW inherit). */
+function hasExplicitBroaderOrderAccess(access) {
+  const orderActions = access?.permissions?.orders?.actions;
+  const opsActions = access?.permissions?.operations?.actions;
+  if (orderActions && orderActions.view_all_orders === true) return true;
+  if (opsActions && opsActions.view_other_editors_orders === true) return true;
+  return false;
+}
+
+/** Effective record visibility for this staff member. */
+export function resolveDataVisibility(access) {
+  if (isOpsOversight(access)) return 'all';
+  if (hasExplicitBroaderOrderAccess(access)) return 'all';
+  return normalizeDataVisibility(access?.dataVisibility, 'assigned');
+}
+
 /** Mongo filter limiting orders to those the staff member may see. */
 export function staffOrderScopeFilter(access) {
-  if (isOpsOversight(access)) return {};
+  const visibility = resolveDataVisibility(access);
+  if (visibility === 'all') return {};
+
   const adminId = access?.adminId;
   if (!adminId) return { _id: { $exists: false } };
+
+  if (visibility === 'own') {
+    return { createdByAdmin: access.adminId };
+  }
+
+  // assigned + department (department uses same operational assignment scope today)
   return {
     $or: [
       { assignedTo: access.adminId },
@@ -31,18 +55,25 @@ export function staffOrderScopeFilter(access) {
   };
 }
 
-/** Mongo filter limiting tasks to assignee (oversight sees all). */
+/** Mongo filter limiting tasks to assignee (oversight / all sees all). */
 export function staffTaskScopeFilter(access) {
-  if (isOpsOversight(access)) return {};
+  const visibility = resolveDataVisibility(access);
+  if (visibility === 'all') return {};
   if (!access?.adminId) return { _id: { $exists: false } };
   return { assignedTo: access.adminId };
 }
 
 export function assertCanAccessOrder(access, order) {
   if (!order) return false;
-  if (isOpsOversight(access)) return true;
+  const visibility = resolveDataVisibility(access);
+  if (visibility === 'all') return true;
   const adminId = String(access?.adminId || '');
   if (!adminId) return false;
+
+  if (visibility === 'own') {
+    return String(order.createdByAdmin?._id || order.createdByAdmin || '') === adminId;
+  }
+
   const ids = [
     order.assignedTo,
     order.createdByAdmin,

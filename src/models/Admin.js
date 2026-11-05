@@ -8,6 +8,10 @@ const AdminSchema = new mongoose.Schema({
   isPrimary: { type: Boolean, default: false },
   isActive: { type: Boolean, default: true },
   roleId: { type: mongoose.Schema.Types.ObjectId, ref: 'Role', default: null },
+  /** Per-staff permission deltas layered on top of role permissions. */
+  permissionOverrides: { type: mongoose.Schema.Types.Mixed, default: {} },
+  /** Optional staff-level visibility override (all|department|assigned|own). Empty = use role. */
+  dataVisibility: { type: String, default: '', trim: true },
   assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', default: null },
   assignedAt: Date,
 }, { timestamps: true });

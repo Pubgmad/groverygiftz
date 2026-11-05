@@ -98,6 +98,7 @@ export const authOptions = {
       session.user.accessStatus = access.accessStatus || 'unauthenticated';
       session.user.roleId = access.roleId || null;
       session.user.roleName = access.roleName || '';
+      session.user.dataVisibility = access.isPrimary ? 'all' : (access.dataVisibility || 'assigned');
       session.user.permissions = access.permissions || publicAdminAccess().permissions;
       return session;
     },

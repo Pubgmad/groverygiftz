@@ -4,6 +4,7 @@ import Role from '@/models/Role';
 import Admin from '@/models/Admin';
 import { logAdminAudit, requirePrimaryAdmin } from '@/lib/adminAccess';
 import { normalizePermissions, normalizeRoleName, roleSlugFromName } from '@/lib/adminPermissions';
+import { normalizeDataVisibility } from '@/lib/adminPermissionCatalog';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,7 +31,8 @@ export async function PUT(req, { params }) {
   }
   if (body.description !== undefined) next.description = String(body.description || '').trim().slice(0, 300);
   if (body.isActive !== undefined) next.isActive = body.isActive !== false;
-  if (body.permissions !== undefined) next.permissions = normalizePermissions(body.permissions);
+  if (body.permissions !== undefined) next.permissions = normalizePermissions(body.permissions, { expandActions: true });
+  if (body.dataVisibility !== undefined) next.dataVisibility = normalizeDataVisibility(body.dataVisibility, 'assigned');
   next.updatedBy = access.adminId;
   const updated = await Role.findByIdAndUpdate(id, { $set: next }, { new: true });
   await logAdminAudit({
@@ -39,9 +41,20 @@ export async function PUT(req, { params }) {
     action: 'role.update',
     targetType: 'role',
     targetId: id,
-    details: { name: updated.name, isActive: updated.isActive, permissions: normalizePermissions(updated.permissions) },
+    details: {
+      name: updated.name,
+      isActive: updated.isActive,
+      dataVisibility: updated.dataVisibility,
+      permissions: normalizePermissions(updated.permissions, { expandActions: true }),
+    },
   });
-  return NextResponse.json({ role: { ...updated.toObject(), permissions: normalizePermissions(updated.permissions) } });
+  return NextResponse.json({
+    role: {
+      ...updated.toObject(),
+      dataVisibility: normalizeDataVisibility(updated.dataVisibility, 'assigned'),
+      permissions: normalizePermissions(updated.permissions, { expandActions: true }),
+    },
+  });
 }
 
 export async function DELETE(req, { params }) {

@@ -4,7 +4,8 @@ import dbConnect from '@/lib/db';
 import Admin from '@/models/Admin';
 import Role from '@/models/Role';
 import { isPrimaryAdminRecord, logAdminAudit, requirePrimaryAdmin } from '@/lib/adminAccess';
-import { isValidEmail, normalizeEmail } from '@/lib/adminPermissions';
+import { isValidEmail, normalizeEmail, normalizePermissions } from '@/lib/adminPermissions';
+import { normalizeDataVisibility } from '@/lib/adminPermissionCatalog';
 import { strongPasswordMessage, validateStrongPassword } from '@/lib/passwordPolicy';
 
 export const dynamic = 'force-dynamic';
@@ -20,6 +21,8 @@ function publicAssignment(admin, role) {
     roleActive: role ? role.isActive !== false : false,
     assignedAt: admin.assignedAt || admin.updatedAt,
     createdAt: admin.createdAt,
+    dataVisibility: admin.dataVisibility || '',
+    permissionOverrides: admin.permissionOverrides || {},
     accessStatus: admin.isActive === false ? 'revoked' : (!role ? 'unassigned' : (role.isActive === false ? 'role-inactive' : 'active')),
   };
 }
@@ -57,6 +60,16 @@ export async function POST(req) {
     return NextResponse.json({ error: 'The primary admin cannot be assigned a limited role' }, { status: 409 });
   }
 
+  const permissionOverrides = body.permissionOverrides && typeof body.permissionOverrides === 'object'
+    && Object.keys(body.permissionOverrides).length
+    ? normalizePermissions(body.permissionOverrides, { expandActions: true })
+    : (body.permissionOverrides !== undefined ? {} : undefined);
+  const dataVisibility = body.dataVisibility !== undefined
+    ? (String(body.dataVisibility || '').trim()
+      ? normalizeDataVisibility(body.dataVisibility, 'assigned')
+      : '')
+    : undefined;
+
   if (existing) {
     existing.name = name || existing.name;
     existing.roleId = role._id;
@@ -65,13 +78,28 @@ export async function POST(req) {
     existing.isActive = true;
     existing.assignedBy = access.adminId;
     existing.assignedAt = new Date();
+    if (permissionOverrides !== undefined) existing.permissionOverrides = permissionOverrides;
+    if (dataVisibility !== undefined) existing.dataVisibility = dataVisibility;
     if (body.password) {
       const check = validateStrongPassword(body.password);
       if (!check.valid) return NextResponse.json({ error: strongPasswordMessage() }, { status: 400 });
       existing.password = await bcrypt.hash(body.password, 12);
     }
     await existing.save();
-    await logAdminAudit({ access, req, action: 'assignment.update', targetType: 'admin', targetId: existing._id, details: { email, roleId: String(role._id), roleName: role.name } });
+    await logAdminAudit({
+      access,
+      req,
+      action: 'assignment.update',
+      targetType: 'admin',
+      targetId: existing._id,
+      details: {
+        email,
+        roleId: String(role._id),
+        roleName: role.name,
+        dataVisibility: existing.dataVisibility || '',
+        hasOverrides: Boolean(existing.permissionOverrides && Object.keys(existing.permissionOverrides).length),
+      },
+    });
     return NextResponse.json({ assignment: publicAssignment(existing.toObject(), role) });
   }
 
@@ -85,9 +113,18 @@ export async function POST(req) {
     isPrimary: false,
     isActive: true,
     roleId: role._id,
+    permissionOverrides: permissionOverrides || {},
+    dataVisibility: dataVisibility || '',
     assignedBy: access.adminId,
     assignedAt: new Date(),
   });
-  await logAdminAudit({ access, req, action: 'assignment.create', targetType: 'admin', targetId: admin._id, details: { email, roleId: String(role._id), roleName: role.name } });
+  await logAdminAudit({
+    access,
+    req,
+    action: 'assignment.create',
+    targetType: 'admin',
+    targetId: admin._id,
+    details: { email, roleId: String(role._id), roleName: role.name, dataVisibility: admin.dataVisibility || '' },
+  });
   return NextResponse.json({ assignment: publicAssignment(admin.toObject(), role) }, { status: 201 });
 }

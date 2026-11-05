@@ -4,8 +4,12 @@ import mongoose from 'mongoose';
 import dbConnect from '@/lib/db';
 import Order from '@/models/Order';
 import Admin from '@/models/Admin';
-import { requireAdminPermission, logAdminAudit } from '@/lib/adminAccess';
+import { can, requireAdminPermission, logAdminAudit } from '@/lib/adminAccess';
 import { assertCanAccessOrder } from '@/lib/opsStaffAccess';
+
+function denyAction() {
+  return NextResponse.json({ error: 'You do not have permission to perform this action' }, { status: 403 });
+}
 import {
   OPS_STATUSES,
   SALES_COMMS_KEYS,
@@ -43,6 +47,9 @@ export async function PATCH(req, { params }) {
   const prevStatus = order.status;
 
   if (body.opsStatus) {
+    if (!can(access, 'operations', 'update_operations_status') && !can(access, 'orders', 'edit_order_details')) {
+      return denyAction();
+    }
     if (!OPS_STATUSES.includes(body.opsStatus)) {
       return NextResponse.json({ error: 'Invalid ops status' }, { status: 400 });
     }
@@ -165,6 +172,9 @@ export async function PATCH(req, { params }) {
   }
 
   if (body.assignedTo !== undefined) {
+    const hadEditor = Boolean(order.assignedTo);
+    const actionId = hadEditor ? 'reassign_editor' : 'assign_editor';
+    if (!can(access, 'orders', actionId)) return denyAction();
     const { reassignEditor, notifyAssignedEditor } = await import('@/lib/editorAssignment');
     try {
       await reassignEditor(order, {
@@ -180,6 +190,7 @@ export async function PATCH(req, { params }) {
   }
 
   if (body.expectedDispatchDate !== undefined) {
+    if (!can(access, 'orders', 'change_expected_dispatch')) return denyAction();
     const raw = body.expectedDispatchDate;
     if (!raw) {
       order.expectedDispatchDate = undefined;
@@ -201,6 +212,9 @@ export async function PATCH(req, { params }) {
     || body.trackingUrl !== undefined
     || body.courierCompany !== undefined;
   if (trackingTouched) {
+    if (!can(access, 'orders', 'add_tracking_id') && !can(access, 'orders', 'edit_tracking_id') && !can(access, 'orders', 'update_dispatch_details')) {
+      return denyAction();
+    }
     const handedOver = order.pickupStatus === 'handed_over'
       || (Array.isArray(order.parcelRefs) && order.parcelRefs.length > 0);
     if (!handedOver) {

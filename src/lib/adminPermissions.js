@@ -1,3 +1,10 @@
+import {
+  getActionMeta,
+  listModuleActions,
+  moduleHasActionCatalog,
+  normalizeModuleActions,
+} from '@/lib/adminPermissionCatalog';
+
 export const ADMIN_BASE_PATH = '/account/manage';
 
 export const ADMIN_MODULES = [
@@ -68,13 +75,25 @@ export function roleSlugFromName(name = '') {
     .slice(0, 80);
 }
 
-export function normalizePermissions(input = {}) {
+/**
+ * Normalize module permissions.
+ * Preserves optional per-action map when present. Existing {read,write}-only roles stay compatible.
+ * @param {object} input
+ * @param {{ expandActions?: boolean }} [options] expandActions fills action checkboxes from RW for UI.
+ */
+export function normalizePermissions(input = {}, options = {}) {
   const source = input && typeof input === 'object' ? input : {};
+  const expandActions = options.expandActions === true;
   return Object.fromEntries(ADMIN_MODULES.map((module) => {
     const row = source[module.id] && typeof source[module.id] === 'object' ? source[module.id] : {};
     const write = module.writeSupported && row.write === true;
     const read = write || row.read === true;
-    return [module.id, { read, write }];
+    const entry = { read, write };
+    if (moduleHasActionCatalog(module.id)) {
+      const actions = normalizeModuleActions(module.id, row.actions, { read, write, expandFromRw: expandActions });
+      if (actions) entry.actions = actions;
+    }
+    return [module.id, entry];
   }));
 }
 
@@ -85,6 +104,68 @@ export function hasModulePermission(permissions, moduleId, action = 'read') {
   if (action === 'write') return row.write === true;
   return row.read === true || row.write === true;
 }
+
+/**
+ * Action-level check with backward-compatible inheritance:
+ * - Explicit action true/false wins when the module has an actions map containing that key.
+ * - Otherwise inherit from module read/write (existing staff keep access).
+ */
+export function hasActionPermission(permissions, moduleId, actionId) {
+  if (!ADMIN_MODULE_IDS.includes(moduleId) || !actionId) return false;
+  if (actionId === 'read' || actionId === 'write') {
+    return hasModulePermission(permissions, moduleId, actionId);
+  }
+  const meta = getActionMeta(moduleId, actionId);
+  if (!meta) return false;
+  const row = permissions?.[moduleId];
+  if (!row) return false;
+  const actions = row.actions;
+  if (actions && typeof actions === 'object' && Object.keys(actions).length > 0) {
+    if (Object.prototype.hasOwnProperty.call(actions, actionId)) {
+      return actions[actionId] === true;
+    }
+    // Granular map present but this action unset → default deny (new catalog actions stay locked)
+    return false;
+  }
+  // Legacy {read,write}-only roles: inherit module access
+  if (meta.level === 'write') return row.write === true;
+  return row.read === true || row.write === true;
+}
+
+/** Merge staff overrides onto role permissions (override wins per field/action). */
+export function mergePermissionOverrides(rolePermissions = {}, overrides = {}) {
+  const base = normalizePermissions(rolePermissions, { expandActions: false });
+  const source = overrides && typeof overrides === 'object' ? overrides : {};
+  ADMIN_MODULES.forEach((module) => {
+    const over = source[module.id];
+    if (!over || typeof over !== 'object') return;
+    const current = base[module.id] || { read: false, write: false };
+    if (typeof over.read === 'boolean') current.read = over.read === true;
+    if (module.writeSupported && typeof over.write === 'boolean') {
+      current.write = over.write === true;
+      if (current.write) current.read = true;
+    }
+    if (over.actions && typeof over.actions === 'object') {
+      const mergedActions = { ...(current.actions || {}) };
+      Object.keys(over.actions).forEach((actionId) => {
+        mergedActions[actionId] = over.actions[actionId] === true;
+      });
+      // Ensure catalog keys exist after override merge for consistent checks
+      listModuleActions(module.id).forEach((def) => {
+        if (!Object.prototype.hasOwnProperty.call(mergedActions, def.id)) {
+          mergedActions[def.id] = def.level === 'write'
+            ? current.write === true
+            : (current.read === true || current.write === true);
+        }
+      });
+      current.actions = mergedActions;
+    }
+    base[module.id] = current;
+  });
+  return base;
+}
+
+export { listModuleActions, moduleHasActionCatalog, getActionMeta };
 
 export function moduleIdFromPath(pathname = '') {
   const path = String(pathname || '').split('?')[0];
@@ -121,6 +202,7 @@ export function primaryAdminAccess() {
     accessStatus: 'primary',
     roleId: null,
     roleName: 'Primary admin',
+    dataVisibility: 'all',
     permissions: fullAdminPermissions(),
   };
 }

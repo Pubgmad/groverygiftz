@@ -4,6 +4,8 @@ import dbConnect from '@/lib/db';
 import Admin from '@/models/Admin';
 import Role from '@/models/Role';
 import { isPrimaryAdminRecord, logAdminAudit, requirePrimaryAdmin } from '@/lib/adminAccess';
+import { normalizePermissions } from '@/lib/adminPermissions';
+import { normalizeDataVisibility } from '@/lib/adminPermissionCatalog';
 import { strongPasswordMessage, validateStrongPassword } from '@/lib/passwordPolicy';
 
 export const dynamic = 'force-dynamic';
@@ -21,6 +23,8 @@ function publicAssignment(admin, role) {
     roleActive: role ? role.isActive !== false : false,
     assignedAt: admin.assignedAt || admin.updatedAt,
     createdAt: admin.createdAt,
+    dataVisibility: admin.dataVisibility || '',
+    permissionOverrides: admin.permissionOverrides || {},
     accessStatus: admin.isActive === false ? 'revoked' : (!role ? 'unassigned' : (role.isActive === false ? 'role-inactive' : 'active')),
   };
 }
@@ -44,6 +48,16 @@ export async function PUT(req, { params }) {
   }
   if (body.name !== undefined) admin.name = String(body.name || '').trim().slice(0, 80) || admin.name;
   if (body.isActive !== undefined) admin.isActive = body.isActive !== false;
+  if (body.permissionOverrides !== undefined) {
+    admin.permissionOverrides = body.permissionOverrides && typeof body.permissionOverrides === 'object'
+      && Object.keys(body.permissionOverrides).length
+      ? normalizePermissions(body.permissionOverrides, { expandActions: true })
+      : {};
+  }
+  if (body.dataVisibility !== undefined) {
+    const raw = String(body.dataVisibility || '').trim();
+    admin.dataVisibility = raw ? normalizeDataVisibility(raw, 'assigned') : '';
+  }
   if (body.password) {
     const check = validateStrongPassword(body.password);
     if (!check.valid) return NextResponse.json({ error: strongPasswordMessage() }, { status: 400 });
@@ -61,7 +75,13 @@ export async function PUT(req, { params }) {
     action: admin.isActive === false ? 'assignment.revoke' : 'assignment.update',
     targetType: 'admin',
     targetId: admin._id,
-    details: { email: admin.email, roleId: admin.roleId, isActive: admin.isActive },
+    details: {
+      email: admin.email,
+      roleId: admin.roleId,
+      isActive: admin.isActive,
+      dataVisibility: admin.dataVisibility || '',
+      hasOverrides: Boolean(admin.permissionOverrides && Object.keys(admin.permissionOverrides).length),
+    },
   });
   return NextResponse.json({ assignment: publicAssignment(admin.toObject(), role) });
 }

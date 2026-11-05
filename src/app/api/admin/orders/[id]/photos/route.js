@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import Order from '@/models/Order';
-import { requireAdminPermission, logAdminAudit } from '@/lib/adminAccess';
+import { can, requireAdminPermission, logAdminAudit } from '@/lib/adminAccess';
 import { saveUploadFile } from '@/lib/uploadStorage';
 import { buildCustomerDisplayUrl } from '@/lib/customerFileAccess';
 import { PRINTING_STARTED_OPS } from '@/lib/opsConstants';
@@ -283,11 +283,20 @@ export async function POST(req, { params }) {
   let actionType = 'photo_replaced';
 
   if (mode === 'append' || mode === 'add') {
+    if (!can(access, 'orders', 'upload_customer_photos')) {
+      return NextResponse.json({ error: 'You do not have permission to perform this action' }, { status: 403 });
+    }
     result = appendCustomerPhoto(item, { saved, file, slotLabel });
     actionType = 'photo_added';
   } else {
+    if (!can(access, 'orders', 'replace_customer_photos') && !can(access, 'orders', 'edit_customer_photos')) {
+      return NextResponse.json({ error: 'You do not have permission to perform this action' }, { status: 403 });
+    }
     result = replaceCustomerPhoto(item, { slotKey, fieldPath, saved, file });
     if (!result && (mode === 'auto' || mode === 'replace_or_append')) {
+      if (!can(access, 'orders', 'upload_customer_photos')) {
+        return NextResponse.json({ error: 'You do not have permission to perform this action' }, { status: 403 });
+      }
       result = appendCustomerPhoto(item, { saved, file, slotLabel });
       actionType = 'photo_added';
     }
@@ -325,7 +334,20 @@ export async function POST(req, { params }) {
     action: actionType === 'photo_added' ? 'orders.photo_add' : 'orders.photo_replace',
     targetType: 'Order',
     targetId: String(order._id),
-    details: { slotKey, fieldPath, itemIndex, target: result.target, mode, orderNumber: order.orderNumber },
+    details: {
+      orderId: String(order._id),
+      orderNumber: order.orderNumber,
+      editorId: access.adminId,
+      uploadedFile: saved.relativePath,
+      previousFile: result.previousPath || '',
+      fileType: String(file?.type || ''),
+      uploadedAt: new Date().toISOString(),
+      slotKey,
+      fieldPath,
+      itemIndex,
+      target: result.target,
+      mode,
+    },
   });
 
   if (order.assignedTo) {
