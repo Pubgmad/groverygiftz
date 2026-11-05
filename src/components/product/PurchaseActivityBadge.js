@@ -15,7 +15,6 @@ export default function PurchaseActivityBadge({ product }) {
     <div
       className="product-sales-milestone w-full min-w-0 sm:w-auto"
       role="status"
-      title="Admin-configured sales milestone — not automatically verified from order records"
     >
       <span className="product-sales-milestone__icon" aria-hidden>
         <FiShoppingBag size={14} />

@@ -77,7 +77,6 @@ export default function ProductInterestIndicator({ product }) {
       className={`product-interest ${animating ? 'product-interest--tick' : ''} w-full min-w-0 sm:w-auto`}
       role="status"
       aria-live="polite"
-      title="Promotional estimate — not verified live visitor analytics"
     >
       <span className="product-interest__icon" aria-hidden>
         <FiEye size={14} />

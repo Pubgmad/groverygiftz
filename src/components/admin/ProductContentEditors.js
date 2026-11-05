@@ -227,7 +227,7 @@ export function ProductInterestEditor({ productInterest = {}, onChange }) {
         </div>
         <div>
           <label className="block text-xs font-medium mb-1">Label template</label>
-          <input value={value.labelTemplate || ''} onChange={(e) => onChange({ ...value, labelTemplate: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" placeholder="{count} estimated product views" />
+          <input value={value.labelTemplate || ''} onChange={(e) => onChange({ ...value, labelTemplate: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm bg-white" placeholder="{count} live product views" />
         </div>
       </div>
     </div>

@@ -51,6 +51,6 @@ export function nudgeInterestEstimate(current, config = {}) {
 
 export function formatInterestLabel(count, config = {}) {
   const template = String(config.labelTemplate || '').trim()
-    || '{count} estimated product views';
+    || '{count} live product views';
   return template.replace(/\{count\}/gi, String(count));
 }
