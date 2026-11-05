@@ -21,27 +21,83 @@ const emptyItem = () => ({
 function photoSlotCountForProduct(product) {
   const preview = product?.customizationPreview || {};
   const areas = Array.isArray(preview.areas) ? preview.areas.length : 0;
+  const fileFields = (product?.customFields || []).filter((f) => String(f?.type || '') === 'file').length;
   const required = Math.max(0, Number(preview.requiredImageCount || 0));
   const max = Math.max(0, Number(preview.maxImageCount || 0));
-  return Math.max(areas, required, max, 0);
+  // Variant options that require image upload also imply at least one slot when configured
+  const variantUploadHints = (product?.variants || []).flatMap((v) => v.options || [])
+    .filter((o) => o?.requiresImageUpload).length;
+  return Math.max(areas, fileFields, required, max, variantUploadHints > 0 ? 1 : 0, 0);
 }
 
+/**
+ * Build photo slots from website product configuration (areas, counts, file custom fields).
+ * Reuses AdminWebsitePhotoSlot / crop editor — does not hardcode product layouts.
+ */
 function buildCatalogPhotoSlots(product) {
+  const preview = product?.customizationPreview || {};
+  const areas = Array.isArray(preview.areas) ? preview.areas : [];
+  const fileFields = (product?.customFields || []).filter((f) => String(f?.type || '') === 'file');
   const count = photoSlotCountForProduct(product);
-  const areas = Array.isArray(product?.customizationPreview?.areas) ? product.customizationPreview.areas : [];
-  return Array.from({ length: count }, (_, index) => {
-    const area = areas[index] || {};
-    return {
-      slotKey: `catalog-${index}`,
-      label: area.label || `Photo ${index + 1}`,
-      sizeLabel: area.width && area.height ? `${area.width}×${area.height} ${area.unit || 'inch'}` : '',
-      frameImage: area.frameImage || product?.customizationPreview?.frameImage || '',
-      instructions: area.instructions || '',
-      required: area.required !== false,
+  if (!count) return [];
+
+  if (areas.length > 0) {
+    return Array.from({ length: Math.max(count, areas.length) }, (_, index) => {
+      const area = areas[index] || areas[areas.length - 1] || {};
+      return {
+        slotKey: `catalog-area-${index}`,
+        label: area.label || `Photo ${index + 1}`,
+        sizeLabel: area.width && area.height ? `${area.width}×${area.height} ${area.unit || 'inch'}` : '',
+        frameImage: area.frameImage || preview.frameImage || '',
+        instructions: area.instructions || preview.instructions || '',
+        required: index < Math.max(Number(preview.requiredImageCount || 0), areas.filter((a) => a.required !== false).length)
+          ? area.required !== false
+          : false,
+        photo: null,
+        reference: null,
+      };
+    });
+  }
+
+  if (fileFields.length > 0) {
+    const slots = fileFields.map((field, index) => ({
+      slotKey: `catalog-field-${index}`,
+      label: field.label || `Photo ${index + 1}`,
+      sizeLabel: '',
+      frameImage: preview.frameImage || '',
+      instructions: preview.shortGuidance || preview.instructions || '',
+      required: field.required === true,
       photo: null,
       reference: null,
-    };
-  });
+      customFieldLabel: field.label,
+    }));
+    // If required/max counts exceed named file fields, add numbered slots
+    while (slots.length < count) {
+      const index = slots.length;
+      slots.push({
+        slotKey: `catalog-extra-${index}`,
+        label: `Photo ${index + 1}`,
+        sizeLabel: '',
+        frameImage: preview.frameImage || '',
+        instructions: preview.instructions || '',
+        required: index < Number(preview.requiredImageCount || 0),
+        photo: null,
+        reference: null,
+      });
+    }
+    return slots;
+  }
+
+  return Array.from({ length: count }, (_, index) => ({
+    slotKey: `catalog-${index}`,
+    label: `Photo ${index + 1}`,
+    sizeLabel: '',
+    frameImage: preview.frameImage || '',
+    instructions: preview.instructions || preview.shortGuidance || '',
+    required: index < Number(preview.requiredImageCount || 0),
+    photo: null,
+    reference: null,
+  }));
 }
 
 const emptyCustomer = {
@@ -75,9 +131,11 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
   const [productMode, setProductMode] = useState('customized_combo');
   const [comboProduct, setComboProduct] = useState(null);
   const [comboSizes, setComboSizes] = useState([]);
-  const [comboSelections, setComboSelections] = useState([]); // [{ size, quantity }]
+  const [comboSelections, setComboSelections] = useState([]); // [{ size, quantity, isCustom }]
   const [comboSlotsConfirmed, setComboSlotsConfirmed] = useState(false);
   const [comboPhotoSlots, setComboPhotoSlots] = useState([]);
+  const [customSizeDraft, setCustomSizeDraft] = useState('');
+  const [paymentScreenshot, setPaymentScreenshot] = useState(null);
   const [form, setForm] = useState({
     orderSource: 'whatsapp',
     customerKind: 'new',
@@ -345,7 +403,16 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
       return;
     }
     setComboSelections(valid);
-    setComboPhotoSlots(buildComboPhotoSlots(valid));
+    const frameImage = comboProduct?.customizationPreview?.frameImage || '';
+    const instructions = comboProduct?.customizationPreview?.instructions
+      || comboProduct?.customizationPreview?.shortGuidance
+      || '';
+    setComboPhotoSlots(buildComboPhotoSlots(valid).map((slot) => ({
+      ...slot,
+      frameImage,
+      instructions,
+      required: true,
+    })));
     setComboSlotsConfirmed(true);
     toast.success('Photo slots generated — upload one customer photo per frame');
   };
@@ -432,6 +499,17 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
       return;
     }
     let paymentDateIso;
+    const advanceAmount = Number(form.advancePayment) || 0;
+    if (advanceAmount > 0) {
+      if (!form.paymentDate) {
+        toast.error('Payment date is required when recording advance payment');
+        return;
+      }
+      if (!paymentScreenshot) {
+        toast.error('Advance payment screenshot is required');
+        return;
+      }
+    }
     if (form.paymentDate) {
       const paidAtDate = fromDatetimeLocalIst(form.paymentDate);
       if (!paidAtDate) {
@@ -464,7 +542,7 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
         otherCharges: other,
         manualPriceEntered: true,
         manualComboPrice: combo,
-        advancePayment: Number(form.advancePayment) || 0,
+        advancePayment: advanceAmount,
         paymentMethod: form.paymentMethod,
         paymentReference: form.paymentReference,
         paymentVerified: form.paymentVerified,
@@ -484,10 +562,14 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
           isCustomizedCombo: productMode === 'customized_combo',
         })),
       };
+      const createBody = new FormData();
+      createBody.append('payload', JSON.stringify(payload));
+      if (advanceAmount > 0 && paymentScreenshot) {
+        createBody.append('paymentScreenshot', paymentScreenshot);
+      }
       const res = await fetch('/api/admin/orders', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: createBody,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to create order');
@@ -541,6 +623,11 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
         internalNotes: '',
         items: [emptyItem()],
       }));
+      setPaymentScreenshot(null);
+      setComboSelections([]);
+      setComboPhotoSlots([]);
+      setComboSlotsConfirmed(false);
+      setCustomSizeDraft('');
     } catch (err) {
       toast.error(err.message || 'Create failed');
     } finally {
@@ -787,20 +874,38 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
                 {comboSelections.map((row, index) => (
                   <div key={`combo-${index}`} className="grid gap-2 rounded-xl border bg-white p-3 sm:grid-cols-3">
                     <label className="text-sm font-semibold sm:col-span-2">Size
-                      <select
-                        value={row.size}
-                        onChange={(e) => {
-                          const size = e.target.value;
-                          setComboSelections((prev) => prev.map((r, i) => (i === index ? { ...r, size } : r)));
-                          setComboSlotsConfirmed(false);
-                        }}
-                        className="mt-1 w-full rounded-xl border px-3 py-2.5"
-                      >
-                        <option value="">Select size</option>
-                        {comboSizes.map((s) => (
-                          <option key={s} value={s}>{s}</option>
-                        ))}
-                      </select>
+                      {row.isCustom ? (
+                        <input
+                          value={row.size}
+                          onChange={(e) => {
+                            const size = e.target.value;
+                            setComboSelections((prev) => prev.map((r, i) => (i === index ? { ...r, size } : r)));
+                            setComboSlotsConfirmed(false);
+                          }}
+                          placeholder="e.g. 12x10"
+                          className="mt-1 w-full rounded-xl border px-3 py-2.5"
+                        />
+                      ) : (
+                        <select
+                          value={row.size}
+                          onChange={(e) => {
+                            const size = e.target.value;
+                            setComboSelections((prev) => prev.map((r, i) => (i === index ? { ...r, size } : r)));
+                            setComboSlotsConfirmed(false);
+                          }}
+                          className="mt-1 w-full rounded-xl border px-3 py-2.5"
+                        >
+                          <option value="">Select size</option>
+                          {comboSizes.map((s) => (
+                            <option key={s} value={s}>{s}</option>
+                          ))}
+                        </select>
+                      )}
+                      {row.isCustom ? (
+                        <span className="mt-1 block text-[10px] font-normal text-amber-800">
+                          Order-specific size — not saved to website product
+                        </span>
+                      ) : null}
                     </label>
                     <label className="text-sm font-semibold">Qty
                       <input
@@ -826,17 +931,44 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
                     </button>
                   </div>
                 ))}
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap items-end gap-2">
                   <button
                     type="button"
                     className="rounded-xl border bg-white px-3 py-2 text-sm font-semibold"
                     onClick={() => {
-                      setComboSelections((prev) => [...prev, { size: '', quantity: 1 }]);
+                      setComboSelections((prev) => [...prev, { size: '', quantity: 1, isCustom: false }]);
                       setComboSlotsConfirmed(false);
                     }}
                   >
-                    + Add size
+                    + Add website size
                   </button>
+                  <label className="text-xs font-semibold text-gray-700">
+                    Additional size (order only)
+                    <span className="mt-1 flex gap-2">
+                      <input
+                        value={customSizeDraft}
+                        onChange={(e) => setCustomSizeDraft(e.target.value)}
+                        placeholder="12x10"
+                        className="min-h-[40px] rounded-xl border px-3 py-2 text-sm font-normal"
+                      />
+                      <button
+                        type="button"
+                        className="rounded-xl border bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900"
+                        onClick={() => {
+                          const size = String(customSizeDraft || '').trim();
+                          if (!size) {
+                            toast.error('Enter a custom size label');
+                            return;
+                          }
+                          setComboSelections((prev) => [...prev, { size, quantity: 1, isCustom: true }]);
+                          setCustomSizeDraft('');
+                          setComboSlotsConfirmed(false);
+                        }}
+                      >
+                        Add size
+                      </button>
+                    </span>
+                  </label>
                   <button
                     type="button"
                     className="rounded-xl bg-emerald-700 px-3 py-2 text-sm font-semibold text-white"
@@ -856,6 +988,8 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
                           key={slot.slotKey}
                           label={slot.label}
                           sizeLabel={slot.size}
+                          frameImage={slot.frameImage || ''}
+                          instructions={slot.instructions || ''}
                           required
                           value={slot.photo || null}
                           referenceValue={slot.reference || null}
@@ -884,7 +1018,8 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
             {form.items.map((item, index) => {
               const product = selectedProduct(item.productId);
               const variants = (product?.variants || []).flatMap((v) => (v.options || []).map((o) => `${v.name}: ${o.label}`));
-              const customFields = Array.isArray(product?.customFields) ? product.customFields : [];
+              const customFields = (Array.isArray(product?.customFields) ? product.customFields : [])
+                .filter((field) => field?.type !== 'file');
               const slots = Array.isArray(item.photoSlots) ? item.photoSlots : [];
               return (
                 <div key={index} className="grid gap-2 rounded-xl border bg-white p-3 sm:grid-cols-2">
@@ -1077,9 +1212,25 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
             <label className="text-sm font-semibold">Payment reference
               <input value={form.paymentReference} onChange={(e) => setField('paymentReference', e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
             </label>
-            <label className="flex items-center gap-2 text-sm font-semibold pt-6">
+            <label className="text-sm font-semibold sm:col-span-2">
+              Advance payment screenshot {(Number(form.advancePayment) || 0) > 0 ? '*' : '(required when advance > 0)'}
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => setPaymentScreenshot(e.target.files?.[0] || null)}
+                className="mt-1 block w-full text-sm"
+              />
+              {paymentScreenshot ? (
+                <span className="mt-1 block text-[11px] font-normal text-gray-600">Selected: {paymentScreenshot.name}</span>
+              ) : (
+                <span className="mt-1 block text-[11px] font-normal text-amber-800">
+                  Screenshot is mandatory whenever an advance amount is entered. Uploading does not verify payment.
+                </span>
+              )}
+            </label>
+            <label className="flex items-center gap-2 text-sm font-semibold pt-2 sm:col-span-2">
               <input type="checkbox" checked={form.paymentVerified} onChange={(e) => setField('paymentVerified', e.target.checked)} />
-              Mark advance verified
+              Mark advance verified (separate authorized action — optional at create)
             </label>
             <label className="text-sm font-semibold sm:col-span-2">Internal notes
               <textarea value={form.internalNotes} onChange={(e) => setField('internalNotes', e.target.value)} rows={2} className="mt-1 w-full rounded-xl border px-3 py-2.5" />

@@ -185,6 +185,68 @@ export async function notifyAssignedEditor(order) {
   }).catch(() => {});
 }
 
+/**
+ * Backfill automatic Editor assignment for eligible existing orders that have no editor.
+ * Never overwrites a valid assignedTo. Sets opsStatus to editing_in_progress when appropriate.
+ * Processes in small batches to reduce concurrent contention.
+ */
+export async function autoAssignUnassignedEligibleOrders({
+  limit = 40,
+  actorId = null,
+  actorName = 'System',
+} = {}) {
+  const eligible = await Order.find({
+    $and: [
+      {
+        $or: [
+          { paymentStatus: 'paid' },
+          { orderSource: { $in: ['whatsapp', 'instagram'] } },
+        ],
+      },
+      {
+        $or: [
+          { assignedTo: { $exists: false } },
+          { assignedTo: null },
+        ],
+      },
+      { status: { $ne: 'cancelled' } },
+      {
+        opsStatus: {
+          $nin: ['dispatched', 'completed', 'cancelled', 'on_hold'],
+        },
+      },
+    ],
+  })
+    .sort({ createdAt: 1 })
+    .limit(Math.max(1, Math.min(100, Number(limit) || 40)));
+
+  const results = { scanned: eligible.length, assigned: 0, skipped: 0, warnings: [] };
+
+  for (const order of eligible) {
+    // Re-read assignment under each save to reduce races with concurrent creates
+    if (order.assignedTo) {
+      results.skipped += 1;
+      continue;
+    }
+    const result = await autoAssignEditorIfNeeded(order, {
+      source: 'backfill_unassigned',
+      actorId,
+      actorName,
+    });
+    if (result.assigned) {
+      await order.save();
+      await notifyAssignedEditor(order);
+      results.assigned += 1;
+    } else {
+      results.skipped += 1;
+      if (result.warning) results.warnings.push({ orderId: String(order._id), warning: result.warning });
+      if (result.warning) await order.save();
+    }
+  }
+
+  return results;
+}
+
 /** Manual reassignment by Super Admin / staff with write access. */
 export async function reassignEditor(order, {
   editorId,

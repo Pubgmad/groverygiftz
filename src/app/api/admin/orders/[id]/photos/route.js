@@ -268,6 +268,8 @@ export async function POST(req, { params }) {
   const slotKey = String(form.get('slotKey') || 'customer-photo').trim();
   const fieldPath = String(form.get('fieldPath') || '').trim();
   const reason = String(form.get('reason') || '').trim();
+  const originalSize = String(form.get('originalSize') || '').trim();
+  const newSize = String(form.get('newSize') || '').trim();
   const mode = String(form.get('mode') || 'auto').toLowerCase();
   const slotLabel = String(form.get('slotLabel') || 'Customer Photos').trim() || 'Customer Photos';
   if (!file || typeof file === 'string') {
@@ -308,6 +310,13 @@ export async function POST(req, { params }) {
     }, { status: 400 });
   }
 
+  if (newSize && String(item.variant || '') !== `Size: ${newSize}`) {
+    const prevVariant = item.variant || '';
+    item.variant = prevVariant && !/^Size:/i.test(prevVariant)
+      ? `${prevVariant} → ${newSize}`
+      : `Size: ${newSize}`;
+  }
+
   order.markModified(`items.${itemIndex}`);
   order.photoHistory = order.photoHistory || [];
   order.photoHistory.push({
@@ -315,7 +324,11 @@ export async function POST(req, { params }) {
     previousPath: result.previousPath || '',
     newPath: saved.relativePath,
     reason,
+    originalSize: originalSize || String(item.variant || '').replace(/^Size:\s*/i, ''),
+    newSize: newSize || originalSize || '',
+    itemIndex,
     replacedBy: access.adminId,
+    replacedByName: access.name || access.email || '',
     replacedAt: new Date(),
   });
 
@@ -323,7 +336,8 @@ export async function POST(req, { params }) {
     type: actionType,
     employee: access.adminId,
     employeeName: access.name || access.email || '',
-    notes: reason || `Photo ${actionType === 'photo_added' ? 'added' : 'replaced'} for item ${itemIndex + 1} (${result.target})`,
+    notes: reason
+      || `Photo ${actionType === 'photo_added' ? 'added' : 'replaced'} for item ${itemIndex + 1} (${result.target})${newSize ? ` · size ${newSize}` : ''}`,
     fileRef: saved.relativePath,
   });
   await order.save();

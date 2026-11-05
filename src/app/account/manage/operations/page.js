@@ -82,6 +82,25 @@ export default function OperationsPage() {
 
   useEffect(() => {
     if (!readable) return;
+    // One-shot backfill for eligible unassigned orders (idempotent; does not reassign).
+    fetch('/api/admin/editors/auto-assign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ limit: 40 }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.assigned > 0) {
+          toast.success(`Auto-assigned ${data.assigned} order${data.assigned === 1 ? '' : 's'} to Editors`);
+          load(activeStatus);
+        }
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [readable]);
+
+  useEffect(() => {
+    if (!readable) return;
     fetch('/api/admin/staff', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : { staff: [] }))
       .then((d) => setStaff(d.staff || []))

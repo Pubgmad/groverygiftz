@@ -71,6 +71,12 @@ export function parseOrderReportFilters(params) {
   const dateTo = paramValue(params, 'dateTo');
   const range = parseIstRange(dateFrom, dateTo);
   if (range.error) return { error: range.error };
+  // Order created date (IST). Single `orderDate` = that calendar day.
+  const orderDate = paramValue(params, 'orderDate');
+  const orderDateFrom = paramValue(params, 'orderDateFrom', 'createdFrom') || orderDate;
+  const orderDateTo = paramValue(params, 'orderDateTo', 'createdTo') || orderDate;
+  const createdRange = parseIstRange(orderDateFrom, orderDateTo);
+  if (createdRange.error) return { error: createdRange.error };
   const expectedFrom = paramValue(params, 'expectedFrom', 'expectedDispatchFrom');
   const expectedTo = paramValue(params, 'expectedTo', 'expectedDispatchTo');
   const expectedRange = parseIstRange(expectedFrom, expectedTo);
@@ -89,6 +95,11 @@ export function parseOrderReportFilters(params) {
     dateTo: range.toStr,
     paidAtFrom: range.from,
     paidAtTo: range.to,
+    orderDate: orderDate || '',
+    orderDateFrom: createdRange.fromStr,
+    orderDateTo: createdRange.toStr,
+    createdAtFrom: createdRange.from,
+    createdAtTo: createdRange.to,
     expectedFrom: expectedRange.fromStr,
     expectedTo: expectedRange.toStr,
     expectedDispatchFrom: expectedRange.from,
@@ -151,6 +162,12 @@ export function buildAdminOrderFilter(filters = {}) {
     filter.paidAt = {};
     if (filters.paidAtFrom) filter.paidAt.$gte = filters.paidAtFrom;
     if (filters.paidAtTo) filter.paidAt.$lte = filters.paidAtTo;
+  }
+  // Order date = createdAt (IST day bounds). Independent of paidAt / expected dispatch.
+  if (filters.createdAtFrom || filters.createdAtTo) {
+    filter.createdAt = {};
+    if (filters.createdAtFrom) filter.createdAt.$gte = filters.createdAtFrom;
+    if (filters.createdAtTo) filter.createdAt.$lte = filters.createdAtTo;
   }
   // Expected dispatch date (promised to customer) — not paidAt / actual parcel date
   if (filters.expectedDispatchFrom || filters.expectedDispatchTo) {

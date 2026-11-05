@@ -66,7 +66,11 @@ const PhotoHistorySchema = new mongoose.Schema({
   previousPath: String,
   newPath: String,
   reason: String,
+  originalSize: { type: String, default: '' },
+  newSize: { type: String, default: '' },
+  itemIndex: { type: Number },
   replacedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin' },
+  replacedByName: { type: String, default: '' },
   replacedAt: { type: Date, default: Date.now },
 }, { _id: true });
 

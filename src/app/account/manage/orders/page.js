@@ -262,6 +262,7 @@ export default function AdminOrdersPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [orderDate, setOrderDate] = useState('');
   const [expectedFrom, setExpectedFrom] = useState('');
   const [expectedTo, setExpectedTo] = useState('');
   const [urgencyFilter, setUrgencyFilter] = useState('');
@@ -276,7 +277,7 @@ export default function AdminOrdersPage() {
   const [sourceFilter, setSourceFilter] = useState('');
   const [selectingMatching, setSelectingMatching] = useState(false);
   const pageSize = 10;
-  const dateError = dateFrom && dateTo && dateFrom > dateTo ? 'From date cannot be after To date' : '';
+  const dateError = dateFrom && dateTo && dateFrom > dateTo ? 'Paid From cannot be after Paid To' : '';
   const expectedError = expectedFrom && expectedTo && expectedFrom > expectedTo
     ? 'Expected dispatch From cannot be after To'
     : '';
@@ -301,6 +302,7 @@ export default function AdminOrdersPage() {
     if (mobileFilter.trim()) query.set('mobile', mobileFilter.trim());
     if (statusFilter) query.set('status', statusFilter);
     if (sourceFilter) query.set('source', sourceFilter);
+    if (orderDate) query.set('orderDate', orderDate);
     if (dateFrom) query.set('dateFrom', dateFrom);
     if (dateTo) query.set('dateTo', dateTo);
     if (expectedFrom) query.set('expectedFrom', expectedFrom);
@@ -333,6 +335,7 @@ export default function AdminOrdersPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    setOrderDate(params.get('orderDate') || '');
     setDateFrom(params.get('dateFrom') || '');
     setDateTo(params.get('dateTo') || '');
     setExpectedFrom(params.get('expectedFrom') || '');
@@ -345,6 +348,16 @@ export default function AdminOrdersPage() {
   }, []);
 
   useEffect(() => {
+    if (!writable) return;
+    // Backfill automatic Editor assignment for eligible unassigned orders (idempotent).
+    fetch('/api/admin/editors/auto-assign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ limit: 40 }),
+    }).catch(() => {});
+  }, [writable]);
+
+  useEffect(() => {
     if (!filtersReady) return;
     if (dateError || expectedError) {
       setOrders([]);
@@ -354,7 +367,7 @@ export default function AdminOrdersPage() {
       return;
     }
     fetchOrders();
-  }, [filtersReady, currentPage, orderFilter, nameFilter, mobileFilter, statusFilter, sourceFilter, dateFrom, dateTo, dateError, expectedFrom, expectedTo, expectedError, urgencyFilter]);
+  }, [filtersReady, currentPage, orderFilter, nameFilter, mobileFilter, statusFilter, sourceFilter, orderDate, dateFrom, dateTo, dateError, expectedFrom, expectedTo, expectedError, urgencyFilter]);
 
   useEffect(() => {
     fetch('/api/settings')
@@ -369,7 +382,7 @@ export default function AdminOrdersPage() {
 
   const paginatedOrders = orders;
 
-  useEffect(() => { setCurrentPage(1); }, [orderFilter, nameFilter, mobileFilter, statusFilter, dateFrom, dateTo]);
+  useEffect(() => { setCurrentPage(1); }, [orderFilter, nameFilter, mobileFilter, statusFilter, orderDate, dateFrom, dateTo, expectedFrom, expectedTo, urgencyFilter]);
   useEffect(() => { if (currentPage > totalPages) setCurrentPage(totalPages); }, [currentPage, totalPages]);
   useEffect(() => {
     if (selected?._id && !orders.some((order) => order._id === selected._id)) setSelected(null);
@@ -501,8 +514,12 @@ export default function AdminOrdersPage() {
               setMobileFilter('');
               setStatusFilter('');
               setSourceFilter('');
+              setOrderDate('');
               setDateFrom('');
               setDateTo('');
+              setExpectedFrom('');
+              setExpectedTo('');
+              setUrgencyFilter('');
               setCurrentPage(1);
             }}
             className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold sm:w-auto"
@@ -585,6 +602,16 @@ export default function AdminOrdersPage() {
                 value={statusFilter}
                 onChange={(next) => { setStatusFilter(next); setCurrentPage(1); }}
                 options={statusFilterOptions}
+              />
+            </div>
+            <div className="min-w-0">
+              <label className="mb-1 block text-xs font-semibold text-gray-500">Order Date</label>
+              <input
+                type="date"
+                value={orderDate}
+                onChange={(e) => { setOrderDate(e.target.value); setCurrentPage(1); }}
+                className="min-h-[44px] w-full min-w-0 rounded-lg border px-3 py-2 text-sm"
+                title="Show orders created on this IST calendar day"
               />
             </div>
             <div className="min-w-0">

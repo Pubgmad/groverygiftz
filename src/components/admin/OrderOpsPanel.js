@@ -141,7 +141,12 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
   });
   const [photoItemIndex, setPhotoItemIndex] = useState(0);
   const [photoSlot, setPhotoSlot] = useState('');
+  const [photoNewSize, setPhotoNewSize] = useState('');
+  const [photoReason, setPhotoReason] = useState('');
+  const [photoFile, setPhotoFile] = useState(null);
+  const [replaceQueue, setReplaceQueue] = useState([]);
   const [comms, setComms] = useState(order?.salesCommsChecklist || {});
+  const isWhatsAppLike = ['whatsapp', 'instagram'].includes(String(order?.orderSource || '').toLowerCase());
 
   const paymentSummary = useMemo(() => {
     const rows = Array.isArray(order?.paymentRecords) ? order.paymentRecords : [];
@@ -408,25 +413,37 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
           />
         </label>
         {writable ? (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => {
-              const payload = {
-                opsStatus,
-                assignedTo: assignedTo || null,
-                expectedDispatchDate: expectedDispatchDate || null,
-              };
-              // Only send tracking/courier when staff actually entered values
-              // (avoids marking every ops save as a tracking touch)
-              if (String(courierCompany || '').trim()) payload.courierCompany = courierCompany.trim();
-              if (String(trackingUrl || '').trim()) payload.trackingUrl = trackingUrl.trim();
-              return patchOps(payload);
-            }}
-            className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl bg-primary-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-          >
-            Save ops updates
-          </button>
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => patchOps({ expectedDispatchDate: expectedDispatchDate || null })}
+              className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl bg-primary-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+            >
+              Save expected dispatch date
+            </button>
+            <p className="text-[11px] text-gray-500">
+              Editor assignment and operation status run through the automatic workflow (and quick actions below). This button only saves Expected Dispatch Date.
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => patchOps({ opsStatus })}
+                className="inline-flex min-h-[40px] items-center justify-center rounded-xl border px-3 py-2 text-xs font-semibold disabled:opacity-60"
+              >
+                Save operation status
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => patchOps({ assignedTo: assignedTo || null })}
+                className="inline-flex min-h-[40px] items-center justify-center rounded-xl border px-3 py-2 text-xs font-semibold disabled:opacity-60"
+              >
+                Update assigned editor
+              </button>
+            </div>
+          </div>
         ) : null}
         {writable && quickActions.length ? (
           <div className="flex flex-wrap gap-2 pt-1">
@@ -473,6 +490,7 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
         </p>
       </div>
 
+      {isWhatsAppLike ? (
       <div className="rounded-xl border bg-white p-3 space-y-2">
         <h3 className="font-semibold text-gray-900">Sales communication checklist</h3>
         <p className="text-[11px] text-gray-500">
@@ -504,6 +522,7 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
           })}
         </ul>
       </div>
+      ) : null}
 
       <div className="rounded-xl border bg-white p-3 space-y-2">
         <h3 className="font-semibold text-gray-900">
@@ -748,43 +767,55 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
       <div className="rounded-xl border bg-white p-3 space-y-2">
         <h3 className="font-semibold text-gray-900">Courier &amp; Dispatch Details</h3>
         <p className="text-[11px] text-gray-500">
-          Expected dispatch date is set above. Actual dispatch is recorded per parcel when handed to the courier.
+          Use ST Couriers for this workflow. Expected dispatch is set above; actual dispatch is recorded per parcel at handover.
           {order?.orderSource === 'website'
-            ? ' Website ST Couriers tracking for customers can still be updated from the order Tracking section.'
+            ? ' Website customer tracking uses the ST Couriers Tracking ID field on the order.'
             : ' WhatsApp tracking is shared manually with the customer.'}
         </p>
-        <div className="grid gap-2 sm:grid-cols-2">
-          <input
-            disabled={!writable || busy}
-            placeholder="Courier company (legacy / quick)"
-            value={courierCompany}
-            onChange={(e) => setCourierCompany(e.target.value)}
-            className="rounded-lg border px-3 py-2 text-sm disabled:bg-gray-100"
-          />
-          <input
-            disabled={!writable || busy}
-            placeholder="Tracking URL (optional)"
-            value={trackingUrl}
-            onChange={(e) => setTrackingUrl(e.target.value)}
-            className="rounded-lg border px-3 py-2 text-sm disabled:bg-gray-100"
-          />
-        </div>
+        {(order?.courierCompany || order?.trackingUrl || order?.trackingNumber) ? (
+          <div className="rounded-lg border bg-gray-50 px-2 py-1.5 text-[11px] text-gray-600">
+            Historical order-level courier data preserved:
+            {order.courierCompany ? ` ${order.courierCompany}` : ''}
+            {order.trackingNumber ? ` · ${order.trackingNumber}` : ''}
+            {order.trackingUrl ? (
+              <>
+                {' · '}
+                <a href={order.trackingUrl} target="_blank" rel="noopener noreferrer" className="text-primary-700 underline">Tracking URL</a>
+              </>
+            ) : null}
+          </div>
+        ) : null}
         {writable ? (
           <div className="space-y-2 rounded-lg border border-emerald-100 bg-emerald-50/40 p-2">
-            <p className="text-xs font-bold text-gray-800">+ Add parcel under this Order ID</p>
+            <p className="text-xs font-bold text-gray-800">+ Add ST Couriers parcel under this Order ID</p>
             <div className="grid gap-2 sm:grid-cols-2">
-              <input
-                placeholder="Courier company *"
-                value={parcelForm.courierCompany}
-                onChange={(e) => setParcelForm((p) => ({ ...p, courierCompany: e.target.value }))}
-                className="rounded-lg border bg-white px-3 py-2 text-sm"
-              />
-              <input
-                placeholder="Tracking ID"
-                value={parcelForm.trackingNumber}
-                onChange={(e) => setParcelForm((p) => ({ ...p, trackingNumber: e.target.value }))}
-                className="rounded-lg border bg-white px-3 py-2 text-sm"
-              />
+              <label className="text-xs font-semibold text-gray-700">
+                Courier company *
+                <select
+                  value={parcelForm.courierCompany || 'ST Couriers'}
+                  onChange={(e) => setParcelForm((p) => ({ ...p, courierCompany: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm font-normal"
+                >
+                  <option value="ST Couriers">ST Couriers</option>
+                </select>
+              </label>
+              <label className="text-xs font-semibold text-gray-700">
+                Tracking ID
+                <input
+                  placeholder="ST Couriers tracking ID"
+                  value={parcelForm.trackingNumber}
+                  onChange={(e) => setParcelForm((p) => ({ ...p, trackingNumber: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border bg-white px-3 py-2 text-sm font-normal"
+                />
+              </label>
+              <label className="text-xs font-semibold text-gray-700 sm:col-span-2">
+                Tracking URL (ST Couriers)
+                <input
+                  readOnly
+                  value="https://stcourier.com/track/shipment"
+                  className="mt-1 w-full rounded-lg border bg-gray-50 px-3 py-2 text-sm font-normal text-gray-600"
+                />
+              </label>
               <input
                 type="number"
                 min="0"
@@ -804,13 +835,13 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
                 className="rounded-lg border bg-white px-3 py-2 text-sm"
               />
               <input
-                placeholder="Destination state"
+                placeholder="Destination"
                 value={parcelForm.destinationState}
                 onChange={(e) => setParcelForm((p) => ({ ...p, destinationState: e.target.value }))}
                 className="rounded-lg border bg-white px-3 py-2 text-sm"
               />
               <label className="text-xs font-semibold text-gray-700">
-                Actual handover date &amp; time (IST) *
+                Actual dispatch date &amp; time (IST) *
                 <input
                   type="datetime-local"
                   value={parcelForm.dispatchedAt}
@@ -920,8 +951,9 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
         })}
         {writable && !printingLocked ? (
           <div className="space-y-2 border-t pt-2">
+            <p className="text-xs font-bold text-gray-800">Queue photo replacements (multiple allowed)</p>
             <label className="block text-xs font-semibold">
-              Product / size
+              Product / size line
               <select
                 value={photoItemIndex}
                 onChange={(e) => {
@@ -939,56 +971,146 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
             </label>
             {selectedItemPhotos.length ? (
               <label className="block text-xs font-semibold">
-                Replace existing slot (optional)
+                Existing photo to replace
                 <select
                   value={photoSlot}
                   onChange={(e) => setPhotoSlot(e.target.value)}
                   className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
                 >
-                  <option value="">Add new photo</option>
+                  <option value="">Add new photo (append)</option>
                   {selectedItemPhotos.map((photo) => (
                     <option key={photo.fieldPath} value={photo.fieldPath}>{photo.label}</option>
                   ))}
                 </select>
               </label>
             ) : null}
+            <label className="block text-xs font-semibold">
+              New / target frame size (optional)
+              <input
+                value={photoNewSize}
+                onChange={(e) => setPhotoNewSize(e.target.value)}
+                placeholder="e.g. 12x10 — leave blank to keep current size"
+                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block text-xs font-semibold">
+              Replacement reason
+              <input
+                value={photoReason}
+                onChange={(e) => setPhotoReason(e.target.value)}
+                placeholder="Customer request / damaged / wrong crop"
+                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+              />
+            </label>
             <input
               type="file"
               accept="image/*"
               disabled={busy}
               className="block w-full text-xs"
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
+              onChange={(e) => {
+                const file = e.target.files?.[0] || null;
                 e.target.value = '';
-                if (!file) return;
-                const reason = window.prompt('Reason / note') || '';
-                setBusy(true);
-                try {
-                  const body = new FormData();
-                  body.append('file', file);
-                  body.append('itemIndex', String(photoItemIndex));
-                  body.append('reason', reason);
-                  if (photoSlot) {
-                    body.append('mode', 'replace');
-                    body.append('fieldPath', photoSlot);
-                    body.append('slotKey', photoSlot);
-                  } else {
-                    body.append('mode', 'append');
-                    body.append('slotLabel', 'Customer Photos');
-                    body.append('slotKey', `item-${photoItemIndex}`);
-                  }
-                  const res = await fetch(`/api/admin/orders/${order._id}/photos`, { method: 'POST', body });
-                  const data = await res.json();
-                  if (!res.ok) throw new Error(data.error || 'Photo update failed');
-                  toast.success(data.mode === 'append' ? 'Photo added' : 'Photo replaced');
-                  await refresh();
-                } catch (err) {
-                  toast.error(err.message || 'Photo update failed');
-                } finally {
-                  setBusy(false);
-                }
+                setPhotoFile(file);
               }}
             />
+            {photoFile ? <p className="text-[11px] text-gray-600">Selected: {photoFile.name}</p> : null}
+            <button
+              type="button"
+              disabled={busy || !photoFile}
+              onClick={() => {
+                if (!photoFile) return;
+                const item = items[photoItemIndex];
+                const originalSize = String(item?.variant || '').replace(/^Size:\s*/i, '') || '';
+                setReplaceQueue((prev) => [
+                  ...prev,
+                  {
+                    id: `${Date.now()}-${prev.length}`,
+                    itemIndex: photoItemIndex,
+                    fieldPath: photoSlot || '',
+                    file: photoFile,
+                    reason: photoReason || '',
+                    originalSize,
+                    newSize: photoNewSize || originalSize,
+                    label: photoSlot
+                      ? (selectedItemPhotos.find((p) => p.fieldPath === photoSlot)?.label || photoSlot)
+                      : 'New photo',
+                  },
+                ]);
+                setPhotoFile(null);
+                setPhotoReason('');
+                setPhotoNewSize('');
+                toast.success('Replacement added to queue');
+              }}
+              className="min-h-[40px] w-full rounded-xl border px-3 py-2 text-xs font-semibold disabled:opacity-50"
+            >
+              Add to replacement queue
+            </button>
+            {replaceQueue.length ? (
+              <div className="space-y-2 rounded-lg border bg-white p-2">
+                <ul className="max-h-36 space-y-1 overflow-y-auto text-[11px] text-gray-700">
+                  {replaceQueue.map((row) => (
+                    <li key={row.id} className="flex items-start justify-between gap-2 rounded border px-2 py-1">
+                      <span>
+                        Item {row.itemIndex + 1} · {row.label}
+                        {row.newSize ? ` · size ${row.originalSize || '—'} → ${row.newSize}` : ''}
+                        {row.reason ? ` · ${row.reason}` : ''}
+                        {' · '}{row.file?.name}
+                      </span>
+                      <button
+                        type="button"
+                        className="shrink-0 font-semibold text-red-600"
+                        onClick={() => setReplaceQueue((prev) => prev.filter((r) => r.id !== row.id))}
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={async () => {
+                    if (!replaceQueue.length) return;
+                    setBusy(true);
+                    let ok = 0;
+                    try {
+                      for (const row of replaceQueue) {
+                        const body = new FormData();
+                        body.append('file', row.file);
+                        body.append('itemIndex', String(row.itemIndex));
+                        body.append('reason', row.reason || '');
+                        body.append('originalSize', row.originalSize || '');
+                        body.append('newSize', row.newSize || '');
+                        if (row.fieldPath) {
+                          body.append('mode', 'replace');
+                          body.append('fieldPath', row.fieldPath);
+                          body.append('slotKey', row.fieldPath);
+                        } else {
+                          body.append('mode', 'append');
+                          body.append('slotLabel', 'Customer Photos');
+                          body.append('slotKey', `item-${row.itemIndex}`);
+                        }
+                        const res = await fetch(`/api/admin/orders/${order._id}/photos`, { method: 'POST', body });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error || 'Photo update failed');
+                        ok += 1;
+                      }
+                      toast.success(`${ok} photo update${ok === 1 ? '' : 's'} saved`);
+                      setReplaceQueue([]);
+                      await refresh();
+                    } catch (err) {
+                      toast.error(err.message || 'Photo update failed');
+                      if (ok) await refresh();
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                  className="min-h-[40px] w-full rounded-xl bg-primary-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
+                >
+                  Save all replacements ({replaceQueue.length})
+                </button>
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -999,7 +1121,15 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
           <ul className="max-h-40 space-y-1 overflow-y-auto text-xs text-gray-600">
             {order.photoHistory.slice().reverse().map((row, idx) => (
               <li key={row._id || idx} className="rounded border bg-gray-50 px-2 py-1">
-                {row.slotKey || 'photo'} · {row.replacedAt ? new Date(row.replacedAt).toLocaleString('en-IN') : ''}
+                {row.slotKey || 'photo'}
+                {row.itemIndex != null ? ` · item ${Number(row.itemIndex) + 1}` : ''}
+                {row.originalSize || row.newSize
+                  ? ` · size ${row.originalSize || '—'} → ${row.newSize || row.originalSize || '—'}`
+                  : ''}
+                {row.reason ? ` · ${row.reason}` : ''}
+                {row.replacedByName ? ` · by ${row.replacedByName}` : ''}
+                {' · '}
+                {row.replacedAt ? new Date(row.replacedAt).toLocaleString('en-IN') : ''}
                 {row.previousPath ? (
                   <a className="ml-2 underline text-primary-700" href={row.previousPath.startsWith('/') ? row.previousPath : `/media/${row.previousPath}`} target="_blank" rel="noopener noreferrer">previous</a>
                 ) : null}

@@ -54,10 +54,20 @@ export async function POST(req) {
   if (error) return error;
 
   let body;
+  let paymentScreenshotFile = null;
+  const contentType = req.headers.get('content-type') || '';
   try {
-    body = await req.json();
+    if (contentType.includes('multipart/form-data')) {
+      const form = await req.formData();
+      const rawPayload = form.get('payload');
+      body = JSON.parse(String(rawPayload || '{}'));
+      const shot = form.get('paymentScreenshot');
+      if (shot && typeof shot !== 'string' && shot.size) paymentScreenshotFile = shot;
+    } else {
+      body = await req.json();
+    }
   } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
   const source = String(body.orderSource || 'whatsapp').toLowerCase();
@@ -257,11 +267,20 @@ export async function POST(req) {
     if (Number.isNaN(paymentPaidAt.getTime())) {
       return NextResponse.json({ error: 'Invalid payment date/time' }, { status: 400 });
     }
+    if (!paymentScreenshotFile) {
+      return NextResponse.json({
+        error: 'Advance payment screenshot is required before creating this WhatsApp order',
+      }, { status: 400 });
+    }
+    const { saveUploadFile } = await import('@/lib/uploadStorage');
+    const savedShot = await saveUploadFile(paymentScreenshotFile, 'payment-proofs');
     order.paymentRecords.push({
       kind: 'advance',
       amount: advancePaid,
       method: String(body.paymentMethod || 'WhatsApp').trim(),
       reference: String(body.paymentReference || '').trim(),
+      screenshotPath: savedShot.relativePath,
+      screenshotUrl: savedShot.url,
       paidAt: paymentPaidAt,
       verified: advanceVerified,
       verifiedBy: advanceVerified ? access.adminId : undefined,
