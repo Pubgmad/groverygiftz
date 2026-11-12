@@ -11,22 +11,18 @@ export default function AdminDashboard() {
   const [opsAlerts, setOpsAlerts] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const canSeeOps = canRead('orders') || canRead('operations');
-
   useEffect(() => {
-    let cancelled = false;
     fetch('/api/admin/stats')
       .then(r => r.json())
-      .then(d => { if (!cancelled) { setStats(d); setLoading(false); } })
-      .catch(() => { if (!cancelled) setLoading(false); });
-    if (canSeeOps) {
-      fetch('/api/admin/ops/board?alerts=1', { cache: 'no-store' })
+      .then(d => { setStats(d); setLoading(false); })
+      .catch(() => setLoading(false));
+    if (canRead('orders') || canRead('operations')) {
+      fetch('/api/admin/ops/board', { cache: 'no-store' })
         .then((r) => (r.ok ? r.json() : null))
-        .then((d) => { if (!cancelled) setOpsAlerts(d?.alerts || null); })
-        .catch(() => { if (!cancelled) setOpsAlerts(null); });
+        .then((d) => setOpsAlerts(d?.alerts || null))
+        .catch(() => setOpsAlerts(null));
     }
-    return () => { cancelled = true; };
-  }, [canSeeOps]);
+  }, [canRead]);
 
   if (loading) return <div className="text-center py-12">Loading dashboard...</div>;
 

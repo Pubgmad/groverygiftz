@@ -27,7 +27,7 @@ export async function GET() {
     Contact.countDocuments({ isRead: false }),
     Newsletter.countDocuments(),
     Order.aggregate([{ $match: { paymentStatus: 'paid', status: { $ne: 'cancelled' } } }, { $group: { _id: null, total: { $sum: '$total' } } }]),
-    Order.find({ paymentStatus: 'paid' }).select('orderNumber status total createdAt paidAt shippingAddress.fullName').sort({ paidAt: -1, createdAt: -1 }).limit(5).lean(),
+    Order.find({ paymentStatus: 'paid' }).sort({ paidAt: -1, createdAt: -1 }).limit(5).lean(),
     MakingCost.distinct('product'),
   ]);
 

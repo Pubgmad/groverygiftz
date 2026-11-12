@@ -145,28 +145,9 @@ export async function loadAdminAccessById(adminId) {
   };
 }
 
-const ACCESS_CACHE_TTL_MS = 15_000;
-const accessCache = new Map();
-
-export function invalidateAdminAccessCache(adminId) {
-  if (adminId) accessCache.delete(String(adminId));
-  else accessCache.clear();
-}
-
 export async function getRequestAdminAccess(session) {
   if (!session?.user?.id || session.user.type !== 'admin') return publicAdminAccess();
-  const id = String(session.user.id);
-  const hit = accessCache.get(id);
-  if (hit && hit.expires > Date.now()) return hit.value;
-  const value = await loadAdminAccessById(id);
-  accessCache.set(id, { value, expires: Date.now() + ACCESS_CACHE_TTL_MS });
-  if (accessCache.size > 200) {
-    const now = Date.now();
-    for (const [key, entry] of accessCache) {
-      if (entry.expires <= now) accessCache.delete(key);
-    }
-  }
-  return value;
+  return loadAdminAccessById(session.user.id);
 }
 
 /**

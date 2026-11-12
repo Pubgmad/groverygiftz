@@ -42,7 +42,6 @@ export default function MakingCostPage() {
   const { canWrite } = useAdminAccess();
   const write = canWrite('making-cost');
   const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [status, setStatus] = useState('all');
   const [page, setPage] = useState(1);
   const [data, setData] = useState({ products: [], pages: 1, missing: 0, total: 0 });
@@ -57,7 +56,7 @@ export default function MakingCostPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams({ search: debouncedSearch, status, page: String(page), limit: '20' });
+    const params = new URLSearchParams({ search, status, page: String(page), limit: '20' });
     const res = await fetch(`/api/admin/making-cost?${params}`, { cache: 'no-store' });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -67,12 +66,7 @@ export default function MakingCostPage() {
     }
     setData(json);
     setLoading(false);
-  }, [page, debouncedSearch, status]);
-
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
-    return () => clearTimeout(t);
-  }, [search]);
+  }, [page, search, status]);
 
   useEffect(() => { load(); }, [load]);
 

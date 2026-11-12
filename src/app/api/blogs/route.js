@@ -9,7 +9,7 @@ export async function GET() {
   const { error } = await requireAdminPermission('blogs', 'read');
   if (error) return error;
   await dbConnect();
-  const blogs = await Blog.find().select('title slug excerpt featuredImage author isPublished tags createdAt updatedAt').sort({ createdAt: -1 }).lean();
+  const blogs = await Blog.find().sort({ createdAt: -1 }).lean();
   return NextResponse.json({ blogs });
 }
 

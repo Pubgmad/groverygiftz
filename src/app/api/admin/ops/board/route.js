@@ -34,9 +34,13 @@ export async function GET(req) {
   const todayBounds = istDayBounds(todayIstYmd());
   const overdueBefore = todayBounds?.start || new Date();
 
-  const alertsOnly = searchParams.get('alerts') === '1';
-  const paidBase = mergeStaffOrderFilter(paidOpsBase(), access);
-  const delayedFilter = mergeStaffOrderFilter({
+  const counts = {};
+  await Promise.all(OPS_STATUSES.map(async (status) => {
+    counts[status] = await Order.countDocuments(
+      mergeStaffOrderFilter({ ...paidOpsBase(), opsStatus: status }, access),
+    );
+  }));
+  counts.delayed = await Order.countDocuments(mergeStaffOrderFilter({
     $or: [
       { paymentStatus: 'paid' },
       { orderSource: { $in: ['whatsapp', 'instagram'] } },
@@ -44,22 +48,7 @@ export async function GET(req) {
     expectedDispatchDate: { $lt: overdueBefore, $ne: null },
     opsStatus: { $nin: ['dispatched', 'completed', 'tracking_pending'] },
     status: { $nin: ['dispatched', 'cancelled'] },
-  }, access);
-
-  const [grouped, delayedCount] = await Promise.all([
-    Order.aggregate([
-      { $match: paidBase },
-      { $group: { _id: '$opsStatus', n: { $sum: 1 } } },
-    ]),
-    Order.countDocuments(delayedFilter),
-  ]);
-  const counts = Object.fromEntries(OPS_STATUSES.map((status) => [status, 0]));
-  grouped.forEach((row) => {
-    if (row?._id && Object.prototype.hasOwnProperty.call(counts, row._id)) {
-      counts[row._id] = Number(row.n) || 0;
-    }
-  });
-  counts.delayed = delayedCount;
+  }, access));
 
   const expectedFrom = searchParams.get('expectedFrom') || '';
   const expectedTo = searchParams.get('expectedTo') || '';
@@ -93,23 +82,18 @@ export async function GET(req) {
   }
 
   const filter = mergeStaffOrderFilter(listCriteria, access);
-  const dueTodayFilter = mergeStaffOrderFilter({
+  const orders = await Order.find(filter)
+    .select('orderNumber orderSource opsStatus status paymentStatus balanceStatus assignedToName expectedDispatchDate shippingAddress.fullName total previewRequired designApprovalStatus createdAt paidAt')
+    .sort({ expectedDispatchDate: 1, createdAt: -1 })
+    .limit(100)
+    .lean();
+
+  const dueToday = await Order.countDocuments(mergeStaffOrderFilter({
     ...paidOpsBase(),
     expectedDispatchDate: { $gte: todayBounds.start, $lte: todayBounds.end },
     opsStatus: { $nin: ['dispatched', 'completed'] },
     status: { $ne: 'cancelled' },
-  }, access);
-
-  const [orders, dueToday] = await Promise.all([
-    alertsOnly
-      ? Promise.resolve([])
-      : Order.find(filter)
-        .select('orderNumber orderSource opsStatus status paymentStatus balanceStatus assignedToName expectedDispatchDate shippingAddress.fullName total previewRequired designApprovalStatus createdAt paidAt')
-        .sort({ expectedDispatchDate: 1, createdAt: -1 })
-        .limit(100)
-        .lean(),
-    Order.countDocuments(dueTodayFilter),
-  ]);
+  }, access));
 
   return NextResponse.json({
     counts,
