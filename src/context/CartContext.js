@@ -1,5 +1,6 @@
 'use client';
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { useSession } from 'next-auth/react';
 import { trackGA4Ecommerce } from '@/lib/ga4';
 import { isSameCartLine, mergeGuestCartIntoAccount, stripDisplayOnlyPreviewData } from '@/lib/cartPersist';
@@ -203,8 +204,10 @@ export function CartProvider({ children }) {
     } else {
       nextCart = [...prev, { ...item, quantity: capQuantity(item.quantity, item.availableStock) }];
     }
-    applyCart(nextCart);
+    if (options.flush) flushSync(() => applyCart(nextCart));
+    else applyCart(nextCart);
     if (!isAuthenticatedCustomer) persistGuestCart(nextCart);
+    else if (options.flush) persistCustomerCart(nextCart);
     const addedLine = nextCart.find((entry) => isSameCartLine(entry, item.productId, item.variant, item.cartItemId));
     const addedQuantity = Number(addedLine?.quantity || 0) - Number(existing?.quantity || 0);
     if (addedQuantity > 0) trackGA4Ecommerce('add_to_cart', [{ ...addedLine, quantity: addedQuantity }]);
