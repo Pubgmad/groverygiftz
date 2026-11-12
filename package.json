@@ -4,6 +4,7 @@
     "private": true,
     "scripts": {
         "dev": "next dev",
+        "prebuild": "node scripts/clean-stale-preview3d.cjs",
         "build": "next build",
         "start": "next start",
         "seed": "node src/lib/seed.js",
