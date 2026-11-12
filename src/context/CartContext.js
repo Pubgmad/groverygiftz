@@ -247,6 +247,16 @@ export function CartProvider({ children }) {
     }).catch(() => {});
   };
 
+  const updateCartItem = (cartItemId, patch) => {
+    if (!cartItemId || !patch || typeof patch !== 'object') return;
+    const nextCart = (cartRef.current || []).map((item) => (
+      item.cartItemId === cartItemId ? { ...item, ...patch } : item
+    ));
+    applyCart(nextCart);
+    if (!isAuthenticatedCustomer) persistGuestCart(nextCart);
+    else persistCustomerCart(nextCart);
+  };
+
   const clearCart = () => {
     applyCart([]);
     if (!isAuthenticatedCustomer) {
@@ -262,7 +272,7 @@ export function CartProvider({ children }) {
   const cartReady = localLoaded && (!currentCustomerId || (syncedCustomerRef.current === currentCustomerId && !cartSyncing));
 
   return (
-    <CartContext.Provider value={{ cart, addToCart, removeFromCart, updateQuantity, clearCart, cartCount, cartTotal, cartReady, cartSyncing, isCartOpen, setIsCartOpen }}>
+    <CartContext.Provider value={{ cart, addToCart, updateCartItem, removeFromCart, updateQuantity, clearCart, cartCount, cartTotal, cartReady, cartSyncing, isCartOpen, setIsCartOpen }}>
       {children}
     </CartContext.Provider>
   );

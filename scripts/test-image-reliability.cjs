@@ -411,8 +411,38 @@ test('cart awaits an in-flight Apply persist instead of baking again', async () 
   assert.equal(rendered, 0);
 });
 
-test('Add to Cart awaits in-flight image work instead of failing immediately', () => {
+test('Add to Cart does not wait for Apply persist before opening the cart', async () => {
+  let rendered = 0;
+  let uploaded = 0;
+  const persist = new Promise(() => {});
+  const subject = runFunction('resolveDurableFinalPreview', 'buildCustomizationPreviewPayload', {
+    previewPersistPromiseRef: { current: { 0: persist } },
+    savedPreviewFilesRef: { current: {
+      0: { file: { previewUrl: 'blob:local' }, sourceUrl: 'blob:local', adjustments: JSON.stringify({ zoom: 1 }), pending: true },
+    } },
+    getAreaAdjustments: () => ({ zoom: 1 }),
+    JSON,
+    durableUploadRef: (file) => (file?.url ? file : null),
+    isEphemeralMediaUrl: (value) => String(value || '').startsWith('blob:'),
+    renderFinalPreviewImage: async () => { rendered += 1; throw new Error('should not render'); },
+    uploadRenderedPreviewImage: async () => { uploaded += 1; throw new Error('should not upload'); },
+  });
+  const file = await subject({
+    previewKey: 0,
+    area: { label: 'Frame' },
+    uploadedFile: { url: '/original.jpg' },
+    areaLabel: 'Frame',
+    uploadIndex: 0,
+    waitForPersist: false,
+  });
+  assert.equal(file, null);
+  assert.equal(rendered, 0);
+  assert.equal(uploaded, 0);
+});
+
+test('Add to Cart awaits source uploads instead of failing immediately', () => {
   assert.equal(productSource.includes('Please wait for your images and previews to finish saving.'), false);
-  assert.equal(productSource.includes('await awaitPendingCartAssets()'), true);
-  assert.equal(productSource.includes('flush: true'), true);
+  assert.equal(productSource.includes('await awaitSourceUploads()'), true);
+  assert.equal(productSource.includes('waitForPreview: true'), true);
+  assert.equal(productSource.includes('void finishCartPreview(cartItemId)'), true);
 });

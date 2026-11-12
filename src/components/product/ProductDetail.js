@@ -114,7 +114,7 @@ export default function ProductDetail({ product }) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [sizeChartOpen, setSizeChartOpen] = useState(false);
   const settings = useDeliverySettings();
-  const { addToCart, setIsCartOpen } = useCart();
+  const { addToCart, updateCartItem, setIsCartOpen } = useCart();
   const showPreview3d = isPreview3dEligible(product);
   const router = useRouter();
   const viewedProductRef = useRef('');
@@ -442,9 +442,9 @@ export default function ProductDetail({ product }) {
       throw new Error(error.message || 'Unable to store the customized preview. Please try again.');
     }
   };
-  const resolveDurableFinalPreview = async ({ previewKey, area, uploadedFile, areaLabel, uploadIndex }) => {
+  const resolveDurableFinalPreview = async ({ previewKey, area, uploadedFile, areaLabel, uploadIndex, waitForPersist = true }) => {
     const persistTask = previewPersistPromiseRef?.current?.[previewKey];
-    if (persistTask) {
+    if (waitForPersist && persistTask) {
       try { await persistTask; } catch {}
     }
     const adjustments = getAreaAdjustments(previewKey);
@@ -463,6 +463,10 @@ export default function ProductDetail({ product }) {
       const durable = durableUploadRef(saved?.file);
       if (durable) return durable;
     }
+    const readyDurable = durableUploadRef(saved?.file);
+    if (readyDurable) return readyDurable;
+    // Add to Cart must not block on Apply persist or a second bake.
+    if (!waitForPersist) return null;
     // Already-baked local Apply preview: upload that blob without re-rendering the canvas.
     const localPreview = String(saved?.file?.previewUrl || '');
     if (matches && (localPreview.startsWith('blob:') || localPreview.startsWith('data:'))) {
@@ -488,7 +492,7 @@ export default function ProductDetail({ product }) {
     return durableUploadRef(file) || file;
   };
 
-  const buildCustomizationPreviewPayload = async () => {
+  const buildCustomizationPreviewPayload = async ({ waitForPersist = true } = {}) => {
     const jobs = [];
 
     if (previewEnabled) {
@@ -505,6 +509,7 @@ export default function ProductDetail({ product }) {
             uploadedFile,
             areaLabel,
             uploadIndex: idx,
+            waitForPersist,
           });
           return {
             areaLabel,
@@ -539,6 +544,7 @@ export default function ProductDetail({ product }) {
           uploadedFile,
           areaLabel,
           uploadIndex: variantIndex,
+          waitForPersist,
         });
         return {
           areaLabel,
@@ -1122,13 +1128,27 @@ export default function ProductDetail({ product }) {
     editPreviewArea(`variant-${label}`);
     if (editorSlotKey === `variant-${label}`) setEditorSlotKey(null);
   };
-  const collectPendingCartAssetPromises = () => [
+  const collectSourceUploadPromises = () => [
     ...Object.values(photoUploadPromiseRef.current || {}),
-    ...Object.values(previewPersistPromiseRef.current || {}),
     ...Object.values(variantUploadPromiseRef.current || {}),
     ...Object.values(collageUploadPromiseRef.current || {}),
     ...Object.values(fieldUploadPromiseRef.current || {}),
   ].filter(Boolean);
+
+  const collectPendingCartAssetPromises = () => [
+    ...collectSourceUploadPromises(),
+    ...Object.values(previewPersistPromiseRef.current || {}),
+  ].filter(Boolean);
+
+  const awaitSourceUploads = async () => {
+    const deadline = Date.now() + 45000;
+    while (Date.now() < deadline) {
+      const pending = collectSourceUploadPromises();
+      if (!pending.length) return;
+      await Promise.allSettled(pending);
+    }
+    throw new Error('Your photo is still uploading. Please wait a moment and try again.');
+  };
 
   const awaitPendingCartAssets = async () => {
     const deadline = Date.now() + 45000;
@@ -1147,8 +1167,17 @@ export default function ProductDetail({ product }) {
     throw new Error('Your images are still saving. Please wait a moment and try again.');
   };
 
-  const addConfiguredProductToCart = async ({ openCart = true, flush = false } = {}) => {
-    await awaitPendingCartAssets();
+  const finishCartPreview = async (cartItemId) => {
+    if (!cartItemId) return;
+    try {
+      await awaitPendingCartAssets();
+      const customizationPreview = await buildCustomizationPreviewPayload({ waitForPersist: true });
+      if (customizationPreview) updateCartItem(cartItemId, { customizationPreview });
+    } catch {}
+  };
+
+  const addConfiguredProductToCart = async ({ openCart = true, flush = false, waitForPreview = flush } = {}) => {
+    await awaitSourceUploads();
     if (stockLocked || isSoldOut) {
       toast.error('This product is currently sold out');
       return false;
@@ -1201,12 +1230,13 @@ export default function ProductDetail({ product }) {
       ...(Object.keys(durableVariantUploads).length > 0 ? { 'Variant Label Uploads': durableVariantUploads } : {}),
     };
 
-    const customizationPreviewPayload = await buildCustomizationPreviewPayload();
+    const customizationPreviewPayload = await buildCustomizationPreviewPayload({ waitForPersist: waitForPreview });
     const hasConfiguredAssets = Object.keys(allCustomFields).length > 0 || durableCollageGroups.length > 0 || Boolean(customizationPreviewPayload) || giftWrap || Boolean(giftMessage.trim());
+    const cartItemId = hasConfiguredAssets ? `${product._id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` : undefined;
 
     const addedQuantity = addToCart({
       productId: product._id,
-      cartItemId: hasConfiguredAssets ? `${product._id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` : undefined,
+      cartItemId,
       title: product.title,
       image: product.images?.[0] || '',
       images: product.images || [],
@@ -1228,6 +1258,7 @@ export default function ProductDetail({ product }) {
     if (Object.keys(allCustomFields || {}).length > 0 || giftWrap || giftMessage.trim()) {
       trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'configured_product' }));
     }
+    if (!waitForPreview && cartItemId) void finishCartPreview(cartItemId);
     return true;
   };
 
@@ -1236,7 +1267,7 @@ export default function ProductDetail({ product }) {
     actionLockRef.current = true;
     flushSync(() => setActionLoading('cart'));
     try {
-      if (await addConfiguredProductToCart({ openCart: true })) toast.success('Added to cart!');
+      if (await addConfiguredProductToCart({ openCart: true, waitForPreview: false })) toast.success('Added to cart!');
     } catch (error) {
       toast.error(error.message || 'Unable to save your preview. Your uploaded images are still available.');
     } finally {
@@ -1250,7 +1281,7 @@ export default function ProductDetail({ product }) {
     actionLockRef.current = true;
     flushSync(() => setActionLoading('buy'));
     try {
-      if (!(await addConfiguredProductToCart({ openCart: false, flush: true }))) return;
+      if (!(await addConfiguredProductToCart({ openCart: false, flush: true, waitForPreview: true }))) return;
       setIsCartOpen(false);
       toast.success('Taking you to checkout...');
       startNavigationFeedback();
