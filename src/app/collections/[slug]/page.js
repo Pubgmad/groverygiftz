@@ -6,7 +6,6 @@ import ProductCard from '@/components/product/ProductCard';
 import Breadcrumbs from '@/components/ui/Breadcrumbs';
 import { notFound } from 'next/navigation';
 import { priceRangeMatchExpression, variantAwareEffectivePriceExpression } from '@/lib/offers';
-import { PRODUCT_CARD_PROJECT } from '@/lib/productCardFields';
 
 const PRICE_RANGES = [
   { label: 'Under INR 299', min: 0, max: 299 },
@@ -47,7 +46,6 @@ export default async function CollectionPage({ params, searchParams }) {
       { $sort: sort },
       { $skip: skip },
       { $limit: limit },
-      { $project: { ...PRODUCT_CARD_PROJECT, effectivePrice: 1 } },
     ]),
     Product.countDocuments(productFilter),
   ]);

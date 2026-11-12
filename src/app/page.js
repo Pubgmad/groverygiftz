@@ -16,7 +16,6 @@ import Banner from '@/models/Banner';
 import Settings from '@/models/Settings';
 import { resolveGiftFinderForUi, resolveTickerMessages } from '@/lib/giftFinderResolve';
 import { activeAdminOfferMatch } from '@/lib/offers';
-import { PRODUCT_CARD_PROJECT, PRODUCT_CARD_SELECT } from '@/lib/productCardFields';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,18 +36,18 @@ async function getData() {
   const [banners, collections, featured, offerProducts, bestSellers, allProductPreviews, showcaseProducts] = await Promise.all([
     Banner.find({ isActive: true }).sort({ order: 1 }).lean(),
     Collection.aggregate([{ $match: { isFeatured: true, isActive: true } }, { $sample: { size: 4 } }]),
-    Product.find({ isFeatured: true, isActive: true }).select(PRODUCT_CARD_SELECT).sort({ createdAt: -1 }).limit(12).lean(),
-    Product.aggregate([{ $match: activeAdminOfferMatch(now, { includeActive: true }) }, { $sample: { size: 4 } }, { $project: PRODUCT_CARD_PROJECT }]),
-    Product.aggregate([{ $match: { isBestSeller: true, isActive: true } }, { $sample: { size: 4 } }, { $project: PRODUCT_CARD_PROJECT }]),
-    Product.aggregate([{ $match: { isActive: true } }, { $sample: { size: 4 } }, { $project: PRODUCT_CARD_PROJECT }]),
+    Product.find({ isFeatured: true, isActive: true }).sort({ createdAt: -1 }).limit(12).lean(),
+    Product.aggregate([{ $match: activeAdminOfferMatch(now, { includeActive: true }) }, { $sample: { size: 4 } }]),
+    Product.aggregate([{ $match: { isBestSeller: true, isActive: true } }, { $sample: { size: 4 } }]),
+    Product.aggregate([{ $match: { isActive: true } }, { $sample: { size: 4 } }]),
     showcaseCollection
-      ? Product.find({ collections: showcaseCollection._id, isActive: true }).select(PRODUCT_CARD_SELECT).sort({ createdAt: -1 }).limit(12).lean()
+      ? Product.find({ collections: showcaseCollection._id, isActive: true }).sort({ createdAt: -1 }).limit(12).lean()
       : Promise.resolve([]),
   ]);
 
   let spotlightProduct = null;
   if (s?.spotlightProductSlug) {
-    spotlightProduct = await Product.findOne({ slug: s.spotlightProductSlug, isActive: true }).select(PRODUCT_CARD_SELECT).lean();
+    spotlightProduct = await Product.findOne({ slug: s.spotlightProductSlug, isActive: true }).lean();
   }
   if (!spotlightProduct) {
     spotlightProduct = featured?.[0] || null;

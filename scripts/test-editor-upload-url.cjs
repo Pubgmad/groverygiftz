@@ -37,9 +37,9 @@ const applied = {
 assert.strictEqual(JSON.stringify(cardUploadUrls(upload, applied)), JSON.stringify([
   applied.previewUrl,
   applied.displayUrl,
+  upload.previewUrl,
+  upload.displayUrl,
+  upload.url,
 ]));
-
-const localApplied = { previewUrl: 'blob:applied-preview' };
-assert.strictEqual(JSON.stringify(cardUploadUrls(upload, localApplied)), JSON.stringify(['blob:applied-preview']));
 
 console.log('Editor upload URL tests passed');

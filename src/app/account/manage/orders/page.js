@@ -80,36 +80,11 @@ const fileSizeLabel = (file) => {
   const size = formatFileSize(file?.size);
   return size ? ` (${size})` : '';
 };
-function customerFileFromOriginal(url = '') {
-  const raw = String(url || '');
-  const marker = '/api/customization-upload/original-file/';
-  const index = raw.indexOf(marker);
-  if (index === -1) return '';
-  const encodedPath = raw.slice(index + marker.length).split('?')[0];
-  return encodedPath ? `/api/customization-upload/customer-file/${encodedPath}` : '';
-}
-
-const pickDisplayUrl = (file) => {
-  if (!file) return '';
-  if (typeof file === 'string') return customerFileFromOriginal(file) || file.trim();
-  return customerFileFromOriginal(file.url)
-    || customerFileFromOriginal(file.originalUrl)
-    || customerFileFromOriginal(file.displayUrl)
-    || String(file.displayUrl || file.url || file.originalUrl || '').trim();
-};
-
 const originalDownloadHref = (file) => {
-  if (!file) return '';
+  if (!file?.url) return '';
   if (file.originalUrl) return file.originalUrl;
-  const url = String(file.url || '');
-  if (url.includes('/original-file/') || url.includes('/original/')) return url;
-  if (file.storagePath) {
-    const encoded = String(file.storagePath).split('/').filter(Boolean).map(encodeURIComponent).join('/');
-    const name = file.name || 'original-upload';
-    return `/api/customization-upload/original-file/${encoded}?name=${encodeURIComponent(name)}`;
-  }
-  if (!url.startsWith('/customizations/')) return url;
-  const filename = url.split('/').pop();
+  if (!String(file.url).startsWith('/customizations/')) return file.url;
+  const filename = String(file.url).split('/').pop();
   const name = file.name || filename || 'original-upload';
   return `/api/customization-upload/original/${encodeURIComponent(filename)}?name=${encodeURIComponent(name)}`;
 };
@@ -139,7 +114,7 @@ function DownloadButton({ href, filename, children, tone = 'primary' }) {
 }
 
 function CustomerPhotoThumb({ file, index, label }) {
-  const displayUrl = pickDisplayUrl(file);
+  const displayUrl = file?.displayUrl || file?.url || '';
   const downloadHref = originalDownloadHref(file);
   if (!displayUrl && !downloadHref) return null;
   return (
@@ -355,22 +330,7 @@ export default function AdminOrdersPage() {
     setTotalOrders(Number(data.total || 0));
     setTotalPages(Math.max(1, Number(data.pages || 1)));
     setLoading(false);
-    if (selected?._id && !nextOrders.some((order) => order._id === selected._id)) setSelected(null);
-  };
-
-  const openOrderDetail = async (orderOrId, { toggle = true } = {}) => {
-    const id = typeof orderOrId === 'object' ? orderOrId?._id : orderOrId;
-    if (!id) return;
-    if (toggle && selected?._id === id) {
-      setSelected(null);
-      return;
-    }
-    if (typeof orderOrId === 'object') setSelected(orderOrId);
-    try {
-      const res = await fetch(`/api/orders/${id}`, { cache: 'no-store' });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data?._id) setSelected(data);
-    } catch {}
+    if (selected?._id) setSelected(nextOrders.find((order) => order._id === selected._id) || null);
   };
 
   useEffect(() => {
@@ -388,10 +348,8 @@ export default function AdminOrdersPage() {
   }, []);
 
   useEffect(() => {
-    if (!writable || typeof window === 'undefined') return;
-    const stamp = Number(window.sessionStorage.getItem('gg-ops-auto-assign') || 0);
-    if (Date.now() - stamp < 10 * 60 * 1000) return;
-    window.sessionStorage.setItem('gg-ops-auto-assign', String(Date.now()));
+    if (!writable) return;
+    // Backfill automatic Editor assignment for eligible unassigned orders (idempotent).
     fetch('/api/admin/editors/auto-assign', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -774,9 +732,9 @@ export default function AdminOrdersPage() {
                             className="h-4 w-4 rounded border-gray-300"
                           />
                         </td>
-                        <td className="p-4 font-semibold text-gray-500 cursor-pointer" onClick={() => openOrderDetail(order)}>{(currentPage - 1) * pageSize + idx + 1}</td>
-                        <td className="p-4 font-bold text-primary-700 cursor-pointer" onClick={() => openOrderDetail(order)}>{order.orderNumber}</td>
-                        <td className="p-4 cursor-pointer" onClick={() => openOrderDetail(order)}>
+                        <td className="p-4 font-semibold text-gray-500 cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>{(currentPage - 1) * pageSize + idx + 1}</td>
+                        <td className="p-4 font-bold text-primary-700 cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>{order.orderNumber}</td>
+                        <td className="p-4 cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>
                           <div className="flex flex-wrap items-center gap-1">
                             <span className={`px-2 py-1 rounded-full text-xs font-semibold ${order.orderSource === 'whatsapp' ? 'bg-green-50 text-green-800 border border-green-200' : order.orderSource === 'instagram' ? 'bg-pink-50 text-pink-800 border border-pink-200' : 'bg-sky-50 text-sky-800 border border-sky-200'}`}>
                               {ORDER_SOURCE_LABELS[order.orderSource] || 'Website'}
@@ -786,21 +744,21 @@ export default function AdminOrdersPage() {
                             ) : null}
                           </div>
                         </td>
-                        <td className="p-4 text-gray-600 whitespace-nowrap cursor-pointer" onClick={() => openOrderDetail(order)}>{formatDate(order.paidAt || order.createdAt)}</td>
-                        <td className="p-4 cursor-pointer" onClick={() => openOrderDetail(order)}><p className="font-medium text-gray-900">{order.shippingAddress?.fullName || '-'}</p><p className="text-xs text-gray-500">{order.shippingAddress?.email || order.guestEmail || '-'}</p></td>
-                        <td className="p-4 font-medium whitespace-nowrap cursor-pointer" onClick={() => openOrderDetail(order)}><p>{order.shippingAddress?.phone || '-'}</p>{order.shippingAddress?.whatsappNumber && <p className="text-xs text-green-700">WA: {order.shippingAddress.whatsappNumber}</p>}</td>
-                        <td className="p-4 max-w-[160px] cursor-pointer" onClick={() => openOrderDetail(order)}><p className="font-medium text-gray-700 break-words">{order.shippingAddress?.city || '-'}</p>{outOfTn && <span className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">Outside TN</span>}</td>
-                        <td className="p-4 cursor-pointer" onClick={() => openOrderDetail(order)}>
+                        <td className="p-4 text-gray-600 whitespace-nowrap cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>{formatDate(order.paidAt || order.createdAt)}</td>
+                        <td className="p-4 cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}><p className="font-medium text-gray-900">{order.shippingAddress?.fullName || '-'}</p><p className="text-xs text-gray-500">{order.shippingAddress?.email || order.guestEmail || '-'}</p></td>
+                        <td className="p-4 font-medium whitespace-nowrap cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}><p>{order.shippingAddress?.phone || '-'}</p>{order.shippingAddress?.whatsappNumber && <p className="text-xs text-green-700">WA: {order.shippingAddress.whatsappNumber}</p>}</td>
+                        <td className="p-4 max-w-[160px] cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}><p className="font-medium text-gray-700 break-words">{order.shippingAddress?.city || '-'}</p>{outOfTn && <span className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">Outside TN</span>}</td>
+                        <td className="p-4 cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>
                           <span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusColors[normalized] || statusColors.ordered}`}>{statusLabels[normalized] || normalized}</span>
                           {order.opsStatus ? <p className="mt-1 text-[11px] text-gray-500">{OPS_STATUS_LABELS[order.opsStatus] || order.opsStatus}</p> : null}
                         </td>
-                        <td className="p-4 text-xs cursor-pointer" onClick={() => openOrderDetail(order)}>{order.assignedToName || '—'}</td>
-                        <td className="p-4 text-xs cursor-pointer" onClick={() => openOrderDetail(order)}>
+                        <td className="p-4 text-xs cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>{order.assignedToName || '—'}</td>
+                        <td className="p-4 text-xs cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>
                           {order.expectedDispatchDate ? formatDate(order.expectedDispatchDate) : '—'}
                           {isDelayedOrder(order) ? <span className="mt-1 block font-semibold text-red-600">Delayed</span> : null}
                         </td>
-                        <td className="p-4 cursor-pointer" onClick={() => openOrderDetail(order)}><span className={`px-2 py-1 rounded-full text-xs font-semibold ${paymentStatusColors[order.paymentStatus] || paymentStatusColors.pending}`}>{order.paymentMethod || 'Cashfree'} {order.paymentStatus}</span></td>
-                        <td className="p-4 text-right font-medium cursor-pointer" onClick={() => openOrderDetail(order)}>{formatPrice(order.total)}</td>
+                        <td className="p-4 cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}><span className={`px-2 py-1 rounded-full text-xs font-semibold ${paymentStatusColors[order.paymentStatus] || paymentStatusColors.pending}`}>{order.paymentMethod || 'Cashfree'} {order.paymentStatus}</span></td>
+                        <td className="p-4 text-right font-medium cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>{formatPrice(order.total)}</td>
                       </tr>
                     );
                   })}
@@ -931,7 +889,19 @@ export default function AdminOrdersPage() {
         onClose={() => setLabelModalOpen(false)}
         onOpenOrder={async (id) => {
           setLabelModalOpen(false);
-          await openOrderDetail(id, { toggle: false });
+          const onPage = orders.find((order) => String(order._id) === String(id));
+          if (onPage) {
+            setSelected(onPage);
+            return;
+          }
+          try {
+            const res = await fetch(`/api/orders/${id}`, { cache: 'no-store' });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data?._id) setSelected(data);
+            else toast.error('Unable to open that order');
+          } catch {
+            toast.error('Unable to open that order');
+          }
         }}
       />
       <CreateWhatsAppOrderModal

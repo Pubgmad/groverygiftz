@@ -6,10 +6,6 @@ import ProductDetail from '@/components/product/ProductDetail';
 import ProductCard from '@/components/product/ProductCard';
 import Breadcrumbs from '@/components/ui/Breadcrumbs';
 import { notFound } from 'next/navigation';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
-import { PRODUCT_CARD_SELECT } from '@/lib/productCardFields';
-import { presentProductPreview3d, resolvePhotoFrame3dAdminPreviewAccess, isPhotoFrame3dAdminPreviewFlagEnabled } from '@/lib/photoFrame3dAdminPreview';
 
 export default async function ProductPage({ params }) {
   await dbConnect();
@@ -20,14 +16,9 @@ export default async function ProductPage({ params }) {
     _id: { $ne: product._id },
     isActive: true,
     collections: { $in: product.collections?.map(c => c._id) || [] },
-  }).select(PRODUCT_CARD_SELECT).limit(4).lean();
+  }).limit(4).lean();
 
-  let previewAccess = { flagEnabled: false, adminPreview: false, cameraAr: false, authorizedAdmin: false };
-  if (isPhotoFrame3dAdminPreviewFlagEnabled()) {
-    const session = await getServerSession(authOptions);
-    previewAccess = await resolvePhotoFrame3dAdminPreviewAccess(session);
-  }
-  const data = presentProductPreview3d(JSON.parse(JSON.stringify(product)), previewAccess);
+  const data = JSON.parse(JSON.stringify(product));
   const relatedData = JSON.parse(JSON.stringify(related));
 
   return (

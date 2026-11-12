@@ -186,9 +186,7 @@ test('verified confirmation renders the same order without clearing a new cart o
   assert.equal(f.calls.ga, 1);
   assert.equal(f.calls.meta, 1);
   assert.equal(f.calls.confirmation, 1);
-  assert.equal(f.calls.cleared, 1);
-  await f.c.verify('provider-order');
-  assert.equal(f.calls.cleared, 1);
+  assert.equal(f.calls.cleared, 0);
   assert.equal(f.calls.routes.length, 0);
 });
 

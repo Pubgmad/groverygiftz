@@ -15,13 +15,6 @@ import {
   ProductPurchaseActivityEditor,
   ProductStockAlertEditor,
 } from '@/components/admin/ProductContentEditors';
-import dynamic from 'next/dynamic';
-import { emptyPreview3dConfig, normalizePreview3dConfig } from '@/lib/preview3d';
-
-const ProductPreview3dEditor = dynamic(() => import('@/components/admin/ProductPreview3dEditor'), {
-  ssr: false,
-  loading: () => <div className="rounded-2xl border bg-white p-4 text-sm text-gray-500">3D settings…</div>,
-});
 
 const INDIAN_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
@@ -61,15 +54,12 @@ export default function AdminProductForm({ params }) {
   const isEdit = params?.id && params.id !== 'new';
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  /** Edit mode: block the empty default form until the product payload hydrates (prevents save/read races). */
-  const [productLoadState, setProductLoadState] = useState(isEdit ? 'loading' : 'ready');
-  const [mount3dEditor, setMount3dEditor] = useState(false);
   const [collections, setCollections] = useState([]);
   const [shippingTemplates, setShippingTemplates] = useState([]);
   const [videoUploading, setVideoUploading] = useState(false);
   const [form, setForm] = useState({
     title: '', description: '', aboutThisProduct: { instructions: '', deliveryNotes: '', hideDescription: false, hideInstructions: false, hideDelivery: true }, images: [], responsiveImages: { desktop: [], tablet: [], mobile: [] }, productVideo: { url: '', name: '', poster: '' }, makingVideosSection: { enabled: true, heading: 'See How Your Gift Is Made' }, makingVideos: [], customizationPreview: { enabled: false, title: 'Preview your personalized gift', frameImage: '', aspectRatio: '1:1', shape: 'rectangle', instructions: '', shortGuidance: '', requiredImageCount: 0, maxImageCount: 0, areas: [] }, delivery: defaultDelivery(), regularPrice: '', salePrice: '', offerStartsAt: '', offerEndsAt: '',
-    stock: 100, stockAlert: { enabled: true, lowStockThreshold: 5, mediumStockThreshold: 20, lowStockLabel: '', mediumStockLabel: '', highStockLabel: '', soldOutLabel: '' }, purchaseActivity: { enabled: false, purchaseCount: 0, timeQuantity: 50, timeUnit: 'days', labelTemplate: '' }, productInterest: { enabled: true, minViews: 250, maxViews: 1000, labelTemplate: '' }, preview3d: emptyPreview3dConfig(), collections: [], variants: [], customFields: [], collageEnabled: false, collageTemplates: [],
+    stock: 100, stockAlert: { enabled: true, lowStockThreshold: 5, mediumStockThreshold: 20, lowStockLabel: '', mediumStockLabel: '', highStockLabel: '', soldOutLabel: '' }, purchaseActivity: { enabled: false, purchaseCount: 0, timeQuantity: 50, timeUnit: 'days', labelTemplate: '' }, productInterest: { enabled: true, minViews: 250, maxViews: 1000, labelTemplate: '' }, collections: [], variants: [], customFields: [], collageEnabled: false, collageTemplates: [],
     giftWrap: { enabled: false, price: 0 }, giftMessage: false, customerNotesEnabled: true,
     isQuoteOnly: false, isOffer: false, isFeatured: false, isBestSeller: false, isActive: true,
     seoTitle: '', seoDescription: '',
@@ -78,24 +68,8 @@ export default function AdminProductForm({ params }) {
   useEffect(() => {
     fetch('/api/collections').then(r => r.json()).then(d => setCollections(d.collections || []));
     fetch('/api/shipping-templates').then(r => r.json()).then(d => setShippingTemplates(d.templates || [])).catch(() => {});
-    if (!isEdit) {
-      setProductLoadState('ready');
-      return undefined;
-    }
-    let cancelled = false;
-    setProductLoadState('loading');
-    fetch(`/api/products/${params.id}?admin=1`, { cache: 'no-store' })
-      .then(async (r) => {
-        if (!r.ok) throw new Error(`Failed to load product (${r.status})`);
-        return r.json();
-      })
-      .then((d) => {
-        if (cancelled) return;
-        if (!d || d.error || !d._id) {
-          setProductLoadState('error');
-          toast.error(d?.error || 'Product not found');
-          return;
-        }
+    if (isEdit) {
+      fetch(`/api/products/${params.id}`).then(r => r.json()).then(d => {
         setForm({
           title: d.title || '', description: d.description || '',
           aboutThisProduct: {
@@ -137,25 +111,14 @@ export default function AdminProductForm({ params }) {
             maxViews: d.productInterest?.maxViews ?? 1000,
             labelTemplate: d.productInterest?.labelTemplate || '',
           },
-          preview3d: normalizePreview3dConfig(d.preview3d || emptyPreview3dConfig()),
           collections: d.collections?.map(c => c._id || c) || [],
-          variants: Array.isArray(d.variants) ? d.variants : [],
-          customFields: d.customFields || [],
-          collageEnabled: !!d.collageEnabled,
-          collageTemplates: d.collageTemplates || [],
+          variants: d.variants || [], customFields: d.customFields || [], collageEnabled: !!d.collageEnabled, collageTemplates: d.collageTemplates || [],
           giftWrap: d.giftWrap || { enabled: false, price: 0 }, giftMessage: d.giftMessage || false, customerNotesEnabled: d.customerNotesEnabled !== false,
           isQuoteOnly: d.isQuoteOnly || false, isOffer: d.isOffer || false, isFeatured: d.isFeatured || false, isBestSeller: d.isBestSeller || false,
           isActive: d.isActive ?? true, seoTitle: d.seoTitle || d.metaTitle || '', seoDescription: d.seoDescription || d.metaDescription || '',
         });
-        setProductLoadState('ready');
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        console.error('admin product load failed', err);
-        setProductLoadState('error');
-        toast.error(err?.message || 'Failed to load product');
       });
-    return () => { cancelled = true; };
+    }
   }, [isEdit, params?.id]);
 
   useEffect(() => {
@@ -163,105 +126,29 @@ export default function AdminProductForm({ params }) {
     router.replace('/account/manage/products');
   }, [accessStatus, writable, isEdit, router]);
 
-  useEffect(() => {
-    if (productLoadState !== 'ready') {
-      setMount3dEditor(false);
-      return undefined;
-    }
-    const t = window.setTimeout(() => setMount3dEditor(true), 0);
-    return () => window.clearTimeout(t);
-  }, [productLoadState]);
-
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!writable || loading) return;
-    if (isEdit && productLoadState !== 'ready') {
-      toast.error('Product is still loading — wait before saving');
-      return;
-    }
-    // Suspend Live 3D WebGL before serialize/fetch so the canvas cannot block the main thread.
+    if (!writable) return;
     setLoading(true);
     const url = isEdit ? `/api/products/${params.id}` : '/api/products';
     const method = isEdit ? 'PUT' : 'POST';
-    // Yield one frame so AdminPreview3dStage can unmount while loading=true.
-    await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 50)));
-    let saveSucceeded = false;
-    try {
-      const payload = {
-        ...form,
-        preview3d: normalizePreview3dConfig(form.preview3d || emptyPreview3dConfig()),
-        offerStartsAt: fromDatetimeLocalInput(form.offerStartsAt),
-        offerEndsAt: fromDatetimeLocalInput(form.offerEndsAt),
-      };
-      let body;
-      try {
-        body = JSON.stringify(payload);
-      } catch (serializeError) {
-        console.error('product form serialize failed', serializeError);
-        toast.error('Unable to prepare product data for save. Check 3D settings and try again.');
-        return;
-      }
-      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-      const timeoutId = controller ? setTimeout(() => controller.abort(), 60000) : null;
-      let res;
-      try {
-        res = await fetch(url, {
-          method,
-          headers: { 'Content-Type': 'application/json' },
-          body,
-          signal: controller?.signal,
-        });
-      } finally {
-        if (timeoutId) clearTimeout(timeoutId);
-      }
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        saveSucceeded = true;
-        toast.success(isEdit ? 'Product updated!' : 'Product created!');
-        // Keep loading/suspendPreview true until navigation unmounts this page.
-        // Clearing loading here remounts WebGL and can cancel soft navigation.
-        router.push('/account/manage/products');
-        return;
-      }
-      toast.error(data.error || data.message || `Failed to save product (${res.status})`);
-    } catch (err) {
-      const aborted = err?.name === 'AbortError';
-      toast.error(aborted ? 'Save timed out — try again with 3D preview paused' : (err?.message || 'Failed to save product'));
-    } finally {
-      if (!saveSucceeded) setLoading(false);
+    const payload = { ...form, offerStartsAt: fromDatetimeLocalInput(form.offerStartsAt), offerEndsAt: fromDatetimeLocalInput(form.offerEndsAt) };
+    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    setLoading(false);
+    if (res.ok) {
+      toast.success(isEdit ? 'Product updated!' : 'Product created!');
+      router.push('/account/manage/products');
+    } else {
+      toast.error('Failed to save product');
     }
   };
 
-  const emptyVariantOption = () => ({
-    label: '',
-    priceAdjustment: 0,
-    useOwnPrice: false,
-    regularPrice: '',
-    salePrice: '',
-    stateOverrides: [],
-    shippingTemplate: '',
-    requiresImageUpload: false,
-    previewWidth: '',
-    previewHeight: '',
-    previewUnit: 'inch',
-    previewFrameImage: '',
-    previewInstructions: '',
-    inStock: true,
-  });
-  const addVariant = () => setForm((p) => ({
-    ...p,
-    variants: [...p.variants, { name: '', type: 'size', options: [emptyVariantOption()] }],
-  }));
-  const removeVariant = (idx) => setForm((p) => ({ ...p, variants: p.variants.filter((_, i) => i !== idx) }));
+  const addVariant = () => setForm(p => ({ ...p, variants: [...p.variants, { name: '', type: 'size', options: [{ label: '', priceAdjustment: 0, useOwnPrice: false, regularPrice: '', salePrice: '', stateOverrides: [], shippingTemplate: '', requiresImageUpload: false, previewWidth: '', previewHeight: '', previewUnit: 'inch', previewFrameImage: '', previewInstructions: '', inStock: true }] }] }));
+  const removeVariant = (idx) => setForm(p => ({ ...p, variants: p.variants.filter((_, i) => i !== idx) }));
   const addVariantOption = (vIdx) => {
-    setForm((p) => ({
-      ...p,
-      variants: p.variants.map((variant, i) => (
-        i === vIdx
-          ? { ...variant, options: [...(variant.options || []), emptyVariantOption()] }
-          : variant
-      )),
-    }));
+    const variants = [...form.variants];
+    variants[vIdx].options.push({ label: '', priceAdjustment: 0, useOwnPrice: false, regularPrice: '', salePrice: '', stateOverrides: [], shippingTemplate: '', requiresImageUpload: false, previewWidth: '', previewHeight: '', previewUnit: 'inch', previewFrameImage: '', previewInstructions: '', inStock: true });
+    setForm(p => ({ ...p, variants }));
   };
 
   const uploadProductVideo = async (file) => {
@@ -314,33 +201,18 @@ export default function AdminProductForm({ params }) {
   const addStateOverride = () => setForm(p => ({ ...p, delivery: { ...p.delivery, stateOverrides: [...(p.delivery?.stateOverrides || []), { state: '', shippingCost: 0, deliveryEstimate: '' }] } }));
   const removeStateOverride = (idx) => setForm(p => ({ ...p, delivery: { ...p.delivery, stateOverrides: (p.delivery?.stateOverrides || []).filter((_, i) => i !== idx) } }));
   const updateVariantOption = (vIdx, oIdx, updates) => {
-    setForm((p) => ({
-      ...p,
-      variants: p.variants.map((variant, i) => {
-        if (i !== vIdx) return variant;
-        return {
-          ...variant,
-          options: (variant.options || []).map((opt, j) => (j === oIdx ? { ...opt, ...updates } : opt)),
-        };
-      }),
-    }));
+    const variants = [...form.variants];
+    variants[vIdx].options[oIdx] = { ...(variants[vIdx].options[oIdx] || {}), ...updates };
+    setForm(p => ({ ...p, variants }));
   };
   const updateVariantStateOverride = (vIdx, oIdx, rowIdx, key, value) => {
-    setForm((p) => ({
-      ...p,
-      variants: p.variants.map((variant, i) => {
-        if (i !== vIdx) return variant;
-        return {
-          ...variant,
-          options: (variant.options || []).map((opt, j) => {
-            if (j !== oIdx) return opt;
-            const stateOverrides = [...(opt.stateOverrides || [])];
-            stateOverrides[rowIdx] = { ...stateOverrides[rowIdx], [key]: value };
-            return { ...opt, stateOverrides };
-          }),
-        };
-      }),
-    }));
+    const variants = [...form.variants];
+    const option = { ...(variants[vIdx].options[oIdx] || {}) };
+    const stateOverrides = [...(option.stateOverrides || [])];
+    stateOverrides[rowIdx] = { ...stateOverrides[rowIdx], [key]: value };
+    option.stateOverrides = stateOverrides;
+    variants[vIdx].options[oIdx] = option;
+    setForm(p => ({ ...p, variants }));
   };
   const templateRatesToOverrides = (templateId) => {
     const template = shippingTemplates.find((entry) => entry._id === templateId);
@@ -352,61 +224,26 @@ export default function AdminProductForm({ params }) {
     updateVariantOption(vIdx, oIdx, { shippingTemplate: templateId, stateOverrides: overrides });
   };
   const addVariantStateOverride = (vIdx, oIdx) => {
-    setForm((p) => ({
-      ...p,
-      variants: p.variants.map((variant, i) => {
-        if (i !== vIdx) return variant;
-        return {
-          ...variant,
-          options: (variant.options || []).map((opt, j) => (
-            j === oIdx
-              ? { ...opt, stateOverrides: [...(opt.stateOverrides || []), { state: '', shippingCost: 0, deliveryEstimate: '' }] }
-              : opt
-          )),
-        };
-      }),
-    }));
+    const variants = [...form.variants];
+    const option = { ...(variants[vIdx].options[oIdx] || {}) };
+    option.stateOverrides = [...(option.stateOverrides || []), { state: '', shippingCost: 0, deliveryEstimate: '' }];
+    variants[vIdx].options[oIdx] = option;
+    setForm(p => ({ ...p, variants }));
   };
   const removeVariantStateOverride = (vIdx, oIdx, rowIdx) => {
-    setForm((p) => ({
-      ...p,
-      variants: p.variants.map((variant, i) => {
-        if (i !== vIdx) return variant;
-        return {
-          ...variant,
-          options: (variant.options || []).map((opt, j) => (
-            j === oIdx
-              ? { ...opt, stateOverrides: (opt.stateOverrides || []).filter((_, k) => k !== rowIdx) }
-              : opt
-          )),
-        };
-      }),
-    }));
+    const variants = [...form.variants];
+    const option = { ...(variants[vIdx].options[oIdx] || {}) };
+    option.stateOverrides = (option.stateOverrides || []).filter((_, i) => i !== rowIdx);
+    variants[vIdx].options[oIdx] = option;
+    setForm(p => ({ ...p, variants }));
   };
 
-  if (isEdit && productLoadState === 'loading') {
-    return (
-      <div className="flex min-h-[40vh] items-center justify-center gap-3 text-sm text-gray-600" data-product-form-ready="false">
-        <FiLoader className="animate-spin" /> Loading product…
-      </div>
-    );
-  }
-  if (isEdit && productLoadState === 'error') {
-    return (
-      <div className="mx-auto max-w-lg rounded-2xl border bg-white p-6 text-center" data-product-form-ready="false">
-        <h1 className="text-xl font-bold">Unable to load product</h1>
-        <p className="mt-2 text-sm text-gray-500">Refresh the page or return to the product list.</p>
-        <Link href="/account/manage/products" className="mt-4 inline-flex text-sm font-semibold text-primary-700">Back to products</Link>
-      </div>
-    );
-  }
-
   return (
-    <div data-product-form-ready="true" data-product-form-mode={isEdit ? 'edit' : 'create'}>
+    <div>
       <ReadOnlyBanner show={!writable} />
       <h1 className="text-2xl font-bold mb-6">{isEdit ? (writable ? 'Edit Product' : 'View Product') : 'New Product'}</h1>
       <form onSubmit={handleSubmit} className="space-y-6 max-w-4xl">
-        <fieldset disabled={!writable || (isEdit && productLoadState !== 'ready')} className="space-y-6 disabled:opacity-80">
+        <fieldset disabled={!writable} className="space-y-6 disabled:opacity-80">
         {/* Basic Info */}
         <div className="bg-white p-4 sm:p-6 rounded-xl border space-y-4">
           <h2 className="font-bold text-lg">Basic Information</h2>
@@ -566,17 +403,6 @@ export default function AdminProductForm({ params }) {
           <ProductStockAlertEditor stockAlert={form.stockAlert || {}} onChange={(stockAlert) => setForm((p) => ({ ...p, stockAlert }))} />
           <ProductInterestEditor productInterest={form.productInterest || {}} onChange={(productInterest) => setForm((p) => ({ ...p, productInterest }))} />
           <ProductPurchaseActivityEditor purchaseActivity={form.purchaseActivity || {}} onChange={(purchaseActivity) => setForm((p) => ({ ...p, purchaseActivity }))} />
-          {mount3dEditor ? (
-          <ProductPreview3dEditor
-            productLike={form}
-            value={form.preview3d || emptyPreview3dConfig()}
-            onChange={(preview3d) => setForm((p) => ({ ...p, preview3d }))}
-            writable={writable}
-            suspendPreview={loading}
-          />
-          ) : (
-            <div className="rounded-2xl border bg-white p-4 text-sm text-gray-500">3D settings…</div>
-          )}
           <div className="grid md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">Offer Starts At</label>
@@ -669,21 +495,9 @@ export default function AdminProductForm({ params }) {
             <div key={vIdx} className="border rounded-lg p-3 sm:p-4 mb-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:gap-4 mb-3">
                 <input placeholder="Variant name (e.g. Size)" value={variant.name}
-                  onChange={(e) => {
-                    const name = e.target.value;
-                    setForm((p) => ({
-                      ...p,
-                      variants: p.variants.map((row, i) => (i === vIdx ? { ...row, name } : row)),
-                    }));
-                  }}
+                  onChange={e => { const v = [...form.variants]; v[vIdx].name = e.target.value; setForm(p => ({ ...p, variants: v })); }}
                   className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary-500" />
-                <select value={variant.type} onChange={(e) => {
-                  const type = e.target.value;
-                  setForm((p) => ({
-                    ...p,
-                    variants: p.variants.map((row, i) => (i === vIdx ? { ...row, type } : row)),
-                  }));
-                }}
+                <select value={variant.type} onChange={e => { const v = [...form.variants]; v[vIdx].type = e.target.value; setForm(p => ({ ...p, variants: v })); }}
                   className="border rounded-lg px-3 py-2 text-sm">
                   <option value="size">Size</option><option value="color">Color</option><option value="quantity">Quantity</option>
                 </select>
@@ -700,16 +514,7 @@ export default function AdminProductForm({ params }) {
                         onChange={e => updateVariantOption(vIdx, oIdx, { useOwnPrice: e.target.checked })} />
                       Own regular/sale price
                     </label>
-                    <button type="button" onClick={() => {
-                      setForm((p) => ({
-                        ...p,
-                        variants: p.variants.map((row, i) => (
-                          i === vIdx
-                            ? { ...row, options: (row.options || []).filter((_, j) => j !== oIdx) }
-                            : row
-                        )),
-                      }));
-                    }}
+                    <button type="button" onClick={() => { const v = [...form.variants]; v[vIdx].options.splice(oIdx, 1); setForm(p => ({ ...p, variants: v })); }}
                       className="justify-self-start text-red-500 sm:justify-self-end"><FiX size={16} /></button>
                   </div>
                   {opt.useOwnPrice ? (

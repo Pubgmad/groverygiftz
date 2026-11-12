@@ -1,11 +1,15 @@
 'use client';
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { flushSync } from 'react-dom';
 import { useSession } from 'next-auth/react';
 import { trackGA4Ecommerce } from '@/lib/ga4';
-import { isSameCartLine, mergeGuestCartIntoAccount, stripDisplayOnlyPreviewData } from '@/lib/cartPersist';
+import { cartItemHasConfiguredImages, stripDisplayOnlyPreviewData } from '@/lib/cartPersist';
 
 const CartContext = createContext();
+
+const isSameCartLine = (cartItem, productId, variant, cartItemId) => {
+  if (cartItemId) return cartItem.cartItemId === cartItemId;
+  return cartItem.productId === productId && cartItem.variant === variant && !cartItem.cartItemId;
+};
 
 const normalizeStockLimit = (value) => {
   const limit = Number(value);
@@ -15,6 +19,35 @@ const normalizeStockLimit = (value) => {
 const capQuantity = (quantity, availableStock) => {
   const limit = normalizeStockLimit(availableStock);
   return limit === null ? quantity : Math.min(quantity, limit);
+};
+
+const mergeCartItems = (accountCart = [], localCart = []) => {
+  const merged = [...accountCart];
+  localCart.forEach((item) => {
+    const existingIndex = !item.cartItemId ? merged.findIndex((entry) => isSameCartLine(entry, item.productId, item.variant)) : -1;
+    if (existingIndex >= 0) {
+      const existing = merged[existingIndex];
+      const guestHasImages = cartItemHasConfiguredImages(item);
+      const accountHasImages = cartItemHasConfiguredImages(existing);
+      // Prefer guest customization when the account line has no durable images yet.
+      const keepGuestConfig = guestHasImages && !accountHasImages;
+      merged[existingIndex] = {
+        ...existing,
+        ...(keepGuestConfig ? {
+          customFields: item.customFields,
+          collageUploads: item.collageUploads,
+          customizationPreview: item.customizationPreview,
+          giftWrap: item.giftWrap,
+          giftMessage: item.giftMessage,
+          cartItemId: item.cartItemId || existing.cartItemId,
+        } : {}),
+        quantity: capQuantity(Number(existing.quantity || 0) + Number(item.quantity || 1), existing.availableStock ?? item.availableStock),
+      };
+      return;
+    }
+    merged.push({ ...item, quantity: capQuantity(Number(item.quantity || 1), item.availableStock) });
+  });
+  return merged;
 };
 
 const persistGuestCart = (items) => {
@@ -53,8 +86,6 @@ export function CartProvider({ children }) {
   const [cartSyncing, setCartSyncing] = useState(false);
   const syncedCustomerRef = useRef('');
   const activeCustomerRef = useRef('');
-  const syncAttemptRef = useRef(0);
-  const [syncNonce, setSyncNonce] = useState(0);
 
   const applyCart = (nextCart) => {
     cartRef.current = nextCart;
@@ -104,7 +135,7 @@ export function CartProvider({ children }) {
       .then((res) => res.ok ? res.json() : Promise.reject())
       .then(async (data) => {
         const guestCart = cartRef.current || [];
-        let merged = mergeGuestCartIntoAccount(data.cart || [], guestCart);
+        let merged = mergeCartItems(data.cart || [], guestCart);
         try {
           const refreshRes = await fetch('/api/customization-upload/refresh-display', {
             method: 'POST',
@@ -127,27 +158,16 @@ export function CartProvider({ children }) {
         } catch {}
         syncedCustomerRef.current = session.user.id;
         activeCustomerRef.current = session.user.id;
-        syncAttemptRef.current = 0;
       })
       .catch(() => {
-        activeCustomerRef.current = session.user.id;
-        if (syncAttemptRef.current < 3) {
-          syncAttemptRef.current += 1;
-          window.setTimeout(() => {
-            syncingRef.current = false;
-            setSyncNonce((value) => value + 1);
-          }, 1200 * syncAttemptRef.current);
-          return;
-        }
         syncedCustomerRef.current = session.user.id;
+        activeCustomerRef.current = session.user.id;
       })
       .finally(() => {
-        if (syncedCustomerRef.current === session.user.id) {
-          syncingRef.current = false;
-          setCartSyncing(false);
-        }
+        syncingRef.current = false;
+        setCartSyncing(false);
       });
-  }, [status, session?.user?.id, session?.user?.type, localLoaded, syncNonce]);
+  }, [status, session?.user?.id, session?.user?.type, localLoaded]);
 
   useEffect(() => {
     const activeCustomerId = status === 'authenticated' && session?.user?.type === 'customer' ? session.user.id : '';
@@ -204,10 +224,8 @@ export function CartProvider({ children }) {
     } else {
       nextCart = [...prev, { ...item, quantity: capQuantity(item.quantity, item.availableStock) }];
     }
-    if (options.flush) flushSync(() => applyCart(nextCart));
-    else applyCart(nextCart);
+    applyCart(nextCart);
     if (!isAuthenticatedCustomer) persistGuestCart(nextCart);
-    else if (options.flush) persistCustomerCart(nextCart);
     const addedLine = nextCart.find((entry) => isSameCartLine(entry, item.productId, item.variant, item.cartItemId));
     const addedQuantity = Number(addedLine?.quantity || 0) - Number(existing?.quantity || 0);
     if (addedQuantity > 0) trackGA4Ecommerce('add_to_cart', [{ ...addedLine, quantity: addedQuantity }]);
@@ -238,32 +256,9 @@ export function CartProvider({ children }) {
     });
   };
 
-  const persistCustomerCart = (items) => {
-    fetch('/api/customers/saved-lists', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cart: stripDisplayOnlyPreviewData(items || []) }),
-      keepalive: true,
-    }).catch(() => {});
-  };
-
-  const updateCartItem = (cartItemId, patch) => {
-    if (!cartItemId || !patch || typeof patch !== 'object') return;
-    const nextCart = (cartRef.current || []).map((item) => (
-      item.cartItemId === cartItemId ? { ...item, ...patch } : item
-    ));
-    applyCart(nextCart);
-    if (!isAuthenticatedCustomer) persistGuestCart(nextCart);
-    else persistCustomerCart(nextCart);
-  };
-
   const clearCart = () => {
     applyCart([]);
-    if (!isAuthenticatedCustomer) {
-      persistGuestCart([]);
-      return;
-    }
-    persistCustomerCart([]);
+    if (!isAuthenticatedCustomer) persistGuestCart([]);
   };
 
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -272,7 +267,7 @@ export function CartProvider({ children }) {
   const cartReady = localLoaded && (!currentCustomerId || (syncedCustomerRef.current === currentCustomerId && !cartSyncing));
 
   return (
-    <CartContext.Provider value={{ cart, addToCart, updateCartItem, removeFromCart, updateQuantity, clearCart, cartCount, cartTotal, cartReady, cartSyncing, isCartOpen, setIsCartOpen }}>
+    <CartContext.Provider value={{ cart, addToCart, removeFromCart, updateQuantity, clearCart, cartCount, cartTotal, cartReady, cartSyncing, isCartOpen, setIsCartOpen }}>
       {children}
     </CartContext.Provider>
   );

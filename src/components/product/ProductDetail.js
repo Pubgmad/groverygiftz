@@ -1,7 +1,5 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { flushSync } from 'react-dom';
-import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useCart } from '@/context/CartContext';
 import { formatPrice, calcSavings, getEffectivePrice, isOfferActive, getVariantRegularPrice, getVariantSalePrice, getVariantEffectivePrice } from '@/lib/utils';
@@ -14,9 +12,9 @@ import { GOOGLE_CONSENT_SYNC_EVENT } from '@/lib/googleConsent';
 import { FiMinus, FiPlus, FiX, FiClock, FiShoppingCart, FiZap, FiUpload, FiImage, FiChevronLeft, FiChevronRight, FiStar, FiLoader } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { startNavigationFeedback } from '@/components/layout/NavigationFeedback';
-import { appendImageUpload, attachLocalPreview, cardUploadUrls, editorUploadUrl, fetchWithTimeout, liveBlobUrl, prepareImageUpload, previewLoadUrls, stableUploadUrl } from '@/lib/clientImageUpload';
+import { appendImageUpload, attachLocalPreview, cardUploadUrls, editorUploadUrl, liveBlobUrl, prepareImageUpload, previewLoadUrls, stableUploadUrl } from '@/lib/clientImageUpload';
 import { alignPhotoSlots, clearPhotoSlot, filledPhotoCount, filledPhotos, planPhotoUploads, removeListPhotoByUrl, setPhotoSlot } from '@/lib/photoSlots';
-import { adjustmentsForUploadedPhoto, beginCanvasPhotoLook, endCanvasPhotoLook, formatFrameSizeLabel, getFrameSize, orientationCaption } from '@/lib/photoEditor';
+import { adjustmentsForUploadedPhoto, formatFrameSizeLabel, getFrameSize, orientationCaption } from '@/lib/photoEditor';
 import PhotoUploadCard from '@/components/product/PhotoUploadCard';
 import PhotoAdjuster from '@/components/product/PhotoAdjuster';
 import PhotoLimitDialog from '@/components/product/PhotoLimitDialog';
@@ -28,17 +26,9 @@ import ProductInterestIndicator from '@/components/product/ProductInterestIndica
 import PurchaseActivityBadge from '@/components/product/PurchaseActivityBadge';
 import ProductMakingVideos from '@/components/product/ProductMakingVideos';
 import ProductTrustStats from '@/components/product/ProductTrustStats';
-import { isPreview3dEligible } from '@/lib/preview3d';
-import { Preview3dSessionProvider } from '@/components/product/preview3d/Preview3dSession';
-import { parseWxHFromLabel } from '@/lib/photoFrame3d';
 import { imagePerfMark, imagePerfMeasure } from '@/lib/imagePerf';
 import { readJsonResponse } from '@/lib/safeJsonResponse';
-import { durableUploadRef, isEphemeralMediaUrl } from '@/lib/cartPersist';
-
-const ViewIn3DButton = dynamic(() => import('@/components/product/preview3d/ViewIn3DButton'), {
-  ssr: false,
-  loading: () => null,
-});
+import { durableUploadRef } from '@/lib/cartPersist';
 
 /** Session caches for Apply/cart canvas work — avoid re-decoding the same URLs. */
 const previewImageCache = new Map();
@@ -73,7 +63,7 @@ const getStateOverride = (delivery, state) => (delivery?.stateOverrides || []).f
 
 // Durable signed displayUrl for links/cart. Cards use cardUploadUrls (Apply preview → blob → signed).
 const displayUploadUrl = (upload) => stableUploadUrl(upload);
-const getDefaultPreviewAdjustments = () => ({ zoom: 1, x: 0, y: 0, orientation: 'auto', rotation: 0, fitMode: 'fit', brightness: 100, contrast: 100, saturation: 100 });
+const getDefaultPreviewAdjustments = () => ({ zoom: 1, x: 0, y: 0, orientation: 'auto', rotation: 0, fitMode: 'fit' });
 
 export default function ProductDetail({ product }) {
   const [selectedImage, setSelectedImage] = useState(0);
@@ -97,16 +87,9 @@ export default function ProductDetail({ product }) {
   const [uploadingFields, setUploadingFields] = useState({});
   const [previewAdjustments, setPreviewAdjustments] = useState({});
   const [savedPreviewAreas, setSavedPreviewAreas] = useState({});
-  const [previewCardTick, setPreviewCardTick] = useState(0);
   const savedPreviewFilesRef = useRef({});
   const [savingPreviewAreas, setSavingPreviewAreas] = useState({});
   const previewSaveLocksRef = useRef(new Set());
-  const previewPersistPromiseRef = useRef({});
-  const variantUploadPromiseRef = useRef({});
-  const collageUploadPromiseRef = useRef({});
-  const fieldUploadPromiseRef = useRef({});
-  const collageUploadsRef = useRef({});
-  const customFieldValuesRef = useRef({});
   const [reviews, setReviews] = useState([]);
   const [googleReviews, setGoogleReviews] = useState({ enabled: false, reviews: [], topics: [] });
   const [giftWrap, setGiftWrap] = useState(false);
@@ -115,8 +98,7 @@ export default function ProductDetail({ product }) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [sizeChartOpen, setSizeChartOpen] = useState(false);
   const settings = useDeliverySettings();
-  const { addToCart, updateCartItem, setIsCartOpen } = useCart();
-  const showPreview3d = isPreview3dEligible(product);
+  const { addToCart, setIsCartOpen } = useCart();
   const router = useRouter();
   const viewedProductRef = useRef('');
   const customTextTrackedRef = useRef({});
@@ -135,7 +117,6 @@ export default function ProductDetail({ product }) {
     setCollageUploads({});
     setPreviewAdjustments({});
     setSavedPreviewAreas({});
-    setPreviewCardTick(0);
     savedPreviewFilesRef.current = {};
     galleryTouchRef.current = { startX: 0, endX: 0 };
     lightboxTouchRef.current = { startX: 0, endX: 0 };
@@ -143,8 +124,6 @@ export default function ProductDetail({ product }) {
 
   useEffect(() => { customerPhotosRef.current = customerPhotos; }, [customerPhotos]);
   useEffect(() => { variantLabelUploadsRef.current = variantLabelUploads; }, [variantLabelUploads]);
-  useEffect(() => { collageUploadsRef.current = collageUploads; }, [collageUploads]);
-  useEffect(() => { customFieldValuesRef.current = customFieldValues; }, [customFieldValues]);
 
   const offerActive = isOfferActive(product);
   const isSoldOut = isProductSoldOut(product);
@@ -217,28 +196,22 @@ export default function ProductDetail({ product }) {
     }
 
     const { variant, option } = firstVariantWithOption;
-    setSelectedVariants((prev) => {
-      const current = prev?.[variant.name];
-      if (current?.label && (variant.options || []).some((opt) => opt.label === current.label)) {
-        return prev;
-      }
-      return {
-        [variant.name]: {
-          label: option.label,
-          extra: getOptionExtraPrice(option),
-          useOwnPrice: !!option.useOwnPrice,
-          regularPrice: option.regularPrice,
-          salePrice: option.salePrice,
-          stateOverrides: option.stateOverrides || [],
-          requiresImageUpload: !!option.requiresImageUpload,
-          previewWidth: option.previewWidth,
-          previewHeight: option.previewHeight,
-          previewUnit: option.previewUnit || 'inch',
-          previewFrameImage: option.previewFrameImage || '',
-          previewInstructions: option.previewInstructions || '',
-          stock: option.stock,
-        },
-      };
+    setSelectedVariants({
+      [variant.name]: {
+        label: option.label,
+        extra: getOptionExtraPrice(option),
+        useOwnPrice: !!option.useOwnPrice,
+        regularPrice: option.regularPrice,
+        salePrice: option.salePrice,
+        stateOverrides: option.stateOverrides || [],
+        requiresImageUpload: !!option.requiresImageUpload,
+        previewWidth: option.previewWidth,
+        previewHeight: option.previewHeight,
+        previewUnit: option.previewUnit || 'inch',
+        previewFrameImage: option.previewFrameImage || '',
+        previewInstructions: option.previewInstructions || '',
+        stock: option.stock,
+      },
     });
   }, [product._id, product.variants]);
   const selectedVariantOptions = Object.values(selectedVariants).filter(Boolean);
@@ -295,19 +268,14 @@ export default function ProductDetail({ product }) {
   const uploadCardGridClass = 'grid grid-cols-1 gap-2 sm:grid-cols-2';
   const getAreaAdjustments = (idx) => ({ ...getDefaultPreviewAdjustments(), ...(previewAdjustments[idx] || {}) });
   const areaSizeLabel = (area, idx) => formatFrameSizeLabel(area, getAreaAdjustments(idx).orientation);
-  const variantAreaFromSelected = (selected) => {
-    const parsed = parseWxHFromLabel(selected?.label || '');
-    const width = Number(selected?.previewWidth) > 0 ? Number(selected.previewWidth) : (parsed?.w || 1);
-    const height = Number(selected?.previewHeight) > 0 ? Number(selected.previewHeight) : (parsed?.h || 1);
-    return {
-      label: selected?.label,
-      width,
-      height,
-      unit: selected?.previewUnit || 'inch',
-      frameImage: selected?.previewFrameImage || '',
-      instructions: selected?.previewInstructions || '',
-    };
-  };
+  const variantAreaFromSelected = (selected) => ({
+    label: selected?.label,
+    width: selected?.previewWidth || 1,
+    height: selected?.previewHeight || 1,
+    unit: selected?.previewUnit || 'inch',
+    frameImage: selected?.previewFrameImage || '',
+    instructions: selected?.previewInstructions || '',
+  });
   const loadPreviewImage = (src, { cache = previewImageCache } = {}) => {
     const url = String(src || '');
     if (!url) return Promise.reject(new Error('Unable to load the image for preview. Please try uploading it again.'));
@@ -392,9 +360,7 @@ export default function ProductDetail({ product }) {
       ctx.save();
       ctx.translate(centerX, centerY);
       ctx.rotate(rad);
-      beginCanvasPhotoLook(ctx, adjustments);
       ctx.drawImage(uploadedImage, -drawW / 2, -drawH / 2, drawW, drawH);
-      endCanvasPhotoLook(ctx);
       ctx.restore();
 
       if (area.frameImage) {
@@ -436,7 +402,7 @@ export default function ProductDetail({ product }) {
       const safeLabel = String(label || `photo-${idx + 1}`).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `photo-${idx + 1}`;
       const formData = new FormData();
       formData.append('file', new File([blob], `${safeLabel}-final-preview.jpg`, { type: blob.type || 'image/jpeg' }));
-      const res = await fetchWithTimeout('/api/customization-upload', { method: 'POST', body: formData }, 30000);
+      const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
       const data = await readJsonResponse(res, { fallbackError: 'Unable to store the customized preview. Please try again.' });
       imagePerfMeasure('apply:upload', 'apply:upload:start');
       return { ...data, previewUrl: previewUrl || data.displayUrl || data.url || '' };
@@ -444,31 +410,15 @@ export default function ProductDetail({ product }) {
       throw new Error(error.message || 'Unable to store the customized preview. Please try again.');
     }
   };
-  const resolveDurableFinalPreview = async ({ previewKey, area, uploadedFile, areaLabel, uploadIndex, waitForPersist = true }) => {
-    const persistTask = previewPersistPromiseRef?.current?.[previewKey];
-    if (waitForPersist && persistTask) {
-      try { await persistTask; } catch {}
-    }
+  const resolveDurableFinalPreview = async ({ previewKey, area, uploadedFile, areaLabel, uploadIndex }) => {
     const adjustments = getAreaAdjustments(previewKey);
     const adjustmentsKey = JSON.stringify(adjustments);
     const saved = savedPreviewFilesRef.current[previewKey];
-    const sameAdjustments = saved?.adjustments === adjustmentsKey;
-    const sameSource = !saved?.sourceUrl
-      || saved.sourceUrl === uploadedFile?.url
-      || saved.sourceUrl === uploadedFile?.displayUrl
-      || saved.sourceUrl === uploadedFile?.originalUrl
-      || (saved.sourceStoragePath && uploadedFile?.storagePath && saved.sourceStoragePath === uploadedFile.storagePath)
-      || (isEphemeralMediaUrl(saved.sourceUrl) && uploadedFile?.url && !isEphemeralMediaUrl(uploadedFile.url));
-    const matches = sameAdjustments && sameSource;
+    const matches = saved?.sourceUrl === uploadedFile.url && saved?.adjustments === adjustmentsKey;
     // Only reuse a durable server URL — never blob/data cache as cart final preview.
-    if (matches && !saved?.pending) {
-      const durable = durableUploadRef(saved?.file);
-      if (durable) return durable;
+    if (matches && saved?.file?.url && !saved?.pending) {
+      return durableUploadRef(saved.file) || saved.file;
     }
-    const readyDurable = durableUploadRef(saved?.file);
-    if (readyDurable) return readyDurable;
-    // Add to Cart must not block on Apply persist or a second bake.
-    if (!waitForPersist) return null;
     // Already-baked local Apply preview: upload that blob without re-rendering the canvas.
     const localPreview = String(saved?.file?.previewUrl || '');
     if (matches && (localPreview.startsWith('blob:') || localPreview.startsWith('data:'))) {
@@ -476,7 +426,6 @@ export default function ProductDetail({ product }) {
       savedPreviewFilesRef.current[previewKey] = {
         file,
         sourceUrl: uploadedFile.url,
-        sourceStoragePath: uploadedFile.storagePath || '',
         adjustments: adjustmentsKey,
         pending: false,
       };
@@ -487,19 +436,18 @@ export default function ProductDetail({ product }) {
     savedPreviewFilesRef.current[previewKey] = {
       file,
       sourceUrl: uploadedFile.url,
-      sourceStoragePath: uploadedFile.storagePath || '',
       adjustments: adjustmentsKey,
       pending: false,
     };
     return durableUploadRef(file) || file;
   };
 
-  const buildCustomizationPreviewPayload = async ({ waitForPersist = true } = {}) => {
+  const buildCustomizationPreviewPayload = async () => {
     const jobs = [];
 
     if (previewEnabled) {
       previewAreas.forEach((area, idx) => {
-        const uploadedFile = (customerPhotosRef.current || customerPhotos)[idx] || null;
+        const uploadedFile = customerPhotos[idx] || null;
         if (!uploadedFile?.url) return;
         const areaLabel = area.label || (`Photo ${idx + 1}`);
         jobs.push(async () => {
@@ -511,7 +459,6 @@ export default function ProductDetail({ product }) {
             uploadedFile,
             areaLabel,
             uploadIndex: idx,
-            waitForPersist,
           });
           return {
             areaLabel,
@@ -532,10 +479,17 @@ export default function ProductDetail({ product }) {
     }
 
     selectedVariantUploadOptions.forEach((selected, variantIndex) => {
-      const uploadedFile = (variantLabelUploadsRef.current || variantLabelUploads)[selected.label] || null;
+      const uploadedFile = variantLabelUploads[selected.label] || null;
       if (!uploadedFile?.url) return;
       const previewKey = `variant-${selected.label}`;
-      const area = variantAreaFromSelected(selected);
+      const area = {
+        label: selected.label,
+        width: selected.previewWidth || 1,
+        height: selected.previewHeight || 1,
+        unit: selected.previewUnit || 'inch',
+        frameImage: selected.previewFrameImage || '',
+        instructions: selected.previewInstructions || '',
+      };
       const areaLabel = `Variant: ${selected.label}`;
       jobs.push(async () => {
         const adjustments = getAreaAdjustments(previewKey);
@@ -546,7 +500,6 @@ export default function ProductDetail({ product }) {
           uploadedFile,
           areaLabel,
           uploadIndex: variantIndex,
-          waitForPersist,
         });
         return {
           areaLabel,
@@ -608,7 +561,6 @@ export default function ProductDetail({ product }) {
             pending: true,
           };
           setSavedPreviewAreas((prev) => ({ ...prev, [idx]: true }));
-          setPreviewCardTick((tick) => tick + 1);
         } else {
           throw new Error('Unable to generate the customized preview. Please try again.');
         }
@@ -620,7 +572,7 @@ export default function ProductDetail({ product }) {
         const renderedBlob = rendered;
         const localUrl = localPreviewUrl;
         const adjustmentsSnapshot = JSON.stringify(adjustmentsObj);
-        const persistTask = (async () => {
+        void (async () => {
           try {
             let durableUpload = upload;
             const pendingUpload = photoUploadPromiseRef.current[idx];
@@ -629,21 +581,18 @@ export default function ProductDetail({ product }) {
               if (ready?.url) durableUpload = ready;
               else durableUpload = variant ? variantLabelUploadsRef.current[variant.label] : customerPhotosRef.current[idx];
             }
-            if (photoUploadTokenRef.current[`persist-${idx}`] !== persistToken) return null;
+            if (photoUploadTokenRef.current[`persist-${idx}`] !== persistToken) return;
             if (!durableUpload?.url) throw new Error('Photo upload did not finish. Please try Apply again.');
             const file = await uploadRenderedPreviewImage(renderedBlob, area.label, idx, { localPreviewUrl: localUrl });
-            if (photoUploadTokenRef.current[`persist-${idx}`] !== persistToken) return null;
+            if (photoUploadTokenRef.current[`persist-${idx}`] !== persistToken) return;
             savedPreviewFilesRef.current[idx] = {
               file,
               sourceUrl: durableUpload.url,
-              sourceStoragePath: durableUpload.storagePath || '',
               adjustments: adjustmentsSnapshot,
               pending: false,
             };
             setSavedPreviewAreas((prev) => ({ ...prev, [idx]: true }));
-            setPreviewCardTick((tick) => tick + 1);
             imagePerfMeasure('apply:total', 'apply:total:start');
-            return file;
           } catch (error) {
             if (photoUploadTokenRef.current[`persist-${idx}`] === persistToken) {
               // Keep local blob for UI, but mark pending so Add/Buy will persist durably.
@@ -653,19 +602,13 @@ export default function ProductDetail({ product }) {
               }
               toast.error(error.message || 'Unable to save preview. Please try again.');
             }
-            throw error;
           } finally {
             if (photoUploadTokenRef.current[`persist-${idx}`] === persistToken) {
               previewSaveLocksRef.current.delete(idx);
-              if (previewPersistPromiseRef?.current?.[idx] === persistTask) {
-                delete previewPersistPromiseRef.current[idx];
-              }
               setSavingPreviewAreas((prev) => ({ ...prev, [idx]: false }));
             }
           }
         })();
-        if (previewPersistPromiseRef?.current) previewPersistPromiseRef.current[idx] = persistTask;
-        void persistTask.catch(() => {});
       } catch (error) {
         setSavingPreviewAreas((prev) => ({ ...prev, [idx]: false }));
         toast.error(error.message || 'Unable to save preview. Please try again.');
@@ -684,7 +627,6 @@ export default function ProductDetail({ product }) {
   const editPreviewArea = (idx) => {
     photoUploadTokenRef.current[`persist-${idx}`] = (photoUploadTokenRef.current[`persist-${idx}`] || 0) + 1;
     previewSaveLocksRef.current.delete(idx);
-    if (previewPersistPromiseRef?.current) delete previewPersistPromiseRef.current[idx];
     setSavingPreviewAreas((prev) => ({ ...prev, [idx]: false }));
     const previousLocal = savedPreviewFilesRef.current[idx]?.file?.previewUrl;
     if (typeof previousLocal === 'string' && previousLocal.startsWith('blob:')) {
@@ -692,7 +634,6 @@ export default function ProductDetail({ product }) {
     }
     delete savedPreviewFilesRef.current[idx];
     setSavedPreviewAreas((prev) => ({ ...prev, [idx]: false }));
-    setPreviewCardTick((tick) => tick + 1);
   };
   const getProductPixelPayload = (extra = {}) => buildProductMetaPayload(product, {
     price: finalUnitPrice,
@@ -750,19 +691,14 @@ export default function ProductDetail({ product }) {
       toast.error(`Only ${selectedAvailableStock} item${selectedAvailableStock === 1 ? '' : 's'} available`);
       return false;
     }
-    const latestFields = customFieldValuesRef.current || customFieldValues;
-    const latestPhotos = customerPhotosRef.current || customerPhotos;
-    const latestVariants = variantLabelUploadsRef.current || variantLabelUploads;
-    const latestCollage = collageUploadsRef.current || collageUploads;
     for (const field of product.customFields || []) {
-      if (field.required && !latestFields[field.label]) {
+      if (field.required && !customFieldValues[field.label]) {
         toast.error(`Please fill required field: ${field.label}`);
         return false;
       }
     }
     if (needsCustomerPhotos) {
-      const alignedPhotos = alignPhotoSlots(latestPhotos, photoSlotCount);
-      const latestUploadedCount = filledPhotoCount(latestPhotos);
+      const alignedPhotos = alignPhotoSlots(customerPhotos, photoSlotCount);
       for (let idx = 0; idx < photoSlotCount; idx += 1) {
         const slotRequired = previewAreas[idx] ? previewAreas[idx].required !== false : idx < requiredPhotoCount;
         if (slotRequired && !alignedPhotos[idx]?.url) {
@@ -770,33 +706,24 @@ export default function ProductDetail({ product }) {
           toast.error(`Please upload a photo for "${label}"`);
           return false;
         }
-        if (slotRequired && alignedPhotos[idx]?.url && !durableUploadRef(alignedPhotos[idx])) {
-          toast.error('Your photo is still uploading. Please wait a moment and try again.');
-          return false;
-        }
       }
-      if (latestUploadedCount < requiredPhotoCount) {
+      if (uploadedPhotoCount < requiredPhotoCount) {
         toast.error(`Please upload at least ${requiredPhotoCount} customer photo${requiredPhotoCount === 1 ? '' : 's'} for this product`);
         return false;
       }
-      if (maxPhotoCount > 0 && latestUploadedCount > maxPhotoCount) {
+      if (maxPhotoCount > 0 && uploadedPhotoCount > maxPhotoCount) {
         toast.error(`Please upload no more than ${maxPhotoCount} photo${maxPhotoCount === 1 ? '' : 's'}`);
         return false;
       }
     }
     for (const selected of selectedVariantUploadOptions) {
-      const upload = latestVariants[selected.label];
-      if (!upload?.url) {
+      if (!variantLabelUploads[selected.label]?.url) {
         toast.error(`Please upload image for ${selected.label}`);
-        return false;
-      }
-      if (!durableUploadRef(upload)) {
-        toast.error('Your photo is still uploading. Please wait a moment and try again.');
         return false;
       }
     }
     for (const template of collageTemplates) {
-      const photos = latestCollage[template.label] || [];
+      const photos = collageUploads[template.label] || [];
       const min = Math.max(0, Number(template.minImages || 0));
       const max = Math.max(min, Number(template.maxImages || min || 0));
       if (photos.length < min || photos.length > max) {
@@ -823,29 +750,19 @@ export default function ProductDetail({ product }) {
       return;
     }
     setUploadingFields((prev) => ({ ...prev, [fieldLabel]: true }));
-    const uploadTask = (async () => {
+    try {
       const prepared = await prepareImageUpload(file);
       const formData = new FormData();
       appendImageUpload(formData, file, prepared);
-      const res = await fetchWithTimeout('/api/customization-upload', { method: 'POST', body: formData }, 30000);
+      const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
       const data = await readJsonResponse(res, { fallbackError: 'Upload failed' });
       const uploadedFile = attachLocalPreview(data, prepared);
-      setCustomFieldValues((prev) => {
-        const next = { ...prev, [fieldLabel]: uploadedFile };
-        customFieldValuesRef.current = next;
-        return next;
-      });
+      setCustomFieldValues((prev) => ({ ...prev, [fieldLabel]: uploadedFile }));
       toast.success('Customization file uploaded');
       trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'file_upload', field_label: fieldLabel, file_type: data.type || file.type || '' }));
-      return uploadedFile;
-    })();
-    fieldUploadPromiseRef.current[fieldLabel] = uploadTask;
-    try {
-      await uploadTask;
     } catch (error) {
       toast.error(error.message || 'Failed to upload file');
     } finally {
-      if (fieldUploadPromiseRef.current[fieldLabel] === uploadTask) delete fieldUploadPromiseRef.current[fieldLabel];
       setUploadingFields((prev) => ({ ...prev, [fieldLabel]: false }));
     }
   };
@@ -872,10 +789,10 @@ export default function ProductDetail({ product }) {
         photoUploadTokenRef.current[job.index] = token;
         setUploadingPhotoSlots((prev) => ({ ...prev, [job.index]: true }));
         imagePerfMark('upload:job:start');
-        const uploadTask = (async () => {
+        let localPreview = { previewUrl: '', width: 0, height: 0 };
+        try {
           const prepared = await prepareImageUpload(job.file);
-          if (photoUploadTokenRef.current[job.index] !== token) return null;
-          const localPreview = {
+          localPreview = {
             previewUrl: prepared.previewUrl || '',
             width: prepared.width || 0,
             height: prepared.height || 0,
@@ -886,47 +803,38 @@ export default function ProductDetail({ product }) {
             setActivePreviewSlot(job.index);
             editPreviewArea(job.index);
             setPreviewAdjustments((prev) => ({ ...prev, [job.index]: adjustmentsEarly }));
-            setCustomerPhotos((prev) => {
-              const next = setPhotoSlot(alignPhotoSlots(prev, photoSlotCount), job.index, localPreview);
-              customerPhotosRef.current = next;
-              return next;
-            });
+            setCustomerPhotos((prev) => setPhotoSlot(alignPhotoSlots(prev, photoSlotCount), job.index, localPreview));
           }
           if (openEditor && localPreview.previewUrl) setEditorSlotKey(job.index);
 
-          imagePerfMark('upload:network:start');
-          const formData = new FormData();
-          appendImageUpload(formData, job.file, prepared);
-          const res = await fetchWithTimeout('/api/customization-upload', { method: 'POST', body: formData }, 30000);
-          const data = await readJsonResponse(res, { fallbackError: `Failed to upload ${job.file.name}` });
-          imagePerfMeasure('upload:network', 'upload:network:start');
-          if (photoUploadTokenRef.current[job.index] !== token) return null;
-          const uploadedFile = attachLocalPreview(data, prepared);
-          setCustomerPhotos((prev) => {
-            const next = setPhotoSlot(alignPhotoSlots(prev, photoSlotCount), job.index, uploadedFile);
-            customerPhotosRef.current = next;
-            return next;
-          });
-          setUploadingPhotoSlots((prev) => ({ ...prev, [job.index]: false }));
-          imagePerfMeasure('upload:job', 'upload:job:start');
-          if (openEditor && uploadedFile && !localPreview.previewUrl) setEditorSlotKey(job.index);
-          return uploadedFile;
-        })();
-        photoUploadPromiseRef.current[job.index] = uploadTask;
-        try {
+          const uploadTask = (async () => {
+            imagePerfMark('upload:network:start');
+            const formData = new FormData();
+            appendImageUpload(formData, job.file, prepared);
+            const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
+            const data = await readJsonResponse(res, { fallbackError: `Failed to upload ${job.file.name}` });
+            imagePerfMeasure('upload:network', 'upload:network:start');
+            if (photoUploadTokenRef.current[job.index] !== token) return null;
+            const uploadedFile = attachLocalPreview(data, prepared);
+            setCustomerPhotos((prev) => setPhotoSlot(alignPhotoSlots(prev, photoSlotCount), job.index, uploadedFile));
+            setUploadingPhotoSlots((prev) => ({ ...prev, [job.index]: false }));
+            imagePerfMeasure('upload:job', 'upload:job:start');
+            return uploadedFile;
+          })();
+          photoUploadPromiseRef.current[job.index] = uploadTask;
           const uploadedFile = await uploadTask;
-          if (photoUploadPromiseRef.current[job.index] === uploadTask) delete photoUploadPromiseRef.current[job.index];
+          delete photoUploadPromiseRef.current[job.index];
           if (!uploadedFile && photoUploadTokenRef.current[job.index] === token) {
             throw new Error(`Failed to upload ${job.file.name}`);
           }
+          if (openEditor && uploadedFile && !localPreview.previewUrl) setEditorSlotKey(job.index);
           return uploadedFile;
         } catch (error) {
-          if (photoUploadPromiseRef.current[job.index] === uploadTask) delete photoUploadPromiseRef.current[job.index];
+          delete photoUploadPromiseRef.current[job.index];
           setUploadingPhotoSlots((prev) => ({ ...prev, [job.index]: false }));
           setCustomerPhotos((prev) => {
             const next = alignPhotoSlots(prev, photoSlotCount);
             if (next[job.index] && !next[job.index].url) return clearPhotoSlot(next, job.index);
-            customerPhotosRef.current = next;
             return next;
           });
           throw error;
@@ -949,7 +857,6 @@ export default function ProductDetail({ product }) {
     photoUploadTokenRef.current[slotIndex] = (photoUploadTokenRef.current[slotIndex] || 0) + 1;
     photoUploadTokenRef.current[`persist-${slotIndex}`] = (photoUploadTokenRef.current[`persist-${slotIndex}`] || 0) + 1;
     delete photoUploadPromiseRef.current[slotIndex];
-    delete previewPersistPromiseRef.current[slotIndex];
     previewSaveLocksRef.current.delete(slotIndex);
     setSavingPreviewAreas((prev) => ({ ...prev, [slotIndex]: false }));
     setCustomerPhotos((prev) => {
@@ -965,7 +872,6 @@ export default function ProductDetail({ product }) {
     }
     delete savedPreviewFilesRef.current[slotIndex];
     setSavedPreviewAreas((prev) => ({ ...prev, [slotIndex]: false }));
-    setPreviewCardTick((tick) => tick + 1);
     setPreviewAdjustments((prev) => ({ ...prev, [slotIndex]: getDefaultPreviewAdjustments() }));
     setUploadingPhotoSlots((prev) => ({ ...prev, [slotIndex]: false }));
   };
@@ -979,7 +885,7 @@ export default function ProductDetail({ product }) {
     if (!label || !file) return;
     const previewKey = `variant-${label}`;
     setUploadingVariantLabels((prev) => ({ ...prev, [label]: true }));
-    const uploadTask = (async () => {
+    try {
       const prepared = await prepareImageUpload(file);
       editPreviewArea(previewKey);
       const variantArea = selectedVariantUploadOptions.find((entry) => entry.label === label)
@@ -1004,22 +910,13 @@ export default function ProductDetail({ product }) {
       }
       const formData = new FormData();
       appendImageUpload(formData, file, prepared);
-      const res = await fetchWithTimeout('/api/customization-upload', { method: 'POST', body: formData }, 30000);
+      const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
       const data = await readJsonResponse(res, { fallbackError: 'Upload failed' });
       const uploadedFile = attachLocalPreview(data, prepared);
-      setVariantLabelUploads((prev) => {
-        const next = { ...prev, [label]: { ...uploadedFile, label } };
-        variantLabelUploadsRef.current = next;
-        return next;
-      });
+      setVariantLabelUploads((prev) => ({ ...prev, [label]: { ...uploadedFile, label } }));
       if (!localPreview.previewUrl) setEditorSlotKey(previewKey);
       toast.success(`${label} photo ready`);
       trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'variant_label_upload', field_label: label, file_type: data.type || file.type || '' }));
-      return uploadedFile;
-    })();
-    variantUploadPromiseRef.current[label] = uploadTask;
-    try {
-      await uploadTask;
     } catch (error) {
       toast.error(error.message || 'Failed to upload image');
       setVariantLabelUploads((prev) => {
@@ -1033,7 +930,6 @@ export default function ProductDetail({ product }) {
       });
       if (editorSlotKey === previewKey) setEditorSlotKey(null);
     } finally {
-      if (variantUploadPromiseRef.current[label] === uploadTask) delete variantUploadPromiseRef.current[label];
       setUploadingVariantLabels((prev) => ({ ...prev, [label]: false }));
     }
   };
@@ -1058,38 +954,21 @@ export default function ProductDetail({ product }) {
       return;
     }
     setUploadingCollageLabels((prev) => ({ ...prev, [label]: true }));
-    const uploadTask = (async () => {
-      const results = await Promise.allSettled(selectedFiles.map(async (file) => {
+    try {
+      const uploaded = await Promise.all(selectedFiles.map(async (file) => {
         const prepared = await prepareImageUpload(file);
         const formData = new FormData();
         appendImageUpload(formData, file, prepared);
-        const res = await fetchWithTimeout('/api/customization-upload', { method: 'POST', body: formData }, 30000);
+        const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
         const data = await readJsonResponse(res, { fallbackError: `Failed to upload ${file.name}` });
         return attachLocalPreview(data, prepared);
       }));
-      const uploaded = [];
-      let lastError = '';
-      results.forEach((result) => {
-        if (result.status === 'fulfilled') uploaded.push(result.value);
-        else lastError = result.reason?.message || `${label}: failed to upload images`;
-      });
-      if (uploaded.length) {
-        setCollageUploads((prev) => {
-          const next = { ...prev, [label]: [...(prev[label] || []), ...uploaded] };
-          collageUploadsRef.current = next;
-          return next;
-        });
-        toast.success(`${label}: ${uploaded.length} image${uploaded.length === 1 ? '' : 's'} uploaded`);
-        trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'collage_upload', collage_label: label, photo_count: uploaded.length }));
-      }
-      if (lastError) toast.error(lastError);
-      return uploaded;
-    })();
-    collageUploadPromiseRef.current[label] = uploadTask;
-    try {
-      await uploadTask;
+      setCollageUploads((prev) => ({ ...prev, [label]: [...(prev[label] || []), ...uploaded] }));
+      toast.success(`${label}: ${uploaded.length} image${uploaded.length === 1 ? '' : 's'} uploaded`);
+      trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'collage_upload', collage_label: label, photo_count: uploaded.length }));
+    } catch (error) {
+      toast.error(error.message || `${label}: failed to upload images`);
     } finally {
-      if (collageUploadPromiseRef.current[label] === uploadTask) delete collageUploadPromiseRef.current[label];
       setUploadingCollageLabels((prev) => ({ ...prev, [label]: false }));
     }
   };
@@ -1097,32 +976,23 @@ export default function ProductDetail({ product }) {
   const handleCollageReplace = async (label, index, file) => {
     if (!label || !file || index < 0) return;
     setUploadingCollageLabels((prev) => ({ ...prev, [label]: true }));
-    const replaceKey = `${label}:${index}`;
-    const uploadTask = (async () => {
+    try {
       const prepared = await prepareImageUpload(file);
       const formData = new FormData();
       appendImageUpload(formData, file, prepared);
-      const res = await fetchWithTimeout('/api/customization-upload', { method: 'POST', body: formData }, 30000);
+      const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
       const data = await readJsonResponse(res, { fallbackError: `Failed to upload ${file.name}` });
       const uploadedFile = attachLocalPreview(data, prepared);
       setCollageUploads((prev) => {
         const current = [...(prev[label] || [])];
         if (index >= current.length) return prev;
         current[index] = uploadedFile;
-        const next = { ...prev, [label]: current };
-        collageUploadsRef.current = next;
-        return next;
+        return { ...prev, [label]: current };
       });
       toast.success(`${label}: photo replaced`);
-      return uploadedFile;
-    })();
-    collageUploadPromiseRef.current[replaceKey] = uploadTask;
-    try {
-      await uploadTask;
     } catch (error) {
       toast.error(error.message || `${label}: failed to replace image`);
     } finally {
-      if (collageUploadPromiseRef.current[replaceKey] === uploadTask) delete collageUploadPromiseRef.current[replaceKey];
       setUploadingCollageLabels((prev) => ({ ...prev, [label]: false }));
     }
   };
@@ -1139,59 +1009,11 @@ export default function ProductDetail({ product }) {
     editPreviewArea(`variant-${label}`);
     if (editorSlotKey === `variant-${label}`) setEditorSlotKey(null);
   };
-  const collectSourceUploadPromises = () => [
-    ...Object.values(photoUploadPromiseRef.current || {}),
-    ...Object.values(variantUploadPromiseRef.current || {}),
-    ...Object.values(collageUploadPromiseRef.current || {}),
-    ...Object.values(fieldUploadPromiseRef.current || {}),
-  ].filter(Boolean);
-
-  const collectPendingCartAssetPromises = () => [
-    ...collectSourceUploadPromises(),
-    ...Object.values(previewPersistPromiseRef.current || {}),
-  ].filter(Boolean);
-
-  const awaitSourceUploads = async () => {
-    const pending = collectSourceUploadPromises();
-    if (!pending.length) return;
-    let timedOut = false;
-    const timeout = new Promise((resolve) => {
-      setTimeout(() => { timedOut = true; resolve(); }, 20000);
-    });
-    await Promise.race([Promise.allSettled(pending), timeout]);
-    if (timedOut && collectSourceUploadPromises().length) {
-      throw new Error('Your photo is still uploading. Please wait a moment and try again.');
+  const addConfiguredProductToCart = async ({ openCart = true } = {}) => {
+    if (uploadingCustomerPhotos || Object.values(uploadingFields).some(Boolean) || Object.values(uploadingVariantLabels).some(Boolean) || Object.values(uploadingCollageLabels).some(Boolean) || previewSaveLocksRef.current.size > 0) {
+      toast.error('Please wait for your images and previews to finish saving.');
+      return false;
     }
-  };
-
-  const awaitPendingCartAssets = async () => {
-    const deadline = Date.now() + 45000;
-    while (Date.now() < deadline) {
-      const pending = collectPendingCartAssetPromises();
-      if (pending.length) {
-        await Promise.allSettled(pending);
-        continue;
-      }
-      if (previewSaveLocksRef.current.size > 0) {
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        continue;
-      }
-      return;
-    }
-    throw new Error('Your images are still saving. Please wait a moment and try again.');
-  };
-
-  const finishCartPreview = async (cartItemId) => {
-    if (!cartItemId) return;
-    try {
-      await awaitPendingCartAssets();
-      const customizationPreview = await buildCustomizationPreviewPayload({ waitForPersist: true });
-      if (customizationPreview) updateCartItem(cartItemId, { customizationPreview });
-    } catch {}
-  };
-
-  const addConfiguredProductToCart = async ({ openCart = true, flush = false, waitForPreview = flush } = {}) => {
-    await awaitSourceUploads();
     if (stockLocked || isSoldOut) {
       toast.error('This product is currently sold out');
       return false;
@@ -1204,38 +1026,27 @@ export default function ProductDetail({ product }) {
       return false;
     }
     const variantStr = Object.entries(selectedVariants).filter(([, v]) => v?.label).map(([k, v]) => `${k}: ${v.label}`).join(', ');
-    const latestPhotos = customerPhotosRef.current || customerPhotos;
-    const latestVariants = variantLabelUploadsRef.current || variantLabelUploads;
-    const latestCollage = collageUploadsRef.current || collageUploads;
-    const latestFields = customFieldValuesRef.current || customFieldValues;
     const collageGroups = collageTemplates.map((template) => ({
       label: template.label,
       minImages: Number(template.minImages || 0),
       maxImages: Number(template.maxImages || template.minImages || 0),
-      images: latestCollage[template.label] || [],
+      images: collageUploads[template.label] || [],
     })).filter((group) => group.images.length > 0);
-    const selectedUploadLabels = new Set(
-      (selectedVariantUploadOptions || []).map((option) => option?.label).filter(Boolean)
-    );
-    const variantUploads = Object.fromEntries(
-      Object.entries(latestVariants).filter(([key, value]) => selectedUploadLabels.has(key) && value?.url)
-    );
+    const variantUploads = Object.fromEntries(Object.entries(variantLabelUploads).filter(([, value]) => value?.url));
     const productCustomerNote = customerNotesEnabled ? customerNote.trim() : '';
-    const uploadedCustomerPhotos = filledPhotos(latestPhotos).map((photo) => durableUploadRef(photo)).filter(Boolean);
+    const uploadedCustomerPhotos = filledPhotos(customerPhotos).map((photo) => durableUploadRef(photo) || photo);
     const durableVariantUploads = Object.fromEntries(
-      Object.entries(variantUploads)
-        .map(([key, value]) => [key, durableUploadRef(value)])
-        .filter(([, value]) => value)
+      Object.entries(variantUploads).map(([key, value]) => [key, durableUploadRef(value) || value])
     );
     const durableCustomFieldValues = Object.fromEntries(
-      Object.entries(latestFields).map(([key, value]) => [
+      Object.entries(customFieldValues).map(([key, value]) => [
         key,
         value && typeof value === 'object' && value.url ? (durableUploadRef(value) || value) : value,
       ])
     );
     const durableCollageGroups = collageGroups.map((group) => ({
       ...group,
-      images: (group.images || []).map((photo) => durableUploadRef(photo)).filter(Boolean),
+      images: (group.images || []).map((photo) => durableUploadRef(photo) || photo),
     }));
     const allCustomFields = {
       ...durableCustomFieldValues,
@@ -1244,13 +1055,12 @@ export default function ProductDetail({ product }) {
       ...(Object.keys(durableVariantUploads).length > 0 ? { 'Variant Label Uploads': durableVariantUploads } : {}),
     };
 
-    const customizationPreviewPayload = await buildCustomizationPreviewPayload({ waitForPersist: waitForPreview });
+    const customizationPreviewPayload = await buildCustomizationPreviewPayload();
     const hasConfiguredAssets = Object.keys(allCustomFields).length > 0 || durableCollageGroups.length > 0 || Boolean(customizationPreviewPayload) || giftWrap || Boolean(giftMessage.trim());
-    const cartItemId = hasConfiguredAssets ? `${product._id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` : undefined;
 
     const addedQuantity = addToCart({
       productId: product._id,
-      cartItemId,
+      cartItemId: hasConfiguredAssets ? `${product._id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` : undefined,
       title: product.title,
       image: product.images?.[0] || '',
       images: product.images || [],
@@ -1267,21 +1077,20 @@ export default function ProductDetail({ product }) {
       variantDelivery: { stateOverrides: selectedVariantOptions.flatMap((selected) => selected?.stateOverrides || []) },
       deliveryState: selectedDeliveryState,
       customizationPreview: customizationPreviewPayload,
-    }, { openDrawer: openCart, flush });
+    }, { openDrawer: openCart });
     if (addedQuantity > 0) trackMetaEvent('AddToCart', getProductPixelPayload({ quantity: addedQuantity, value: finalUnitPrice * addedQuantity }));
     if (Object.keys(allCustomFields || {}).length > 0 || giftWrap || giftMessage.trim()) {
       trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'configured_product' }));
     }
-    if (!waitForPreview && cartItemId) void finishCartPreview(cartItemId);
     return true;
   };
 
   const handleAddToCart = async () => {
     if (actionLockRef.current) return;
     actionLockRef.current = true;
-    flushSync(() => setActionLoading('cart'));
+    setActionLoading('cart');
     try {
-      if (await addConfiguredProductToCart({ openCart: true, waitForPreview: false })) toast.success('Added to cart!');
+      if (await addConfiguredProductToCart({ openCart: true })) toast.success('Added to cart!');
     } catch (error) {
       toast.error(error.message || 'Unable to save your preview. Your uploaded images are still available.');
     } finally {
@@ -1293,9 +1102,9 @@ export default function ProductDetail({ product }) {
   const handleBuyNow = async () => {
     if (actionLockRef.current) return;
     actionLockRef.current = true;
-    flushSync(() => setActionLoading('buy'));
+    setActionLoading('buy');
     try {
-      if (!(await addConfiguredProductToCart({ openCart: false, flush: true, waitForPreview: false }))) return;
+      if (!(await addConfiguredProductToCart({ openCart: false }))) return;
       setIsCartOpen(false);
       toast.success('Taking you to checkout...');
       startNavigationFeedback();
@@ -1317,7 +1126,6 @@ export default function ProductDetail({ product }) {
   const editorPhotoUrl = editorUploadUrl(editorPhoto);
   const selectedVariantLabel = selectedVariantOptions.find((option) => option?.label)?.label || '';
   const slotCardUrls = (photo, slotKey) => {
-    void previewCardTick;
     // Read savedPreviewAreas so Apply/clear triggers a re-render with the composed preview.
     const applied = savedPreviewAreas[slotKey] ? (savedPreviewFilesRef.current[slotKey]?.file || null) : null;
     return cardUploadUrls(photo, applied);
@@ -1328,14 +1136,6 @@ export default function ProductDetail({ product }) {
   };
 
   return (
-    <Preview3dSessionProvider
-      product={product}
-      customerPhotos={customerPhotos}
-      variantLabelUploads={variantLabelUploads}
-      previewAdjustments={previewAdjustments}
-      previewAreas={previewAreas}
-      selectedVariants={selectedVariants}
-    >
     <div className="product-mobile-safe max-w-full">
       {/* Purchase layout: gallery + buy controls only (desktop sticky gallery avoids empty left column) */}
       <div className="grid max-w-full grid-cols-1 gap-8 lg:grid-cols-2 lg:items-start lg:gap-10 xl:gap-12">
@@ -1395,9 +1195,6 @@ export default function ProductDetail({ product }) {
         <div className="mb-4 flex flex-col gap-2 empty:mb-0 empty:hidden sm:flex-row sm:flex-wrap sm:items-stretch">
           <ProductInterestIndicator product={product} />
           <PurchaseActivityBadge product={product} />
-          {showPreview3d && !(needsCustomerPhotos || selectedVariantUploadOptions.length > 0 || needsCollageUploads) ? (
-            <ViewIn3DButton demo />
-          ) : null}
         </div>
 
         {!product.isQuoteOnly && (
@@ -1447,9 +1244,6 @@ export default function ProductDetail({ product }) {
                 return (
                   <button key={oIdx}
                     type="button"
-                    data-variant-name={variant.name}
-                    data-variant-label={opt.label}
-                    data-size-key={Number(opt.previewWidth) > 0 && Number(opt.previewHeight) > 0 ? `${Number(opt.previewWidth)}x${Number(opt.previewHeight)}` : ''}
                     disabled={optionSoldOut}
                     onClick={() => setSelectedVariants(prev => { const selectedNow = prev[variant.name]?.label === opt.label; if (selectedNow) return {}; return { [variant.name]: { label: opt.label, extra, useOwnPrice: !!opt.useOwnPrice, regularPrice: opt.regularPrice, salePrice: opt.salePrice, stateOverrides: opt.stateOverrides || [], requiresImageUpload: !!opt.requiresImageUpload, previewWidth: opt.previewWidth, previewHeight: opt.previewHeight, previewUnit: opt.previewUnit || 'inch', previewFrameImage: opt.previewFrameImage || '', previewInstructions: opt.previewInstructions || '', stock: opt.stock } }; })}
                     className={`group relative flex min-h-[118px] flex-col items-center justify-center rounded-2xl border-2 bg-white px-2.5 py-4 text-center shadow-sm transition-all duration-200 sm:min-h-[132px] sm:px-3 ${
@@ -1541,13 +1335,11 @@ export default function ProductDetail({ product }) {
                 </p>
                 )}
               </div>
-              <div className="flex min-w-0 w-full flex-col items-stretch gap-2 sm:w-auto sm:max-w-[min(100%,22rem)] sm:items-end">
-                {needsCustomerPhotos && !stockLocked ? (
-                  <span className="self-start rounded-full border border-accent-100 bg-accent-50 px-3 py-1 text-xs font-bold text-accent-700 sm:self-end">
-                    {uploadedPhotoCount}/{requiredPhotoCount || maxPhotoCount}
-                  </span>
-                ) : null}
-              </div>
+              {needsCustomerPhotos && !stockLocked ? (
+                <span className="self-start rounded-full border border-accent-100 bg-accent-50 px-3 py-1 text-xs font-bold text-accent-700">
+                  {uploadedPhotoCount}/{requiredPhotoCount || maxPhotoCount}
+                </span>
+              ) : null}
             </div>
             {stockLocked ? null : (
             <>
@@ -1580,9 +1372,6 @@ export default function ProductDetail({ product }) {
                         onUpload={(files) => handleVariantLabelUpload(selected.label, files[0])}
                         onRemove={() => removeVariantLabelUpload(selected.label)}
                         onEdit={(upload?.url || liveBlobUrl(upload) || upload?.previewUrl) ? () => setEditorSlotKey(previewKey) : undefined}
-                        extraActions={showPreview3d && savedPreviewAreas[previewKey] ? (
-                          <ViewIn3DButton compact slotKey={`variant:${selected.label}`} />
-                        ) : null}
                         instructions={selected.previewInstructions || ''}
                       />
                     );
@@ -1637,9 +1426,6 @@ export default function ProductDetail({ product }) {
                         onUpload={(files) => handleCustomerPhotoUpload(files, files.length === 1 ? idx : null)}
                         onRemove={() => removeCustomerPhoto(idx)}
                         onEdit={(photo?.url || liveBlobUrl(photo) || photo?.previewUrl) ? () => setEditorSlotKey(idx) : undefined}
-                        extraActions={showPreview3d && savedPreviewAreas[idx] ? (
-                          <ViewIn3DButton compact slotKey={`area:index:${idx}`} />
-                        ) : null}
                         instructions={area?.instructions || ''}
                       />
                     );
@@ -1666,29 +1452,11 @@ export default function ProductDetail({ product }) {
                       {template.instructions ? <p className="mt-1 text-xs text-primary-700">{template.instructions}</p> : null}
                       {belowMin ? <p className="mt-1 text-xs font-semibold text-red-600" role="alert">Photo required</p> : null}
                     </div>
-                    <div className="flex flex-col items-end gap-2">
                     <span className={`self-start rounded-full border px-3 py-1 text-xs font-bold ${belowMin || photos.length > max ? 'border-red-100 bg-red-50 text-red-700' : 'border-emerald-100 bg-emerald-50 text-emerald-700'}`}>{photos.length}/{min}-{max}</span>
-                    {showPreview3d && !belowMin && photos.length > 0 ? (
-                      <ViewIn3DButton
-                        compact={false}
-                        kind="collage"
-                        label="View collage in 3D"
-                        collageTextures={photos.map((photo, photoIdx) => ({
-                          slotKey: `collage:${label}:${photo.url || photo.previewUrl || photoIdx}`,
-                          areaLabel: `${label} ${photoIdx + 1}`,
-                          textureUrl: photo.displayUrl || photo.url || photo.previewUrl || '',
-                          isPlaceholder: !(photo.displayUrl || photo.url || photo.previewUrl),
-                          aspect: { width: 1, height: 1 },
-                        }))}
-                      />
-                    ) : null}
-                    </div>
                   </div>
                   <div className={uploadCardGridClass}>
                       {photos.map((photo, idx) => {
-                      const collageUrls = cardUploadUrls(photo, savedPreviewAreas[`collage:${label}:${idx}`]
-                        ? (savedPreviewFilesRef.current[`collage:${label}:${idx}`]?.file || null)
-                        : null);
+                      const collageUrls = cardUploadUrls(photo);
                       return (
                       <PhotoUploadCard
                         key={`${label}-${idx}-${photo.url || 'photo'}`}
@@ -1958,7 +1726,6 @@ export default function ProductDetail({ product }) {
         </div>
       )}
     </div>
-    </Preview3dSessionProvider>
   );
 }
 

@@ -6,7 +6,3 @@ node_modules
 public/uploads/
 public/customizations/
 src/app/cart/Untitled-1.txt
-.data/
-Temp/
-public/temp-phase2d3/
-scripts/*-out.json

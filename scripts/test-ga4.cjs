@@ -539,15 +539,7 @@ function cartFixture() {
   b.c.persistGuestCart = () => {};
   b.c.setIsCartOpen = () => {};
   const text = read('src/context/CartContext.js');
-  vm.runInContext(`function isSameCartLine(cartItem, productId, variant, cartItemId) {
-    if (cartItemId) return cartItem.cartItemId === cartItemId;
-    return cartItem.productId === productId && cartItem.variant === variant && !cartItem.cartItemId;
-  }
-  function stripDisplayOnlyPreviewData(value) { return value; }
-  function capQuantity(quantity, availableStock) {
-    const limit = Number(availableStock);
-    return Number.isFinite(limit) && limit >= 0 ? Math.min(quantity, limit) : quantity;
-  }`, b.c);
+  vm.runInContext(text.slice(text.indexOf('const isSameCartLine'), text.indexOf('const stripDisplayOnlyPreviewData')), b.c);
   vm.runInContext(text.slice(text.indexOf('  const addToCart ='), text.indexOf('  const cartCount =')) + '\nglobalThis.operations = { addToCart, removeFromCart, updateQuantity, clearCart };', b.c);
   return b;
 }

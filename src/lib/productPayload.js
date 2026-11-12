@@ -1,5 +1,3 @@
-import { normalizePreview3dConfig } from '@/lib/preview3d';
-
 const cleanTemplateId = (value) => (typeof value === 'string' && value.trim() ? value : value || undefined);
 const toNumber = (value, fallback = 0) => (value === '' || value === null || value === undefined ? fallback : Number(value));
 const normalizeOverrides = (rows = []) => Array.isArray(rows) ? rows.map((row) => ({ ...row, shippingCost: toNumber(row.shippingCost, 0) })) : [];
@@ -98,39 +96,6 @@ export function sanitizeProductPayload(payload = {}) {
       minViews,
       maxViews,
       labelTemplate: String(body.productInterest.labelTemplate || ''),
-    };
-  }
-  if (body.preview3d) {
-    const normalized = normalizePreview3dConfig(body.preview3d);
-    body.preview3d = {
-      ...normalized,
-      profileId: normalized.profileId || null,
-      assetId: normalized.assetId || null,
-      retailReadiness: normalized.retailReadiness || 'prototype',
-      camera: {
-        minDistance: normalized.camera.minDistance,
-        maxDistance: normalized.camera.maxDistance,
-        autoRotate: normalized.camera.autoRotate === true,
-        targetY: normalized.camera.targetY === null || normalized.camera.targetY === undefined
-          ? null
-          : Number(normalized.camera.targetY),
-      },
-      dimensions: {
-        width: normalized.dimensions?.width ?? null,
-        height: normalized.dimensions?.height ?? null,
-        depth: normalized.dimensions?.depth ?? null,
-        unit: normalized.dimensions?.unit || 'inch',
-        modelScale: normalized.dimensions?.modelScale ?? null,
-      },
-      variantOverrides: Array.isArray(normalized.variantOverrides)
-        ? normalized.variantOverrides.map((row) => ({
-          ...row,
-          assetId: row.assetId || null,
-          profileId: row.profileId || null,
-        }))
-        : [],
-      surfaces: Array.isArray(normalized.surfaces) ? normalized.surfaces : [],
-      legacySequentialGlb: normalized.legacySequentialGlb === true,
     };
   }
   if (Array.isArray(body.collageTemplates)) body.collageTemplates = body.collageTemplates.map((template) => ({ ...template, minImages: toNumber(template.minImages, 1), maxImages: toNumber(template.maxImages, 1) }));

@@ -12,25 +12,11 @@ export const dynamic = 'force-dynamic';
 const VIDEO_TYPES = { '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime' };
 const PUBLIC_TOP = new Set(['uploads', 'designs']);
 const ADMIN_ONLY_TOP = new Set(['payment-proofs', 'customizations']);
-/** Only intentional public 3D display assets — never customer uploads or order files. */
-const PUBLIC_PREVIEW3D_DIRS = new Set(['models', 'placeholders']);
-
-function isPublicPreview3dAsset(relativePath) {
-  const parts = String(relativePath || '').split('/').filter(Boolean);
-  if (parts[0] !== 'preview3d') return false;
-  if (!PUBLIC_PREVIEW3D_DIRS.has(parts[1])) return false;
-  // Require a concrete filename (blocks directory listing style paths).
-  return parts.length >= 3 && parts.every((part) => part !== '..' && part !== '.');
-}
 
 async function authorizeMediaRequest(req, relativePath) {
   const top = String(relativePath || '').split('/')[0];
 
   if (PUBLIC_TOP.has(top)) return { ok: true, cache: 'public' };
-  if (isPublicPreview3dAsset(relativePath)) {
-    // Store-owned display models/placeholders only — never customer uploads.
-    return { ok: true, cache: 'public' };
-  }
 
   if (top === 'production-videos') {
     const session = await getServerSession(authOptions);

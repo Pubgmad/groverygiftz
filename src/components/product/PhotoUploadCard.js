@@ -21,7 +21,6 @@ export default function PhotoUploadCard({
   onUpload,
   onRemove,
   onEdit,
-  extraActions = null,
   instructions = '',
 }) {
   const inputId = useId();
@@ -75,7 +74,9 @@ export default function PhotoUploadCard({
     if (srcIndex + 1 < sources.length) {
       event.currentTarget.style.visibility = '';
       setSrcIndex((index) => index + 1);
+      return;
     }
+    event.currentTarget.style.visibility = 'hidden';
   };
 
   const shellClass = `flex min-w-0 gap-3 overflow-hidden rounded-2xl border bg-white p-2.5 transition ${
@@ -97,7 +98,6 @@ export default function PhotoUploadCard({
             key={activeSrc}
             src={activeSrc}
             alt=""
-            decoding="async"
             className={`h-full w-full ${fitMode === 'fill' ? 'object-cover' : 'object-contain'}`}
             onError={handleImageError}
           />
@@ -203,7 +203,6 @@ export default function PhotoUploadCard({
               Edit
             </button>
           ) : null}
-          {extraActions}
           <button
             type="button"
             onClick={(event) => {

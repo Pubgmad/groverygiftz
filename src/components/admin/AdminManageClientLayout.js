@@ -1,5 +1,5 @@
 'use client';
-import { useSession } from 'next-auth/react';
+import { getSession, useSession } from 'next-auth/react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import AdminSidebar from '@/components/admin/AdminSidebar';
@@ -24,6 +24,12 @@ export default function AdminManageClientLayout({ children }) {
   useEffect(() => {
     setMobileSidebarOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    if (status !== 'authenticated' || !isAdmin) return undefined;
+    const timer = setInterval(() => { getSession(); }, 30000);
+    return () => clearInterval(timer);
+  }, [status, isAdmin]);
 
   useEffect(() => {
     if (status !== 'authenticated' || !isAdmin) return;

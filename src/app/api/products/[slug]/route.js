@@ -4,10 +4,7 @@ import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/db';
 import Product from '@/models/Product';
 import Collection from '@/models/Collection';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { requireAdminPermission } from '@/lib/adminAccess';
-import { presentProductPreview3d, resolvePhotoFrame3dAdminPreviewAccess } from '@/lib/photoFrame3dAdminPreview';
 import slugify from 'slugify';
 import { sanitizeProductPayload } from '@/lib/productPayload';
 import { hydrateProductShippingTemplates } from '@/lib/shippingTemplateHydration';
@@ -23,19 +20,11 @@ function productLookup(segment) {
 
 export async function GET(req, { params }) {
   const { slug: segment } = await params;
-  const { searchParams } = new URL(req?.url || 'http://localhost', 'http://localhost');
-  const wantAdmin = searchParams.get('admin') === '1';
   await dbConnect();
   const product = await Product.findOne(productLookup(segment)).populate('collections').lean();
   if (!product) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   await hydrateProductShippingTemplates(product);
-  let previewAccess = { flagEnabled: false, adminPreview: false, cameraAr: false, authorizedAdmin: false };
-  if (wantAdmin) {
-    const session = await getServerSession(authOptions);
-    previewAccess = await resolvePhotoFrame3dAdminPreviewAccess(session);
-  }
-  const payload = presentProductPreview3d(product, previewAccess);
-  return NextResponse.json(payload, { headers: { 'Cache-Control': 'no-store' } });
+  return NextResponse.json(product, { headers: { 'Cache-Control': 'no-store' } });
 }
 
 export async function PUT(req, { params }) {

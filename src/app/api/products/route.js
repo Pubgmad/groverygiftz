@@ -10,19 +10,15 @@ import { can, getRequestAdminAccess, requireAdminPermission } from '@/lib/adminA
 import slugify from 'slugify';
 import { activeAdminOfferMatch } from '@/lib/offers';
 import { sanitizeProductPayload } from '@/lib/productPayload';
+import { hydrateProductShippingTemplates } from '@/lib/shippingTemplateHydration';
 import { centralizeProductDeliveryEstimates } from '@/lib/centralDeliveryEstimates';
 import { readDeliveryEstimateSettings } from '@/lib/deliveryEstimateSettings';
-import { PRODUCT_CARD_SELECT } from '@/lib/productCardFields';
-
-const ADMIN_LIST_FIELDS = [
-  'title', 'slug', 'images', 'regularPrice', 'salePrice', 'stock', 'variants',
-  'isActive', 'isOffer', 'offerStartsAt', 'offerEndsAt', 'isFeatured', 'isBestSeller',
-  'isQuoteOnly', 'collections', 'customizationPreview.enabled',
-].join(' ');
 
 export async function GET(req) {
   await dbConnect();
   const { searchParams } = new URL(req?.url || 'http://localhost', 'http://localhost');
+  const session = await getServerSession(authOptions);
+  const access = await getRequestAdminAccess(session);
   const page = Number(searchParams.get('page')) || 1;
   const limit = Number(searchParams.get('limit')) || 20;
   const search = searchParams.get('search') || '';
@@ -32,13 +28,6 @@ export async function GET(req) {
   const offer = searchParams.get('offer');
   const latest = searchParams.get('latest');
   const includeAll = searchParams.get('all') === 'true';
-
-  let session = null;
-  let access = { ok: false };
-  if (includeAll) {
-    session = await getServerSession(authOptions);
-    access = await getRequestAdminAccess(session);
-  }
 
   const filter = {};
   if (search) filter.title = { $regex: search, $options: 'i' };
@@ -54,12 +43,12 @@ export async function GET(req) {
   // Expose inactive products only to authenticated admins.
   if (!includeAll || !can(access, 'products', 'read')) filter.isActive = true;
 
-  let query = Product.find(filter).populate('collections', 'name slug').sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit);
-  query = query.select(includeAll ? ADMIN_LIST_FIELDS : PRODUCT_CARD_SELECT);
   const [products, total] = await Promise.all([
-    query.lean(),
+    Product.find(filter).populate('collections', 'name slug').sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
     Product.countDocuments(filter),
   ]);
+
+  await hydrateProductShippingTemplates(products);
 
   return NextResponse.json({ products, total, pages: Math.ceil(total / limit), page }, { headers: { 'Cache-Control': 'no-store' } });
 }

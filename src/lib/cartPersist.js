@@ -50,90 +50,23 @@ export function stripDisplayOnlyPreviewData(value) {
   );
 }
 
-export function isSameCartLine(cartItem, productId, variant, cartItemId) {
-  if (cartItemId) return cartItem.cartItemId === cartItemId;
-  return cartItem.productId === productId && cartItem.variant === variant && !cartItem.cartItemId;
-}
-
-function hasDurableAsset(entry) {
-  if (!entry || typeof entry !== 'object') return false;
-  if (entry.storagePath || entry.previewStoragePath) return true;
-  return [entry.url, entry.displayUrl, entry.originalUrl].some((value) => value && !isEphemeralMediaUrl(value));
-}
-
 export function cartItemHasConfiguredImages(item) {
   if (!item || typeof item !== 'object') return false;
   const fields = item.customFields;
   if (fields && typeof fields === 'object') {
     for (const [label, value] of Object.entries(fields)) {
-      if (label === 'Customer Photos' && Array.isArray(value) && value.some(hasDurableAsset)) return true;
+      if (label === 'Customer Photos' && Array.isArray(value) && value.some((entry) => entry?.url)) return true;
       if (label === 'Variant Label Uploads' && value && typeof value === 'object') {
-        if (Object.values(value).some(hasDurableAsset)) return true;
+        if (Object.values(value).some((entry) => entry?.url)) return true;
       }
-      if (hasDurableAsset(value)) return true;
+      if (value && typeof value === 'object' && value.url) return true;
     }
   }
-  if (Array.isArray(item.collageUploads) && item.collageUploads.some((g) => (g?.images || []).some(hasDurableAsset))) {
+  if (Array.isArray(item.collageUploads) && item.collageUploads.some((g) => (g?.images || []).some((img) => img?.url))) {
     return true;
   }
-  if (Array.isArray(item.customizationPreview?.previews) && item.customizationPreview.previews.some((preview) => (
-    hasDurableAsset(preview)
-    || hasDurableAsset(preview?.uploadedFile)
-    || hasDurableAsset(preview?.finalPreviewImage)
-  ))) {
+  if (Array.isArray(item.customizationPreview?.previews) && item.customizationPreview.previews.length > 0) {
     return true;
   }
   return false;
-}
-
-const capMergedQuantity = (quantity, availableStock) => {
-  const limit = Number(availableStock);
-  if (!Number.isFinite(limit) || limit < 0) return quantity;
-  return Math.min(quantity, limit);
-};
-
-/**
- * Merge guest localStorage cart into the account cart on sign-in.
- * Guest customization wins when the guest line has durable images.
- * Does not drop unique customized lines.
- */
-export function mergeGuestCartIntoAccount(accountCart = [], localCart = []) {
-  const merged = [...accountCart];
-  localCart.forEach((item) => {
-    let existingIndex = !item.cartItemId
-      ? merged.findIndex((entry) => isSameCartLine(entry, item.productId, item.variant))
-      : -1;
-    if (existingIndex < 0) {
-      existingIndex = merged.findIndex((entry) => (
-        entry.productId === item.productId
-        && entry.variant === item.variant
-        && !cartItemHasConfiguredImages(entry)
-      ));
-    }
-    if (existingIndex >= 0) {
-      const existing = merged[existingIndex];
-      const guestHasImages = cartItemHasConfiguredImages(item);
-      merged[existingIndex] = {
-        ...existing,
-        ...(guestHasImages ? {
-          customFields: item.customFields,
-          collageUploads: item.collageUploads,
-          customizationPreview: item.customizationPreview,
-          giftWrap: item.giftWrap,
-          giftMessage: item.giftMessage,
-          cartItemId: item.cartItemId || existing.cartItemId,
-        } : {}),
-        quantity: capMergedQuantity(
-          Number(existing.quantity || 0) + Number(item.quantity || 1),
-          existing.availableStock ?? item.availableStock,
-        ),
-      };
-      return;
-    }
-    merged.push({
-      ...item,
-      quantity: capMergedQuantity(Number(item.quantity || 1), item.availableStock),
-    });
-  });
-  return merged;
 }

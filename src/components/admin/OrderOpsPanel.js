@@ -30,12 +30,12 @@ function pickDisplayUrl(asset) {
   if (typeof asset === 'string') {
     return customerFileFromOriginal(asset) || asset.trim();
   }
-  // Admin session can load customer-file without a guest signature. Prefer that over
-  // possibly-expired signed displayUrl values stored on the order.
+  // Prefer signed/customer display URLs — original-file is octet-stream and breaks <img>.
+  const preferred = String(asset.displayUrl || asset.previewUrl || '').trim();
+  if (preferred && !preferred.includes('/original-file/')) return preferred;
   return customerFileFromOriginal(asset.url)
     || customerFileFromOriginal(asset.originalUrl)
-    || customerFileFromOriginal(asset.displayUrl)
-    || String(asset.displayUrl || asset.previewUrl || asset.url || asset.originalUrl || '').trim();
+    || String(asset.displayUrl || asset.url || asset.originalUrl || '').trim();
 }
 
 function pickDownloadUrl(asset) {

@@ -6,8 +6,6 @@ const nextConfig = {
   env: {
     NEXTAUTH_URL: siteUrl,
   },
-  // Optional 3D viewer (lazy-loaded client-only). Keep packages transpiled for App Router.
-  transpilePackages: ['three', '@react-three/fiber', '@react-three/drei'],
   // Keep native/barcode helpers out of the webpack server bundle.
   experimental: {
     serverComponentsExternalPackages: ['bwip-js', 'pdf-lib', 'qrcode'],
