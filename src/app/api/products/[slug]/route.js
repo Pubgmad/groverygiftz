@@ -23,12 +23,17 @@ function productLookup(segment) {
 
 export async function GET(req, { params }) {
   const { slug: segment } = await params;
+  const { searchParams } = new URL(req?.url || 'http://localhost', 'http://localhost');
+  const wantAdmin = searchParams.get('admin') === '1';
   await dbConnect();
   const product = await Product.findOne(productLookup(segment)).populate('collections').lean();
   if (!product) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   await hydrateProductShippingTemplates(product);
-  const session = await getServerSession(authOptions);
-  const previewAccess = await resolvePhotoFrame3dAdminPreviewAccess(session);
+  let previewAccess = { flagEnabled: false, adminPreview: false, cameraAr: false, authorizedAdmin: false };
+  if (wantAdmin) {
+    const session = await getServerSession(authOptions);
+    previewAccess = await resolvePhotoFrame3dAdminPreviewAccess(session);
+  }
   const payload = presentProductPreview3d(product, previewAccess);
   return NextResponse.json(payload, { headers: { 'Cache-Control': 'no-store' } });
 }

@@ -79,7 +79,7 @@ export default function ProductPreview3dEditor({
   }, []);
 
   useEffect(() => {
-    if (!config.enabled) return undefined;
+    if (!config.enabled || !showAdvanced) return undefined;
     let cancelled = false;
     setLoadingProfiles(true);
     fetch('/api/admin/preview-3d-profiles', { cache: 'no-store' })
@@ -95,7 +95,7 @@ export default function ProductPreview3dEditor({
       });
     loadAssets();
     return () => { cancelled = true; };
-  }, [config.enabled, loadAssets]);
+  }, [config.enabled, showAdvanced, loadAssets]);
 
   const setField = (patch) => onChange(normalizePreview3dConfig({ ...config, ...patch }));
 

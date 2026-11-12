@@ -388,8 +388,10 @@ export default function AdminOrdersPage() {
   }, []);
 
   useEffect(() => {
-    if (!writable) return;
-    // Backfill automatic Editor assignment for eligible unassigned orders (idempotent).
+    if (!writable || typeof window === 'undefined') return;
+    const stamp = Number(window.sessionStorage.getItem('gg-ops-auto-assign') || 0);
+    if (Date.now() - stamp < 10 * 60 * 1000) return;
+    window.sessionStorage.setItem('gg-ops-auto-assign', String(Date.now()));
     fetch('/api/admin/editors/auto-assign', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

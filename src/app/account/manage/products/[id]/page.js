@@ -15,8 +15,13 @@ import {
   ProductPurchaseActivityEditor,
   ProductStockAlertEditor,
 } from '@/components/admin/ProductContentEditors';
-import ProductPreview3dEditor from '@/components/admin/ProductPreview3dEditor';
+import dynamic from 'next/dynamic';
 import { emptyPreview3dConfig, normalizePreview3dConfig } from '@/lib/preview3d';
+
+const ProductPreview3dEditor = dynamic(() => import('@/components/admin/ProductPreview3dEditor'), {
+  ssr: false,
+  loading: () => <div className="rounded-2xl border bg-white p-4 text-sm text-gray-500">3D settings…</div>,
+});
 
 const INDIAN_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
@@ -58,6 +63,7 @@ export default function AdminProductForm({ params }) {
   const [loading, setLoading] = useState(false);
   /** Edit mode: block the empty default form until the product payload hydrates (prevents save/read races). */
   const [productLoadState, setProductLoadState] = useState(isEdit ? 'loading' : 'ready');
+  const [mount3dEditor, setMount3dEditor] = useState(false);
   const [collections, setCollections] = useState([]);
   const [shippingTemplates, setShippingTemplates] = useState([]);
   const [videoUploading, setVideoUploading] = useState(false);
@@ -78,7 +84,7 @@ export default function AdminProductForm({ params }) {
     }
     let cancelled = false;
     setProductLoadState('loading');
-    fetch(`/api/products/${params.id}`, { cache: 'no-store' })
+    fetch(`/api/products/${params.id}?admin=1`, { cache: 'no-store' })
       .then(async (r) => {
         if (!r.ok) throw new Error(`Failed to load product (${r.status})`);
         return r.json();
@@ -156,6 +162,15 @@ export default function AdminProductForm({ params }) {
     if (accessStatus === 'loading' || writable || isEdit) return;
     router.replace('/account/manage/products');
   }, [accessStatus, writable, isEdit, router]);
+
+  useEffect(() => {
+    if (productLoadState !== 'ready') {
+      setMount3dEditor(false);
+      return undefined;
+    }
+    const t = window.setTimeout(() => setMount3dEditor(true), 0);
+    return () => window.clearTimeout(t);
+  }, [productLoadState]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -551,6 +566,7 @@ export default function AdminProductForm({ params }) {
           <ProductStockAlertEditor stockAlert={form.stockAlert || {}} onChange={(stockAlert) => setForm((p) => ({ ...p, stockAlert }))} />
           <ProductInterestEditor productInterest={form.productInterest || {}} onChange={(productInterest) => setForm((p) => ({ ...p, productInterest }))} />
           <ProductPurchaseActivityEditor purchaseActivity={form.purchaseActivity || {}} onChange={(purchaseActivity) => setForm((p) => ({ ...p, purchaseActivity }))} />
+          {mount3dEditor ? (
           <ProductPreview3dEditor
             productLike={form}
             value={form.preview3d || emptyPreview3dConfig()}
@@ -558,6 +574,9 @@ export default function AdminProductForm({ params }) {
             writable={writable}
             suspendPreview={loading}
           />
+          ) : (
+            <div className="rounded-2xl border bg-white p-4 text-sm text-gray-500">3D settings…</div>
+          )}
           <div className="grid md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">Offer Starts At</label>

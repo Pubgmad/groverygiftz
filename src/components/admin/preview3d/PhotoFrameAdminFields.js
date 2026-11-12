@@ -1,9 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import {
   DEFAULT_PHOTO_FRAME_DESIGN_PROFILES,
-  DEFAULT_PHOTO_FRAME_HARDWARE_PROFILES,
   DEFAULT_PHOTO_FRAME_SIZE_RULES,
   PHOTO_FRAME_MANUFACTURING_SPEC,
   emptyPhotoFrameConfig,
@@ -31,37 +30,10 @@ export default function PhotoFrameAdminFields({
   onChange,
   writable = true,
 }) {
-  const [catalog, setCatalog] = useState({
+  const catalog = {
     sizeRules: DEFAULT_PHOTO_FRAME_SIZE_RULES,
-    hardwareProfiles: DEFAULT_PHOTO_FRAME_HARDWARE_PROFILES,
     designProfiles: DEFAULT_PHOTO_FRAME_DESIGN_PROFILES,
-  });
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch('/api/admin/photo-frame-3d', { cache: 'no-store' });
-        if (!res.ok) throw new Error('catalog');
-        const data = await res.json();
-        if (cancelled) return;
-        setCatalog({
-          sizeRules: data.sizeRules?.length ? data.sizeRules : DEFAULT_PHOTO_FRAME_SIZE_RULES,
-          hardwareProfiles: data.hardwareProfiles?.length ? data.hardwareProfiles : DEFAULT_PHOTO_FRAME_HARDWARE_PROFILES,
-          designProfiles: data.designProfiles?.length ? data.designProfiles : DEFAULT_PHOTO_FRAME_DESIGN_PROFILES,
-        });
-      } catch {
-        if (!cancelled) {
-          setCatalog({
-            sizeRules: DEFAULT_PHOTO_FRAME_SIZE_RULES,
-            hardwareProfiles: DEFAULT_PHOTO_FRAME_HARDWARE_PROFILES,
-            designProfiles: DEFAULT_PHOTO_FRAME_DESIGN_PROFILES,
-          });
-        }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+  };
 
   const pf = useMemo(
     () => normalizePhotoFrameConfig(config?.photoFrame || emptyPhotoFrameConfig()),

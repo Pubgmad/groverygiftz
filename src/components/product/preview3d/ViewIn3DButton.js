@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { FiBox, FiHome, FiSmartphone } from 'react-icons/fi';
 import { isPreview3dEligible, resolvePreview3dForSelection, resolvePreview3dSurfaces } from '@/lib/preview3d';
@@ -50,9 +50,9 @@ export default function ViewIn3DButton({
     }).catch(() => { /* bake retries when the viewer opens */ });
     if (preloadStartedRef.current) return;
     preloadStartedRef.current = true;
-    import('./Preview3dScene')
-      .then((mod) => {
-        try { if (config?.modelUrl) mod.preloadPreview3dModel?.(config.modelUrl); } catch { /* ignore */ }
+    Promise.all([import('./Product3DViewerModal'), import('./Preview3dScene')])
+      .then(([, sceneMod]) => {
+        try { if (config?.modelUrl) sceneMod.preloadPreview3dModel?.(config.modelUrl); } catch { /* ignore */ }
       })
       .catch(() => {
         preloadStartedRef.current = false;
@@ -60,6 +60,17 @@ export default function ViewIn3DButton({
   };
 
   const customerEligible = isPreview3dEligible(product);
+
+  useEffect(() => {
+    if (!customerEligible || typeof window === 'undefined') return undefined;
+    const prefetch = () => {
+      import('./Product3DViewerModal');
+      import('./Preview3dScene');
+    };
+    const idle = window.setTimeout(prefetch, 0);
+    return () => window.clearTimeout(idle);
+  }, [customerEligible]);
+
   if (!customerEligible) return null;
 
   const openMode = (mode) => {
@@ -69,8 +80,30 @@ export default function ViewIn3DButton({
     setOpen(true);
   };
 
+  const instantUrl = customerPhotos.find((photo) => photo?.url)?.url || product?.images?.[0] || '';
+
   return (
     <>
+      {open ? (
+        <div className="fixed inset-0 z-[79] flex items-stretch justify-center bg-black/55 sm:items-center sm:p-4" aria-hidden>
+          <div className="flex h-[100dvh] w-full max-w-5xl flex-col overflow-hidden bg-[#f4f0e8] shadow-2xl sm:h-[min(92dvh,880px)] sm:rounded-2xl">
+            <div className="flex items-center justify-between border-b border-black/5 px-4 py-3">
+              <p className="text-sm font-bold text-gray-900">{initialPresentationMode === 'wall' ? 'On Wall' : 'View in 3D'}</p>
+              <button type="button" onClick={() => setOpen(false)} className="min-h-[44px] min-w-[44px] rounded-xl border bg-white" aria-label="Close 3D viewer">×</button>
+            </div>
+            <div className="relative min-h-0 flex-1 bg-[#f4f0e8]">
+              {instantUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={instantUrl} alt="" className="h-full w-full object-contain p-6" />
+              ) : (
+                <div className="flex h-full items-center justify-center">
+                  <div className="h-9 w-9 animate-spin rounded-full border-2 border-primary-200 border-t-primary-600" />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
       <div
         className="flex min-w-0 w-full max-w-full flex-col gap-2 sm:w-auto sm:max-w-none sm:flex-row sm:flex-wrap"
         onPointerEnter={warmPreviewAssets}

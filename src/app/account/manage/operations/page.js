@@ -81,7 +81,10 @@ export default function OperationsPage() {
   }, [readable, activeStatus, taskView]);
 
   useEffect(() => {
-    if (!readable) return;
+    if (!readable || typeof window === 'undefined') return;
+    const stamp = Number(window.sessionStorage.getItem('gg-ops-auto-assign') || 0);
+    if (Date.now() - stamp < 10 * 60 * 1000) return;
+    window.sessionStorage.setItem('gg-ops-auto-assign', String(Date.now()));
     // One-shot backfill for eligible unassigned orders (idempotent; does not reassign).
     fetch('/api/admin/editors/auto-assign', {
       method: 'POST',

@@ -1134,12 +1134,12 @@ export default function Preview3dScene(props) {
         >
           <Canvas
             shadows
-            dpr={(typeof window !== 'undefined' && window.matchMedia?.('(max-width: 640px)')?.matches) ? [1, 1.15] : [1, 1.5]}
+            dpr={(typeof window !== 'undefined' && window.matchMedia?.('(max-width: 640px)')?.matches) ? [1, 1.1] : [1, 1.25]}
             frameloop={active ? 'always' : 'never'}
             camera={{ position: [0, 0.06, 1.55], fov: 38, near: 0.05, far: 80 }}
             style={{ width: '100%', height: '100%', display: 'block' }}
             gl={{
-              antialias: true,
+              antialias: !(typeof window !== 'undefined' && window.matchMedia?.('(max-width: 640px)')?.matches),
               alpha: true,
               powerPreference: 'high-performance',
               failIfMajorPerformanceCaveat: false,

@@ -23,9 +23,9 @@ import {
 } from '../src/lib/photoFrame3d.js';
 
 const expectedKeys = [
-  '4x4', '6x4', '5x7', '8x6',
+  '4x4', '6x4', '5x7', '8x6', '6x8',
   '10x8', '12x8', '12x10', '10x10', '12x15', '12x18', '15x15',
-  '16x20', '12x24', '16x24', '18x24', '20x20', '20x24', '30x20', '24x36',
+  '16x20', '12x24', '16x24', '18x24', '20x20', '20x24', '30x20', '24x36', '36x24',
 ];
 
 const nineteen = assertNineteenSizeRules(DEFAULT_PHOTO_FRAME_SIZE_RULES);
@@ -58,9 +58,9 @@ const ok = nineteen.ok
   && dimFails.length === 0
   && stretchGuard.on5x7.ok
   && !stretchGuard.on12x18.ok
-  && groups.A === 4
+  && groups.A === 5
   && groups.B === 7
-  && groups.C === 8;
+  && groups.C === 9;
 
 if (inferSizeRuleKeyFromLabel('5 × 7') !== '5x7') throw new Error('label 5 × 7 must map to 5x7');
 if (inferSizeRuleKeyFromLabel('5*7 inch') !== '5x7') throw new Error('catalog labels using * must map to 5x7');
@@ -75,6 +75,15 @@ const from36 = applyPhotoFrameSizeFromSelection(
 if (from36.sizeRuleKey !== '36x24') throw new Error(`36×24 product must stay 36x24, got ${from36.sizeRuleKey}`);
 if (from36.openingWidth !== 36 || from36.openingHeight !== 24) {
   throw new Error('36×24 must not be swapped onto 24×36');
+}
+if (inferSizeRuleKeyFromLabel('6 × 8') !== '6x8') throw new Error('6×8 must be a catalog key');
+if (inferSizeRuleKeyFromLabel('6 × 8') === '8x6') throw new Error('6×8 must not swap onto 8×6');
+const from68 = applyPhotoFrameSizeFromSelection(
+  { enabled: true, sizeRuleKey: '5x7' },
+  { Size: { label: '6 × 8' } },
+);
+if (from68.sizeRuleKey !== '6x8' || from68.openingWidth !== 6 || from68.openingHeight !== 8) {
+  throw new Error('6×8 must keep portrait 6×8 construction');
 }
 
 const from2030 = applyPhotoFrameSizeFromSelection(
@@ -118,7 +127,7 @@ const runtime5 = resolvePhotoFrameRuntime({
 if (runtime5.effectiveGeometryType !== 'custom_glb') throw new Error('5x7 premium GLB must remain available on 5x7');
 
 const coverage = buildDesignCoverageMatrix();
-if (coverage.length !== 19) throw new Error('coverage matrix must include 19 sizes');
+if (coverage.length !== expectedKeys.length) throw new Error(`coverage matrix must include ${expectedKeys.length} sizes`);
 if (!coverage.every((row) => row.parametricReady)) throw new Error('every size must have parametric coverage');
 if (coverage.filter((row) => row.decorativeGlbReady.includes('design_premium_5x7')).length !== 1) {
   throw new Error('premium GLB must remain 5x7-only');
@@ -191,8 +200,11 @@ if (!productBRules.some((r) => r.key === '36x24') || productBRules.some((r) => r
   throw new Error('product B must keep 36×24/12×15 without leaking 5×7 or swapping onto 24×36');
 }
 
-if (PHOTO_FRAME_MANUFACTURING_SPEC.version !== '1.0.0') {
+if (PHOTO_FRAME_MANUFACTURING_SPEC.version !== '1.1.0') {
   throw new Error('manufacturing spec version must be explicit and versioned');
+}
+if (PHOTO_FRAME_MANUFACTURING_SPEC.depthMm !== 8) {
+  throw new Error('moulding depth must follow published 8mm fibre-wood frame copy');
 }
 
 const staleAdmin = resolvePhotoFrameDimensions({

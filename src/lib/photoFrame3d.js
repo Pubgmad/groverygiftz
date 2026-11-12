@@ -14,25 +14,30 @@ export const PHOTO_FRAME_FIDELITY = {
 /**
  * Versioned manufacturing construction defaults.
  * Openings, borders, and hardware membership come from DEFAULT_PHOTO_FRAME_SIZE_RULES.
- * Depths are APPROXIMATE visual construction — not tape-verified CAD. Do not edit from Admin.
+ * Moulding depth is the published 8mm fibre-wood frame (owner product copy), not tape CAD.
+ * Inner lip and backing remain APPROXIMATE visual construction. Do not edit from Admin.
  */
 export const PHOTO_FRAME_MANUFACTURING_SPEC = {
-  version: '1.0.0',
+  version: '1.1.0',
   unit: 'inch',
-  depth: 0.35,
+  depthMm: 8,
+  depth: 8 / 25.4,
   innerMouldingDepth: 0.08,
   rearBackingThickness: 0.12,
-  depthFidelity: PHOTO_FRAME_FIDELITY.APPROXIMATE,
+  depthFidelity: PHOTO_FRAME_FIDELITY.OWNER_CONFIRMED,
+  depthSource: 'published_8mm_fibre_wood_frame',
   borderFidelity: PHOTO_FRAME_FIDELITY.OWNER_CONFIRMED,
+  backingFidelity: PHOTO_FRAME_FIDELITY.APPROXIMATE,
 };
 
-/** Owner-confirmed 19 size keys (W×H label convention). Membership is explicit — not range math. */
+/** Owner catalog keys (W×H label convention). 6×8 and 36×24 are first-class orientations, not swaps. */
 export const DEFAULT_PHOTO_FRAME_SIZE_RULES = [
   // Group A — 0.5" border
   { key: '4x4', label: '4 × 4', nominalWidth: 4, nominalHeight: 4, borderWidth: 0.5, borderGroup: 'A', hardwareProfileKey: 'hw_small_stand', orientation: 'square' },
   { key: '6x4', label: '6 × 4', nominalWidth: 6, nominalHeight: 4, borderWidth: 0.5, borderGroup: 'A', hardwareProfileKey: 'hw_small_stand', orientation: 'landscape' },
   { key: '5x7', label: '5 × 7', nominalWidth: 5, nominalHeight: 7, borderWidth: 0.5, borderGroup: 'A', hardwareProfileKey: 'hw_small_stand', orientation: 'portrait' },
   { key: '8x6', label: '8 × 6', nominalWidth: 8, nominalHeight: 6, borderWidth: 0.5, borderGroup: 'A', hardwareProfileKey: 'hw_small_stand', orientation: 'landscape' },
+  { key: '6x8', label: '6 × 8', nominalWidth: 6, nominalHeight: 8, borderWidth: 0.5, borderGroup: 'A', hardwareProfileKey: 'hw_small_stand', orientation: 'portrait' },
   // Group B — 1" border
   { key: '10x8', label: '10 × 8', nominalWidth: 10, nominalHeight: 8, borderWidth: 1, borderGroup: 'B', hardwareProfileKey: 'hw_small_medium_hook_stand', orientation: 'landscape' },
   { key: '12x8', label: '12 × 8', nominalWidth: 12, nominalHeight: 8, borderWidth: 1, borderGroup: 'B', hardwareProfileKey: 'hw_small_medium_hook_stand', orientation: 'landscape' },
@@ -50,6 +55,7 @@ export const DEFAULT_PHOTO_FRAME_SIZE_RULES = [
   { key: '20x24', label: '20 × 24', nominalWidth: 20, nominalHeight: 24, borderWidth: 2, borderGroup: 'C', hardwareProfileKey: 'hw_large_dual_hooks_bushes', orientation: 'portrait' },
   { key: '30x20', label: '30 × 20', nominalWidth: 30, nominalHeight: 20, borderWidth: 2, borderGroup: 'C', hardwareProfileKey: 'hw_large_dual_hooks_bushes', orientation: 'landscape' },
   { key: '24x36', label: '24 × 36', nominalWidth: 24, nominalHeight: 36, borderWidth: 2, borderGroup: 'C', hardwareProfileKey: 'hw_large_dual_hooks_bushes', orientation: 'portrait' },
+  { key: '36x24', label: '36 × 24', nominalWidth: 36, nominalHeight: 24, borderWidth: 2, borderGroup: 'C', hardwareProfileKey: 'hw_large_dual_hooks_bushes', orientation: 'landscape' },
 ];
 
 /**
@@ -61,7 +67,7 @@ export const DEFAULT_PHOTO_FRAME_HARDWARE_PROFILES = [
     key: 'hw_small_stand',
     name: 'Small frames — rear stand',
     description: 'Group 1: rear support stand. No separate top hooks / bottom bushes unless overridden.',
-    sizeRuleKeys: ['4x4', '6x4', '5x7', '8x6'],
+    sizeRuleKeys: ['4x4', '6x4', '5x7', '8x6', '6x8'],
     referenceImage: 'Temp/photo-frame-3d/references/small-frame-back.jpg',
     components: {
       stand: { enabled: true, fidelity: PHOTO_FRAME_FIDELITY.VISUALLY_VERIFIED },
@@ -109,7 +115,7 @@ export const DEFAULT_PHOTO_FRAME_HARDWARE_PROFILES = [
     key: 'hw_large_dual_hooks_bushes',
     name: 'Large — dual hooks + dual bushes',
     description: 'Group 4: top-left/right hooks + bottom-left/right bushes. No stand. Includes 12×24 via explicit membership.',
-    sizeRuleKeys: ['16x20', '12x24', '16x24', '18x24', '20x20', '20x24', '30x20', '24x36'],
+    sizeRuleKeys: ['16x20', '12x24', '16x24', '18x24', '20x20', '20x24', '30x20', '24x36', '36x24'],
     referenceImage: 'Temp/photo-frame-3d/references/large-frame-back.jpg',
     components: {
       stand: { enabled: false, fidelity: PHOTO_FRAME_FIDELITY.OWNER_CONFIRMED },
@@ -576,7 +582,7 @@ export function resolvePhotoFrameDimensions(photoFrameInput = {}, sizeRule = nul
     orientation,
     outerDimsVerified: Boolean(pf.outerDimsVerified),
     borderFidelity: PHOTO_FRAME_FIDELITY.OWNER_CONFIRMED,
-    depthFidelity: PHOTO_FRAME_FIDELITY.APPROXIMATE,
+    depthFidelity: PHOTO_FRAME_MANUFACTURING_SPEC.depthFidelity,
     manufacturingSpecVersion: PHOTO_FRAME_MANUFACTURING_SPEC.version,
     sizeRuleKey: pf.sizeRuleKey || rule?.key || '',
   };
@@ -651,13 +657,21 @@ export function buildSizeHardwareMatrix(sizeRules = DEFAULT_PHOTO_FRAME_SIZE_RUL
   });
 }
 
+export const PHOTO_FRAME_REQUIRED_SIZE_KEYS = [
+  '4x4', '6x4', '5x7', '8x6', '6x8',
+  '10x8', '12x8', '12x10', '10x10', '12x15', '12x18', '15x15',
+  '16x20', '12x24', '16x24', '18x24', '20x20', '20x24', '30x20', '24x36', '36x24',
+];
+
 export function assertNineteenSizeRules(sizeRules = DEFAULT_PHOTO_FRAME_SIZE_RULES) {
-  const keys = sizeRules.map((r) => r.key);
+  const keys = sizeRules.map((r) => String(r.key || ''));
   const unique = new Set(keys);
+  const missingRequired = PHOTO_FRAME_REQUIRED_SIZE_KEYS.filter((key) => !unique.has(key));
   return {
     count: keys.length,
     unique: unique.size,
-    ok: keys.length === 19 && unique.size === 19,
+    missingRequired,
+    ok: missingRequired.length === 0 && unique.size === keys.length,
     keys,
   };
 }

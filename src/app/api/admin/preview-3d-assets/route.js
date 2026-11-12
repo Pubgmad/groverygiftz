@@ -56,31 +56,7 @@ export async function GET() {
   await dbConnect();
 
   const primaryDisk = await listUploadFiles('preview3d/models', { extensions: ['.glb'] }).catch(() => []);
-  // Also discover isolated staging upload trees without duplicating binary storage.
-  let stagingDisk = [];
-  try {
-    const altRoot = path.join(process.cwd(), '.data', 'phase2b-uploads');
-    if (path.resolve(altRoot) !== path.resolve(uploadStorageRoot)) {
-      const { readdir, stat } = await import('fs/promises');
-      const modelsDir = path.join(altRoot, 'preview3d', 'models');
-      const entries = await readdir(modelsDir).catch(() => []);
-      stagingDisk = await Promise.all(entries.filter((name) => /\.glb$/i.test(name)).map(async (name) => {
-        const abs = path.join(modelsDir, name);
-        const fileStat = await stat(abs).catch(() => null);
-        const relativePath = `preview3d/models/${name}`;
-        return {
-          filename: name,
-          relativePath,
-          url: `/media/${relativePath}`,
-          size: fileStat?.size || 0,
-          mtimeMs: fileStat?.mtimeMs || 0,
-        };
-      }));
-    }
-  } catch {
-    stagingDisk = [];
-  }
-  const diskFiles = [...primaryDisk, ...stagingDisk];
+  const diskFiles = primaryDisk;
   const [registry, profiles] = await Promise.all([
     Preview3dAsset.find({ kind: 'model' }).sort({ updatedAt: -1 }).lean(),
     Preview3dProfile.find({ modelUrl: { $nin: [null, ''] } })

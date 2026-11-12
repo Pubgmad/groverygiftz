@@ -47,6 +47,7 @@ export async function POST(req) {
   const query = `${body.query || ''} ${body.occasion || ''} ${body.giftType || ''}`.trim();
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
   const products = await Product.find({ isActive: true })
+    .select('title slug description shortDescription tags images regularPrice salePrice isFeatured collections')
     .populate('collections', 'title name slug')
     .sort({ isFeatured: -1, createdAt: -1 })
     .limit(80)

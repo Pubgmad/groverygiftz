@@ -13,19 +13,25 @@ export default function AdminProductsPage() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
   const fetchProducts = async () => {
     setLoading(true);
-    const res = await fetch(`/api/products?all=true&page=${page}&search=${search}&limit=20`);
+    const res = await fetch(`/api/products?all=true&page=${page}&search=${encodeURIComponent(debouncedSearch)}&limit=20`);
     const data = await res.json();
     setProducts(data.products || []);
     setTotalPages(data.pages || 1);
     setLoading(false);
   };
 
-  useEffect(() => { fetchProducts(); }, [page, search]);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  useEffect(() => { fetchProducts(); }, [page, debouncedSearch]);
 
   const copyPublicLink = async (slug) => {
     const link = `/products/${slug}`;

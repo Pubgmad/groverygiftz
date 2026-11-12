@@ -6,6 +6,7 @@ import ProductCard from '@/components/product/ProductCard';
 import SearchTracker from '@/components/meta/SearchTracker';
 import GA4SearchTracker from '@/components/analytics/GA4SearchTracker';
 import { buildSearchKeywordMaps } from '@/lib/giftFinderResolve';
+import { PRODUCT_CARD_SELECT } from '@/lib/productCardFields';
 
 export default async function SearchPage({ searchParams }) {
   const q = searchParams?.q || '';
@@ -44,11 +45,11 @@ export default async function SearchPage({ searchParams }) {
       });
     }
 
-    products = await Product.find({ $and: andFilters }).limit(40).lean();
+    products = await Product.find({ $and: andFilters }).select(PRODUCT_CARD_SELECT).limit(40).lean();
 
     if (products.length === 0 && q) {
       try {
-        products = await Product.find({ $text: { $search: q }, isActive: true }).limit(40).lean();
+        products = await Product.find({ $text: { $search: q }, isActive: true }).select(PRODUCT_CARD_SELECT).limit(40).lean();
       } catch {
         products = [];
       }

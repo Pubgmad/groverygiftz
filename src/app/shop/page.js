@@ -5,6 +5,7 @@ import Collection from '@/models/Collection';
 import ProductCard from '@/components/product/ProductCard';
 import Link from 'next/link';
 import { activeAdminOfferMatch, variantAwareEffectivePriceExpression } from '@/lib/offers';
+import { PRODUCT_CARD_PROJECT } from '@/lib/productCardFields';
 
 const VALID_VIEWS = ['collections', 'offers', 'latest', 'best-sellers'];
 
@@ -38,6 +39,7 @@ export default async function ShopPage({ searchParams }) {
       { $sort: sort },
       { $skip: skip },
       { $limit: limit },
+      { $project: { ...PRODUCT_CARD_PROJECT, effectivePrice: 1 } },
     ]),
     Product.aggregate([{ $match: match }, { $count: 'total' }]),
   ]);

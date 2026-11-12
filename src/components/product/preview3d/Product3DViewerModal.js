@@ -1,7 +1,6 @@
 'use client';
 
 import { Component, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import dynamic from 'next/dynamic';
 import { FiRefreshCw, FiX, FiHome, FiSmartphone } from 'react-icons/fi';
 import {
   buildViewerTextureSlots,
@@ -24,6 +23,7 @@ import {
   detectArCapability,
 } from '@/lib/preview3dAr';
 import WallPhotoPlacement from './WallPhotoPlacement';
+import Preview3dScene from './Preview3dScene';
 
 const VIEW_PRESETS = [
   { id: 'front', label: 'Front' },
@@ -35,11 +35,6 @@ const PRESENTATION_MODES = [
   { id: 'wall', label: 'On Wall' },
   { id: 'ar', label: 'AR' },
 ];
-
-const Preview3dScene = dynamic(() => import('./Preview3dScene'), {
-  ssr: false,
-  loading: () => null,
-});
 
 class ModalSceneErrorBoundary extends Component {
   constructor(props) {
@@ -96,7 +91,6 @@ export default function Product3DViewerModal({
   const [presentationMode, setPresentationMode] = useState(startMode);
   const [textures, setTextures] = useState([]);
   const [textureBusy, setTextureBusy] = useState(false);
-  const [engineReady, setEngineReady] = useState(false);
   const [sceneReady, setSceneReady] = useState(false);
   const [parityWarnings, setParityWarnings] = useState([]);
   const [arNotice, setArNotice] = useState('');
@@ -105,7 +99,6 @@ export default function Product3DViewerModal({
   const revokeRef = useRef(null);
   const closeBtnRef = useRef(null);
   const sceneReadyRef = useRef(false);
-  const engineReadyRef = useRef(false);
   const arCapability = useMemo(() => detectArCapability(), []);
   const handleSceneReady = useCallback(() => setSceneReady(true), []);
 
@@ -137,12 +130,11 @@ export default function Product3DViewerModal({
   // Remount only when variant/model changes — not on wall↔inspect or modal close.
   const selectionKey = `${config.geometryType}|${config.modelUrl}|${config.assetId}|${resolvedDimensions.width}x${resolvedDimensions.height}x${resolvedDimensions.depth}|${resolvedDimensions.modelScale || ''}|${photoFrameBundle.resolved?.openingWidth || ''}x${photoFrameBundle.resolved?.openingHeight || ''}|${photoFrameBundle.resolved?.sizeRuleKey || ''}`;
 
-  // Geometry may appear with a placeholder photo; do not block first visual on texture bake.
-  const showOverlay = open && !engineReady && !webglError;
-
-  useEffect(() => {
-    engineReadyRef.current = engineReady;
-  }, [engineReady]);
+  const instantPreviewUrl = textures.find((slot) => slot?.textureUrl)?.textureUrl
+    || customerPhotos.find((photo) => photo?.url)?.url
+    || product?.images?.[0]
+    || '';
+  const showOverlay = open && !sceneReady && !webglError;
 
   useEffect(() => {
     sceneReadyRef.current = sceneReady;
@@ -174,21 +166,6 @@ export default function Product3DViewerModal({
       window.__preview3dOpenAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
       window.__preview3dTimings = { openAt: window.__preview3dOpenAt };
       window.__preview3dReadyMs = null;
-    }
-    // Warm reopen: keep engine/scene ready flags if WebGL stayed mounted.
-    if (!engineReadyRef.current) {
-      setEngineReady(false);
-      import('./Preview3dScene')
-        .then((mod) => {
-          if (typeof window !== 'undefined' && typeof performance !== 'undefined') {
-            const base = Number(window.__preview3dOpenAt) || performance.now();
-            window.__preview3dTimings = window.__preview3dTimings || {};
-            window.__preview3dTimings.engineImport = Math.round(performance.now() - base);
-          }
-          try { mod.preloadPreview3dModel?.(config.modelUrl); } catch { /* ignore */ }
-          setEngineReady(true);
-        })
-        .catch(() => setWebglError('webgl_failed'));
     }
     if (!sceneReadyRef.current) setSceneReady(false);
     closeBtnRef.current?.focus?.();
@@ -441,7 +418,7 @@ export default function Product3DViewerModal({
               className="relative h-full w-full"
               onErrorCapture={() => setWebglError('webgl_failed')}
             >
-              {(engineReady || hasMountedScene) ? (
+              {hasMountedScene ? (
                 <ModalSceneErrorBoundary key={`boundary-${selectionKey}`}>
                   <Preview3dScene
                     key={`${selectionKey}-${photoFrameBundle.effectiveGeometryType || config.geometryType}`}
@@ -489,11 +466,15 @@ export default function Product3DViewerModal({
                 />
               ) : null}
               {showOverlay ? (
-                <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-[#f4f0e8]/80 backdrop-blur-[2px]">
-                  <div className="mx-4 max-w-sm rounded-2xl border border-white/70 bg-white/90 px-5 py-4 text-center shadow-lg">
-                    <div className="mx-auto mb-3 h-9 w-9 animate-spin rounded-full border-2 border-primary-200 border-t-primary-600" />
-                    <p className="text-sm font-bold text-gray-900">Opening 3D…</p>
-                  </div>
+                <div className="pointer-events-none absolute inset-0 bg-[#f4f0e8]">
+                  {instantPreviewUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={instantPreviewUrl} alt="" className="h-full w-full object-contain p-6" />
+                  ) : (
+                    <div className="flex h-full items-center justify-center">
+                      <div className="h-9 w-9 animate-spin rounded-full border-2 border-primary-200 border-t-primary-600" />
+                    </div>
+                  )}
                 </div>
               ) : null}
             </div>
