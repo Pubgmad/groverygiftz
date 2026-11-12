@@ -275,5 +275,7 @@ const ProductSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 ProductSchema.index({ title: 'text', description: 'text' });
+ProductSchema.index({ isActive: 1, createdAt: -1 });
+ProductSchema.index({ updatedAt: -1 });
 
 export default mongoose.models.Product || mongoose.model('Product', ProductSchema);

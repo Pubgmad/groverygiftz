@@ -8,6 +8,7 @@ import { requireAdminPermission, logAdminAudit } from '@/lib/adminAccess';
 import { appendTimeline, notifyAdmins } from '@/lib/opsOrderHelpers';
 import { isPaymentSatisfiedForDispatch } from '@/lib/opsConstants';
 import { todayIstYmd } from '@/lib/istTime';
+import { DISPATCH_ORDER_SELECT } from '@/lib/adminOrderFields';
 
 async function requireOpsWrite() {
   let { error, access } = await requireAdminPermission('operations', 'write');
@@ -163,7 +164,7 @@ export async function POST(req) {
     return NextResponse.json({ error: 'Select at least one order for a parcel' }, { status: 400 });
   }
 
-  const orders = await Order.find({ _id: { $in: [...allOrderIdSet] } });
+  const orders = await Order.find({ _id: { $in: [...allOrderIdSet] } }).select(DISPATCH_ORDER_SELECT);
   const byId = Object.fromEntries(orders.map((o) => [String(o._id), o]));
 
   const eligibleIds = new Set();
@@ -336,7 +337,7 @@ export async function PATCH(req) {
     parcel.dispatchedAt = originalDispatchedAt;
     await batch.save();
 
-    const orders = await Order.find({ _id: { $in: parcel.orderIds } });
+    const orders = await Order.find({ _id: { $in: parcel.orderIds } }).select(DISPATCH_ORDER_SELECT);
     for (const order of orders) {
       if (parcel.trackingNumber) {
         order.trackingNumber = parcel.trackingNumber;
@@ -367,7 +368,7 @@ export async function PATCH(req) {
     const ids = (Array.isArray(body.orderIds) ? body.orderIds : [])
       .filter((id) => mongoose.Types.ObjectId.isValid(String(id)));
     if (!ids.length) return NextResponse.json({ error: 'orderIds required' }, { status: 400 });
-    const orders = await Order.find({ _id: { $in: ids } });
+    const orders = await Order.find({ _id: { $in: ids } }).select(DISPATCH_ORDER_SELECT);
     if (!orders.length) return NextResponse.json({ error: 'No orders found' }, { status: 404 });
 
     const nextIndex = (batch.parcels?.length || 0) + 1;
@@ -426,7 +427,7 @@ export async function PATCH(req) {
     batch.status = 'handed_over';
     batch.pickupConfirmedAt = batch.pickupConfirmedAt || new Date();
     if (!batch.parcels?.length) {
-      const orders = await Order.find({ _id: { $in: batch.orderIds } });
+      const orders = await Order.find({ _id: { $in: batch.orderIds } }).select(DISPATCH_ORDER_SELECT);
       const parcel = {
         parcelCode: parcelCodeFor(batch.batchCode, 1),
         orderIds: orders.map((o) => o._id),
@@ -453,7 +454,7 @@ export async function PATCH(req) {
       const saved = batch.parcels[0];
       await attachParcelToOrders(orders, batch, saved, access);
     } else {
-      const orders = await Order.find({ _id: { $in: batch.orderIds } });
+      const orders = await Order.find({ _id: { $in: batch.orderIds } }).select(DISPATCH_ORDER_SELECT);
       const byId = Object.fromEntries(orders.map((o) => [String(o._id), o]));
       for (const parcel of batch.parcels) {
         if (!parcel.dispatchedAt) {

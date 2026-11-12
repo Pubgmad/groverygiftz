@@ -12,6 +12,7 @@ import { assertCanAccessOrder } from '@/lib/opsStaffAccess';
 import { isPaymentSatisfiedForDispatch } from '@/lib/opsConstants';
 import { logAdminAudit } from '@/lib/adminAccess';
 import { resignCustomerDisplayUrls } from '@/lib/customerFileAccess';
+import { ORDER_MUTATION_SELECT, serializeOrderMutationResult } from '@/lib/adminOrderFields';
 
 export async function GET(req, { params }) {
   const session = await getServerSession(authOptions);
@@ -59,7 +60,7 @@ export async function PUT(req, { params }) {
 
   await dbConnect();
   const { id } = await params;
-  const order = await Order.findById(id);
+  const order = await Order.findById(id).select(ORDER_MUTATION_SELECT);
   if (!order) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (!assertCanAccessOrder(access, order)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -177,5 +178,5 @@ export async function PUT(req, { params }) {
     targetId: String(order._id),
     details: { fields: Object.keys(patch) },
   }).catch(() => {});
-  return NextResponse.json(order);
+  return NextResponse.json(serializeOrderMutationResult(order));
 }

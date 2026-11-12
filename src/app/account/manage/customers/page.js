@@ -28,6 +28,9 @@ export default function AdminCustomersPage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [mobile, setMobile] = useState('');
+  const [debouncedName, setDebouncedName] = useState('');
+  const [debouncedEmail, setDebouncedEmail] = useState('');
+  const [debouncedMobile, setDebouncedMobile] = useState('');
   const [customerType, setCustomerType] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -41,11 +44,14 @@ export default function AdminCustomersPage() {
   const lastError = lastFrom && lastTo && lastFrom > lastTo ? 'Last purchase from date cannot be after to date' : '';
   const dateError = registerError || lastError;
 
-  const filterQuery = () => {
+  const filterQuery = (filters = {}) => {
+    const nameValue = filters.name ?? name;
+    const emailValue = filters.email ?? email;
+    const mobileValue = filters.mobile ?? mobile;
     const query = new URLSearchParams();
-    if (name.trim()) query.set('name', name.trim());
-    if (email.trim()) query.set('email', email.trim());
-    if (mobile.trim()) query.set('mobile', mobile.trim());
+    if (String(nameValue || '').trim()) query.set('name', String(nameValue).trim());
+    if (String(emailValue || '').trim()) query.set('email', String(emailValue).trim());
+    if (String(mobileValue || '').trim()) query.set('mobile', String(mobileValue).trim());
     if (customerType) query.set('customerType', customerType);
     if (dateFrom) query.set('dateFrom', dateFrom);
     if (dateTo) query.set('dateTo', dateTo);
@@ -55,7 +61,11 @@ export default function AdminCustomersPage() {
   };
 
   const fetchCustomers = async () => {
-    const query = filterQuery();
+    const query = filterQuery({
+      name: debouncedName,
+      email: debouncedEmail,
+      mobile: debouncedMobile,
+    });
     query.set('page', String(currentPage));
     query.set('limit', String(pageSize));
     const res = await fetch(`/api/customers?${query.toString()}`);
@@ -75,6 +85,15 @@ export default function AdminCustomersPage() {
   };
 
   useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedName(name.trim());
+      setDebouncedEmail(email.trim());
+      setDebouncedMobile(mobile.trim());
+    }, 300);
+    return () => clearTimeout(t);
+  }, [name, email, mobile]);
+
+  useEffect(() => {
     if (dateError) {
       setCustomers([]);
       setTotalCustomers(0);
@@ -83,7 +102,7 @@ export default function AdminCustomersPage() {
       return;
     }
     fetchCustomers();
-  }, [currentPage, name, email, mobile, customerType, dateFrom, dateTo, lastFrom, lastTo, dateError]);
+  }, [currentPage, debouncedName, debouncedEmail, debouncedMobile, customerType, dateFrom, dateTo, lastFrom, lastTo, dateError]);
 
   useEffect(() => { setCurrentPage(1); }, [name, email, mobile, customerType, dateFrom, dateTo, lastFrom, lastTo]);
   useEffect(() => { if (currentPage > totalPages) setCurrentPage(totalPages); }, [currentPage, totalPages]);

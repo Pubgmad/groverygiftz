@@ -10,7 +10,7 @@ const nextConfig = {
   transpilePackages: ['three', '@react-three/fiber', '@react-three/drei'],
   // Keep native/barcode helpers out of the webpack server bundle.
   experimental: {
-    serverComponentsExternalPackages: ['bwip-js', 'pdf-lib', 'qrcode'],
+    serverComponentsExternalPackages: ['bwip-js', 'pdf-lib', 'qrcode', 'sharp'],
   },
   webpack: (config) => {
     // pdfjs optional Node canvas stub — browser JPEG export uses DOM canvas only.

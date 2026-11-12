@@ -7,6 +7,7 @@ import Order from '@/models/Order';
 import { verifyCustomerDisplayAccess } from '@/lib/customerFileAccess';
 import { detectImageFormat } from '@/lib/imageFormat';
 import { readUploadFile } from '@/lib/uploadStorage';
+import { maybeResizeImageBuffer } from '@/lib/resizeCustomerDisplayImage';
 
 export const dynamic = 'force-dynamic';
 
@@ -70,6 +71,26 @@ export async function GET(req, { params }) {
       const ext = relativePath.split('.').pop()?.toLowerCase() || '';
       const extMap = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', avif: 'image/avif', svg: 'image/svg+xml', heic: 'image/heic', heif: 'image/heif', pdf: 'application/pdf' };
       contentType = extMap[ext] || 'application/octet-stream';
+    }
+
+    const wantThumb = req.nextUrl.searchParams.get('thumb') === '1';
+    if (wantThumb && format?.isImage && !format?.isHeif) {
+      const resized = await maybeResizeImageBuffer(file.buffer, {
+        width: req.nextUrl.searchParams.get('w') || 320,
+        mime: contentType,
+      });
+      if (resized) {
+        return new NextResponse(resized.buffer, {
+          headers: {
+            'Content-Type': resized.contentType,
+            'Content-Length': String(resized.buffer.length),
+            'Cache-Control': signed ? 'private, max-age=86400, no-transform' : 'private, max-age=3600, no-transform',
+            'X-Content-Type-Options': 'nosniff',
+            'Vary': 'Accept',
+            'X-Admin-Thumb': '1',
+          },
+        });
+      }
     }
 
     return new NextResponse(file.buffer, {

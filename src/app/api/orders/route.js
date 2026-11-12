@@ -10,6 +10,7 @@ import { getOrderDeliveryEstimate } from '@/lib/orderDeliveryEstimate';
 import { stripMakingCostFromOrder } from '@/lib/makingCost';
 import { buildAdminOrderFilter, parseOrderReportFilters, ORDER_STATUS_ALIASES } from '@/lib/adminOrderQuery';
 import { mergeStaffOrderFilter } from '@/lib/opsStaffAccess';
+import { ADMIN_ORDER_LIST_SELECT } from '@/lib/adminOrderFields';
 
 export async function GET(req) {
   await dbConnect();
@@ -68,18 +69,26 @@ export async function GET(req) {
     }
   }
 
+  const isAdmin = session.user.type === 'admin';
+  let listQuery = Order.find(filter).sort(sort).skip((page - 1) * limit).limit(limit);
+  if (isAdmin) listQuery = listQuery.select(ADMIN_ORDER_LIST_SELECT);
   const [orders, total] = await Promise.all([
-    Order.find(filter).sort(sort).skip((page - 1) * limit).limit(limit).lean(),
+    listQuery.lean(),
     Order.countDocuments(filter),
   ]);
-  const settings = await Settings.findOne().select('deliveryHolidays').lean();
-  const deliveryHolidays = settings?.deliveryHolidays || [];
+  let deliveryHolidays = [];
+  if (!isAdmin) {
+    const settings = await Settings.findOne().select('deliveryHolidays').lean();
+    deliveryHolidays = settings?.deliveryHolidays || [];
+  }
   const displayOrders = orders.map((order) => {
-    const next = {
-      ...order,
-      deliveryEstimate: getOrderDeliveryEstimate(order, deliveryHolidays) || order.deliveryEstimate,
-    };
-    return session.user.type === 'admin' ? next : stripMakingCostFromOrder(next);
+    const next = isAdmin
+      ? order
+      : {
+        ...order,
+        deliveryEstimate: getOrderDeliveryEstimate(order, deliveryHolidays) || order.deliveryEstimate,
+      };
+    return isAdmin ? next : stripMakingCostFromOrder(next);
   });
 
   return NextResponse.json({ orders: displayOrders, total, page, limit, pages: Math.ceil(total / limit) });

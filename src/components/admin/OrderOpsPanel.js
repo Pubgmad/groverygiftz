@@ -15,6 +15,7 @@ import {
   requiresPaidRevisionGate,
   PRINTING_STARTED_OPS,
 } from '@/lib/opsConstants';
+import { withAdminThumbUrl } from '@/lib/adminImageThumb';
 
 function customerFileFromOriginal(url = '') {
   const raw = String(url || '');
@@ -937,7 +938,7 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
                         title={photo.label}
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={photo.url} alt={photo.label} className="h-full w-full object-cover" />
+                        <img src={withAdminThumbUrl(photo.url)} alt={photo.label} className="h-full w-full object-cover" loading="lazy" decoding="async" />
                       </a>
                       <p className="truncate text-[10px] font-semibold text-gray-700">{photo.label}</p>
                     </li>

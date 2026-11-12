@@ -15,6 +15,8 @@ import { MAX_SHIPPING_LABEL_ORDERS } from '@/lib/shippingLabelLayout';
 import { ORDER_SOURCE_LABELS, OPS_STATUS_LABELS, isDelayedOrder } from '@/lib/opsConstants';
 import { todayIstYmd, tomorrowIstYmd } from '@/lib/istTime';
 import { FiPlus, FiRefreshCw } from 'react-icons/fi';
+import { withAdminThumbUrl } from '@/lib/adminImageThumb';
+import { pickAdminOrderListPatch } from '@/lib/adminOrderFields';
 
 const statusOptions = [
   { value: 'ordered', label: 'Ordered' },
@@ -147,7 +149,7 @@ function CustomerPhotoThumb({ file, index, label }) {
       {displayUrl ? (
         <a href={downloadHref || displayUrl} target="_blank" rel="noopener noreferrer" className="relative block aspect-square overflow-hidden rounded-lg border bg-white">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={displayUrl} alt={file?.name || `${label || 'Photo'} ${index + 1}`} className="h-full w-full object-cover" />
+          <img src={withAdminThumbUrl(displayUrl)} alt={file?.name || `${label || 'Photo'} ${index + 1}`} className="h-full w-full object-cover" loading="lazy" decoding="async" />
         </a>
       ) : null}
       <DownloadButton href={downloadHref} filename={buildDownloadName('original-upload', file?.name || label || 'custom-file', index, file)}>
@@ -209,7 +211,7 @@ function CollageUploadDetails({ groups }) {
               <div key={image.url || index} className="min-w-0 space-y-1">
                 <a href={originalDownloadHref(image) || image.displayUrl || image.url} target="_blank" rel="noopener noreferrer" className="relative block aspect-square overflow-hidden rounded-lg border bg-white">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={image.displayUrl || image.url} alt={`${group.label} ${index + 1}`} className="h-full w-full object-cover" />
+                  <img src={withAdminThumbUrl(image.displayUrl || image.url)} alt={`${group.label} ${index + 1}`} className="h-full w-full object-cover" loading="lazy" decoding="async" />
                   <span className="absolute left-1 top-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[10px] font-bold text-white">{index + 1}</span>
                 </a>
                 <DownloadButton href={originalDownloadHref(image)} filename={buildDownloadName('collage-original', group.label, index, image)}>Original {index + 1}{fileSizeLabel(image)}</DownloadButton>
@@ -240,7 +242,7 @@ function PreviewDetails({ preview }) {
               </div>
               {finalPreviewUrl && (
                 <a href={finalPreviewUrl} target="_blank" rel="noopener noreferrer" className="block max-w-full overflow-hidden rounded-lg border bg-white">
-                  <img src={finalPreviewUrl} alt={`${entry.areaLabel || 'Preview'} final`} className="max-h-72 w-full max-w-full object-contain" />
+                  <img src={withAdminThumbUrl(finalPreviewUrl, 720)} alt={`${entry.areaLabel || 'Preview'} final`} className="max-h-72 w-full max-w-full object-contain" loading="lazy" decoding="async" />
                 </a>
               )}
               <div className="grid min-w-0 max-w-full gap-2 sm:grid-cols-2">
@@ -301,6 +303,12 @@ export default function AdminOrdersPage() {
   const [createWaOpen, setCreateWaOpen] = useState(false);
   const [sourceFilter, setSourceFilter] = useState('');
   const [selectingMatching, setSelectingMatching] = useState(false);
+  const [debouncedOrderFilter, setDebouncedOrderFilter] = useState('');
+  const [debouncedNameFilter, setDebouncedNameFilter] = useState('');
+  const [debouncedMobileFilter, setDebouncedMobileFilter] = useState('');
+  const [statusSaving, setStatusSaving] = useState(false);
+  const [trackingSaving, setTrackingSaving] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
   const pageSize = 10;
   const dateError = dateFrom && dateTo && dateFrom > dateTo ? 'Paid From cannot be after Paid To' : '';
   const expectedError = expectedFrom && expectedTo && expectedFrom > expectedTo
@@ -320,11 +328,14 @@ export default function AdminOrdersPage() {
     return hidden;
   }, [checkedIds, checkedCount, pageIds]);
 
-  const filterQuery = () => {
+  const filterQuery = (filters = {}) => {
+    const orderId = filters.orderId ?? orderFilter;
+    const name = filters.name ?? nameFilter;
+    const mobile = filters.mobile ?? mobileFilter;
     const query = new URLSearchParams();
-    if (orderFilter.trim()) query.set('orderId', orderFilter.trim());
-    if (nameFilter.trim()) query.set('name', nameFilter.trim());
-    if (mobileFilter.trim()) query.set('mobile', mobileFilter.trim());
+    if (String(orderId || '').trim()) query.set('orderId', String(orderId).trim());
+    if (String(name || '').trim()) query.set('name', String(name).trim());
+    if (String(mobile || '').trim()) query.set('mobile', String(mobile).trim());
     if (statusFilter) query.set('status', statusFilter);
     if (sourceFilter) query.set('source', sourceFilter);
     if (orderDate) query.set('orderDate', orderDate);
@@ -336,11 +347,23 @@ export default function AdminOrdersPage() {
     return query;
   };
 
-  const fetchOrders = async () => {
-    const query = filterQuery();
+  const patchOrderInLists = (id, patch) => {
+    if (!id || !patch) return;
+    setOrders((prev) => prev.map((order) => (
+      String(order._id) === String(id) ? { ...order, ...pickAdminOrderListPatch(patch) } : order
+    )));
+    setSelected((prev) => (prev && String(prev._id) === String(id) ? { ...prev, ...patch } : prev));
+  };
+
+  const fetchOrders = async (signal) => {
+    const query = filterQuery({
+      orderId: debouncedOrderFilter,
+      name: debouncedNameFilter,
+      mobile: debouncedMobileFilter,
+    });
     query.set('page', String(currentPage));
     query.set('limit', String(pageSize));
-    const res = await fetch(`/api/orders?${query.toString()}`);
+    const res = await fetch(`/api/orders?${query.toString()}`, { cache: 'no-store', signal });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       setOrders([]);
@@ -355,7 +378,10 @@ export default function AdminOrdersPage() {
     setTotalOrders(Number(data.total || 0));
     setTotalPages(Math.max(1, Number(data.pages || 1)));
     setLoading(false);
-    if (selected?._id && !nextOrders.some((order) => order._id === selected._id)) setSelected(null);
+    setSelected((current) => {
+      if (!current?._id) return current;
+      return nextOrders.some((order) => String(order._id) === String(current._id)) ? current : null;
+    });
   };
 
   const openOrderDetail = async (orderOrId, { toggle = true } = {}) => {
@@ -363,14 +389,23 @@ export default function AdminOrdersPage() {
     if (!id) return;
     if (toggle && selected?._id === id) {
       setSelected(null);
+      setDetailLoading(false);
       return;
     }
     if (typeof orderOrId === 'object') setSelected(orderOrId);
+    setDetailLoading(true);
     try {
       const res = await fetch(`/api/orders/${id}`, { cache: 'no-store' });
       const data = await res.json().catch(() => ({}));
-      if (res.ok && data?._id) setSelected(data);
-    } catch {}
+      if (res.ok && data?._id) {
+        setSelected(data);
+        patchOrderInLists(data._id, data);
+      }
+    } catch {
+      // Keep the list row visible if the detail request fails.
+    } finally {
+      setDetailLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -382,8 +417,12 @@ export default function AdminOrdersPage() {
     setExpectedTo(params.get('expectedTo') || '');
     setStatusFilter(params.get('status') || '');
     setUrgencyFilter(params.get('urgency') || '');
-    setOrderFilter(params.get('orderId') || params.get('orderNumber') || '');
-    setNameFilter(params.get('name') || '');
+    const nextOrderId = params.get('orderId') || params.get('orderNumber') || '';
+    const nextName = params.get('name') || '';
+    setOrderFilter(nextOrderId);
+    setNameFilter(nextName);
+    setDebouncedOrderFilter(nextOrderId.trim());
+    setDebouncedNameFilter(nextName.trim());
     setFiltersReady(true);
   }, []);
 
@@ -400,6 +439,15 @@ export default function AdminOrdersPage() {
   }, [writable]);
 
   useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedOrderFilter(orderFilter.trim());
+      setDebouncedNameFilter(nameFilter.trim());
+      setDebouncedMobileFilter(mobileFilter.trim());
+    }, 300);
+    return () => clearTimeout(t);
+  }, [orderFilter, nameFilter, mobileFilter]);
+
+  useEffect(() => {
     if (!filtersReady) return;
     if (dateError || expectedError) {
       setOrders([]);
@@ -408,8 +456,14 @@ export default function AdminOrdersPage() {
       setLoading(false);
       return;
     }
-    fetchOrders();
-  }, [filtersReady, currentPage, orderFilter, nameFilter, mobileFilter, statusFilter, sourceFilter, orderDate, dateFrom, dateTo, dateError, expectedFrom, expectedTo, expectedError, urgencyFilter]);
+    const ac = new AbortController();
+    setLoading(true);
+    fetchOrders(ac.signal).catch((err) => {
+      if (err?.name === 'AbortError') return;
+      setLoading(false);
+    });
+    return () => ac.abort();
+  }, [filtersReady, currentPage, debouncedOrderFilter, debouncedNameFilter, debouncedMobileFilter, statusFilter, sourceFilter, orderDate, dateFrom, dateTo, dateError, expectedFrom, expectedTo, expectedError, urgencyFilter]);
 
   useEffect(() => {
     fetch('/api/settings')
@@ -430,31 +484,45 @@ export default function AdminOrdersPage() {
     if (selected?._id && !orders.some((order) => order._id === selected._id)) setSelected(null);
   }, [orders, selected?._id]);
   const updateStatus = async (id, status) => {
-    if (!writable) return;
-    const res = await fetch(`/api/orders/${id}`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }),
-    });
-    if (res.ok) {
+    if (!writable || statusSaving) return;
+    setStatusSaving(true);
+    try {
+      const res = await fetch(`/api/orders/${id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to update');
+        return;
+      }
       toast.success('Status updated');
-      const data = await res.json();
-      setSelected(data);
-      await fetchOrders();
-    } else toast.error('Failed to update');
+      patchOrderInLists(id, data);
+    } catch {
+      toast.error('Failed to update');
+    } finally {
+      setStatusSaving(false);
+    }
   };
 
   const updateTracking = async (id, trackingNumber) => {
-    if (!writable) return;
-    const res = await fetch(`/api/orders/${id}`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackingNumber: trackingNumber.trim() }),
-    });
-    if (!res.ok) {
+    if (!writable || trackingSaving) return;
+    setTrackingSaving(true);
+    try {
+      const res = await fetch(`/api/orders/${id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackingNumber: trackingNumber.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to save tracking ID');
+        return;
+      }
+      toast.success('ST Couriers tracking ID saved. Customer can see it in My Account.');
+      patchOrderInLists(id, data);
+    } catch {
       toast.error('Failed to save tracking ID');
-      return;
+    } finally {
+      setTrackingSaving(false);
     }
-    toast.success('ST Couriers tracking ID saved. Customer can see it in My Account.');
-    const data = await res.json();
-    setSelected(data);
-    await fetchOrders();
   };
 
   const toggleChecked = (id, nextChecked) => {
@@ -850,9 +918,10 @@ export default function AdminOrdersPage() {
                 {selected.notes && <div className="min-w-0 rounded-lg border bg-yellow-50 p-3 break-words"><span className="text-gray-500">Customer note:</span> <p className="font-medium text-gray-900 whitespace-pre-wrap">{selected.notes}</p></div>}
                 <div>
                   <span className="text-gray-500">Status:</span>
-                  <select disabled={!writable} value={normalizeStatus(selected.status)} onChange={e => updateStatus(selected._id, e.target.value)} className="ml-2 border rounded px-2 py-1 text-sm disabled:bg-gray-100">
+                  <select disabled={!writable || statusSaving} value={normalizeStatus(selected.status)} onChange={e => updateStatus(selected._id, e.target.value)} className="ml-2 border rounded px-2 py-1 text-sm disabled:bg-gray-100">
                     {statusOptions.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
                   </select>
+                  {statusSaving ? <span className="ml-2 text-xs text-gray-500">Saving…</span> : null}
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-gray-500">Payment:</span>
@@ -879,11 +948,13 @@ export default function AdminOrdersPage() {
                   </div>
                 ) : null}
 
+                {detailLoading ? <p className="text-xs font-semibold text-gray-500">Loading order details…</p> : null}
+
                 <OrderOpsPanel
                   order={selected}
                   writable={writable}
                   onUpdated={async () => {
-                    await fetchOrders();
+                    await openOrderDetail(selected._id, { toggle: false });
                   }}
                 />
 
@@ -891,7 +962,7 @@ export default function AdminOrdersPage() {
                   order={selected}
                   writable={writable}
                   onUpdated={async () => {
-                    await fetchOrders();
+                    await openOrderDetail(selected._id, { toggle: false });
                   }}
                 />
 
@@ -899,7 +970,7 @@ export default function AdminOrdersPage() {
                   <p className="text-xs text-gray-600 leading-relaxed"><strong>ST Couriers tracking ID:</strong> after booking the parcel with ST Couriers, paste the tracking ID here. Customers can copy it and open the ST website.</p>
                   <label className="text-xs font-medium text-gray-700">Tracking ID</label>
                   <input disabled={!writable} value={trackingDraft} onChange={(e) => setTrackingDraft(e.target.value)} placeholder="Enter ST Couriers tracking ID" className="min-w-0 max-w-full border rounded-lg px-3 py-2 text-sm font-mono w-full disabled:bg-gray-100" />
-                  {writable && <button type="button" onClick={() => updateTracking(selected._id, trackingDraft)} className="text-sm px-4 py-2 rounded-lg bg-primary-600 text-white font-semibold hover:bg-primary-700">Save tracking ID</button>}
+                  {writable && <button type="button" disabled={trackingSaving} onClick={() => updateTracking(selected._id, trackingDraft)} className="text-sm px-4 py-2 rounded-lg bg-primary-600 text-white font-semibold hover:bg-primary-700 disabled:opacity-60">{trackingSaving ? 'Saving…' : 'Save tracking ID'}</button>}
                 </div>
 
                 <h3 className="font-semibold mt-4">Items</h3>
