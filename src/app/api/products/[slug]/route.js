@@ -4,7 +4,10 @@ import { revalidatePath } from 'next/cache';
 import dbConnect from '@/lib/db';
 import Product from '@/models/Product';
 import Collection from '@/models/Collection';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 import { requireAdminPermission } from '@/lib/adminAccess';
+import { presentProductPreview3d, resolvePhotoFrame3dAdminPreviewAccess } from '@/lib/photoFrame3dAdminPreview';
 import slugify from 'slugify';
 import { sanitizeProductPayload } from '@/lib/productPayload';
 import { hydrateProductShippingTemplates } from '@/lib/shippingTemplateHydration';
@@ -24,7 +27,10 @@ export async function GET(req, { params }) {
   const product = await Product.findOne(productLookup(segment)).populate('collections').lean();
   if (!product) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   await hydrateProductShippingTemplates(product);
-  return NextResponse.json(product, { headers: { 'Cache-Control': 'no-store' } });
+  const session = await getServerSession(authOptions);
+  const previewAccess = await resolvePhotoFrame3dAdminPreviewAccess(session);
+  const payload = presentProductPreview3d(product, previewAccess);
+  return NextResponse.json(payload, { headers: { 'Cache-Control': 'no-store' } });
 }
 
 export async function PUT(req, { params }) {

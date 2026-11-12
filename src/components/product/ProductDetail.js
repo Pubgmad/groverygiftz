@@ -14,7 +14,7 @@ import toast from 'react-hot-toast';
 import { startNavigationFeedback } from '@/components/layout/NavigationFeedback';
 import { appendImageUpload, attachLocalPreview, cardUploadUrls, editorUploadUrl, liveBlobUrl, prepareImageUpload, previewLoadUrls, stableUploadUrl } from '@/lib/clientImageUpload';
 import { alignPhotoSlots, clearPhotoSlot, filledPhotoCount, filledPhotos, planPhotoUploads, removeListPhotoByUrl, setPhotoSlot } from '@/lib/photoSlots';
-import { adjustmentsForUploadedPhoto, formatFrameSizeLabel, getFrameSize, orientationCaption } from '@/lib/photoEditor';
+import { adjustmentsForUploadedPhoto, beginCanvasPhotoLook, endCanvasPhotoLook, formatFrameSizeLabel, getFrameSize, orientationCaption } from '@/lib/photoEditor';
 import PhotoUploadCard from '@/components/product/PhotoUploadCard';
 import PhotoAdjuster from '@/components/product/PhotoAdjuster';
 import PhotoLimitDialog from '@/components/product/PhotoLimitDialog';
@@ -26,6 +26,9 @@ import ProductInterestIndicator from '@/components/product/ProductInterestIndica
 import PurchaseActivityBadge from '@/components/product/PurchaseActivityBadge';
 import ProductMakingVideos from '@/components/product/ProductMakingVideos';
 import ProductTrustStats from '@/components/product/ProductTrustStats';
+import ViewIn3DButton from '@/components/product/preview3d/ViewIn3DButton';
+import { isPreview3dAdminCandidate, isPreview3dEligible } from '@/lib/preview3d';
+import usePhotoFrame3dAdminPreview from '@/hooks/usePhotoFrame3dAdminPreview';
 import { imagePerfMark, imagePerfMeasure } from '@/lib/imagePerf';
 import { readJsonResponse } from '@/lib/safeJsonResponse';
 import { durableUploadRef } from '@/lib/cartPersist';
@@ -63,7 +66,7 @@ const getStateOverride = (delivery, state) => (delivery?.stateOverrides || []).f
 
 // Durable signed displayUrl for links/cart. Cards use cardUploadUrls (Apply preview → blob → signed).
 const displayUploadUrl = (upload) => stableUploadUrl(upload);
-const getDefaultPreviewAdjustments = () => ({ zoom: 1, x: 0, y: 0, orientation: 'auto', rotation: 0, fitMode: 'fit' });
+const getDefaultPreviewAdjustments = () => ({ zoom: 1, x: 0, y: 0, orientation: 'auto', rotation: 0, fitMode: 'fit', brightness: 100, contrast: 100, saturation: 100 });
 
 export default function ProductDetail({ product }) {
   const [selectedImage, setSelectedImage] = useState(0);
@@ -99,6 +102,9 @@ export default function ProductDetail({ product }) {
   const [sizeChartOpen, setSizeChartOpen] = useState(false);
   const settings = useDeliverySettings();
   const { addToCart, setIsCartOpen } = useCart();
+  const adminPreview3d = usePhotoFrame3dAdminPreview(product?.preview3dAdminPreview === true);
+  const showPreview3d = isPreview3dEligible(product)
+    || (adminPreview3d && isPreview3dAdminCandidate(product));
   const router = useRouter();
   const viewedProductRef = useRef('');
   const customTextTrackedRef = useRef({});
@@ -196,22 +202,28 @@ export default function ProductDetail({ product }) {
     }
 
     const { variant, option } = firstVariantWithOption;
-    setSelectedVariants({
-      [variant.name]: {
-        label: option.label,
-        extra: getOptionExtraPrice(option),
-        useOwnPrice: !!option.useOwnPrice,
-        regularPrice: option.regularPrice,
-        salePrice: option.salePrice,
-        stateOverrides: option.stateOverrides || [],
-        requiresImageUpload: !!option.requiresImageUpload,
-        previewWidth: option.previewWidth,
-        previewHeight: option.previewHeight,
-        previewUnit: option.previewUnit || 'inch',
-        previewFrameImage: option.previewFrameImage || '',
-        previewInstructions: option.previewInstructions || '',
-        stock: option.stock,
-      },
+    setSelectedVariants((prev) => {
+      const current = prev?.[variant.name];
+      if (current?.label && (variant.options || []).some((opt) => opt.label === current.label)) {
+        return prev;
+      }
+      return {
+        [variant.name]: {
+          label: option.label,
+          extra: getOptionExtraPrice(option),
+          useOwnPrice: !!option.useOwnPrice,
+          regularPrice: option.regularPrice,
+          salePrice: option.salePrice,
+          stateOverrides: option.stateOverrides || [],
+          requiresImageUpload: !!option.requiresImageUpload,
+          previewWidth: option.previewWidth,
+          previewHeight: option.previewHeight,
+          previewUnit: option.previewUnit || 'inch',
+          previewFrameImage: option.previewFrameImage || '',
+          previewInstructions: option.previewInstructions || '',
+          stock: option.stock,
+        },
+      };
     });
   }, [product._id, product.variants]);
   const selectedVariantOptions = Object.values(selectedVariants).filter(Boolean);
@@ -360,7 +372,9 @@ export default function ProductDetail({ product }) {
       ctx.save();
       ctx.translate(centerX, centerY);
       ctx.rotate(rad);
+      beginCanvasPhotoLook(ctx, adjustments);
       ctx.drawImage(uploadedImage, -drawW / 2, -drawH / 2, drawW, drawH);
+      endCanvasPhotoLook(ctx);
       ctx.restore();
 
       if (area.frameImage) {
@@ -1195,6 +1209,16 @@ export default function ProductDetail({ product }) {
         <div className="mb-4 flex flex-col gap-2 empty:mb-0 empty:hidden sm:flex-row sm:flex-wrap sm:items-stretch">
           <ProductInterestIndicator product={product} />
           <PurchaseActivityBadge product={product} />
+          {showPreview3d && !(needsCustomerPhotos || selectedVariantUploadOptions.length > 0 || needsCollageUploads) ? (
+            <ViewIn3DButton
+              product={product}
+              customerPhotos={customerPhotos}
+              previewAdjustments={previewAdjustments}
+              previewAreas={previewAreas}
+              selectedVariants={selectedVariants}
+              allowAdminPreview={adminPreview3d}
+            />
+          ) : null}
         </div>
 
         {!product.isQuoteOnly && (
@@ -1244,6 +1268,9 @@ export default function ProductDetail({ product }) {
                 return (
                   <button key={oIdx}
                     type="button"
+                    data-variant-name={variant.name}
+                    data-variant-label={opt.label}
+                    data-size-key={Number(opt.previewWidth) > 0 && Number(opt.previewHeight) > 0 ? `${Number(opt.previewWidth)}x${Number(opt.previewHeight)}` : ''}
                     disabled={optionSoldOut}
                     onClick={() => setSelectedVariants(prev => { const selectedNow = prev[variant.name]?.label === opt.label; if (selectedNow) return {}; return { [variant.name]: { label: opt.label, extra, useOwnPrice: !!opt.useOwnPrice, regularPrice: opt.regularPrice, salePrice: opt.salePrice, stateOverrides: opt.stateOverrides || [], requiresImageUpload: !!opt.requiresImageUpload, previewWidth: opt.previewWidth, previewHeight: opt.previewHeight, previewUnit: opt.previewUnit || 'inch', previewFrameImage: opt.previewFrameImage || '', previewInstructions: opt.previewInstructions || '', stock: opt.stock } }; })}
                     className={`group relative flex min-h-[118px] flex-col items-center justify-center rounded-2xl border-2 bg-white px-2.5 py-4 text-center shadow-sm transition-all duration-200 sm:min-h-[132px] sm:px-3 ${
@@ -1335,11 +1362,23 @@ export default function ProductDetail({ product }) {
                 </p>
                 )}
               </div>
-              {needsCustomerPhotos && !stockLocked ? (
-                <span className="self-start rounded-full border border-accent-100 bg-accent-50 px-3 py-1 text-xs font-bold text-accent-700">
-                  {uploadedPhotoCount}/{requiredPhotoCount || maxPhotoCount}
-                </span>
-              ) : null}
+              <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
+                {needsCustomerPhotos && !stockLocked ? (
+                  <span className="self-start rounded-full border border-accent-100 bg-accent-50 px-3 py-1 text-xs font-bold text-accent-700 sm:self-end">
+                    {uploadedPhotoCount}/{requiredPhotoCount || maxPhotoCount}
+                  </span>
+                ) : null}
+                {showPreview3d ? (
+                  <ViewIn3DButton
+                    product={product}
+                    customerPhotos={customerPhotos}
+                    previewAdjustments={previewAdjustments}
+                    previewAreas={previewAreas}
+                    selectedVariants={selectedVariants}
+                    allowAdminPreview={adminPreview3d}
+                  />
+                ) : null}
+              </div>
             </div>
             {stockLocked ? null : (
             <>

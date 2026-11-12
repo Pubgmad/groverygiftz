@@ -1,13 +1,15 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { FiHome, FiPackage, FiGrid, FiTruck, FiShoppingCart, FiUsers, FiImage, FiFileText, FiBookOpen, FiMail, FiMessageSquare, FiSettings, FiX, FiStar, FiGift, FiClock, FiShield, FiBarChart2, FiTool, FiClipboard } from 'react-icons/fi';
+import { FiHome, FiPackage, FiGrid, FiTruck, FiShoppingCart, FiUsers, FiImage, FiFileText, FiBookOpen, FiMail, FiMessageSquare, FiSettings, FiX, FiStar, FiGift, FiClock, FiShield, FiBarChart2, FiTool, FiClipboard, FiBox } from 'react-icons/fi';
 import useAdminAccess from '@/hooks/useAdminAccess';
 import { ADMIN_BASE_PATH } from '@/lib/adminPermissions';
 
 const iconMap = {
   dashboard: FiHome,
   products: FiPackage,
+  'preview-3d': FiBox,
+  'photo-frame-3d': FiBox,
   'making-cost': FiTool,
   collections: FiGrid,
   shipping: FiTruck,
@@ -30,6 +32,8 @@ const iconMap = {
 const navItems = [
   { id: 'dashboard', href: ADMIN_BASE_PATH, label: 'Dashboard' },
   { id: 'products', href: `${ADMIN_BASE_PATH}/products`, label: 'Products' },
+  { id: 'preview-3d', href: `${ADMIN_BASE_PATH}/preview-3d`, label: '3D Profiles', moduleId: 'products' },
+  { id: 'photo-frame-3d', href: `${ADMIN_BASE_PATH}/photo-frame-3d`, label: 'Photo Frame 3D', moduleId: 'products' },
   { id: 'making-cost', href: `${ADMIN_BASE_PATH}/making-cost`, label: 'Making Cost' },
   { id: 'collections', href: `${ADMIN_BASE_PATH}/collections`, label: 'Collections' },
   { id: 'shipping', href: `${ADMIN_BASE_PATH}/shipping`, label: 'Shipping Templates' },
@@ -53,7 +57,8 @@ export default function AdminSidebar({ mobileOpen = false, onClose = () => {} })
   const pathname = usePathname();
   const { isPrimary, canRead, roleName } = useAdminAccess();
   const visibleItems = navItems.filter((item) => {
-    if (canRead(item.id)) return true;
+    const permissionId = item.moduleId || item.id;
+    if (canRead(permissionId)) return true;
     // New reports module: allow via orders/operations until roles are updated
     if (item.id === 'reports') return canRead('orders') || canRead('operations');
     return false;

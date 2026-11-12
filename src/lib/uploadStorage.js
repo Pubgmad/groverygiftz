@@ -1,4 +1,4 @@
-import { mkdir, readFile, stat, unlink, writeFile } from 'fs/promises';
+import { mkdir, readdir, readFile, stat, unlink, writeFile } from 'fs/promises';
 import path from 'path';
 
 const STORAGE_ROOT = process.env.UPLOAD_STORAGE_DIR || path.join(process.cwd(), '.data', 'uploads');
@@ -82,3 +82,52 @@ export async function deleteUploadByUrl(url) {
 }
 
 export const uploadStorageRoot = STORAGE_ROOT;
+
+/**
+ * List files under a storage-relative directory (non-recursive one level by default).
+ * Used by Admin 3D asset picker — never lists customer customization uploads.
+ */
+export async function listUploadFiles(relativeDir, { recursive = true, extensions = null } = {}) {
+  const cleanDir = cleanRelativePath(relativeDir);
+  if (!cleanDir) return [];
+  const absRoot = storagePath(cleanDir);
+  if (!absRoot) return [];
+
+  const extSet = Array.isArray(extensions) && extensions.length
+    ? new Set(extensions.map((e) => String(e).toLowerCase()))
+    : null;
+
+  async function walk(absDir, relDir, depth) {
+    let entries = [];
+    try {
+      entries = await readdir(absDir, { withFileTypes: true });
+    } catch (error) {
+      if (error?.code === 'ENOENT') return [];
+      throw error;
+    }
+    const out = [];
+    for (const entry of entries) {
+      const abs = path.join(absDir, entry.name);
+      const rel = path.posix.join(relDir, entry.name);
+      if (entry.isDirectory()) {
+        if (recursive && depth < 6) out.push(...await walk(abs, rel, depth + 1));
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      const ext = path.extname(entry.name).toLowerCase();
+      if (extSet && !extSet.has(ext)) continue;
+      let fileStat = null;
+      try { fileStat = await stat(abs); } catch { continue; }
+      out.push({
+        filename: entry.name,
+        relativePath: rel,
+        url: publicAssetUrl(rel),
+        size: fileStat.size,
+        mtimeMs: fileStat.mtimeMs,
+      });
+    }
+    return out;
+  }
+
+  return walk(absRoot, cleanDir, 0);
+}

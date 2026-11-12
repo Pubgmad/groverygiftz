@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { FiLoader, FiRefreshCw, FiRotateCcw, FiRotateCw, FiX } from 'react-icons/fi';
-import { estimatePrintPpi, fitFrameInBox, formatFrameSubtitle, getContainScale, getFillZoom, getFrameSize, qualityGuidance } from '@/lib/photoEditor';
+import { estimatePrintPpi, fitFrameInBox, formatFrameSubtitle, getContainScale, getFillZoom, getFrameSize, photoLookCssFilter, qualityGuidance } from '@/lib/photoEditor';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -353,6 +353,7 @@ export default function PhotoAdjuster({
                     maxHeight: 'none',
                     transform: `translate(-50%, -50%) translate(${draft.x}px, ${draft.y}px) rotate(${draft.rotation || 0}deg) scale(${displayScale || 1})`,
                     transformOrigin: 'center',
+                    filter: photoLookCssFilter(draft),
                     visibility: imageReady ? 'visible' : 'hidden',
                   }}
                 />
@@ -411,6 +412,28 @@ export default function PhotoAdjuster({
             <span className="text-gray-500">{Number(draft.zoom || 1).toFixed(2)}x</span>
           </div>
           <input type="range" min="1" max={maxZoom} step="0.05" value={draft.zoom || 1} disabled={editBusy} onChange={(event) => updateDraft({ zoom: Number(event.target.value), fitMode: 'custom' })} className="w-full accent-primary-600 disabled:opacity-60" />
+        </div>
+
+        <div className="grid shrink-0 grid-cols-3 gap-2 border-t border-gray-100 px-4 pt-2">
+          {[
+            ['brightness', 'Light'],
+            ['contrast', 'Contrast'],
+            ['saturation', 'Color'],
+          ].map(([key, label]) => (
+            <label key={key} className="block text-[11px] font-semibold text-gray-700">
+              {label} {Number(draft[key] ?? 100)}%
+              <input
+                type="range"
+                min="60"
+                max="140"
+                step="1"
+                value={Number(draft[key] ?? 100)}
+                disabled={editBusy}
+                onChange={(event) => updateDraft({ [key]: Number(event.target.value) })}
+                className="mt-1 w-full accent-primary-600 disabled:opacity-60"
+              />
+            </label>
+          ))}
         </div>
 
         <div className="grid shrink-0 grid-cols-2 gap-2 border-t border-gray-100 bg-white px-4 pt-3" style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}>

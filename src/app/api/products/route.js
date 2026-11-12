@@ -7,6 +7,7 @@ import Collection from '@/models/Collection';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { can, getRequestAdminAccess, requireAdminPermission } from '@/lib/adminAccess';
+import { presentProductPreview3d, resolvePhotoFrame3dAdminPreviewAccess } from '@/lib/photoFrame3dAdminPreview';
 import slugify from 'slugify';
 import { activeAdminOfferMatch } from '@/lib/offers';
 import { sanitizeProductPayload } from '@/lib/productPayload';
@@ -49,8 +50,10 @@ export async function GET(req) {
   ]);
 
   await hydrateProductShippingTemplates(products);
+  const previewAccess = await resolvePhotoFrame3dAdminPreviewAccess(session);
+  const visibleProducts = products.map((row) => presentProductPreview3d(row, previewAccess));
 
-  return NextResponse.json({ products, total, pages: Math.ceil(total / limit), page }, { headers: { 'Cache-Control': 'no-store' } });
+  return NextResponse.json({ products: visibleProducts, total, pages: Math.ceil(total / limit), page }, { headers: { 'Cache-Control': 'no-store' } });
 }
 
 export async function POST(req) {

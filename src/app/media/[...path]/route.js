@@ -3,6 +3,7 @@ import path from 'path';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { can, getRequestAdminAccess } from '@/lib/adminAccess';
+import { isPhotoFrame3dAdminPreviewFlagEnabled } from '@/lib/preview3d';
 import { readUploadFile } from '@/lib/uploadStorage';
 import { detectImageFormat } from '@/lib/imageFormat';
 import { verifyProductionVideoShareToken } from '@/lib/productionVideoToken';
@@ -12,11 +13,33 @@ export const dynamic = 'force-dynamic';
 const VIDEO_TYPES = { '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime' };
 const PUBLIC_TOP = new Set(['uploads', 'designs']);
 const ADMIN_ONLY_TOP = new Set(['payment-proofs', 'customizations']);
+/** Only intentional public 3D display assets — never customer uploads or order files. */
+const PUBLIC_PREVIEW3D_DIRS = new Set(['models', 'placeholders']);
+
+function isPublicPreview3dAsset(relativePath) {
+  const parts = String(relativePath || '').split('/').filter(Boolean);
+  if (parts[0] !== 'preview3d') return false;
+  if (!PUBLIC_PREVIEW3D_DIRS.has(parts[1])) return false;
+  // Require a concrete filename (blocks directory listing style paths).
+  return parts.length >= 3 && parts.every((part) => part !== '..' && part !== '.');
+}
 
 async function authorizeMediaRequest(req, relativePath) {
   const top = String(relativePath || '').split('/')[0];
 
   if (PUBLIC_TOP.has(top)) return { ok: true, cache: 'public' };
+  if (isPublicPreview3dAsset(relativePath)) {
+    // Isolated staging (non-production) keeps GLBs fetchable for Playwright.
+    // Production: unfinished 3D assets require the admin preview flag + products:read.
+    if (process.env.NODE_ENV !== 'production') return { ok: true, cache: 'public' };
+    if (!isPhotoFrame3dAdminPreviewFlagEnabled()) return { ok: false, status: 403 };
+    const session = await getServerSession(authOptions);
+    const access = await getRequestAdminAccess(session);
+    if (session?.user?.type === 'admin' && can(access, 'products', 'read')) {
+      return { ok: true, cache: 'private' };
+    }
+    return { ok: false, status: 403 };
+  }
 
   if (top === 'production-videos') {
     const session = await getServerSession(authOptions);

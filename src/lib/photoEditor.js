@@ -31,6 +31,37 @@ export function fitFrameInBox(frameWidth, frameHeight, boxWidth, boxHeight) {
   };
 }
 
+export function clampPhotoLookValue(value, fallback = 100) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(40, Math.min(160, Math.round(n)));
+}
+
+export function normalizePhotoLook(adjustments = {}) {
+  return {
+    brightness: clampPhotoLookValue(adjustments.brightness, 100),
+    contrast: clampPhotoLookValue(adjustments.contrast, 100),
+    saturation: clampPhotoLookValue(adjustments.saturation, 100),
+  };
+}
+
+export function photoLookCssFilter(adjustments = {}) {
+  const look = normalizePhotoLook(adjustments);
+  if (look.brightness === 100 && look.contrast === 100 && look.saturation === 100) return 'none';
+  return `brightness(${look.brightness / 100}) contrast(${look.contrast / 100}) saturate(${look.saturation / 100})`;
+}
+
+/** Apply look to a 2D canvas draw (must reset filter after). */
+export function beginCanvasPhotoLook(ctx, adjustments = {}) {
+  if (!ctx) return;
+  ctx.filter = photoLookCssFilter(adjustments);
+}
+
+export function endCanvasPhotoLook(ctx) {
+  if (!ctx) return;
+  ctx.filter = 'none';
+}
+
 export function adjustmentsForUploadedPhoto(imageWidth, imageHeight, area = null, rotation = 0) {
   let orientation = detectPhotoOrientation(imageWidth, imageHeight, rotation);
   // Only fall back to area aspect when image dimensions are unavailable (decode failure).
@@ -52,6 +83,9 @@ export function adjustmentsForUploadedPhoto(imageWidth, imageHeight, area = null
     orientation,
     rotation: Number(rotation) || 0,
     fitMode: 'fill',
+    brightness: 100,
+    contrast: 100,
+    saturation: 100,
   };
 }
 

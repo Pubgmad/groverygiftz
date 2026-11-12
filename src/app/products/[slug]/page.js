@@ -6,6 +6,9 @@ import ProductDetail from '@/components/product/ProductDetail';
 import ProductCard from '@/components/product/ProductCard';
 import Breadcrumbs from '@/components/ui/Breadcrumbs';
 import { notFound } from 'next/navigation';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { presentProductPreview3d, resolvePhotoFrame3dAdminPreviewAccess } from '@/lib/photoFrame3dAdminPreview';
 
 export default async function ProductPage({ params }) {
   await dbConnect();
@@ -18,8 +21,10 @@ export default async function ProductPage({ params }) {
     collections: { $in: product.collections?.map(c => c._id) || [] },
   }).limit(4).lean();
 
-  const data = JSON.parse(JSON.stringify(product));
-  const relatedData = JSON.parse(JSON.stringify(related));
+  const session = await getServerSession(authOptions);
+  const previewAccess = await resolvePhotoFrame3dAdminPreviewAccess(session);
+  const data = presentProductPreview3d(JSON.parse(JSON.stringify(product)), previewAccess);
+  const relatedData = JSON.parse(JSON.stringify(related)).map((row) => presentProductPreview3d(row, previewAccess));
 
   return (
     <div className="product-mobile-safe mx-auto max-w-7xl overflow-hidden px-3 py-6 sm:px-4 sm:py-8">
