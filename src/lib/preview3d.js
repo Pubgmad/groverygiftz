@@ -6,7 +6,11 @@ import {
   applyPhotoFrameSizeFromSelection,
   emptyPhotoFrameConfig,
   normalizePhotoFrameConfig,
+  parseWxHFromLabel,
+  sizeRulesForProduct,
 } from '@/lib/photoFrame3d';
+
+export { sizeRulesForProduct } from '@/lib/photoFrame3d';
 
 export const PREVIEW3D_GEOMETRY_TYPES = [
   {
@@ -277,21 +281,31 @@ export function resolvePreview3dDimensions({
     };
   }
 
-  const variantWithSize = (selectedVariantOptions || []).find(
-    (option) => Number(option?.previewWidth) > 0 && Number(option?.previewHeight) > 0,
-  );
+  const variantWithSize = (selectedVariantOptions || []).find((option) => {
+    if (Number(option?.previewWidth) > 0 && Number(option?.previewHeight) > 0) return true;
+    return !!parseWxHFromLabel(option?.label || option?.value || '');
+  });
   if (variantWithSize) {
-    const unit = PREVIEW3D_DIMENSION_UNITS.some((row) => row.id === variantWithSize.previewUnit)
-      ? variantWithSize.previewUnit
-      : 'inch';
-    return {
-      width: Number(variantWithSize.previewWidth),
-      height: Number(variantWithSize.previewHeight),
-      depth: explicit.depth || defaultDepthForGeometry(normalized.geometryType, unit),
-      unit,
-      modelScale: explicit.modelScale,
-      source: 'variant.previewSize',
-    };
+    const parsed = parseWxHFromLabel(variantWithSize.label || variantWithSize.value || '');
+    const width = Number(variantWithSize.previewWidth) > 0
+      ? Number(variantWithSize.previewWidth)
+      : parsed?.w;
+    const height = Number(variantWithSize.previewHeight) > 0
+      ? Number(variantWithSize.previewHeight)
+      : parsed?.h;
+    if (width > 0 && height > 0) {
+      const unit = PREVIEW3D_DIMENSION_UNITS.some((row) => row.id === variantWithSize.previewUnit)
+        ? variantWithSize.previewUnit
+        : 'inch';
+      return {
+        width,
+        height,
+        depth: explicit.depth || defaultDepthForGeometry(normalized.geometryType, unit),
+        unit,
+        modelScale: explicit.modelScale,
+        source: Number(variantWithSize.previewWidth) > 0 ? 'variant.previewSize' : 'variant.labelSize',
+      };
+    }
   }
 
   const slots = listCustomizationSlotDescriptors(product || {});
@@ -358,7 +372,8 @@ export function dimensionsToSceneSize(dimensionsInput = {}, { maxSide = 1.35 } =
  */
 export function resolvePreview3dForSelection(product, selectedVariants = {}) {
   const base = normalizePreview3dConfig(product?.preview3d || {});
-  const sizeRules = product?.photoFrameCatalog?.sizeRules;
+  const catalogRules = product?.photoFrameCatalog?.sizeRules;
+  const sizeRules = sizeRulesForProduct(product, catalogRules);
   const applyPhotoFrameSize = (config) => {
     const nextPf = applyPhotoFrameSizeFromSelection(config.photoFrame, selectedVariants, sizeRules);
     if (
@@ -660,6 +675,60 @@ export function resolveMappedSurfaceId(slot, mappingBySlot = {}, surfaces = [], 
   return surfaces[index]?.id || `face_${index + 1}`;
 }
 
+function variantOpeningSize(option = {}) {
+  const parsed = parseWxHFromLabel(option?.label || option?.value || '');
+  const width = Number(option?.previewWidth) > 0 ? Number(option.previewWidth) : (parsed?.w || 0);
+  const height = Number(option?.previewHeight) > 0 ? Number(option.previewHeight) : (parsed?.h || 0);
+  return { width, height, unit: option?.previewUnit || 'inch' };
+}
+
+/**
+ * Live 3D slots: product photo areas when configured, otherwise the currently
+ * selected variant upload option(s). Never expands the global 19-size catalog.
+ */
+export function listViewerSlotDescriptors(product = {}, selectedVariants = {}) {
+  const configured = listCustomizationSlotDescriptors(product);
+  const variantSlots = Object.values(selectedVariants || {})
+    .filter((option) => option?.requiresImageUpload && option?.label)
+    .map((option, index) => {
+      const size = variantOpeningSize(option);
+      const label = String(option.label).trim();
+      return {
+        slotKey: `variant:${label}`,
+        legacySlotKey: buildLegacyAreaSlotKey(label),
+        areaLabel: label,
+        index,
+        labelCollision: false,
+        source: 'variant',
+        variantLabel: label,
+        adjustmentKey: `variant-${label}`,
+        width: size.width,
+        height: size.height,
+        unit: size.unit,
+      };
+    });
+  if (configured.length) {
+    return configured.map((slot, index) => ({
+      ...slot,
+      source: slot.source || 'area',
+      adjustmentKey: slot.index,
+      index,
+    }));
+  }
+  return variantSlots;
+}
+
+export function photoForViewerSlot(slot, {
+  customerPhotos = [],
+  variantLabelUploads = {},
+  index = 0,
+} = {}) {
+  if (slot?.source === 'variant' && slot.variantLabel) {
+    return variantLabelUploads?.[slot.variantLabel] || null;
+  }
+  return customerPhotos[slot?.index] || customerPhotos[index] || null;
+}
+
 /** Build stable slot descriptors from existing product customization config (source of truth). */
 export function listCustomizationSlotDescriptors(product = {}) {
   const preview = product?.customizationPreview || {};
@@ -792,11 +861,13 @@ export function buildViewerTextureSlots({
   product,
   preview3d,
   customerPhotos = [],
+  variantLabelUploads = {},
+  selectedVariants = {},
   customizationPreviewPayload = null,
 } = {}) {
-  const slots = listCustomizationSlotDescriptors(product);
+  const slots = listViewerSlotDescriptors(product, selectedVariants);
   const config = normalizePreview3dConfig(preview3d || {});
-  const surfaces = buildSurfacesForGeometry(config.geometryType, slots.length, config.surfaces);
+  const surfaces = buildSurfacesForGeometry(config.geometryType, Math.max(1, slots.length), config.surfaces);
   const mappingBySlot = Object.fromEntries(
     (config.surfaceMappings || []).map((row) => [row.slotKey, row.surfaceId]),
   );
@@ -806,10 +877,11 @@ export function buildViewerTextureSlots({
   const surfaceById = Object.fromEntries(surfaces.map((s) => [s.id, s]));
 
   return slots.map((slot, index) => {
-    const photo = customerPhotos[index] || null;
+    const photo = photoForViewerSlot(slot, { customerPhotos, variantLabelUploads, index });
     // Prefer index-aligned preview entries; label match is ambiguous when labels collide.
     const previewEntry = previews[index]
       || previews.find((p) => String(p.areaLabel || '') === slot.areaLabel)
+      || previews.find((p) => String(p.areaLabel || '') === `Variant: ${slot.areaLabel}`)
       || null;
     const texture = pickTextureUrlForSlot(photo, previewEntry);
     const mappedSurface = resolveMappedSurfaceId(slot, mappingBySlot, surfaces, index);
@@ -841,18 +913,7 @@ export function isPreview3dEligible(product) {
   const config = normalizePreview3dConfig(product?.preview3d || {});
   if (!config.enabled) return false;
   if (config.geometryType === 'custom_glb' && !config.modelUrl) return false;
-
-  const unfinishedPhotoFrame = isUnfinishedPhotoFramePreview(config);
-  if (config.retailReadiness === 'approved_retail') {
-    // Photo-frame 3D is unfinished — never customer-visible, even if marked approved.
-    if (unfinishedPhotoFrame) return false;
-    return true;
-  }
-  if (allowPrototypeCustomerPreview() && config.retailReadiness !== 'awaiting_approval') {
-    // Prototype allowed only on isolated staging / explicit flag — never production default.
-    return config.retailReadiness === 'prototype';
-  }
-  return false;
+  return true;
 }
 
 /** Admin checklist / gate helpers (does not change commerce). */
@@ -861,14 +922,11 @@ export function getPreview3dRetailGate(configInput = {}) {
   const status = PREVIEW3D_RETAIL_STATUSES.find((row) => row.id === config.retailReadiness)
     || PREVIEW3D_RETAIL_STATUSES[0];
   const warnings = [];
-  if (config.enabled && config.retailReadiness !== 'approved_retail') {
-    warnings.push('Customer View in 3D stays hidden until retail readiness is Approved (except isolated staging prototypes).');
+  if (config.enabled && config.geometryType === 'custom_glb' && !config.modelUrl) {
+    warnings.push('Custom GLB is enabled but no model file is selected.');
   }
-  if (config.retailReadiness === 'approved_retail' && config.geometryType !== 'custom_glb') {
-    warnings.push('Procedural geometry is a staging prototype — prefer an approved GLB before treating as commercial retail.');
-  }
-  if (config.retailReadiness === 'approved_retail' && config.geometryType === 'custom_glb' && !config.modelUrl) {
-    warnings.push('Approved retail requires a selectable GLB model URL.');
+  if (config.enabled && config.geometryType !== 'custom_glb') {
+    warnings.push('Procedural geometry is a visual reference — not a substitute for the 2D customization sent to cart.');
   }
   const surfacesApprox = (config.surfaces || []).filter((s) => s.approximateGeometry);
   if (surfacesApprox.length) {

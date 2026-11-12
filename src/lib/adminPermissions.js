@@ -171,6 +171,8 @@ export function moduleIdFromPath(pathname = '') {
   const path = String(pathname || '').split('?')[0];
   if (path === ADMIN_BASE_PATH || path === `${ADMIN_BASE_PATH}/`) return 'dashboard';
   if (path === `${ADMIN_BASE_PATH}/roles` || path.startsWith(`${ADMIN_BASE_PATH}/roles/`)) return 'roles';
+  if (path === `${ADMIN_BASE_PATH}/preview-3d` || path.startsWith(`${ADMIN_BASE_PATH}/preview-3d/`)) return 'products';
+  if (path === `${ADMIN_BASE_PATH}/photo-frame-3d` || path.startsWith(`${ADMIN_BASE_PATH}/photo-frame-3d/`)) return 'products';
   const match = ADMIN_MODULES
     .filter((module) => module.id !== 'dashboard')
     .sort((a, b) => b.href.length - a.href.length)

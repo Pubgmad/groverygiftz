@@ -18,12 +18,14 @@ function TexturedOrColor({ url, color, roughness = 0.7, metalness = 0.05 }) {
 
 function MappedMaterial({ url, fallbackColor, roughness, metalness }) {
   const texture = useTexture(url);
-  useMemo(() => {
-    if (texture) {
-      texture.colorSpace = THREE.SRGBColorSpace;
-      texture.anisotropy = 4;
-      texture.needsUpdate = true;
-    }
+  useLayoutEffect(() => {
+    if (!texture) return undefined;
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = 4;
+    texture.needsUpdate = true;
+    return () => {
+      try { texture.dispose?.(); } catch { /* ignore */ }
+    };
   }, [texture]);
   return (
     <meshStandardMaterial
@@ -325,26 +327,28 @@ export default function PhotoFrameModel({
   const outerH = oh + bt + bb;
   const depth = Math.max(0.02, sceneDepth);
   const lip = Math.min(bl, br, bt, bb) * 0.18;
-  const backZ = -depth / 2 - sceneBacking / 2;
-  const panelW = outerW * 0.88;
-  const panelH = outerH * 0.88;
+  // ExtrudedRing translates the moulding by -depth, so the body occupies [−depth, 0].
+  const mouldingBackFace = -depth;
+  const backingCenterZ = mouldingBackFace - Math.max(0.004, sceneBacking / 2);
+  const panelW = outerW * 0.92;
+  const panelH = outerH * 0.92;
   const roughness = material?.roughness ?? 0.72;
   const metalness = material?.metalness ?? 0.08;
-  const hardwareZ = -depth - sceneBacking - 0.03;
   const profile = ['stepped', 'beveled', 'flat'].includes(mouldingProfile) ? mouldingProfile : 'stepped';
 
   useLayoutEffect(() => {
-    const zBack = -(depth / 2) - sceneBacking;
+    const zBack = backingCenterZ - sceneBacking / 2 - 0.04;
+    const zFront = 0.04;
     const payload = {
-      min: [-outerW / 2, -outerH / 2, zBack - 0.08],
-      max: [outerW / 2, outerH / 2, 0.03],
-      center: [0, 0, (zBack + 0.03) / 2],
-      size: [outerW, outerH, 0.11 - zBack],
+      min: [-outerW / 2, -outerH / 2, zBack],
+      max: [outerW / 2, outerH / 2, zFront],
+      center: [0, 0, (zBack + zFront) / 2],
+      size: [outerW, outerH, zFront - zBack],
     };
     if (typeof window !== 'undefined') window.__preview3dModelBounds = payload;
     onModelBounds?.(payload);
     return undefined;
-  }, [outerW, outerH, depth, sceneBacking, onModelBounds]);
+  }, [outerW, outerH, depth, sceneBacking, backingCenterZ, onModelBounds]);
 
   return (
     <group
@@ -379,7 +383,7 @@ export default function PhotoFrameModel({
         metalness={0.02}
       />
 
-      <mesh position={[0, 0, -0.006]} castShadow name="PhotoPlane">
+      <mesh key={`photo-${textureUrl || placeholderUrl || 'empty'}`} position={[0, 0, -Math.min(0.004, depth * 0.04)]} castShadow name="PhotoPlane">
         <planeGeometry args={[ow * 0.995, oh * 0.995]} />
         <TexturedOrColor
           url={textureUrl || placeholderUrl}
@@ -401,7 +405,7 @@ export default function PhotoFrameModel({
         />
       </mesh>
 
-      <group position={[0, 0, hardwareZ]}>
+      <group position={[0, 0, backingCenterZ]}>
         <PhotoFrameHardwareAttach
           panelW={panelW}
           panelH={panelH}

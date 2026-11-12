@@ -7,8 +7,9 @@
 import { beginCanvasPhotoLook, endCanvasPhotoLook, getFrameSize } from '@/lib/photoEditor';
 import { previewLoadUrls } from '@/lib/clientImageUpload';
 import {
-  listCustomizationSlotDescriptors,
+  listViewerSlotDescriptors,
   normalizePreview3dConfig,
+  photoForViewerSlot,
   pickDurableImageUrl,
   pickLiveImageUrl,
   resolveMappedSurfaceId,
@@ -32,13 +33,29 @@ const warmupStore = {
   result: null,
 };
 
-function cropBakeKey({ product, customerPhotos = [], previewAdjustments = {}, previewAreas = [], surfaces = [] } = {}) {
+function cropBakeKey({
+  product,
+  customerPhotos = [],
+  variantLabelUploads = {},
+  selectedVariants = {},
+  previewAdjustments = {},
+  previewAreas = [],
+  surfaces = [],
+} = {}) {
   const photoKeys = (customerPhotos || []).map((photo) => (
     pickLiveImageUrl(photo) || pickDurableImageUrl(photo) || photo?.previewUrl || ''
+  ));
+  const variantKeys = Object.entries(variantLabelUploads || {}).map(([label, photo]) => (
+    `${label}:${pickLiveImageUrl(photo) || pickDurableImageUrl(photo) || photo?.previewUrl || ''}`
+  ));
+  const selectedKeys = Object.values(selectedVariants || {}).map((option) => (
+    `${option?.label || ''}:${option?.previewWidth || ''}x${option?.previewHeight || ''}`
   ));
   return JSON.stringify({
     productId: product?._id || product?.id || product?.slug || '',
     photoKeys,
+    variantKeys,
+    selectedKeys,
     previewAdjustments,
     areas: (previewAreas || []).map((area) => ({
       w: area?.width,
@@ -88,7 +105,18 @@ function loadImage(url, timeoutMs = 20000) {
       return;
     }
     const image = new Image();
-    image.crossOrigin = 'anonymous';
+    const isRemoteHttp = /^https?:\/\//i.test(url);
+    let sameOrigin = false;
+    if (isRemoteHttp && typeof window !== 'undefined') {
+      try {
+        sameOrigin = new URL(url, window.location.href).origin === window.location.origin;
+      } catch {
+        sameOrigin = false;
+      }
+    }
+    // Match ProductDetail: blob/data/same-origin stay cookie-capable. Anonymous CORS
+    // on signed customer-file URLs can 401 while a normal <img> still loads.
+    if (isRemoteHttp && !sameOrigin) image.crossOrigin = 'anonymous';
     const timer = setTimeout(() => reject(new Error('Image load timed out')), timeoutMs);
     image.onload = () => {
       clearTimeout(timer);
@@ -99,6 +127,22 @@ function loadImage(url, timeoutMs = 20000) {
       reject(new Error('Unable to load image for 3D texture'));
     };
     image.src = url;
+  });
+}
+
+function sourcePhotoFallback(photo) {
+  const candidates = previewLoadUrls(photo);
+  return candidates.find(Boolean)
+    || pickLiveImageUrl(photo)
+    || pickDurableImageUrl(photo)
+    || '';
+}
+
+function bakeShouldCache(result) {
+  return (result?.textures || []).every((slot) => {
+    if (!slot) return true;
+    if (slot.parity === 'placeholder' || slot.textureSource === 'empty') return true;
+    return Boolean(slot.textureUrl);
   });
 }
 
@@ -207,11 +251,13 @@ async function buildCropAccurateViewerTexturesUncached({
   product,
   preview3d,
   customerPhotos = [],
+  variantLabelUploads = {},
+  selectedVariants = {},
   previewAdjustments = {},
   previewAreas = [],
   surfaces = [],
 } = {}) {
-  const slots = listCustomizationSlotDescriptors(product);
+  const slots = listViewerSlotDescriptors(product, selectedVariants);
   const config = normalizePreview3dConfig(preview3d || {});
   const mappingBySlot = Object.fromEntries(
     (config.surfaceMappings || []).map((row) => [row.slotKey, row.surfaceId]),
@@ -222,7 +268,7 @@ async function buildCropAccurateViewerTexturesUncached({
   const textures = [];
   for (let index = 0; index < slots.length; index += 1) {
     const slot = slots[index];
-    const photo = customerPhotos[index] || null;
+    const photo = photoForViewerSlot(slot, { customerPhotos, variantLabelUploads, index });
     const area = previewAreas[index]
       || product?.customizationPreview?.areas?.[index]
       || {
@@ -233,7 +279,7 @@ async function buildCropAccurateViewerTexturesUncached({
       };
     const adjustments = {
       ...DEFAULT_ADJUSTMENTS,
-      ...(previewAdjustments?.[slot.index] || previewAdjustments?.[index] || {}),
+      ...(previewAdjustments?.[slot.adjustmentKey] || previewAdjustments?.[slot.index] || previewAdjustments?.[index] || {}),
     };
     const surfaceId = resolveMappedSurfaceId(slot, mappingBySlot, surfaces, index);
     const surface = surfaceById[surfaceId] || surfaces[index] || null;
@@ -261,38 +307,46 @@ async function buildCropAccurateViewerTexturesUncached({
     try {
       const rendered = await renderCropOnlyTextureBlobUrl({ photo, area, adjustments });
       if (rendered.revoke) revokers.push(rendered.revoke);
+      const fallbackUrl = rendered.url ? '' : sourcePhotoFallback(photo);
       textures.push({
         ...slot,
         surfaceId,
         meshName: surface?.meshName || '',
         meshPath: surface?.meshPath || '',
         materialName: surface?.materialName || '',
-        textureUrl: rendered.url,
-        textureSource: rendered.source,
-        parity: rendered.parity,
-        isPlaceholder: !rendered.url,
+        textureUrl: rendered.url || fallbackUrl,
+        textureSource: rendered.url ? rendered.source : (fallbackUrl ? 'fallback_uncropped' : 'empty'),
+        parity: rendered.url ? rendered.parity : (fallbackUrl ? 'fallback_uncropped' : rendered.parity),
+        isPlaceholder: !(rendered.url || fallbackUrl),
         placeholderUrl: config.placeholderUrl || '',
         aspect: {
           width: Number(area.width) || 1,
           height: Number(area.height) || 1,
         },
-        warning: rendered.parity !== 'matched' && rendered.parity !== 'placeholder'
-          ? `3D texture parity limited (${rendered.parity})`
-          : '',
+        warning: rendered.url
+          ? (rendered.parity !== 'matched' && rendered.parity !== 'placeholder'
+            ? `3D texture parity limited (${rendered.parity})`
+            : '')
+          : (fallbackUrl
+            ? 'Could not bake crop-accurate texture; showing source photo without guaranteed crop parity.'
+            : (rendered.error || 'Unable to load image for 3D texture')),
       });
     } catch (error) {
+      const fallbackUrl = sourcePhotoFallback(photo);
       textures.push({
         ...slot,
         surfaceId,
         meshName: surface?.meshName || '',
         meshPath: surface?.meshPath || '',
         materialName: surface?.materialName || '',
-        textureUrl: pickDurableImageUrl(photo) || pickLiveImageUrl(photo) || '',
-        textureSource: 'fallback_uncropped',
-        parity: 'fallback_uncropped',
-        isPlaceholder: false,
+        textureUrl: fallbackUrl,
+        textureSource: fallbackUrl ? 'fallback_uncropped' : 'empty',
+        parity: fallbackUrl ? 'fallback_uncropped' : 'load_failed',
+        isPlaceholder: !fallbackUrl,
         placeholderUrl: config.placeholderUrl || '',
-        warning: 'Could not bake crop-accurate texture; showing source photo without guaranteed crop parity.',
+        warning: fallbackUrl
+          ? 'Could not bake crop-accurate texture; showing source photo without guaranteed crop parity.'
+          : (error?.message || 'Unable to load image for 3D texture'),
         aspect: {
           width: Number(area.width) || 1,
           height: Number(area.height) || 1,
@@ -326,12 +380,21 @@ export function warmupCropAccurateViewerTextures(args = {}) {
   warmupStore.key = key;
   warmupStore.promise = buildCropAccurateViewerTexturesUncached(args)
     .then((result) => {
-      warmupStore.result = result;
       warmupStore.promise = null;
+      if (!bakeShouldCache(result)) {
+        warmupStore.key = '';
+        warmupStore.result = null;
+        return result;
+      }
+      warmupStore.result = result;
       return { ...result, fromCache: true };
     })
     .catch((error) => {
       warmupStore.promise = null;
+      if (warmupStore.key === key) {
+        warmupStore.key = '';
+        warmupStore.result = null;
+      }
       throw error;
     });
   return warmupStore.promise;

@@ -350,7 +350,7 @@ export function normalizeCustomerReadiness(value) {
 
 export function parseWxHFromLabel(label) {
   const raw = String(label || '').toLowerCase().replace(/×/g, 'x');
-  const match = raw.match(/(\d+(?:\.\d+)?)\s*[x]\s*(\d+(?:\.\d+)?)/);
+  const match = raw.match(/(\d+(?:\.\d+)?)\s*[x*]\s*(\d+(?:\.\d+)?)/);
   if (!match) return null;
   return { w: Number(match[1]), h: Number(match[2]) };
 }
@@ -383,6 +383,88 @@ export function inferSizeRuleKeyFromSelection(selectedVariants = {}, sizeRules =
   return '';
 }
 
+function pickBorderForOpening(width, height) {
+  const longest = Math.max(Number(width) || 0, Number(height) || 0);
+  if (longest <= 8) return { borderWidth: 0.5, borderGroup: 'A', hardwareProfileKey: 'hw_small_stand' };
+  if (longest <= 15) return { borderWidth: 1, borderGroup: 'B', hardwareProfileKey: 'hw_medium_hook_bushes' };
+  return { borderWidth: 2, borderGroup: 'C', hardwareProfileKey: 'hw_large_dual_hooks_bushes' };
+}
+
+/**
+ * Product-selected opening from the chosen variant — not the 19-size catalog.
+ * Never swaps axes (36×24 stays 36×24 even if only 24x36 exists in the catalog).
+ */
+export function resolveOpeningFromSelection(selectedVariants = {}, sizeRules = DEFAULT_PHOTO_FRAME_SIZE_RULES) {
+  const rules = Array.isArray(sizeRules) && sizeRules.length ? sizeRules : DEFAULT_PHOTO_FRAME_SIZE_RULES;
+  const entries = Object.entries(selectedVariants || {});
+  for (const [name, option] of entries) {
+    const parsed = parseWxHFromLabel(`${name} ${option?.label || ''} ${option?.value || ''}`);
+    const width = Number(option?.previewWidth) > 0 ? Number(option.previewWidth) : parsed?.w;
+    const height = Number(option?.previewHeight) > 0 ? Number(option.previewHeight) : parsed?.h;
+    if (!(width > 0 && height > 0)) continue;
+    const sizeRuleKey = `${width}x${height}`.toLowerCase();
+    return {
+      width,
+      height,
+      sizeRuleKey,
+      rule: findSizeRule(rules, sizeRuleKey) || null,
+    };
+  }
+  return null;
+}
+
+/**
+ * Size keys this product actually sells (variant labels / previewWidth×Height).
+ * Never treats the global 19-size catalog as the product's selectable list.
+ */
+export function collectProductSizeKeys(product) {
+  const keys = new Set();
+  const variants = Array.isArray(product?.variants) ? product.variants : [];
+  for (const variant of variants) {
+    const options = Array.isArray(variant?.options) ? variant.options : [];
+    for (const option of options) {
+      const parsed = parseWxHFromLabel(`${variant?.name || ''} ${option?.label || ''} ${option?.value || ''}`);
+      const width = Number(option?.previewWidth) > 0 ? Number(option.previewWidth) : parsed?.w;
+      const height = Number(option?.previewHeight) > 0 ? Number(option.previewHeight) : parsed?.h;
+      if (width > 0 && height > 0) keys.add(`${width}x${height}`.toLowerCase());
+    }
+  }
+  return keys;
+}
+
+function syntheticSizeRule(key) {
+  const [w, h] = String(key).split('x').map(Number);
+  const border = pickBorderForOpening(w, h);
+  return {
+    key,
+    label: `${w} × ${h}`,
+    nominalWidth: w,
+    nominalHeight: h,
+    borderWidth: border.borderWidth,
+    borderGroup: border.borderGroup,
+    hardwareProfileKey: border.hardwareProfileKey,
+    orientation: w === h ? 'square' : (w > h ? 'landscape' : 'portrait'),
+  };
+}
+
+/**
+ * Geometry lookup for one product: only sizes that product sells.
+ * Catalog/default 19-size table remains a lookup, not a picker.
+ */
+export function sizeRulesForProduct(product, catalogRules) {
+  const pool = Array.isArray(catalogRules) && catalogRules.length
+    ? catalogRules
+    : DEFAULT_PHOTO_FRAME_SIZE_RULES;
+  const allowed = collectProductSizeKeys(product);
+  if (!allowed.size) return pool;
+  const matched = pool.filter((rule) => allowed.has(String(rule.key || '').toLowerCase()));
+  const matchedKeys = new Set(matched.map((rule) => String(rule.key || '').toLowerCase()));
+  const synthetic = [...allowed]
+    .filter((key) => !matchedKeys.has(key))
+    .map(syntheticSizeRule);
+  return [...matched, ...synthetic];
+}
+
 export function applyPhotoFrameSizeFromSelection(
   photoFrameInput,
   selectedVariants = {},
@@ -390,11 +472,33 @@ export function applyPhotoFrameSizeFromSelection(
 ) {
   const pf = normalizePhotoFrameConfig(photoFrameInput);
   if (!pf.enabled) return pf;
-  const inferred = inferSizeRuleKeyFromSelection(selectedVariants, sizeRules);
-  if (!inferred || inferred === pf.sizeRuleKey) return pf;
-  const rule = findSizeRule(sizeRules, inferred);
-  if (!rule) return pf;
-  return applySizeRuleToPhotoFrame(pf, rule, { force: true });
+  const rules = Array.isArray(sizeRules) && sizeRules.length ? sizeRules : DEFAULT_PHOTO_FRAME_SIZE_RULES;
+  const opening = resolveOpeningFromSelection(selectedVariants, rules);
+  if (!opening) return pf;
+  if (opening.rule) {
+    if (
+      opening.rule.key === pf.sizeRuleKey
+      && Number(pf.openingWidth) === opening.width
+      && Number(pf.openingHeight) === opening.height
+    ) {
+      return pf;
+    }
+    return applySizeRuleToPhotoFrame(pf, opening.rule, { force: true });
+  }
+  const border = pickBorderForOpening(opening.width, opening.height);
+  const synthetic = {
+    key: opening.sizeRuleKey,
+    label: `${opening.width} × ${opening.height}`,
+    nominalWidth: opening.width,
+    nominalHeight: opening.height,
+    borderWidth: border.borderWidth,
+    borderGroup: border.borderGroup,
+    hardwareProfileKey: border.hardwareProfileKey,
+    orientation: opening.width === opening.height
+      ? 'square'
+      : (opening.height > opening.width ? 'portrait' : 'landscape'),
+  };
+  return applySizeRuleToPhotoFrame(pf, synthetic, { force: true });
 }
 
 /**

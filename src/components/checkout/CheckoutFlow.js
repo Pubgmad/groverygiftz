@@ -197,13 +197,12 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
   }, [cartReady, cart, status, session?.user?.type, step, mode, orderId]);
 
   const showSuccessfulOrder = (verifyData, verifiedOrderId, fallbackItems = cart, fallbackTotals = {}) => {
+    if (!isCheckoutReturnCompleted(session.user.id, verifiedOrderId)) clearCart();
+    rememberCheckoutReturn(session.user.id, verifiedOrderId, true);
     if (mode !== 'confirmation') {
-      if (!isCheckoutReturnCompleted(session.user.id, verifiedOrderId)) clearCart();
-      rememberCheckoutReturn(session.user.id, verifiedOrderId, true);
       router.replace(checkoutOutcomeUrl('confirmation', verifiedOrderId), { scroll: false });
       return;
     }
-    rememberCheckoutReturn(session.user.id, verifiedOrderId, true);
     const placedItems = verifyData.items?.length ? verifyData.items : fallbackItems.map((item) => ({ ...item }));
     const paidTotal = verifyData.total ?? fallbackTotals.total ?? grandTotal;
     trackVerifiedMetaPurchase(verifyData);

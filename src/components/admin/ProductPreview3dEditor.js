@@ -25,7 +25,6 @@ import {
 } from '@/lib/preview3d';
 import { getPreview3dAssetWorkflowSummary } from '@/lib/preview3dAssetWorkflow';
 import PhotoFrameAdminFields from '@/components/admin/preview3d/PhotoFrameAdminFields';
-import usePhotoFrame3dAdminPreview from '@/hooks/usePhotoFrame3dAdminPreview';
 
 const AdminPreview3dStage = dynamic(
   () => import('@/components/admin/preview3d/AdminPreview3dStage'),
@@ -50,8 +49,6 @@ export default function ProductPreview3dEditor({
   const [loadingAssets, setLoadingAssets] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [selectedSurfaceId, setSelectedSurfaceId] = useState('');
-  const liveAdminPreview = usePhotoFrame3dAdminPreview();
-  const productionPreviewLocked = process.env.NODE_ENV === 'production' && !liveAdminPreview;
 
   const slots = useMemo(() => listCustomizationSlotDescriptors(productLike || {}), [productLike]);
   const variantOptions = useMemo(() => listVariantOverrideOptions(productLike || {}), [productLike]);
@@ -310,8 +307,8 @@ export default function ProductPreview3dEditor({
     { ok: validation.ok, label: 'Slot → surface mappings valid' },
     { ok: variantValidation.ok, label: 'Variant 3D overrides valid (or unused)' },
     {
-      ok: !config.enabled || config.retailReadiness === 'approved_retail' || config.retailReadiness === 'prototype',
-      label: 'Retail readiness set (Approved required for live customer View in 3D)',
+      ok: !config.enabled || config.geometryType !== 'custom_glb' || Boolean(config.modelUrl),
+      label: 'Model file selected when using a GLB',
     },
   ];
 
@@ -322,14 +319,8 @@ export default function ProductPreview3dEditor({
       <div>
         <h3 className="text-lg font-bold text-gray-900">3D Visualization (optional)</h3>
         <p className="mt-1 text-sm text-gray-600">
-          Add-on only. Leave disabled to keep the current product page unchanged. Does not affect uploads, cart, or checkout.
-          Prefer reusable profiles under Admin → 3D Profiles so new products need no code changes.
+          Optional visual preview. Turn it on only for this product. Customers can still add to cart from the 2D photo editor without opening 3D.
         </p>
-        {productionPreviewLocked ? (
-          <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">
-            Live 3D preview is disabled on this deployment. Product pages keep the current customer experience. Enable the server admin-preview flag to test 3D.
-          </p>
-        ) : null}
       </div>
 
       <div className="rounded-xl border border-primary-100 bg-white/80 p-3">
@@ -427,8 +418,9 @@ export default function ProductPreview3dEditor({
               ))}
             </select>
             <span className="mt-1 block text-[11px] font-normal text-gray-500">
-              {retailGate.status?.description}
-              {retailGate.customerVisible ? ' · Customer View in 3D visible when saved.' : ' · Customer View in 3D hidden.'}
+              {retailGate.customerVisible
+                ? 'Customers will see View in 3D after you save this product.'
+                : 'Turn on Enable 3D preview above to show View in 3D to customers.'}
             </span>
           </label>
 
@@ -856,11 +848,7 @@ export default function ProductPreview3dEditor({
           ) : null}
 
           <div className="sm:col-span-2">
-            {productionPreviewLocked ? (
-              <div className="flex h-[200px] items-center justify-center rounded-2xl border bg-white p-4 text-center text-sm text-gray-600">
-                Live 3D stage is off until the admin-preview flag is enabled.
-              </div>
-            ) : suspendPreview ? (
+            {suspendPreview ? (
               <div className="flex h-[200px] items-center justify-center rounded-2xl border bg-white text-sm text-gray-600">
                 Live 3D preview paused while saving…
               </div>

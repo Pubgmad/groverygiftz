@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { FiBox, FiPlus, FiTrash2 } from 'react-icons/fi';
 import useAdminAccess from '@/hooks/useAdminAccess';
-import usePhotoFrame3dAdminPreview from '@/hooks/usePhotoFrame3dAdminPreview';
 import ReadOnlyBanner from '@/components/admin/ReadOnlyBanner';
 import {
   PREVIEW3D_DIMENSION_UNITS,
@@ -43,8 +43,6 @@ const emptyForm = () => ({
 
 export default function AdminPreview3dProfilesPage() {
   const { canRead, canWrite, accessStatus } = useAdminAccess();
-  const liveAdminPreview = usePhotoFrame3dAdminPreview();
-  const productionPreviewLocked = process.env.NODE_ENV === 'production' && !liveAdminPreview;
   const readable = canRead('products');
   const writable = canWrite('products');
   const [profiles, setProfiles] = useState([]);
@@ -218,6 +216,12 @@ export default function AdminPreview3dProfilesPage() {
         <p className="mt-2 text-sm text-gray-500">
           Reusable geometries and GLB setups for the optional Universal 3D viewer. Assign a profile on each product when ready — existing catalog stays unchanged by default.
         </p>
+        <Link
+          href="/account/manage/photo-frame-3d"
+          className="mt-3 inline-flex min-h-[40px] items-center rounded-xl border bg-white px-3 py-2 text-sm font-semibold text-primary-800"
+        >
+          Open Photo Frame 3D catalog
+        </Link>
       </div>
       {!writable ? <ReadOnlyBanner /> : null}
 
@@ -446,11 +450,6 @@ export default function AdminPreview3dProfilesPage() {
             </label>
           </div>
 
-          {productionPreviewLocked ? (
-            <div className="rounded-2xl border bg-amber-50 p-4 text-sm text-amber-950">
-              Live 3D stage is off until the admin-preview flag is enabled. Profile fields can still be edited.
-            </div>
-          ) : (
           <AdminPreview3dStage
             value={form}
             slotCount={Number(form.slotHint) || Math.max(1, form.surfaces?.length || 1)}
@@ -461,7 +460,6 @@ export default function AdminPreview3dProfilesPage() {
             }}
             onSelectSurface={(surfaceId) => setSelectedSurfaceId(surfaceId || '')}
           />
-          )}
 
           <div className="rounded-xl border bg-gray-50 p-3 text-xs text-gray-600">
             <p className="font-semibold text-gray-800">Configured surfaces ({form.surfaces?.length || 0})</p>

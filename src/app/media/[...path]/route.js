@@ -3,7 +3,6 @@ import path from 'path';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { can, getRequestAdminAccess } from '@/lib/adminAccess';
-import { isPhotoFrame3dAdminPreviewFlagEnabled } from '@/lib/preview3d';
 import { readUploadFile } from '@/lib/uploadStorage';
 import { detectImageFormat } from '@/lib/imageFormat';
 import { verifyProductionVideoShareToken } from '@/lib/productionVideoToken';
@@ -29,16 +28,8 @@ async function authorizeMediaRequest(req, relativePath) {
 
   if (PUBLIC_TOP.has(top)) return { ok: true, cache: 'public' };
   if (isPublicPreview3dAsset(relativePath)) {
-    // Isolated staging (non-production) keeps GLBs fetchable for Playwright.
-    // Production: unfinished 3D assets require the admin preview flag + products:read.
-    if (process.env.NODE_ENV !== 'production') return { ok: true, cache: 'public' };
-    if (!isPhotoFrame3dAdminPreviewFlagEnabled()) return { ok: false, status: 403 };
-    const session = await getServerSession(authOptions);
-    const access = await getRequestAdminAccess(session);
-    if (session?.user?.type === 'admin' && can(access, 'products', 'read')) {
-      return { ok: true, cache: 'private' };
-    }
-    return { ok: false, status: 403 };
+    // Store-owned display models/placeholders only — never customer uploads.
+    return { ok: true, cache: 'public' };
   }
 
   if (top === 'production-videos') {

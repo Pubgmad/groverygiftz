@@ -1,11 +1,10 @@
 'use client';
 
-import { Component, useEffect, useMemo, useRef, useState } from 'react';
+import { Component, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { FiMaximize2, FiRefreshCw, FiX, FiZoomIn, FiHome, FiSmartphone } from 'react-icons/fi';
 import {
   buildViewerTextureSlots,
-  isPreview3dAdminCandidate,
   isPreview3dEligible,
   resolvePreview3dDimensions,
   resolvePreview3dForSelection,
@@ -15,9 +14,9 @@ import { buildCropAccurateViewerTextures } from '@/lib/preview3dCropTexture';
 import {
   DEFAULT_PHOTO_FRAME_DESIGN_PROFILES,
   DEFAULT_PHOTO_FRAME_HARDWARE_PROFILES,
-  DEFAULT_PHOTO_FRAME_SIZE_RULES,
   formatPhotoFrameDimensionChip,
   resolvePhotoFrameRuntime,
+  sizeRulesForProduct,
 } from '@/lib/photoFrame3d';
 import {
   buildAndroidSceneViewerIntent,
@@ -87,12 +86,12 @@ export default function Product3DViewerModal({
   onClose,
   product,
   customerPhotos = [],
+  variantLabelUploads = {},
   previewAdjustments = {},
   previewAreas = [],
   customizationPreviewPayload = null,
   selectedVariants = {},
   initialPresentationMode = 'inspect',
-  allowAdminPreview = false,
   allowCameraAr = false,
 }) {
   const presentationModes = allowCameraAr
@@ -121,6 +120,7 @@ export default function Product3DViewerModal({
   const sceneReadyRef = useRef(false);
   const engineReadyRef = useRef(false);
   const arCapability = useMemo(() => detectArCapability(), []);
+  const handleSceneReady = useCallback(() => setSceneReady(true), []);
 
   const config = useMemo(
     () => resolvePreview3dForSelection(product, selectedVariants),
@@ -146,7 +146,7 @@ export default function Product3DViewerModal({
     resolvePhotoFrameRuntime({
       preview3d: config,
       selectedVariants,
-      sizeRules: product?.photoFrameCatalog?.sizeRules || DEFAULT_PHOTO_FRAME_SIZE_RULES,
+      sizeRules: sizeRulesForProduct(product, product?.photoFrameCatalog?.sizeRules),
       hardwareProfiles: product?.photoFrameCatalog?.hardwareProfiles || DEFAULT_PHOTO_FRAME_HARDWARE_PROFILES,
       designProfiles: product?.photoFrameCatalog?.designProfiles || DEFAULT_PHOTO_FRAME_DESIGN_PROFILES,
     })
@@ -257,6 +257,8 @@ export default function Product3DViewerModal({
       product,
       preview3d: config,
       customerPhotos,
+      variantLabelUploads,
+      selectedVariants,
       customizationPreviewPayload,
     });
     setTextures(syncFallback);
@@ -268,6 +270,8 @@ export default function Product3DViewerModal({
           product,
           preview3d: config,
           customerPhotos,
+          variantLabelUploads,
+          selectedVariants,
           previewAdjustments,
           previewAreas,
           surfaces,
@@ -280,7 +284,18 @@ export default function Product3DViewerModal({
           revokeRef.current?.();
         }
         revokeRef.current = result.fromCache ? null : result.revokeAll;
-        setTextures(result.textures);
+        setTextures((result.textures || []).map((slot, index) => {
+          if (slot?.textureUrl) return slot;
+          const fallback = syncFallback[index];
+          if (!fallback?.textureUrl) return slot;
+          return {
+            ...slot,
+            textureUrl: fallback.textureUrl,
+            textureSource: fallback.textureSource || 'sync_fallback',
+            isPlaceholder: false,
+            warning: slot.warning || 'Showing source photo while the crop-accurate 3D texture loads.',
+          };
+        }));
         setParityWarnings(
           result.textures
             .filter((t) => t.warning)
@@ -309,6 +324,8 @@ export default function Product3DViewerModal({
     product,
     config,
     customerPhotos,
+    variantLabelUploads,
+    selectedVariants,
     previewAdjustments,
     previewAreas,
     customizationPreviewPayload,
@@ -328,8 +345,7 @@ export default function Product3DViewerModal({
     window.__preview3dReadyMs = start ? Math.round(now - start) : null;
   }, [open, sceneReady]);
 
-  const viewerAllowed = isPreview3dEligible(product)
-    || (allowAdminPreview && isPreview3dAdminCandidate(product));
+  const viewerAllowed = isPreview3dEligible(product);
   if (!viewerAllowed) {
     if (!open) return null;
     return (
@@ -372,10 +388,12 @@ export default function Product3DViewerModal({
 
   return (
     <div
-      className={`fixed inset-0 z-[80] flex items-stretch justify-center bg-black/55 sm:items-center sm:p-4 ${open ? '' : 'pointer-events-none translate-x-[120vw] opacity-0'}`}
+      className={`fixed inset-0 z-[80] flex items-stretch justify-center overflow-hidden bg-black/55 sm:items-center sm:p-4 ${open ? '' : 'pointer-events-none invisible opacity-0'}`}
       data-preview3d-modal={open ? 'open' : 'closed'}
       data-preview3d-size={photoFrameBundle.resolved?.sizeRuleKey || ''}
       data-preview3d-geometry={photoFrameBundle.effectiveGeometryType || config.geometryType || ''}
+      data-preview3d-photo-source={textures[0]?.textureSource || ''}
+      data-preview3d-placeholder={textures[0]?.isPlaceholder ? '1' : '0'}
       aria-hidden={open ? undefined : true}
     >
       <div
@@ -384,10 +402,10 @@ export default function Product3DViewerModal({
         aria-modal={open ? 'true' : undefined}
         aria-label={titleByMode}
       >
-        <header className="flex items-center justify-between gap-3 border-b border-black/5 px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-          <div className="min-w-0">
+        <header className="flex items-start justify-between gap-3 border-b border-black/5 px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+          <div className="min-w-0 flex-1 overflow-hidden">
             <p className="truncate text-sm font-bold text-gray-900">{titleByMode}</p>
-            <p className="truncate text-[11px] text-gray-500">
+            <p className="break-words text-[11px] leading-4 text-gray-500">
               {showOverlay ? `${stageMeta.label} · ` : ''}
               {dimensionChip || `${filled}/${textures.length} photo${textures.length === 1 ? '' : 's'} applied`}
               {textures.some((t) => t.isPlaceholder) ? ' · placeholders for empty slots' : ''}
@@ -508,7 +526,7 @@ export default function Product3DViewerModal({
                     attachProceduralHardware={photoFrameBundle.attachProceduralHardware === true}
                     includeProceduralBacking={photoFrameBundle.includeProceduralBacking === true}
                     selectedSurfaceId={textures.length > 1 ? (textures[focusedIndex]?.surfaceId || '') : ''}
-                    onSceneReady={() => setSceneReady(true)}
+                    onSceneReady={handleSceneReady}
                   />
                 </ModalSceneErrorBoundary>
               ) : null}
@@ -562,14 +580,14 @@ export default function Product3DViewerModal({
             </div>
           ) : null}
           {scenePresentation === 'inspect' ? (
-            <div className="mb-2 flex flex-nowrap gap-2 overflow-x-auto pb-0.5">
+            <div className="mb-2 flex flex-wrap gap-2 pb-0.5">
               {VIEW_PRESETS.map((preset) => (
                 <button
                   key={preset.id}
                   type="button"
                   onClick={() => setViewPreset(preset.id)}
                   data-preview3d-view={preset.id}
-                  className={`min-h-[40px] rounded-lg border px-3 text-xs font-semibold ${viewPreset === preset.id ? 'border-primary-500 bg-primary-50 text-primary-800' : 'bg-white text-gray-700'}`}
+                  className={`min-h-[40px] shrink-0 rounded-lg border px-3 text-xs font-semibold ${viewPreset === preset.id ? 'border-primary-500 bg-primary-50 text-primary-800' : 'bg-white text-gray-700'}`}
                 >
                   {preset.label}
                 </button>
@@ -609,6 +627,8 @@ export default function Product3DViewerModal({
               type="button"
               onClick={() => {
                 setResetKey((k) => k + 1);
+                setAutoRotate(false);
+                setFocusedIndex(0);
                 setViewPreset(scenePresentation === 'wall' ? 'wall' : 'front');
                 setSceneReady(false);
               }}
@@ -616,7 +636,7 @@ export default function Product3DViewerModal({
             >
               <FiRefreshCw size={14} /> Reset view
             </button>
-            <p className="flex min-h-[44px] flex-[1_1_100%] items-center gap-2 rounded-xl bg-primary-50 px-3 text-[11px] text-primary-900 sm:flex-none">
+            <p className="flex min-h-[44px] min-w-0 flex-[1_1_100%] items-center gap-2 overflow-hidden rounded-xl bg-primary-50 px-3 text-[11px] leading-4 text-primary-900 sm:flex-none">
               <FiZoomIn size={14} /> {scenePresentation === 'wall' ? 'Pinch to zoom · wall preview' : 'Drag to rotate · pinch to zoom'}
             </p>
           </div>

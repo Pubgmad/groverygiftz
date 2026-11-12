@@ -23,6 +23,19 @@ import PhotoFrameModel, {
 
 const Preview3dAtmosphere = lazy(() => import('./Preview3dAtmosphere'));
 
+const WALL_PRESENTATION_OFFSET = [0, 0.12, -0.06];
+
+function offsetModelBounds(payload, offset) {
+  if (!payload?.min || !payload?.max || !payload?.center || !offset) return payload;
+  const [dx, dy, dz] = offset;
+  return {
+    ...payload,
+    min: [payload.min[0] + dx, payload.min[1] + dy, payload.min[2] + dz],
+    max: [payload.max[0] + dx, payload.max[1] + dy, payload.max[2] + dz],
+    center: [payload.center[0] + dx, payload.center[1] + dy, payload.center[2] + dz],
+  };
+}
+
 /** Contains R3F / GLB load failures so the product page purchase path stays usable. */
 class Preview3dErrorBoundary extends Component {
   constructor(props) {
@@ -812,11 +825,16 @@ function CameraRig({
 
 function SceneReadyPing({ onReady, waitForBounds = false, modelBounds = null }) {
   const { gl } = useThree();
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
+  const hasBounds = Boolean(modelBounds?.size || modelBounds?.center);
   useEffect(() => {
     markPreview3dTiming('webglReady');
-    if (waitForBounds && !modelBounds) return undefined;
+    if (waitForBounds && !hasBounds) return undefined;
+    let cancelled = false;
     const finish = () => {
-      onReady?.({
+      if (cancelled) return;
+      onReadyRef.current?.({
         renderer: gl?.info?.render ? 'webgl' : 'unknown',
         at: Date.now(),
       });
@@ -826,9 +844,15 @@ function SceneReadyPing({ onReady, waitForBounds = false, modelBounds = null }) 
       }
     };
     // Let CameraRig + one presented frame land before dismissing the overlay.
+    // Timeout fallback: headless/background tabs can stall rAF indefinitely.
     const raf = requestAnimationFrame(() => requestAnimationFrame(finish));
-    return () => cancelAnimationFrame(raf);
-  }, [gl, onReady, waitForBounds, modelBounds]);
+    const fallback = setTimeout(finish, 800);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      clearTimeout(fallback);
+    };
+  }, [gl, waitForBounds, hasBounds]);
   return null;
 }
 
@@ -983,11 +1007,13 @@ function SceneContent({
               selected={focusedIndex === 0}
               onSelect={() => onSelectSurface?.(textures[0]?.surfaceId, 0)}
               mouldingProfile={photoFrameMoulding || scene.mouldingProfile || 'stepped'}
-              onModelBounds={setModelBounds}
+              onModelBounds={(payload) => setModelBounds(
+                isWallPresentation ? offsetModelBounds(payload, WALL_PRESENTATION_OFFSET) : payload
+              )}
             />
           );
           return isWallPresentation
-            ? <group position={[0, 0.12, -0.06]}>{frame}</group>
+            ? <group position={WALL_PRESENTATION_OFFSET}>{frame}</group>
             : frame;
         })()
       ) : geometryType === 'custom_glb' && modelUrl ? (

@@ -4,11 +4,9 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import useAdminAccess from '@/hooks/useAdminAccess';
-import usePhotoFrame3dAdminPreview from '@/hooks/usePhotoFrame3dAdminPreview';
 
 export default function PhotoFrame3dCatalogPage() {
   const { canRead, status: accessStatus } = useAdminAccess();
-  const liveAdminPreview = usePhotoFrame3dAdminPreview();
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -66,10 +64,8 @@ export default function PhotoFrame3dCatalogPage() {
             Admin-managed size/border rules and backside hardware profiles. Edit here, then assign on each product’s 3D section.
             No SKU hardcoding in the customer viewer.
           </p>
-          <p className="mt-2 text-xs font-semibold text-amber-800">
-            {liveAdminPreview
-              ? 'Live admin 3D preview is on for authorized admins. Customers still cannot see unfinished 3D.'
-              : 'Live admin 3D preview is off. Catalog edits do not change the customer product page.'}
+          <p className="mt-2 text-xs text-gray-600">
+            Customer 3D visibility is controlled per product with Enable 3D preview. This catalog only stores size and hardware rules.
           </p>
         </div>
         <div className="flex gap-2">

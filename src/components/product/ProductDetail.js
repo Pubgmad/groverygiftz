@@ -27,8 +27,8 @@ import PurchaseActivityBadge from '@/components/product/PurchaseActivityBadge';
 import ProductMakingVideos from '@/components/product/ProductMakingVideos';
 import ProductTrustStats from '@/components/product/ProductTrustStats';
 import ViewIn3DButton from '@/components/product/preview3d/ViewIn3DButton';
-import { isPreview3dAdminCandidate, isPreview3dEligible } from '@/lib/preview3d';
-import usePhotoFrame3dAdminPreview from '@/hooks/usePhotoFrame3dAdminPreview';
+import { isPreview3dEligible } from '@/lib/preview3d';
+import { parseWxHFromLabel } from '@/lib/photoFrame3d';
 import { imagePerfMark, imagePerfMeasure } from '@/lib/imagePerf';
 import { readJsonResponse } from '@/lib/safeJsonResponse';
 import { durableUploadRef } from '@/lib/cartPersist';
@@ -102,9 +102,7 @@ export default function ProductDetail({ product }) {
   const [sizeChartOpen, setSizeChartOpen] = useState(false);
   const settings = useDeliverySettings();
   const { addToCart, setIsCartOpen } = useCart();
-  const adminPreview3d = usePhotoFrame3dAdminPreview(product?.preview3dAdminPreview === true);
-  const showPreview3d = isPreview3dEligible(product)
-    || (adminPreview3d && isPreview3dAdminCandidate(product));
+  const showPreview3d = isPreview3dEligible(product);
   const router = useRouter();
   const viewedProductRef = useRef('');
   const customTextTrackedRef = useRef({});
@@ -280,14 +278,19 @@ export default function ProductDetail({ product }) {
   const uploadCardGridClass = 'grid grid-cols-1 gap-2 sm:grid-cols-2';
   const getAreaAdjustments = (idx) => ({ ...getDefaultPreviewAdjustments(), ...(previewAdjustments[idx] || {}) });
   const areaSizeLabel = (area, idx) => formatFrameSizeLabel(area, getAreaAdjustments(idx).orientation);
-  const variantAreaFromSelected = (selected) => ({
-    label: selected?.label,
-    width: selected?.previewWidth || 1,
-    height: selected?.previewHeight || 1,
-    unit: selected?.previewUnit || 'inch',
-    frameImage: selected?.previewFrameImage || '',
-    instructions: selected?.previewInstructions || '',
-  });
+  const variantAreaFromSelected = (selected) => {
+    const parsed = parseWxHFromLabel(selected?.label || '');
+    const width = Number(selected?.previewWidth) > 0 ? Number(selected.previewWidth) : (parsed?.w || 1);
+    const height = Number(selected?.previewHeight) > 0 ? Number(selected.previewHeight) : (parsed?.h || 1);
+    return {
+      label: selected?.label,
+      width,
+      height,
+      unit: selected?.previewUnit || 'inch',
+      frameImage: selected?.previewFrameImage || '',
+      instructions: selected?.previewInstructions || '',
+    };
+  };
   const loadPreviewImage = (src, { cache = previewImageCache } = {}) => {
     const url = String(src || '');
     if (!url) return Promise.reject(new Error('Unable to load the image for preview. Please try uploading it again.'));
@@ -496,14 +499,7 @@ export default function ProductDetail({ product }) {
       const uploadedFile = variantLabelUploads[selected.label] || null;
       if (!uploadedFile?.url) return;
       const previewKey = `variant-${selected.label}`;
-      const area = {
-        label: selected.label,
-        width: selected.previewWidth || 1,
-        height: selected.previewHeight || 1,
-        unit: selected.previewUnit || 'inch',
-        frameImage: selected.previewFrameImage || '',
-        instructions: selected.previewInstructions || '',
-      };
+      const area = variantAreaFromSelected(selected);
       const areaLabel = `Variant: ${selected.label}`;
       jobs.push(async () => {
         const adjustments = getAreaAdjustments(previewKey);
@@ -720,6 +716,10 @@ export default function ProductDetail({ product }) {
           toast.error(`Please upload a photo for "${label}"`);
           return false;
         }
+        if (slotRequired && alignedPhotos[idx]?.url && !durableUploadRef(alignedPhotos[idx])) {
+          toast.error('Your photo is still uploading. Please wait a moment and try again.');
+          return false;
+        }
       }
       if (uploadedPhotoCount < requiredPhotoCount) {
         toast.error(`Please upload at least ${requiredPhotoCount} customer photo${requiredPhotoCount === 1 ? '' : 's'} for this product`);
@@ -731,8 +731,13 @@ export default function ProductDetail({ product }) {
       }
     }
     for (const selected of selectedVariantUploadOptions) {
-      if (!variantLabelUploads[selected.label]?.url) {
+      const upload = variantLabelUploads[selected.label];
+      if (!upload?.url) {
         toast.error(`Please upload image for ${selected.label}`);
+        return false;
+      }
+      if (!durableUploadRef(upload)) {
+        toast.error('Your photo is still uploading. Please wait a moment and try again.');
         return false;
       }
     }
@@ -969,19 +974,27 @@ export default function ProductDetail({ product }) {
     }
     setUploadingCollageLabels((prev) => ({ ...prev, [label]: true }));
     try {
-      const uploaded = await Promise.all(selectedFiles.map(async (file) => {
-        const prepared = await prepareImageUpload(file);
-        const formData = new FormData();
-        appendImageUpload(formData, file, prepared);
-        const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
-        const data = await readJsonResponse(res, { fallbackError: `Failed to upload ${file.name}` });
-        return attachLocalPreview(data, prepared);
-      }));
-      setCollageUploads((prev) => ({ ...prev, [label]: [...(prev[label] || []), ...uploaded] }));
-      toast.success(`${label}: ${uploaded.length} image${uploaded.length === 1 ? '' : 's'} uploaded`);
-      trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'collage_upload', collage_label: label, photo_count: uploaded.length }));
-    } catch (error) {
-      toast.error(error.message || `${label}: failed to upload images`);
+      const uploaded = [];
+      let lastError = '';
+      for (const file of selectedFiles) {
+        try {
+          const prepared = await prepareImageUpload(file);
+          const formData = new FormData();
+          appendImageUpload(formData, file, prepared);
+          const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
+          const data = await readJsonResponse(res, { fallbackError: `Failed to upload ${file.name}` });
+          const uploadedFile = attachLocalPreview(data, prepared);
+          uploaded.push(uploadedFile);
+          setCollageUploads((prev) => ({ ...prev, [label]: [...(prev[label] || []), uploadedFile] }));
+        } catch (error) {
+          lastError = error.message || `${label}: failed to upload images`;
+        }
+      }
+      if (uploaded.length) {
+        toast.success(`${label}: ${uploaded.length} image${uploaded.length === 1 ? '' : 's'} uploaded`);
+        trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'collage_upload', collage_label: label, photo_count: uploaded.length }));
+      }
+      if (lastError) toast.error(lastError);
     } finally {
       setUploadingCollageLabels((prev) => ({ ...prev, [label]: false }));
     }
@@ -1046,11 +1059,18 @@ export default function ProductDetail({ product }) {
       maxImages: Number(template.maxImages || template.minImages || 0),
       images: collageUploads[template.label] || [],
     })).filter((group) => group.images.length > 0);
-    const variantUploads = Object.fromEntries(Object.entries(variantLabelUploads).filter(([, value]) => value?.url));
+    const selectedUploadLabels = new Set(
+      (selectedVariantUploadOptions || []).map((option) => option?.label).filter(Boolean)
+    );
+    const variantUploads = Object.fromEntries(
+      Object.entries(variantLabelUploads).filter(([key, value]) => selectedUploadLabels.has(key) && value?.url)
+    );
     const productCustomerNote = customerNotesEnabled ? customerNote.trim() : '';
-    const uploadedCustomerPhotos = filledPhotos(customerPhotos).map((photo) => durableUploadRef(photo) || photo);
+    const uploadedCustomerPhotos = filledPhotos(customerPhotos).map((photo) => durableUploadRef(photo)).filter(Boolean);
     const durableVariantUploads = Object.fromEntries(
-      Object.entries(variantUploads).map(([key, value]) => [key, durableUploadRef(value) || value])
+      Object.entries(variantUploads)
+        .map(([key, value]) => [key, durableUploadRef(value)])
+        .filter(([, value]) => value)
     );
     const durableCustomFieldValues = Object.fromEntries(
       Object.entries(customFieldValues).map(([key, value]) => [
@@ -1060,7 +1080,7 @@ export default function ProductDetail({ product }) {
     );
     const durableCollageGroups = collageGroups.map((group) => ({
       ...group,
-      images: (group.images || []).map((photo) => durableUploadRef(photo) || photo),
+      images: (group.images || []).map((photo) => durableUploadRef(photo)).filter(Boolean),
     }));
     const allCustomFields = {
       ...durableCustomFieldValues,
@@ -1213,10 +1233,10 @@ export default function ProductDetail({ product }) {
             <ViewIn3DButton
               product={product}
               customerPhotos={customerPhotos}
+              variantLabelUploads={variantLabelUploads}
               previewAdjustments={previewAdjustments}
               previewAreas={previewAreas}
               selectedVariants={selectedVariants}
-              allowAdminPreview={adminPreview3d}
             />
           ) : null}
         </div>
@@ -1362,7 +1382,7 @@ export default function ProductDetail({ product }) {
                 </p>
                 )}
               </div>
-              <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
+              <div className="flex min-w-0 w-full flex-col items-stretch gap-2 sm:w-auto sm:max-w-[min(100%,22rem)] sm:items-end">
                 {needsCustomerPhotos && !stockLocked ? (
                   <span className="self-start rounded-full border border-accent-100 bg-accent-50 px-3 py-1 text-xs font-bold text-accent-700 sm:self-end">
                     {uploadedPhotoCount}/{requiredPhotoCount || maxPhotoCount}
@@ -1372,10 +1392,10 @@ export default function ProductDetail({ product }) {
                   <ViewIn3DButton
                     product={product}
                     customerPhotos={customerPhotos}
+                    variantLabelUploads={variantLabelUploads}
                     previewAdjustments={previewAdjustments}
                     previewAreas={previewAreas}
                     selectedVariants={selectedVariants}
-                    allowAdminPreview={adminPreview3d}
                   />
                 ) : null}
               </div>

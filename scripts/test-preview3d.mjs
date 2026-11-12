@@ -129,30 +129,25 @@ if (!m.isPreview3dAdminCandidate({ preview3d: { enabled: true, geometryType: 'ph
   delete process.env.NEXT_PUBLIC_PREVIEW3D_ALLOW_PROTOTYPE;
   try {
     if (m.allowPrototypeCustomerPreview()) throw new Error('production must not allow prototypes');
-    if (m.isPreview3dEligible({ preview3d: { enabled: true, geometryType: 'photo_frame', retailReadiness: 'approved_retail' } })) {
-      throw new Error('unfinished photo_frame must stay hidden from customers in production');
+    if (!m.isPreview3dEligible({ preview3d: { enabled: true, geometryType: 'photo_frame' } })) {
+      throw new Error('enabled photo_frame must be customer-visible');
     }
-    if (m.isPreview3dEligible({ preview3d: { enabled: true, geometryType: 'single_plane', retailReadiness: 'prototype' } })) {
-      throw new Error('prototype must stay hidden from customers in production');
+    if (!m.isPreview3dEligible({ preview3d: { enabled: true, geometryType: 'single_plane', retailReadiness: 'prototype' } })) {
+      throw new Error('enabled 3D toggle must show customers the preview regardless of retail readiness');
     }
-    if (!m.isPreview3dEligible({ preview3d: { enabled: true, geometryType: 'single_plane', retailReadiness: 'approved_retail' } })) {
-      throw new Error('approved non-frame 3D may remain customer-eligible');
+    if (m.isPreview3dEligible({ preview3d: { enabled: false, geometryType: 'photo_frame' } })) {
+      throw new Error('disabled products must not show customer 3D');
     }
-    const redacted = m.applyPublicPreview3dVisibility(
+    const visible = m.applyPublicPreview3dVisibility(
       { title: 'Frame', preview3d: { enabled: true, geometryType: 'photo_frame' } },
       {},
     );
-    if (redacted.preview3d?.enabled !== false) throw new Error('customer payload must redact unfinished 3D');
-    const adminLive = m.applyPublicPreview3dVisibility(
-      { title: 'Frame', preview3d: { enabled: true, geometryType: 'photo_frame' } },
-      { adminPreview: true },
-    );
-    if (!adminLive.preview3dAdminPreview) throw new Error('authorized admin preview payload must keep 3D config');
-    const customerDenied = m.applyPublicPreview3dVisibility(
-      { title: 'Frame', preview3d: { enabled: true, geometryType: 'photo_frame' } },
+    if (visible.preview3d?.enabled !== true) throw new Error('enabled 3D config must reach the customer product payload');
+    const hidden = m.applyPublicPreview3dVisibility(
+      { title: 'Frame', preview3d: { enabled: false, geometryType: 'photo_frame' } },
       { adminPreview: false, authorizedAdmin: false },
     );
-    if (customerDenied.preview3d?.enabled !== false) throw new Error('unauthorized payload must not include 3D config');
+    if (hidden.preview3d?.enabled !== false) throw new Error('disabled 3D must stay redacted for customers');
   } finally {
     process.env.NODE_ENV = prevNode;
     if (prevProto === undefined) delete process.env.PREVIEW3D_ALLOW_PROTOTYPE;
@@ -278,6 +273,81 @@ if (framed.photoFrame.sizeRuleKey !== '10x8') {
 }
 if (framed.photoFrame.openingWidth !== 10 || framed.photoFrame.openingHeight !== 8) {
   throw new Error('selection must copy catalog opening onto preview3d.photoFrame');
+}
+
+const variantOnlyProduct = { customizationPreview: { areas: [] } };
+const variantSlots = m.listViewerSlotDescriptors(variantOnlyProduct, {
+  Size: { label: '5*7 inch', requiresImageUpload: true, previewWidth: 0, previewHeight: 0 },
+});
+if (variantSlots.length !== 1) throw new Error(`variant-only product must expose 1 live 3D slot, got ${variantSlots.length}`);
+if (variantSlots[0].slotKey !== 'variant:5*7 inch') throw new Error(`unexpected variant slot key ${variantSlots[0].slotKey}`);
+if (variantSlots[0].width !== 5 || variantSlots[0].height !== 7) {
+  throw new Error('variant slot must parse 5×7 from the option label');
+}
+
+const variantTextures = m.buildViewerTextureSlots({
+  product: variantOnlyProduct,
+  preview3d: { enabled: true, geometryType: 'photo_frame' },
+  customerPhotos: [],
+  selectedVariants: { Size: { label: '5*7 inch', requiresImageUpload: true } },
+  variantLabelUploads: { '5*7 inch': { url: '/media/customer-approved.jpg' } },
+});
+if (variantTextures.length !== 1) throw new Error('variant texture slots must exist');
+if (variantTextures[0].isPlaceholder) throw new Error('approved variant upload must appear in 3D texture slots');
+if (variantTextures[0].textureUrl !== '/media/customer-approved.jpg') {
+  throw new Error('3D texture must use the approved customer image, not a placeholder');
+}
+
+const areaProductKeepsAreas = m.listViewerSlotDescriptors(
+  { customizationPreview: { areas: [{ label: 'Main', width: 12, height: 8, requiresImageUpload: true }] } },
+  { Size: { label: '12*8 inch', requiresImageUpload: true } },
+);
+if (areaProductKeepsAreas.length !== 1 || areaProductKeepsAreas[0].source !== 'area') {
+  throw new Error('configured photo areas must remain the customer size/source of truth');
+}
+
+const fromLabel = m.resolvePreview3dDimensions({
+  config: { geometryType: 'photo_frame', dimensions: { width: null, height: null, unit: 'inch' } },
+  selectedVariantOptions: [{ label: '36*24 inch', previewWidth: 0, previewHeight: 0 }],
+});
+if (fromLabel.width !== 36 || fromLabel.height !== 24) {
+  throw new Error(`36×24 label must drive 36×24 opening, got ${fromLabel.width}x${fromLabel.height}`);
+}
+
+const productA = {
+  variants: [{ name: 'Size', options: [{ label: '5*7 inch' }] }],
+};
+const productB = {
+  variants: [{ name: 'Size', options: [{ label: '36*24 inch' }, { label: '12*15 inch' }] }],
+};
+const rulesA = m.sizeRulesForProduct(productA);
+const rulesB = m.sizeRulesForProduct(productB);
+if (rulesA.length !== 1 || rulesA[0].key !== '5x7') {
+  throw new Error(`product A must expose only 5x7, got ${JSON.stringify(rulesA.map((r) => r.key))}`);
+}
+if (rulesA.some((rule) => rule.key === '12x15' || rule.key === '36x24')) {
+  throw new Error('product A must not leak other catalog sizes');
+}
+if (!rulesB.some((rule) => rule.key === '36x24') || !rulesB.some((rule) => rule.key === '12x15')) {
+  throw new Error('product B must keep its configured 36×24 and 12×15');
+}
+if (rulesB.some((rule) => rule.key === '5x7' || rule.key === '24x36')) {
+  throw new Error('product B must not leak 5×7 or swap 36×24 onto 24×36');
+}
+
+const framedA = m.resolvePreview3dForSelection(
+  {
+    ...productA,
+    preview3d: {
+      enabled: true,
+      geometryType: 'photo_frame',
+      photoFrame: { enabled: true, sizeRuleKey: '5x7', openingWidth: 5, openingHeight: 7 },
+    },
+  },
+  { Size: { label: '5*7 inch' } },
+);
+if (framedA.photoFrame.openingWidth !== 5 || framedA.photoFrame.openingHeight !== 7) {
+  throw new Error('product A 5×7 selection must keep 5×7 geometry');
 }
 
 console.log('preview3d phase2b helpers ok', {

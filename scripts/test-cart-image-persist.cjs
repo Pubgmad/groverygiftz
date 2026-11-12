@@ -95,6 +95,9 @@ assert.strictEqual(cartItemHasConfiguredImages({
   customFields: { 'Customer Photos': [{ url: '/api/x' }] },
 }), true);
 assert.strictEqual(cartItemHasConfiguredImages({ title: 'plain' }), false);
+assert.strictEqual(cartItemHasConfiguredImages({
+  customizationPreview: { previews: [{ previewUrl: 'blob:http://local/x' }] },
+}), false);
 
 const access = loadModule('../src/lib/customerFileAccess.js', [
   'buildCustomerDisplayUrl',

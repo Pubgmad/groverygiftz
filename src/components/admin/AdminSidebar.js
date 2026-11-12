@@ -78,7 +78,8 @@ export default function AdminSidebar({ mobileOpen = false, onClose = () => {} })
       <nav className="p-4 space-y-1">
         {visibleItems.map((item) => {
           const Icon = iconMap[item.id] || FiHome;
-          const isActive = pathname === item.href || (item.href !== ADMIN_BASE_PATH && pathname.startsWith(item.href));
+          const isActive = pathname === item.href
+            || (item.href !== ADMIN_BASE_PATH && pathname.startsWith(`${item.href}/`));
           return (
             <Link key={item.href} href={item.href}
               onClick={onClose}

@@ -18,6 +18,7 @@ import {
   inferSizeRuleKeyFromLabel,
   resolvePhotoFrameDimensions,
   resolvePhotoFrameRuntime,
+  sizeRulesForProduct,
 } from '../src/lib/photoFrame3d.js';
 
 const expectedKeys = [
@@ -61,9 +62,27 @@ const ok = nineteen.ok
   && groups.C === 8;
 
 if (inferSizeRuleKeyFromLabel('5 × 7') !== '5x7') throw new Error('label 5 × 7 must map to 5x7');
+if (inferSizeRuleKeyFromLabel('5*7 inch') !== '5x7') throw new Error('catalog labels using * must map to 5x7');
 if (inferSizeRuleKeyFromLabel('12x18 inch') !== '12x18') throw new Error('label 12x18 must map');
 if (inferSizeRuleKeyFromLabel('30 × 20') !== '30x20') throw new Error('30×20 must stay 30x20');
 if (inferSizeRuleKeyFromLabel('20 × 30') !== '') throw new Error('20×30 must not silently swap onto 30x20');
+
+const from36 = applyPhotoFrameSizeFromSelection(
+  { enabled: true, sizeRuleKey: '5x7' },
+  { Size: { label: '36*24 inch', previewWidth: 0, previewHeight: 0 } },
+);
+if (from36.sizeRuleKey !== '36x24') throw new Error(`36×24 product must stay 36x24, got ${from36.sizeRuleKey}`);
+if (from36.openingWidth !== 36 || from36.openingHeight !== 24) {
+  throw new Error('36×24 must not be swapped onto 24×36');
+}
+
+const from2030 = applyPhotoFrameSizeFromSelection(
+  { enabled: true, sizeRuleKey: '5x7' },
+  { Size: { label: '20 × 30' } },
+);
+if (from2030.openingWidth !== 20 || from2030.openingHeight !== 30) {
+  throw new Error('20×30 must render 20×30, not swap onto 30×20');
+}
 
 const matte = findDesignProfile(DEFAULT_PHOTO_FRAME_DESIGN_PROFILES, 'design_matte_black_procedural');
 if (!assertDesignCompatibleWithSize(matte, '24x36').ok) throw new Error('procedural matte must cover 24x36');
@@ -157,6 +176,19 @@ const report = {
     orientation: DEFAULT_PHOTO_FRAME_SIZE_RULES.find((r) => r.key === row.sizeKey)?.orientation || '',
   })),
 };
+
+const productARules = sizeRulesForProduct({
+  variants: [{ name: 'Size', options: [{ label: '5*7 inch' }] }],
+});
+const productBRules = sizeRulesForProduct({
+  variants: [{ name: 'Size', options: [{ label: '36*24 inch' }, { label: '12*15 inch' }] }],
+});
+if (productARules.length !== 1 || productARules[0].key !== '5x7') {
+  throw new Error(`product A must expose only 5x7, got ${productARules.map((r) => r.key).join(',')}`);
+}
+if (!productBRules.some((r) => r.key === '36x24') || productBRules.some((r) => r.key === '5x7' || r.key === '24x36')) {
+  throw new Error('product B must keep 36×24/12×15 without leaking 5×7 or swapping onto 24×36');
+}
 
 console.log(JSON.stringify(report, null, 2));
 if (!ok) process.exit(1);
