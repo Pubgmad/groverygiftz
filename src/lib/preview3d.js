@@ -718,6 +718,24 @@ export function listViewerSlotDescriptors(product = {}, selectedVariants = {}) {
   return variantSlots;
 }
 
+export function photoForSlotKey(slotKey, {
+  customerPhotos = [],
+  variantLabelUploads = {},
+} = {}) {
+  const key = String(slotKey || '');
+  if (key.startsWith('variant:')) {
+    return variantLabelUploads?.[key.slice('variant:'.length)] || null;
+  }
+  if (key.startsWith('area:index:')) {
+    const idx = Number(key.slice('area:index:'.length));
+    if (Number.isInteger(idx) && idx >= 0) return customerPhotos[idx] || null;
+  }
+  if (key.startsWith('area:id:')) {
+    return null;
+  }
+  return null;
+}
+
 export function photoForViewerSlot(slot, {
   customerPhotos = [],
   variantLabelUploads = {},
@@ -726,7 +744,15 @@ export function photoForViewerSlot(slot, {
   if (slot?.source === 'variant' && slot.variantLabel) {
     return variantLabelUploads?.[slot.variantLabel] || null;
   }
-  return customerPhotos[slot?.index] || customerPhotos[index] || null;
+  const byKey = photoForSlotKey(slot?.slotKey, { customerPhotos, variantLabelUploads });
+  if (byKey) return byKey;
+  if (Number.isInteger(slot?.index) && slot.index >= 0) {
+    return customerPhotos[slot.index] || null;
+  }
+  if (Number.isInteger(index) && index >= 0 && slot?.index === index) {
+    return customerPhotos[index] || null;
+  }
+  return null;
 }
 
 /** Build stable slot descriptors from existing product customization config (source of truth). */

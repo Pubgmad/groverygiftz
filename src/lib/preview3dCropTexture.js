@@ -41,6 +41,7 @@ function cropBakeKey({
   previewAdjustments = {},
   previewAreas = [],
   surfaces = [],
+  onlySlotKeys = null,
 } = {}) {
   const photoKeys = (customerPhotos || []).map((photo) => (
     pickLiveImageUrl(photo) || pickDurableImageUrl(photo) || photo?.previewUrl || ''
@@ -63,6 +64,7 @@ function cropBakeKey({
       u: area?.unit,
     })),
     surfaces: (surfaces || []).map((s) => s?.id || s?.meshName || ''),
+    onlySlotKeys: Array.isArray(onlySlotKeys) ? [...onlySlotKeys].map(String).sort() : [],
   });
 }
 
@@ -256,8 +258,12 @@ async function buildCropAccurateViewerTexturesUncached({
   previewAdjustments = {},
   previewAreas = [],
   surfaces = [],
+  onlySlotKeys = null,
 } = {}) {
   const slots = listViewerSlotDescriptors(product, selectedVariants);
+  const wanted = Array.isArray(onlySlotKeys) && onlySlotKeys.length
+    ? new Set(onlySlotKeys.map(String))
+    : null;
   const config = normalizePreview3dConfig(preview3d || {});
   const mappingBySlot = Object.fromEntries(
     (config.surfaceMappings || []).map((row) => [row.slotKey, row.surfaceId]),
@@ -268,6 +274,7 @@ async function buildCropAccurateViewerTexturesUncached({
   const textures = [];
   for (let index = 0; index < slots.length; index += 1) {
     const slot = slots[index];
+    if (wanted && !wanted.has(String(slot.slotKey))) continue;
     const photo = photoForViewerSlot(slot, { customerPhotos, variantLabelUploads, index });
     const area = previewAreas[index]
       || product?.customizationPreview?.areas?.[index]
@@ -404,6 +411,15 @@ export function warmupCropAccurateViewerTextures(args = {}) {
  * Build N texture slots with crop-accurate session URLs when photos exist.
  * Reuses a hover-warmup bake when the approved crop has not changed.
  */
+export function invalidatePreview3dTextureCache() {
+  if (warmupStore.result) {
+    try { warmupStore.result.revokeAll?.(); } catch { /* ignore */ }
+  }
+  warmupStore.key = '';
+  warmupStore.promise = null;
+  warmupStore.result = null;
+}
+
 export async function buildCropAccurateViewerTextures(args = {}) {
   const key = cropBakeKey(args);
   releaseWarmupIfStale(key);

@@ -744,8 +744,7 @@ export function formatPhotoFrameDimensionChip(resolved) {
   if (!(openW > 0) || !(openH > 0)) return '';
   const open = `Photo ${openW} × ${openH} ${unit}`;
   if (outerW > 0 && outerH > 0) {
-    const scaleNote = resolved.outerDimsVerified ? 'outer verified' : 'outer illustrative';
-    return `${open} · Outer ${outerW} × ${outerH} ${unit} · ${scaleNote}`;
+    return `${open} · Outer ${outerW} × ${outerH} ${unit}`;
   }
   return open;
 }

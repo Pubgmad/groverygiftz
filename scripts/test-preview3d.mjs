@@ -350,6 +350,37 @@ if (framedA.photoFrame.openingWidth !== 5 || framedA.photoFrame.openingHeight !=
   throw new Error('product A 5×7 selection must keep 5×7 geometry');
 }
 
+{
+  const threeAreaProduct = {
+    customizationPreview: {
+      areas: [
+        { label: 'Photo 1', requiresImageUpload: true },
+        { label: 'Photo 2', requiresImageUpload: true },
+        { label: 'Photo 3', requiresImageUpload: true },
+      ],
+    },
+  };
+  const threeSlots = m.buildViewerTextureSlots({
+    product: threeAreaProduct,
+    preview3d: { enabled: true, geometryType: 'photo_frame' },
+    customerPhotos: [{ url: '/media/p1.jpg' }, { url: '/media/p2.jpg' }, { url: '/media/p3.jpg' }],
+  });
+  if (threeSlots[0].slotKey !== 'area:index:0' || threeSlots[2].slotKey !== 'area:index:2') {
+    throw new Error('area slots must use stable index keys');
+  }
+  if (threeSlots[2].textureUrl !== '/media/p3.jpg') throw new Error('Photo 3 must map to slot 3');
+  const afterDelete = m.photoForViewerSlot(threeSlots[1], {
+    customerPhotos: [{ url: '/media/p1.jpg' }, null, { url: '/media/p3.jpg' }],
+    index: 0,
+  });
+  if (afterDelete) throw new Error('deleted Photo 2 must not fall back to Photo 1 or Photo 3');
+  const stillThree = m.photoForViewerSlot(threeSlots[2], {
+    customerPhotos: [{ url: '/media/p1.jpg' }, null, { url: '/media/p3.jpg' }],
+    index: 0,
+  });
+  if (stillThree?.url !== '/media/p3.jpg') throw new Error('Photo 3 must stay Photo 3 after deleting Photo 2');
+}
+
 console.log('preview3d phase2b helpers ok', {
   slots: slots.length,
   filled: textures.filter((t) => !t.isPlaceholder).length,

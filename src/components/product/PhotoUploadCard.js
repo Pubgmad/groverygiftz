@@ -21,6 +21,7 @@ export default function PhotoUploadCard({
   onUpload,
   onRemove,
   onEdit,
+  extraActions = null,
   instructions = '',
 }) {
   const inputId = useId();
@@ -203,6 +204,7 @@ export default function PhotoUploadCard({
               Edit
             </button>
           ) : null}
+          {extraActions}
           <button
             type="button"
             onClick={(event) => {

@@ -5,6 +5,7 @@ import { FiRefreshCw, FiX, FiHome, FiSmartphone } from 'react-icons/fi';
 import {
   buildViewerTextureSlots,
   isPreview3dEligible,
+  photoForSlotKey,
   resolvePreview3dDimensions,
   resolvePreview3dForSelection,
   resolvePreview3dSurfaces,
@@ -76,6 +77,9 @@ export default function Product3DViewerModal({
   selectedVariants = {},
   initialPresentationMode = 'inspect',
   allowCameraAr = false,
+  focusSlotKey = '',
+  focusKind = 'slot',
+  collageTextures = null,
 }) {
   const presentationModes = allowCameraAr
     ? PRESENTATION_MODES
@@ -96,6 +100,7 @@ export default function Product3DViewerModal({
   const [arNotice, setArNotice] = useState('');
   const [hasMountedScene, setHasMountedScene] = useState(false);
   const [wallPhotoOpen, setWallPhotoOpen] = useState(false);
+  const [bootKey, setBootKey] = useState(0);
   const revokeRef = useRef(null);
   const closeBtnRef = useRef(null);
   const sceneReadyRef = useRef(false);
@@ -130,9 +135,22 @@ export default function Product3DViewerModal({
   // Remount only when variant/model changes — not on wall↔inspect or modal close.
   const selectionKey = `${config.geometryType}|${config.modelUrl}|${config.assetId}|${resolvedDimensions.width}x${resolvedDimensions.height}x${resolvedDimensions.depth}|${resolvedDimensions.modelScale || ''}|${photoFrameBundle.resolved?.openingWidth || ''}x${photoFrameBundle.resolved?.openingHeight || ''}|${photoFrameBundle.resolved?.sizeRuleKey || ''}`;
 
-  const instantPreviewUrl = textures.find((slot) => slot?.textureUrl)?.textureUrl
-    || customerPhotos.find((photo) => photo?.url)?.url
-    || product?.images?.[0]
+  const focusedPhoto = photoForSlotKey(focusSlotKey, { customerPhotos, variantLabelUploads });
+  const displayTextures = useMemo(() => {
+    if (focusKind === 'collage' && Array.isArray(collageTextures) && collageTextures.length) {
+      return collageTextures;
+    }
+    if (focusKind === 'demo') return textures.slice(0, 1);
+    if (focusSlotKey) {
+      const matched = textures.filter((slot) => String(slot.slotKey) === String(focusSlotKey));
+      if (matched.length) return matched;
+    }
+    return textures.slice(0, 1);
+  }, [textures, focusSlotKey, focusKind, collageTextures]);
+  const instantPreviewUrl = displayTextures.find((slot) => slot?.textureUrl)?.textureUrl
+    || focusedPhoto?.displayUrl
+    || focusedPhoto?.url
+    || focusedPhoto?.previewUrl
     || '';
   const showOverlay = open && !sceneReady && !webglError;
 
@@ -147,6 +165,11 @@ export default function Product3DViewerModal({
     document.body.dataset.preview3dOpen = '1';
     setWebglError('');
     setFocusedIndex(0);
+    if (typeof window !== 'undefined' && window.__preview3dTimings && !window.__preview3dTimings.clickToFirstVisualMs) {
+      const start = Number(window.__preview3dOpenAt) || 0;
+      const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      window.__preview3dTimings.clickToFirstVisualMs = start ? Math.round(now - start) : 0;
+    }
     setArNotice('');
     const nextMode = presentationModes.some((m) => m.id === initialPresentationMode)
       ? initialPresentationMode
@@ -203,6 +226,11 @@ export default function Product3DViewerModal({
   // keep-alive reopen must reuse decoded textures without a rebuild wait.
   useEffect(() => {
     if (!hasMountedScene) return undefined;
+    if (focusKind === 'collage' && Array.isArray(collageTextures) && collageTextures.length) {
+      setTextures(collageTextures);
+      setTextureBusy(false);
+      return undefined;
+    }
     let cancelled = false;
     setTextureBusy(true);
     const syncFallback = buildViewerTextureSlots({
@@ -227,6 +255,9 @@ export default function Product3DViewerModal({
           previewAdjustments,
           previewAreas,
           surfaces,
+          onlySlotKeys: focusKind === 'collage' || focusKind === 'demo' || !focusSlotKey
+            ? null
+            : [focusSlotKey],
         });
         if (cancelled) {
           result.revokeAll?.();
@@ -282,6 +313,8 @@ export default function Product3DViewerModal({
     previewAreas,
     customizationPreviewPayload,
     surfaces,
+    focusSlotKey,
+    focusKind,
   ]);
 
   useEffect(() => () => {
@@ -313,7 +346,15 @@ export default function Product3DViewerModal({
   // Keep WebGL alive after first open: hide shell instead of unmounting.
   if (!open && !hasMountedScene) return null;
 
-  const filled = textures.filter((t) => !t.isPlaceholder).length;
+  const filled = displayTextures.filter((t) => !t.isPlaceholder).length;
+  const sceneGeometry = focusKind === 'collage' && displayTextures.length > 1
+    ? 'multi_grid'
+    : (photoFrameBundle.effectiveGeometryType || config.geometryType);
+  const retryScene = () => {
+    setWebglError('');
+    setSceneReady(false);
+    setBootKey((key) => key + 1);
+  };
   const scenePresentation = presentationMode === 'wall' || presentationMode === 'ar' ? 'wall' : 'inspect';
   const titleByMode = presentationMode === 'wall'
     ? 'View on Wall'
@@ -371,7 +412,7 @@ export default function Product3DViewerModal({
 
         {presentationMode === 'wall' ? (
           <div className="border-b border-emerald-100 bg-emerald-50 px-4 py-1.5 text-[11px] text-emerald-950">
-            Room illustration — not live camera AR.
+            On a wall
           </div>
         ) : null}
         {arNotice ? (
@@ -406,27 +447,28 @@ export default function Product3DViewerModal({
         <div className="relative min-h-0 flex-1">
           {webglError ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-              <p className="text-sm font-semibold text-gray-800">3D viewer could not start on this device.</p>
-              <p className="text-xs text-gray-500">Your product page and photo uploads still work normally. You can close this and continue shopping.</p>
-              {textures[0]?.textureUrl ? (
+              <p className="text-sm font-semibold text-gray-800">3D preview failed to load.</p>
+              <p className="text-xs text-gray-500">Your product page, photo uploads, and cart still work. You can retry or close.</p>
+              {instantPreviewUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={textures[0].textureUrl} alt="2D fallback preview" className="mt-2 max-h-64 rounded-xl border object-contain" />
+                <img src={instantPreviewUrl} alt="" className="mt-2 max-h-64 rounded-xl border object-contain" />
               ) : null}
+              <div className="mt-2 flex gap-2">
+                <button type="button" onClick={retryScene} className="min-h-[44px] rounded-xl border bg-white px-4 text-sm font-semibold">Retry</button>
+                <button type="button" onClick={onClose} className="min-h-[44px] rounded-xl border bg-white px-4 text-sm font-semibold">Close</button>
+              </div>
             </div>
           ) : (
-            <div
-              className="relative h-full w-full"
-              onErrorCapture={() => setWebglError('webgl_failed')}
-            >
+            <div className="relative h-full w-full min-h-[240px]">
               {hasMountedScene ? (
-                <ModalSceneErrorBoundary key={`boundary-${selectionKey}`}>
+                <ModalSceneErrorBoundary key={`boundary-${selectionKey}-${bootKey}`}>
                   <Preview3dScene
-                    key={`${selectionKey}-${photoFrameBundle.effectiveGeometryType || config.geometryType}`}
+                    key={`${selectionKey}-${bootKey}`}
                     cameraResetNonce={resetKey}
                     active={open}
-                    geometryType={photoFrameBundle.effectiveGeometryType || config.geometryType}
-                    modelUrl={photoFrameBundle.glbCompat?.ok === false ? '' : config.modelUrl}
-                    textures={textures}
+                    geometryType={sceneGeometry}
+                    modelUrl={sceneGeometry === 'custom_glb' && photoFrameBundle.glbCompat?.ok !== false ? config.modelUrl : ''}
+                    textures={displayTextures}
                     surfaces={surfaces}
                     layout={config.layout}
                     legacySequentialGlb={config.legacySequentialGlb === true}
@@ -453,14 +495,15 @@ export default function Product3DViewerModal({
                     photoFrameMoulding={photoFrameBundle.mouldingProfileKey || 'stepped'}
                     attachProceduralHardware={photoFrameBundle.attachProceduralHardware === true}
                     includeProceduralBacking={photoFrameBundle.includeProceduralBacking === true}
-                    selectedSurfaceId={textures.length > 1 ? (textures[focusedIndex]?.surfaceId || '') : ''}
+                    selectedSurfaceId={displayTextures.length > 1 ? (displayTextures[focusedIndex]?.surfaceId || '') : ''}
                     onSceneReady={handleSceneReady}
+                    onBootError={(message) => setWebglError(message || 'webgl_failed')}
                   />
                 </ModalSceneErrorBoundary>
               ) : null}
               {wallPhotoOpen ? (
                 <WallPhotoPlacement
-                  frameTextureUrl={textures.find((t) => t.textureUrl && !t.isPlaceholder)?.textureUrl || ''}
+                  frameTextureUrl={displayTextures.find((t) => t.textureUrl && !t.isPlaceholder)?.textureUrl || instantPreviewUrl || ''}
                   dimensionLabel={dimensionChip}
                   onClose={() => setWallPhotoOpen(false)}
                 />
@@ -482,9 +525,9 @@ export default function Product3DViewerModal({
         </div>
 
         <div className="border-t border-black/5 bg-white/90 px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur">
-          {textures.length > 1 ? (
+          {focusKind === 'collage' && displayTextures.length > 1 ? (
             <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
-              {textures.map((slot, index) => (
+              {displayTextures.map((slot, index) => (
                 <button
                   key={slot.slotKey}
                   type="button"
@@ -515,6 +558,13 @@ export default function Product3DViewerModal({
             </div>
           ) : null}
           <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={retryScene}
+              className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl border bg-white px-3 text-xs font-semibold sm:flex-none"
+            >
+              Retry
+            </button>
             <button
               type="button"
               onClick={() => {

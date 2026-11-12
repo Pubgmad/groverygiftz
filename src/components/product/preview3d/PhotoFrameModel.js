@@ -7,34 +7,13 @@
  */
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { useTexture } from '@react-three/drei';
+import SafePhotoMaterial from './SafePhotoMaterial';
 
 function TexturedOrColor({ url, color, roughness = 0.7, metalness = 0.05 }) {
   if (!url) {
     return <meshStandardMaterial color={color} roughness={roughness} metalness={metalness} />;
   }
-  return <MappedMaterial url={url} fallbackColor={color} roughness={roughness} metalness={metalness} />;
-}
-
-function MappedMaterial({ url, fallbackColor, roughness, metalness }) {
-  const texture = useTexture(url);
-  useLayoutEffect(() => {
-    if (!texture) return undefined;
-    texture.colorSpace = THREE.SRGBColorSpace;
-    texture.anisotropy = 4;
-    texture.needsUpdate = true;
-    return () => {
-      try { texture.dispose?.(); } catch { /* ignore */ }
-    };
-  }, [texture]);
-  return (
-    <meshStandardMaterial
-      map={texture || null}
-      color={texture ? '#ffffff' : fallbackColor}
-      roughness={roughness}
-      metalness={metalness}
-    />
-  );
+  return <SafePhotoMaterial url={url} color={color} roughness={roughness} metalness={metalness} />;
 }
 
 /** Black plastic-ish keyhole hanger bracket (visual approx). */
@@ -194,7 +173,9 @@ function makeFrameShape(outerW, outerH, holeW, holeH) {
   hole.lineTo(ix, iy);
   hole.lineTo(ix, -iy);
   hole.closePath();
-  shape.holes.push(hole);
+  if (holeW > 0.002 && holeH > 0.002 && holeW < outerW - 0.002 && holeH < outerH - 0.002) {
+    shape.holes.push(hole);
+  }
   return shape;
 }
 
@@ -222,6 +203,7 @@ function ExtrudedRing({
   bevel = false,
 }) {
   const geometry = useMemo(() => {
+    if (!(outerW > 0) || !(outerH > 0) || !(depth > 0)) return null;
     const shape = makeFrameShape(outerW, outerH, holeW, holeH);
     const bevelSize = bevel ? Math.min(outerW - holeW, outerH - holeH) * 0.08 : 0;
     const geo = new THREE.ExtrudeGeometry(shape, {
@@ -236,7 +218,9 @@ function ExtrudedRing({
     return geo;
   }, [outerW, outerH, holeW, holeH, depth, bevel]);
 
-  useLayoutEffect(() => () => geometry.dispose(), [geometry]);
+  useLayoutEffect(() => () => geometry?.dispose?.(), [geometry]);
+
+  if (!geometry) return null;
 
   return (
     <mesh geometry={geometry} position={[0, 0, z]} castShadow receiveShadow>

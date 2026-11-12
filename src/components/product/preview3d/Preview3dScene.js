@@ -2,7 +2,8 @@
 
 import { Component, Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
-import { OrbitControls, useGLTF, useTexture } from '@react-three/drei';
+import { OrbitControls, useGLTF } from '@react-three/drei';
+import SafePhotoMaterial from './SafePhotoMaterial';
 import * as THREE from 'three';
 import {
   buildMeshPath,
@@ -48,8 +49,8 @@ class Preview3dErrorBoundary extends Component {
     return { error: error || true };
   }
 
-  componentDidCatch() {
-    try { this.props.onError?.(this.state.error); } catch { /* ignore */ }
+  componentDidCatch(error) {
+    try { this.props.onError?.(error || this.state.error); } catch { /* ignore */ }
   }
 
   render() {
@@ -69,26 +70,7 @@ function SlotTextureMaterial({ url, placeholderUrl, color = '#d9d2c5' }) {
   if (!mapUrl) {
     return <meshStandardMaterial color={color} roughness={0.85} metalness={0.05} />;
   }
-  return <TexturedMaterial url={mapUrl} fallbackColor={color} />;
-}
-
-function TexturedMaterial({ url, fallbackColor }) {
-  const texture = useTexture(url);
-  useMemo(() => {
-    if (texture) {
-      texture.colorSpace = THREE.SRGBColorSpace;
-      texture.anisotropy = 4;
-      texture.needsUpdate = true;
-    }
-  }, [texture]);
-  return (
-    <meshStandardMaterial
-      map={texture || null}
-      color={texture ? '#ffffff' : fallbackColor}
-      roughness={0.68}
-      metalness={0.04}
-    />
-  );
+  return <SafePhotoMaterial url={mapUrl} color={color} />;
 }
 
 function planeSizeForAspect(aspect, fallback = [1.2, 1.2], sceneSize = null) {
@@ -994,35 +976,71 @@ function SceneContent({
           sceneSize={sceneSize}
         />
       ) : geometryType === 'photo_frame' && photoFrameResolved ? (
-        (() => {
-          const scene = photoFrameDimsToScene(photoFrameResolved, { wallRelative: isWallPresentation });
-          const frame = (
-            <PhotoFrameModel
-              sceneOpening={scene.opening}
-              sceneBorders={scene.borders}
-              sceneDepth={scene.depth}
-              sceneBacking={scene.backing}
+        <Preview3dErrorBoundary
+          fallback={(
+            <FramePlane
+              position={isWallPresentation ? [0, 0.12, -0.06] : [0, 0, 0]}
+              size={planeSizeForAspect(textures[0]?.aspect, [1.2, 1.2], sceneSize)}
+              depth={sceneSize.depth}
               textureUrl={textures[0]?.textureUrl}
               placeholderUrl={textures[0]?.placeholderUrl}
               frameColor={frameColor}
               accentColor={accentColor}
-              material={photoFrameMaterial || undefined}
-              hardware={isWallPresentation ? { ...(photoFrameHardware || {}), stand: { enabled: false } } : (photoFrameHardware || {})}
-              selected={focusedIndex === 0}
+              selected={false}
               onSelect={() => onSelectSurface?.(textures[0]?.surfaceId, 0)}
-              mouldingProfile={photoFrameMoulding || scene.mouldingProfile || 'stepped'}
-              onModelBounds={(payload) => setModelBounds(
-                isWallPresentation ? offsetModelBounds(payload, WALL_PRESENTATION_OFFSET) : payload
-              )}
             />
-          );
-          return isWallPresentation
-            ? <group position={WALL_PRESENTATION_OFFSET}>{frame}</group>
-            : frame;
-        })()
+          )}
+        >
+          {(() => {
+            const scene = photoFrameDimsToScene(photoFrameResolved, { wallRelative: isWallPresentation });
+            const frame = (
+              <PhotoFrameModel
+                sceneOpening={scene.opening}
+                sceneBorders={scene.borders}
+                sceneDepth={scene.depth}
+                sceneBacking={scene.backing}
+                textureUrl={textures[0]?.textureUrl}
+                placeholderUrl={textures[0]?.placeholderUrl}
+                frameColor={frameColor}
+                accentColor={accentColor}
+                material={photoFrameMaterial || undefined}
+                hardware={isWallPresentation ? { ...(photoFrameHardware || {}), stand: { enabled: false } } : (photoFrameHardware || {})}
+                selected={focusedIndex === 0}
+                onSelect={() => onSelectSurface?.(textures[0]?.surfaceId, 0)}
+                mouldingProfile={photoFrameMoulding || scene.mouldingProfile || 'stepped'}
+                onModelBounds={(payload) => setModelBounds(
+                  isWallPresentation ? offsetModelBounds(payload, WALL_PRESENTATION_OFFSET) : payload
+                )}
+              />
+            );
+            return isWallPresentation
+              ? <group position={WALL_PRESENTATION_OFFSET}>{frame}</group>
+              : frame;
+          })()}
+        </Preview3dErrorBoundary>
       ) : geometryType === 'custom_glb' && modelUrl ? (
         <Preview3dErrorBoundary
           fallback={(
+            photoFrameResolved ? (
+              <PhotoFrameModel
+                sceneOpening={photoFrameDimsToScene(photoFrameResolved, { wallRelative: isWallPresentation }).opening}
+                sceneBorders={photoFrameDimsToScene(photoFrameResolved, { wallRelative: isWallPresentation }).borders}
+                sceneDepth={photoFrameDimsToScene(photoFrameResolved, { wallRelative: isWallPresentation }).depth}
+                sceneBacking={photoFrameDimsToScene(photoFrameResolved, { wallRelative: isWallPresentation }).backing}
+                textureUrl={textures[0]?.textureUrl}
+                placeholderUrl={textures[0]?.placeholderUrl}
+                frameColor={frameColor}
+                accentColor={accentColor}
+                material={photoFrameMaterial || undefined}
+                hardware={isWallPresentation ? { ...(photoFrameHardware || {}), stand: { enabled: false } } : (photoFrameHardware || {})}
+                selected={false}
+                onSelect={() => onSelectSurface?.(textures[0]?.surfaceId, 0)}
+                mouldingProfile={photoFrameMoulding || 'stepped'}
+                onModelBounds={(payload) => setModelBounds(
+                  isWallPresentation ? offsetModelBounds(payload, WALL_PRESENTATION_OFFSET) : payload
+                )}
+              />
+            ) : (
             <FramePlane
               position={[0, 0, 0]}
               size={planeSizeForAspect(textures[0]?.aspect, [1.2, 1.2], sceneSize)}
@@ -1034,6 +1052,7 @@ function SceneContent({
               selected={false}
               onSelect={() => onSelectSurface?.(textures[0]?.surfaceId, 0)}
             />
+            )
           )}
         >
           <Suspense fallback={null}>
@@ -1108,27 +1127,38 @@ function SceneContent({
 export default function Preview3dScene(props) {
   const preserveDrawingBuffer = props.preserveDrawingBuffer === true;
   const [bootError, setBootError] = useState('');
-  const modelFallbackNote = props.geometryType === 'custom_glb'
-    ? 'The custom 3D model could not be loaded. Showing a simple preview instead — close anytime and continue shopping.'
-    : '';
   const isWall = props.presentationMode === 'wall';
   const active = props.active !== false;
+  const reportBootError = (message) => {
+    const text = message || '3D preview failed to load.';
+    setBootError(text);
+    try { props.onBootError?.(text); } catch { /* ignore */ }
+    if (typeof window !== 'undefined') window.__preview3dLastError = text;
+  };
   return (
     <div
       data-preview3d-canvas={isWall ? 'wall' : 'inspect'}
       className={`relative h-full w-full min-h-[220px] touch-none ${isWall ? 'bg-[#b9aea0]' : 'bg-gradient-to-b from-[#f4f0e8] via-[#efe8dc] to-[#e4dccf]'}`}
     >
       {bootError ? (
-        <div className="flex h-full items-center justify-center px-6 text-center text-sm text-gray-700">
-          {bootError}
+        <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-sm text-gray-700">
+          <p className="font-semibold text-gray-900">3D preview failed to load.</p>
+          <p>You can retry or close and continue shopping.</p>
+          <button
+            type="button"
+            className="min-h-[44px] rounded-xl border bg-white px-4 text-sm font-semibold"
+            onClick={() => setBootError('')}
+          >
+            Retry
+          </button>
         </div>
       ) : (
         <Preview3dErrorBoundary
-          onError={() => setBootError(modelFallbackNote || '3D preview failed to load. You can close this and continue shopping.')}
+          onError={(error) => reportBootError(error?.message || '3D preview failed to load.')}
           fallback={(
             <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-sm text-gray-700">
               <p className="font-semibold text-gray-900">3D preview unavailable</p>
-              <p>{modelFallbackNote || 'Close this viewer and continue with the normal product page and photo uploads.'}</p>
+              <p>Close this viewer and continue with the normal product page and photo uploads.</p>
             </div>
           )}
         >
@@ -1151,7 +1181,7 @@ export default function Preview3dScene(props) {
               gl.toneMapping = THREE.ACESFilmicToneMapping;
               gl.toneMappingExposure = 1.08;
             }}
-            onError={() => setBootError('WebGL could not start on this device. You can close this and continue shopping.')}
+            onError={() => reportBootError('WebGL could not start on this device.')}
           >
             <Suspense fallback={null}>
               <SceneContent {...props} />

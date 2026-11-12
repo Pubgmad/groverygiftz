@@ -28,6 +28,7 @@ import PurchaseActivityBadge from '@/components/product/PurchaseActivityBadge';
 import ProductMakingVideos from '@/components/product/ProductMakingVideos';
 import ProductTrustStats from '@/components/product/ProductTrustStats';
 import { isPreview3dEligible } from '@/lib/preview3d';
+import { Preview3dSessionProvider } from '@/components/product/preview3d/Preview3dSession';
 import { parseWxHFromLabel } from '@/lib/photoFrame3d';
 import { imagePerfMark, imagePerfMeasure } from '@/lib/imagePerf';
 import { readJsonResponse } from '@/lib/safeJsonResponse';
@@ -1175,6 +1176,14 @@ export default function ProductDetail({ product }) {
   };
 
   return (
+    <Preview3dSessionProvider
+      product={product}
+      customerPhotos={customerPhotos}
+      variantLabelUploads={variantLabelUploads}
+      previewAdjustments={previewAdjustments}
+      previewAreas={previewAreas}
+      selectedVariants={selectedVariants}
+    >
     <div className="product-mobile-safe max-w-full">
       {/* Purchase layout: gallery + buy controls only (desktop sticky gallery avoids empty left column) */}
       <div className="grid max-w-full grid-cols-1 gap-8 lg:grid-cols-2 lg:items-start lg:gap-10 xl:gap-12">
@@ -1235,14 +1244,7 @@ export default function ProductDetail({ product }) {
           <ProductInterestIndicator product={product} />
           <PurchaseActivityBadge product={product} />
           {showPreview3d && !(needsCustomerPhotos || selectedVariantUploadOptions.length > 0 || needsCollageUploads) ? (
-            <ViewIn3DButton
-              product={product}
-              customerPhotos={customerPhotos}
-              variantLabelUploads={variantLabelUploads}
-              previewAdjustments={previewAdjustments}
-              previewAreas={previewAreas}
-              selectedVariants={selectedVariants}
-            />
+            <ViewIn3DButton demo />
           ) : null}
         </div>
 
@@ -1393,16 +1395,6 @@ export default function ProductDetail({ product }) {
                     {uploadedPhotoCount}/{requiredPhotoCount || maxPhotoCount}
                   </span>
                 ) : null}
-                {showPreview3d ? (
-                  <ViewIn3DButton
-                    product={product}
-                    customerPhotos={customerPhotos}
-                    variantLabelUploads={variantLabelUploads}
-                    previewAdjustments={previewAdjustments}
-                    previewAreas={previewAreas}
-                    selectedVariants={selectedVariants}
-                  />
-                ) : null}
               </div>
             </div>
             {stockLocked ? null : (
@@ -1436,6 +1428,9 @@ export default function ProductDetail({ product }) {
                         onUpload={(files) => handleVariantLabelUpload(selected.label, files[0])}
                         onRemove={() => removeVariantLabelUpload(selected.label)}
                         onEdit={(upload?.url || liveBlobUrl(upload) || upload?.previewUrl) ? () => setEditorSlotKey(previewKey) : undefined}
+                        extraActions={showPreview3d && savedPreviewAreas[previewKey] ? (
+                          <ViewIn3DButton compact slotKey={`variant:${selected.label}`} />
+                        ) : null}
                         instructions={selected.previewInstructions || ''}
                       />
                     );
@@ -1490,6 +1485,9 @@ export default function ProductDetail({ product }) {
                         onUpload={(files) => handleCustomerPhotoUpload(files, files.length === 1 ? idx : null)}
                         onRemove={() => removeCustomerPhoto(idx)}
                         onEdit={(photo?.url || liveBlobUrl(photo) || photo?.previewUrl) ? () => setEditorSlotKey(idx) : undefined}
+                        extraActions={showPreview3d && savedPreviewAreas[idx] ? (
+                          <ViewIn3DButton compact slotKey={`area:index:${idx}`} />
+                        ) : null}
                         instructions={area?.instructions || ''}
                       />
                     );
@@ -1516,7 +1514,23 @@ export default function ProductDetail({ product }) {
                       {template.instructions ? <p className="mt-1 text-xs text-primary-700">{template.instructions}</p> : null}
                       {belowMin ? <p className="mt-1 text-xs font-semibold text-red-600" role="alert">Photo required</p> : null}
                     </div>
+                    <div className="flex flex-col items-end gap-2">
                     <span className={`self-start rounded-full border px-3 py-1 text-xs font-bold ${belowMin || photos.length > max ? 'border-red-100 bg-red-50 text-red-700' : 'border-emerald-100 bg-emerald-50 text-emerald-700'}`}>{photos.length}/{min}-{max}</span>
+                    {showPreview3d && !belowMin && photos.length > 0 ? (
+                      <ViewIn3DButton
+                        compact={false}
+                        kind="collage"
+                        label="View collage in 3D"
+                        collageTextures={photos.map((photo, photoIdx) => ({
+                          slotKey: `collage:${label}:${photo.url || photo.previewUrl || photoIdx}`,
+                          areaLabel: `${label} ${photoIdx + 1}`,
+                          textureUrl: photo.displayUrl || photo.url || photo.previewUrl || '',
+                          isPlaceholder: !(photo.displayUrl || photo.url || photo.previewUrl),
+                          aspect: { width: 1, height: 1 },
+                        }))}
+                      />
+                    ) : null}
+                    </div>
                   </div>
                   <div className={uploadCardGridClass}>
                       {photos.map((photo, idx) => {
@@ -1790,6 +1804,7 @@ export default function ProductDetail({ product }) {
         </div>
       )}
     </div>
+    </Preview3dSessionProvider>
   );
 }
 
