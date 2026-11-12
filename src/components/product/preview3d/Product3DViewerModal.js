@@ -2,7 +2,7 @@
 
 import { Component, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { FiMaximize2, FiRefreshCw, FiX, FiZoomIn, FiHome, FiSmartphone } from 'react-icons/fi';
+import { FiRefreshCw, FiX, FiHome, FiSmartphone } from 'react-icons/fi';
 import {
   buildViewerTextureSlots,
   isPreview3dEligible,
@@ -26,19 +26,13 @@ import {
 import WallPhotoPlacement from './WallPhotoPlacement';
 
 const VIEW_PRESETS = [
-  { id: 'angled', label: '3/4' },
   { id: 'front', label: 'Front' },
   { id: 'back', label: 'Back' },
-  { id: 'left', label: 'Left' },
-  { id: 'right', label: 'Right' },
-  { id: 'top', label: 'Top' },
-  { id: 'bottom', label: 'Bottom' },
-  { id: 'closeup', label: 'Close-up' },
 ];
 
 const PRESENTATION_MODES = [
-  { id: 'inspect', label: '360° view' },
-  { id: 'wall', label: 'View on Wall' },
+  { id: 'inspect', label: '3D View' },
+  { id: 'wall', label: 'On Wall' },
   { id: 'ar', label: 'AR' },
 ];
 
@@ -70,12 +64,6 @@ class ModalSceneErrorBoundary extends Component {
   }
 }
 
-const LOAD_STAGES = [
-  { id: 'engine', label: 'Loading 3D engine…' },
-  { id: 'photos', label: 'Preparing your photos…' },
-  { id: 'scene', label: 'Building product view…' },
-  { id: 'ready', label: 'Ready' },
-];
 
 /**
  * Isolated, read-only 3D viewer shell.
@@ -111,7 +99,6 @@ export default function Product3DViewerModal({
   const [engineReady, setEngineReady] = useState(false);
   const [sceneReady, setSceneReady] = useState(false);
   const [parityWarnings, setParityWarnings] = useState([]);
-  const [loadStartedAt, setLoadStartedAt] = useState(0);
   const [arNotice, setArNotice] = useState('');
   const [hasMountedScene, setHasMountedScene] = useState(false);
   const [wallPhotoOpen, setWallPhotoOpen] = useState(false);
@@ -138,10 +125,6 @@ export default function Product3DViewerModal({
     () => resolvePreview3dSurfaces(product, config),
     [product, config],
   );
-  const approximateNotice = useMemo(
-    () => (surfaces || []).some((surface) => surface?.approximateGeometry === true),
-    [surfaces],
-  );
   const photoFrameBundle = useMemo(() => (
     resolvePhotoFrameRuntime({
       preview3d: config,
@@ -154,15 +137,8 @@ export default function Product3DViewerModal({
   // Remount only when variant/model changes — not on wall↔inspect or modal close.
   const selectionKey = `${config.geometryType}|${config.modelUrl}|${config.assetId}|${resolvedDimensions.width}x${resolvedDimensions.height}x${resolvedDimensions.depth}|${resolvedDimensions.modelScale || ''}|${photoFrameBundle.resolved?.openingWidth || ''}x${photoFrameBundle.resolved?.openingHeight || ''}|${photoFrameBundle.resolved?.sizeRuleKey || ''}`;
 
-  const loadStage = !engineReady
-    ? 'engine'
-    : textureBusy
-      ? 'photos'
-      : !sceneReady
-        ? 'scene'
-        : 'ready';
-  const stageMeta = LOAD_STAGES.find((s) => s.id === loadStage) || LOAD_STAGES[0];
-  const showOverlay = open && loadStage !== 'ready' && !webglError;
+  // Geometry may appear with a placeholder photo; do not block first visual on texture bake.
+  const showOverlay = open && !engineReady && !webglError;
 
   useEffect(() => {
     engineReadyRef.current = engineReady;
@@ -187,7 +163,6 @@ export default function Product3DViewerModal({
     setViewPreset(nextMode === 'wall' || nextMode === 'ar' ? 'wall' : 'front');
     setWallPhotoOpen(false);
     setHasMountedScene(true);
-    setLoadStartedAt(typeof performance !== 'undefined' ? performance.now() : Date.now());
     if (nextMode === 'ar' && allowCameraAr) {
       setArNotice(describeArLimitation(arCapability, buildAndroidSceneViewerIntent({
         modelUrl: config.modelUrl,
@@ -362,9 +337,6 @@ export default function Product3DViewerModal({
   if (!open && !hasMountedScene) return null;
 
   const filled = textures.filter((t) => !t.isPlaceholder).length;
-  const elapsedMs = loadStartedAt
-    ? Math.max(0, Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - loadStartedAt))
-    : 0;
   const scenePresentation = presentationMode === 'wall' || presentationMode === 'ar' ? 'wall' : 'inspect';
   const titleByMode = presentationMode === 'wall'
     ? 'View on Wall'
@@ -405,10 +377,8 @@ export default function Product3DViewerModal({
         <header className="flex items-start justify-between gap-3 border-b border-black/5 px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
           <div className="min-w-0 flex-1 overflow-hidden">
             <p className="truncate text-sm font-bold text-gray-900">{titleByMode}</p>
-            <p className="break-words text-[11px] leading-4 text-gray-500">
-              {showOverlay ? `${stageMeta.label} · ` : ''}
-              {dimensionChip || `${filled}/${textures.length} photo${textures.length === 1 ? '' : 's'} applied`}
-              {textures.some((t) => t.isPlaceholder) ? ' · placeholders for empty slots' : ''}
+            <p className="truncate text-[11px] leading-4 text-gray-500">
+              {dimensionChip || (filled ? `${filled} photo${filled === 1 ? '' : 's'}` : 'Preview')}
             </p>
           </div>
           <button
@@ -422,33 +392,13 @@ export default function Product3DViewerModal({
           </button>
         </header>
 
-        {parityWarnings.length ? (
-          <div className="border-b border-amber-100 bg-amber-50 px-4 py-2 text-[11px] text-amber-900">
-            {parityWarnings[0]}
-          </div>
-        ) : null}
-        {approximateNotice ? (
-          <div className="border-b border-slate-200 bg-slate-50 px-4 py-2 text-[11px] text-slate-700">
-            Some product details (for example rear or hidden faces) are approximate and may not match the physical item exactly.
-          </div>
-        ) : null}
         {presentationMode === 'wall' ? (
-          <div className="border-b border-emerald-100 bg-emerald-50 px-4 py-2 text-[11px] text-emerald-950">
-            Illustrative room wall preview using Admin outer proportions. Not live camera AR. Stand hardware is hidden for wall mounting.
-            {photoFrameBundle.resolved?.outerDimsVerified ? '' : ' Physical scale is not tape-verified.'}
-          </div>
-        ) : null}
-        {photoFrameBundle.glbCompat && !photoFrameBundle.glbCompat.ok ? (
-          <div className="border-b border-amber-100 bg-amber-50 px-4 py-2 text-[11px] text-amber-950">
-            {photoFrameBundle.glbCompat.reason}
-          </div>
-        ) : photoFrameBundle.fidelityNotice && photoFrameBundle.effectiveGeometryType === 'photo_frame' ? (
-          <div className="border-b border-slate-200 bg-slate-50 px-4 py-2 text-[11px] text-slate-700">
-            {photoFrameBundle.fidelityNotice}
+          <div className="border-b border-emerald-100 bg-emerald-50 px-4 py-1.5 text-[11px] text-emerald-950">
+            Room illustration — not live camera AR.
           </div>
         ) : null}
         {arNotice ? (
-          <div className="border-b border-sky-100 bg-sky-50 px-4 py-2 text-[11px] text-sky-950">{arNotice}</div>
+          <div className="border-b border-sky-100 bg-sky-50 px-4 py-1.5 text-[11px] text-sky-950">{arNotice}</div>
         ) : null}
 
         <div className="flex gap-1 overflow-x-auto border-b border-black/5 bg-white/70 px-3 py-2">
@@ -494,7 +444,8 @@ export default function Product3DViewerModal({
               {(engineReady || hasMountedScene) ? (
                 <ModalSceneErrorBoundary key={`boundary-${selectionKey}`}>
                   <Preview3dScene
-                    key={`${resetKey}-${selectionKey}-${photoFrameBundle.effectiveGeometryType || config.geometryType}`}
+                    key={`${selectionKey}-${photoFrameBundle.effectiveGeometryType || config.geometryType}`}
+                    cameraResetNonce={resetKey}
                     active={open}
                     geometryType={photoFrameBundle.effectiveGeometryType || config.geometryType}
                     modelUrl={photoFrameBundle.glbCompat?.ok === false ? '' : config.modelUrl}
@@ -541,19 +492,7 @@ export default function Product3DViewerModal({
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-[#f4f0e8]/80 backdrop-blur-[2px]">
                   <div className="mx-4 max-w-sm rounded-2xl border border-white/70 bg-white/90 px-5 py-4 text-center shadow-lg">
                     <div className="mx-auto mb-3 h-9 w-9 animate-spin rounded-full border-2 border-primary-200 border-t-primary-600" />
-                    <p className="text-sm font-bold text-gray-900">{stageMeta.label}</p>
-                    <p className="mt-1 text-[11px] text-gray-500">
-                      You can close anytime — your customization stays on the product page.
-                      {elapsedMs > 2500 ? ` · ${Math.round(elapsedMs / 100) / 10}s` : ''}
-                    </p>
-                    <div className="mt-3 flex justify-center gap-1.5">
-                      {LOAD_STAGES.filter((s) => s.id !== 'ready').map((s) => (
-                        <span
-                          key={s.id}
-                          className={`h-1.5 w-8 rounded-full ${LOAD_STAGES.findIndex((x) => x.id === loadStage) >= LOAD_STAGES.findIndex((x) => x.id === s.id) ? 'bg-primary-500' : 'bg-gray-200'}`}
-                        />
-                      ))}
-                    </div>
+                    <p className="text-sm font-bold text-gray-900">Opening 3D…</p>
                   </div>
                 </div>
               ) : null}
@@ -580,14 +519,14 @@ export default function Product3DViewerModal({
             </div>
           ) : null}
           {scenePresentation === 'inspect' ? (
-            <div className="mb-2 flex flex-wrap gap-2 pb-0.5">
+            <div className="mb-2 flex flex-wrap gap-2">
               {VIEW_PRESETS.map((preset) => (
                 <button
                   key={preset.id}
                   type="button"
                   onClick={() => setViewPreset(preset.id)}
                   data-preview3d-view={preset.id}
-                  className={`min-h-[40px] shrink-0 rounded-lg border px-3 text-xs font-semibold ${viewPreset === preset.id ? 'border-primary-500 bg-primary-50 text-primary-800' : 'bg-white text-gray-700'}`}
+                  className={`min-h-[44px] min-w-[44px] shrink-0 rounded-lg border px-4 text-xs font-semibold ${viewPreset === preset.id ? 'border-primary-500 bg-primary-50 text-primary-800' : 'bg-white text-gray-700'}`}
                 >
                   {preset.label}
                 </button>
@@ -595,34 +534,6 @@ export default function Product3DViewerModal({
             </div>
           ) : null}
           <div className="flex flex-wrap gap-2">
-            {scenePresentation === 'inspect' ? (
-              <button
-                type="button"
-                onClick={() => setAutoRotate((v) => !v)}
-                className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl border bg-white px-3 text-xs font-semibold sm:flex-none"
-              >
-                <FiMaximize2 size={14} /> {autoRotate ? 'Stop spin' : 'Auto-rotate'}
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  setPresentationMode('inspect');
-                  setViewPreset('front');
-                  setWallPhotoOpen(false);
-                }}
-                className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl border bg-white px-3 text-xs font-semibold sm:flex-none"
-              >
-                Return to 3D
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setWallPhotoOpen(true)}
-              className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl border bg-white px-3 text-xs font-semibold sm:flex-none"
-            >
-              <FiSmartphone size={14} /> Wall photo
-            </button>
             <button
               type="button"
               onClick={() => {
@@ -630,15 +541,18 @@ export default function Product3DViewerModal({
                 setAutoRotate(false);
                 setFocusedIndex(0);
                 setViewPreset(scenePresentation === 'wall' ? 'wall' : 'front');
-                setSceneReady(false);
               }}
               className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl border bg-white px-3 text-xs font-semibold sm:flex-none"
             >
-              <FiRefreshCw size={14} /> Reset view
+              <FiRefreshCw size={14} /> Reset
             </button>
-            <p className="flex min-h-[44px] min-w-0 flex-[1_1_100%] items-center gap-2 overflow-hidden rounded-xl bg-primary-50 px-3 text-[11px] leading-4 text-primary-900 sm:flex-none">
-              <FiZoomIn size={14} /> {scenePresentation === 'wall' ? 'Pinch to zoom · wall preview' : 'Drag to rotate · pinch to zoom'}
-            </p>
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl border bg-white px-3 text-xs font-semibold sm:flex-none"
+            >
+              Close
+            </button>
           </div>
         </div>
       </div>

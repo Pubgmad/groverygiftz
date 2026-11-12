@@ -24,6 +24,7 @@ import PhotoFrameModel, {
 const Preview3dAtmosphere = lazy(() => import('./Preview3dAtmosphere'));
 
 const WALL_PRESENTATION_OFFSET = [0, 0.12, -0.06];
+export const WALL_ROOM_Z = -0.125;
 
 function offsetModelBounds(payload, offset) {
   if (!payload?.min || !payload?.max || !payload?.center || !offset) return payload;
@@ -673,6 +674,7 @@ function CameraRig({
   layout,
   cameraConfig = null,
   modelBounds = null,
+  resetNonce = 0,
 }) {
   const { camera, controls, size: viewport } = useThree();
   useEffect(() => {
@@ -765,7 +767,7 @@ function CameraRig({
           const prevDamp = controls.enableDamping;
           controls.enableDamping = false;
           controls.target.set(center.x, center.y, center.z);
-          controls.minDistance = Math.min(0.28, dist * 0.48);
+          controls.minDistance = Math.max(0.42, dist * 0.72);
           controls.maxDistance = Math.max(Number(cameraConfig?.maxDistance) || 8, dist * 2.6);
           controls.update?.();
           controls.enableDamping = prevDamp;
@@ -819,7 +821,7 @@ function CameraRig({
       cancelAnimationFrame(raf1);
       clearTimeout(t);
     };
-  }, [camera, controls, viewPreset, geometryType, textureCount, layout, cameraConfig, modelBounds, viewport?.width, viewport?.height]);
+  }, [camera, controls, viewPreset, geometryType, textureCount, layout, cameraConfig, modelBounds, viewport?.width, viewport?.height, resetNonce]);
   return null;
 }
 
@@ -901,6 +903,7 @@ function SceneContent({
   presentationMode = 'inspect',
   hideMeshNamePrefixes = [],
   active = true,
+  cameraResetNonce = 0,
   onMeshesInspected,
   onSelectSurface,
   onSceneReady,
@@ -944,6 +947,7 @@ function SceneContent({
         layout={layout}
         cameraConfig={camera}
         modelBounds={modelBounds}
+        resetNonce={cameraResetNonce}
       />
       <hemisphereLight args={isPhotoFrameGeom ? ['#f4ebe0', '#6a5a48', 0.48] : ['#e2e8f0', '#5a6068', 0.55]} />
       <ambientLight intensity={isPhotoFrameGeom ? 0.4 : 0.42} />
@@ -991,7 +995,7 @@ function SceneContent({
         />
       ) : geometryType === 'photo_frame' && photoFrameResolved ? (
         (() => {
-          const scene = photoFrameDimsToScene(photoFrameResolved);
+          const scene = photoFrameDimsToScene(photoFrameResolved, { wallRelative: isWallPresentation });
           const frame = (
             <PhotoFrameModel
               sceneOpening={scene.opening}
@@ -1075,7 +1079,11 @@ function SceneContent({
           environment={isWallPresentation ? 'wall' : environment}
           enableHdr={needsHdrAtmosphere}
           presentationMode={isWallPresentation ? 'wall' : 'inspect'}
-          outerHint={modelBounds ? { liftY: 0.12, shadowY: Number(modelBounds.min?.[1]) || -0.62 } : null}
+          outerHint={modelBounds ? {
+            liftY: 0.12,
+            shadowY: Number(modelBounds.min?.[1]) || -0.62,
+            wallZ: (Number(modelBounds.min?.[2]) || -0.07) - 0.006,
+          } : null}
         />
       </Suspense>
       <OrbitControls
@@ -1098,6 +1106,7 @@ function SceneContent({
 }
 
 export default function Preview3dScene(props) {
+  const preserveDrawingBuffer = props.preserveDrawingBuffer === true;
   const [bootError, setBootError] = useState('');
   const modelFallbackNote = props.geometryType === 'custom_glb'
     ? 'The custom 3D model could not be loaded. Showing a simple preview instead — close anytime and continue shopping.'
@@ -1135,7 +1144,7 @@ export default function Preview3dScene(props) {
               powerPreference: 'high-performance',
               failIfMajorPerformanceCaveat: false,
               // Needed so Playwright/admin canvas screenshots capture the last presented frame.
-              preserveDrawingBuffer: true,
+              preserveDrawingBuffer: Boolean(preserveDrawingBuffer),
             }}
             onCreated={({ gl }) => {
               gl.outputColorSpace = THREE.SRGBColorSpace;

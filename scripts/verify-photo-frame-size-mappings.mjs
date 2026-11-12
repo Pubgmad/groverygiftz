@@ -6,6 +6,7 @@ import {
   DEFAULT_PHOTO_FRAME_DESIGN_PROFILES,
   DEFAULT_PHOTO_FRAME_HARDWARE_PROFILES,
   DEFAULT_PHOTO_FRAME_SIZE_RULES,
+  PHOTO_FRAME_MANUFACTURING_SPEC,
   applyPhotoFrameSizeFromSelection,
   applySizeRuleToPhotoFrame,
   assertDesignCompatibleWithSize,
@@ -189,6 +190,84 @@ if (productARules.length !== 1 || productARules[0].key !== '5x7') {
 if (!productBRules.some((r) => r.key === '36x24') || productBRules.some((r) => r.key === '5x7' || r.key === '24x36')) {
   throw new Error('product B must keep 36×24/12×15 without leaking 5×7 or swapping onto 24×36');
 }
+
+if (PHOTO_FRAME_MANUFACTURING_SPEC.version !== '1.0.0') {
+  throw new Error('manufacturing spec version must be explicit and versioned');
+}
+
+const staleAdmin = resolvePhotoFrameDimensions({
+  enabled: true,
+  sizeRuleKey: '5x7',
+  openingWidth: 5,
+  openingHeight: 7,
+  borderLeft: 9,
+  borderRight: 9,
+  borderTop: 9,
+  borderBottom: 9,
+  depth: 12,
+  rearBackingThickness: 4,
+  outerWidth: 99,
+  outerHeight: 99,
+}, DEFAULT_PHOTO_FRAME_SIZE_RULES.find((r) => r.key === '5x7'));
+if (staleAdmin.borderLeft !== 0.5 || staleAdmin.borderRight !== 0.5) {
+  throw new Error('Admin numeric border overrides must not change manufacturing borders');
+}
+if (staleAdmin.depth !== PHOTO_FRAME_MANUFACTURING_SPEC.depth) {
+  throw new Error('Admin depth overrides must not change manufacturing depth');
+}
+if (staleAdmin.rearBackingThickness !== PHOTO_FRAME_MANUFACTURING_SPEC.rearBackingThickness) {
+  throw new Error('Admin backing overrides must not change manufacturing backing');
+}
+if (staleAdmin.openingWidth !== 5 || staleAdmin.openingHeight !== 7) {
+  throw new Error('5x7 catalog opening must remain 5×7');
+}
+if (staleAdmin.outerWidth !== 6 || staleAdmin.outerHeight !== 8) {
+  throw new Error('5x7 outer must be opening plus group A 0.5" borders');
+}
+if (staleAdmin.manufacturingSpecVersion !== PHOTO_FRAME_MANUFACTURING_SPEC.version) {
+  throw new Error('resolved dims must carry manufacturing spec version');
+}
+
+const aspectRows = DEFAULT_PHOTO_FRAME_SIZE_RULES.map((rule) => {
+  const dims = resolvePhotoFrameDimensions(emptyPhotoFrameConfig(), rule);
+  const openingAspect = dims.openingWidth / dims.openingHeight;
+  const expectedAspect = rule.nominalWidth / rule.nominalHeight;
+  const outerExpectedW = rule.nominalWidth + (rule.borderWidth * 2);
+  const outerExpectedH = rule.nominalHeight + (rule.borderWidth * 2);
+  return {
+    key: rule.key,
+    openingAspect,
+    expectedAspect,
+    aspectOk: Math.abs(openingAspect - expectedAspect) < 1e-9,
+    outerOk: dims.outerWidth === outerExpectedW && dims.outerHeight === outerExpectedH,
+    orientationOk: (rule.orientation === 'landscape' && dims.openingWidth > dims.openingHeight)
+      || (rule.orientation === 'portrait' && dims.openingHeight > dims.openingWidth)
+      || (rule.orientation === 'square' && dims.openingWidth === dims.openingHeight),
+  };
+});
+if (aspectRows.some((row) => !row.aspectOk || !row.outerOk || !row.orientationOk)) {
+  throw new Error(`aspect/outer/orientation failed: ${JSON.stringify(aspectRows.filter((r) => !r.aspectOk || !r.outerOk || !r.orientationOk))}`);
+}
+
+const fiveSeven = aspectRows.find((r) => r.key === '5x7');
+const sixEight = aspectRows.find((r) => r.key === '8x6');
+const tenEight = aspectRows.find((r) => r.key === '10x8');
+const twelveFifteen = aspectRows.find((r) => r.key === '12x15');
+const twentyFourThirtySix = aspectRows.find((r) => r.key === '24x36');
+if (Math.abs(fiveSeven.openingAspect - (5 / 7)) > 1e-9) throw new Error('5x7 aspect drifted');
+if (Math.abs(sixEight.openingAspect - (8 / 6)) > 1e-9) throw new Error('8x6 must not reuse 5x7 aspect');
+if (Math.abs(tenEight.openingAspect - (10 / 8)) > 1e-9) throw new Error('10x8 aspect drifted');
+if (Math.abs(twelveFifteen.openingAspect - (12 / 15)) > 1e-9) throw new Error('12x15 aspect drifted');
+if (Math.abs(twentyFourThirtySix.openingAspect - (24 / 36)) > 1e-9) throw new Error('24x36 aspect drifted');
+if (Math.abs(fiveSeven.openingAspect - twentyFourThirtySix.openingAspect) < 0.01) {
+  throw new Error('5x7 must not share 24x36 aspect by coincidence in this catalog');
+}
+
+report.manufacturingLock = {
+  version: PHOTO_FRAME_MANUFACTURING_SPEC.version,
+  staleAdminIgnored: true,
+  aspectRows: aspectRows.map((row) => ({ size: row.key, aspect: row.openingAspect })),
+};
 
 console.log(JSON.stringify(report, null, 2));
 if (!ok) process.exit(1);

@@ -11,6 +11,21 @@ export const PHOTO_FRAME_FIDELITY = {
   UNVERIFIED: 'unverified',
 };
 
+/**
+ * Versioned manufacturing construction defaults.
+ * Openings, borders, and hardware membership come from DEFAULT_PHOTO_FRAME_SIZE_RULES.
+ * Depths are APPROXIMATE visual construction — not tape-verified CAD. Do not edit from Admin.
+ */
+export const PHOTO_FRAME_MANUFACTURING_SPEC = {
+  version: '1.0.0',
+  unit: 'inch',
+  depth: 0.35,
+  innerMouldingDepth: 0.08,
+  rearBackingThickness: 0.12,
+  depthFidelity: PHOTO_FRAME_FIDELITY.APPROXIMATE,
+  borderFidelity: PHOTO_FRAME_FIDELITY.OWNER_CONFIRMED,
+};
+
 /** Owner-confirmed 19 size keys (W×H label convention). Membership is explicit — not range math. */
 export const DEFAULT_PHOTO_FRAME_SIZE_RULES = [
   // Group A — 0.5" border
@@ -512,26 +527,26 @@ export function resolvePhotoFrameDimensions(photoFrameInput = {}, sizeRule = nul
   const nominalWidth = numOr(pf.nominalWidth, rule?.nominalWidth ?? null);
   const nominalHeight = numOr(pf.nominalHeight, rule?.nominalHeight ?? null);
 
-  // Default: opening equals nominal unless Admin overrides (owner: do not silently swap 30×20 → 20×30).
-  const openingWidth = numOr(pf.openingWidth, nominalWidth);
-  const openingHeight = numOr(pf.openingHeight, nominalHeight);
+  // Catalog nominal is the manufacturing opening. Variant-driven synthetic rules still flow through `rule`.
+  const openingWidth = rule?.nominalWidth != null ? Number(rule.nominalWidth) : numOr(pf.openingWidth, nominalWidth);
+  const openingHeight = rule?.nominalHeight != null ? Number(rule.nominalHeight) : numOr(pf.openingHeight, nominalHeight);
 
   const defaultBorder = numOr(rule?.borderWidth, 0.5);
-  const borderLeft = numOr(pf.borderLeft, defaultBorder);
-  const borderRight = numOr(pf.borderRight, defaultBorder);
-  const borderTop = numOr(pf.borderTop, defaultBorder);
-  const borderBottom = numOr(pf.borderBottom, defaultBorder);
+  // Manufacturing lock: catalog borders and spec depths win over stored Admin numeric overrides.
+  const borderLeft = defaultBorder;
+  const borderRight = defaultBorder;
+  const borderTop = defaultBorder;
+  const borderBottom = defaultBorder;
 
   const computedOuterWidth = openingWidth != null ? openingWidth + borderLeft + borderRight : null;
   const computedOuterHeight = openingHeight != null ? openingHeight + borderTop + borderBottom : null;
 
-  const outerWidth = numOr(pf.outerWidth, computedOuterWidth);
-  const outerHeight = numOr(pf.outerHeight, computedOuterHeight);
+  const outerWidth = computedOuterWidth;
+  const outerHeight = computedOuterHeight;
 
-  // Depths: unsupplied → approximate defaults (inches)
-  const depth = numOr(pf.depth, 0.35);
-  const innerMouldingDepth = numOr(pf.innerMouldingDepth, 0.08);
-  const rearBackingThickness = numOr(pf.rearBackingThickness, 0.12);
+  const depth = PHOTO_FRAME_MANUFACTURING_SPEC.depth;
+  const innerMouldingDepth = PHOTO_FRAME_MANUFACTURING_SPEC.innerMouldingDepth;
+  const rearBackingThickness = PHOTO_FRAME_MANUFACTURING_SPEC.rearBackingThickness;
   const mouldingProfileKey = resolveMouldingProfileKey(pf.mouldingProfileKey);
 
   let orientation = pf.orientation;
@@ -562,6 +577,7 @@ export function resolvePhotoFrameDimensions(photoFrameInput = {}, sizeRule = nul
     outerDimsVerified: Boolean(pf.outerDimsVerified),
     borderFidelity: PHOTO_FRAME_FIDELITY.OWNER_CONFIRMED,
     depthFidelity: PHOTO_FRAME_FIDELITY.APPROXIMATE,
+    manufacturingSpecVersion: PHOTO_FRAME_MANUFACTURING_SPEC.version,
     sizeRuleKey: pf.sizeRuleKey || rule?.key || '',
   };
 }

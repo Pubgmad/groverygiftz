@@ -61,11 +61,10 @@ export default function PhotoFrame3dCatalogPage() {
           <p className="text-xs font-semibold uppercase tracking-wide text-primary-700">Universal 3D</p>
           <h1 className="text-2xl font-black text-gray-950">Photo frame 3D catalog</h1>
           <p className="mt-1 max-w-2xl text-sm text-gray-600">
-            Admin-managed size/border rules and backside hardware profiles. Edit here, then assign on each product’s 3D section.
-            No SKU hardcoding in the customer viewer.
+            Size, border, depth, and hanging hardware are locked manufacturing rules in code. Product editors only turn 3D on and choose a design.
           </p>
           <p className="mt-2 text-xs text-gray-600">
-            Customer 3D visibility is controlled per product with Enable 3D preview. This catalog only stores size and hardware rules.
+            Design profiles below may still point at a custom GLB. Do not treat this page as a place to edit physical dimensions.
           </p>
         </div>
         <div className="flex gap-2">

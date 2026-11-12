@@ -33,7 +33,7 @@ const navItems = [
   { id: 'dashboard', href: ADMIN_BASE_PATH, label: 'Dashboard' },
   { id: 'products', href: `${ADMIN_BASE_PATH}/products`, label: 'Products' },
   { id: 'preview-3d', href: `${ADMIN_BASE_PATH}/preview-3d`, label: '3D Profiles', moduleId: 'products' },
-  { id: 'photo-frame-3d', href: `${ADMIN_BASE_PATH}/photo-frame-3d`, label: 'Photo Frame 3D', moduleId: 'products' },
+  { id: 'photo-frame-3d', href: `${ADMIN_BASE_PATH}/photo-frame-3d`, label: 'Frame 3D catalog', moduleId: 'products' },
   { id: 'making-cost', href: `${ADMIN_BASE_PATH}/making-cost`, label: 'Making Cost' },
   { id: 'collections', href: `${ADMIN_BASE_PATH}/collections`, label: 'Collections' },
   { id: 'shipping', href: `${ADMIN_BASE_PATH}/shipping`, label: 'Shipping Templates' },

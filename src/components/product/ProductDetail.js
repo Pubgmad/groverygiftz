@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useCart } from '@/context/CartContext';
 import { formatPrice, calcSavings, getEffectivePrice, isOfferActive, getVariantRegularPrice, getVariantSalePrice, getVariantEffectivePrice } from '@/lib/utils';
@@ -26,12 +27,16 @@ import ProductInterestIndicator from '@/components/product/ProductInterestIndica
 import PurchaseActivityBadge from '@/components/product/PurchaseActivityBadge';
 import ProductMakingVideos from '@/components/product/ProductMakingVideos';
 import ProductTrustStats from '@/components/product/ProductTrustStats';
-import ViewIn3DButton from '@/components/product/preview3d/ViewIn3DButton';
 import { isPreview3dEligible } from '@/lib/preview3d';
 import { parseWxHFromLabel } from '@/lib/photoFrame3d';
 import { imagePerfMark, imagePerfMeasure } from '@/lib/imagePerf';
 import { readJsonResponse } from '@/lib/safeJsonResponse';
 import { durableUploadRef } from '@/lib/cartPersist';
+
+const ViewIn3DButton = dynamic(() => import('@/components/product/preview3d/ViewIn3DButton'), {
+  ssr: false,
+  loading: () => null,
+});
 
 /** Session caches for Apply/cart canvas work — avoid re-decoding the same URLs. */
 const previewImageCache = new Map();

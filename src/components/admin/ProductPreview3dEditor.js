@@ -23,7 +23,7 @@ import {
   validateSurfaceMappings,
   validateVariantOverrides,
 } from '@/lib/preview3d';
-import { getPreview3dAssetWorkflowSummary } from '@/lib/preview3dAssetWorkflow';
+import { emptyPhotoFrameConfig } from '@/lib/photoFrame3d';
 import PhotoFrameAdminFields from '@/components/admin/preview3d/PhotoFrameAdminFields';
 
 const AdminPreview3dStage = dynamic(
@@ -45,10 +45,12 @@ export default function ProductPreview3dEditor({
   const config = normalizePreview3dConfig(value || emptyPreview3dConfig());
   const [profiles, setProfiles] = useState([]);
   const [assets, setAssets] = useState([]);
-  const [loadingProfiles, setLoadingProfiles] = useState(true);
-  const [loadingAssets, setLoadingAssets] = useState(true);
+  const [loadingProfiles, setLoadingProfiles] = useState(false);
+  const [loadingAssets, setLoadingAssets] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [selectedSurfaceId, setSelectedSurfaceId] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showLivePreview, setShowLivePreview] = useState(false);
 
   const slots = useMemo(() => listCustomizationSlotDescriptors(productLike || {}), [productLike]);
   const variantOptions = useMemo(() => listVariantOverrideOptions(productLike || {}), [productLike]);
@@ -77,7 +79,9 @@ export default function ProductPreview3dEditor({
   }, []);
 
   useEffect(() => {
+    if (!config.enabled) return undefined;
     let cancelled = false;
+    setLoadingProfiles(true);
     fetch('/api/admin/preview-3d-profiles', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : { profiles: [] }))
       .then((d) => {
@@ -91,7 +95,7 @@ export default function ProductPreview3dEditor({
       });
     loadAssets();
     return () => { cancelled = true; };
-  }, [loadAssets]);
+  }, [config.enabled, loadAssets]);
 
   const setField = (patch) => onChange(normalizePreview3dConfig({ ...config, ...patch }));
 
@@ -254,6 +258,17 @@ export default function ProductPreview3dEditor({
 
   const uploadAsset = async (file, kind) => {
     if (!file || !writable) return;
+    if (kind === 'model') {
+      const name = String(file.name || '').toLowerCase();
+      if (!name.endsWith('.glb')) {
+        toast.error('Please upload a .glb 3D model file.');
+        return;
+      }
+      if (file.size > 25 * 1024 * 1024) {
+        toast.error('3D model must be 25 MB or smaller.');
+        return;
+      }
+    }
     setUploading(true);
     try {
       const body = new FormData();
@@ -298,55 +313,15 @@ export default function ProductPreview3dEditor({
     setField({ surfaces: next });
   };
 
-  const workflow = getPreview3dAssetWorkflowSummary();
-  const checklist = [
-    { ok: slots.length > 0, label: 'Customization photo slots configured' },
-    { ok: !!config.geometryType, label: 'Geometry or GLB profile selected' },
-    { ok: config.geometryType !== 'custom_glb' || !!config.modelUrl, label: 'GLB model uploaded (if custom shape)' },
-    { ok: config.geometryType !== 'custom_glb' || (config.surfaces || []).length > 0, label: 'Customizable meshes selected (if custom shape)' },
-    { ok: validation.ok, label: 'Slot → surface mappings valid' },
-    { ok: variantValidation.ok, label: 'Variant 3D overrides valid (or unused)' },
-    {
-      ok: !config.enabled || config.geometryType !== 'custom_glb' || Boolean(config.modelUrl),
-      label: 'Model file selected when using a GLB',
-    },
-  ];
-
   const selectableAssets = assets.filter((asset) => asset.kind !== 'placeholder');
 
   return (
     <div className="space-y-4 rounded-2xl border border-primary-100 bg-primary-50/30 p-4">
       <div>
-        <h3 className="text-lg font-bold text-gray-900">3D Visualization (optional)</h3>
+        <h3 className="text-lg font-bold text-gray-900">3D preview</h3>
         <p className="mt-1 text-sm text-gray-600">
-          Optional visual preview. Turn it on only for this product. Customers can still add to cart from the 2D photo editor without opening 3D.
+          Optional visual reference. Customers can still customize and buy from the 2D editor without opening 3D.
         </p>
-      </div>
-
-      <div className="rounded-xl border border-primary-100 bg-white/80 p-3">
-        <p className="text-xs font-bold text-gray-900">Onboarding checklist</p>
-        <ul className="mt-2 space-y-1 text-[11px]">
-          {checklist.map((item) => (
-            <li key={item.label} className={item.ok ? 'text-emerald-700' : 'text-amber-800'}>
-              {item.ok ? '✓' : '○'} {item.label}
-            </li>
-          ))}
-        </ul>
-        {(retailGate.warnings || []).length ? (
-          <ul className="mt-2 list-disc space-y-1 pl-4 text-[11px] text-amber-800">
-            {retailGate.warnings.map((warn) => <li key={warn}>{warn}</li>)}
-          </ul>
-        ) : null}
-        <details className="mt-3">
-          <summary className="cursor-pointer text-[11px] font-semibold text-primary-800">Asset preparation workflow</summary>
-          <ol className="mt-2 list-decimal space-y-1 pl-4 text-[11px] text-gray-600">
-            {workflow.adminSteps.map((step) => <li key={step}>{step}</li>)}
-          </ol>
-          <p className="mt-2 text-[11px] text-amber-800">
-            Procedural shapes are staging prototypes. Commercial retail quality requires owned/licensed GLBs with named UV surfaces.
-            Upload success never auto-approves retail readiness.
-          </p>
-        </details>
       </div>
 
       <label className="flex min-h-[44px] items-center gap-3 text-sm font-semibold">
@@ -354,16 +329,114 @@ export default function ProductPreview3dEditor({
           type="checkbox"
           disabled={!writable}
           checked={config.enabled === true}
-          onChange={(e) => setField({ enabled: e.target.checked })}
+          onChange={(e) => {
+            const enabled = e.target.checked;
+            if (!enabled) {
+              setField({ enabled: false });
+              return;
+            }
+            const alreadyConfigured = config.geometryType === 'custom_glb'
+              || config.geometryType === 'photo_frame'
+              || config.photoFrame?.enabled;
+            setField({
+              enabled: true,
+              geometryType: alreadyConfigured ? config.geometryType : 'photo_frame',
+              photoFrame: {
+                ...(config.photoFrame || emptyPhotoFrameConfig()),
+                enabled: true,
+                designProfileKey: config.photoFrame?.designProfileKey || 'design_matte_black_procedural',
+              },
+            });
+          }}
           className="h-5 w-5 accent-primary-600"
         />
-        Enable 3D preview for this product
+        Enable 3D Preview
       </label>
 
       {!config.enabled ? (
         <p className="text-xs text-gray-500">3D is off. Customers will not see a View in 3D button.</p>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
+          <PhotoFrameAdminFields
+            config={config}
+            writable={writable}
+            onChange={(patch) => setField(patch)}
+          />
+
+          {config.geometryType === 'custom_glb' ? (
+            <label className="block text-sm font-semibold sm:col-span-2">
+              Custom 3D model file
+              <span className="mt-1 block text-xs font-normal text-gray-500">
+                Upload a .glb only when this design needs its own decorative model. Do not stretch a 5×7 model onto other sizes.
+              </span>
+              <div className="mt-1 flex flex-col gap-2 sm:flex-row">
+                <input
+                  disabled={!writable}
+                  value={config.modelUrl || ''}
+                  onChange={(e) => setField({ modelUrl: e.target.value, assetId: '', geometryType: 'custom_glb' })}
+                  placeholder="Approved .glb file"
+                  className="w-full rounded-xl border bg-white px-3 py-2.5 text-sm font-normal"
+                />
+                <label className="inline-flex min-h-[44px] cursor-pointer items-center justify-center rounded-xl border bg-white px-4 text-xs font-semibold">
+                  {uploading ? 'Uploading…' : 'Upload GLB'}
+                  <input
+                    type="file"
+                    accept=".glb,model/gltf-binary"
+                    disabled={!writable || uploading}
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = '';
+                      if (file) uploadAsset(file, 'model');
+                    }}
+                  />
+                </label>
+              </div>
+            </label>
+          ) : null}
+
+          <div className="sm:col-span-2">
+            <button
+              type="button"
+              onClick={() => setShowLivePreview((v) => !v)}
+              className="rounded-xl border bg-white px-3 py-2 text-xs font-semibold text-gray-800"
+            >
+              {showLivePreview ? 'Hide live preview' : 'Show live preview'}
+            </button>
+            {showLivePreview ? (
+              <div className="mt-3">
+                {suspendPreview ? (
+                  <div className="flex h-[200px] items-center justify-center rounded-2xl border bg-white text-sm text-gray-600">
+                    Live 3D preview paused while saving…
+                  </div>
+                ) : (
+                  <AdminPreview3dStage
+                    value={config}
+                    slotCount={Math.max(1, slots.length || 1)}
+                    selectedSurfaceId={selectedSurfaceId}
+                    onChangeSurfaces={(nextSurfaces) => {
+                      if (!writable) return;
+                      const autoMappings = slots.map((slot, index) => ({
+                        slotKey: slot.slotKey,
+                        areaLabel: slot.areaLabel,
+                        surfaceId: nextSurfaces[index]?.id || nextSurfaces[0]?.id || `face_${index + 1}`,
+                      }));
+                      setField({ surfaces: nextSurfaces, surfaceMappings: autoMappings, legacySequentialGlb: false });
+                    }}
+                    onSelectSurface={(surfaceId) => setSelectedSurfaceId(surfaceId || '')}
+                  />
+                )}
+              </div>
+            ) : null}
+          </div>
+
+          <details
+            className="sm:col-span-2 rounded-xl border bg-white p-3"
+            open={showAdvanced}
+            onToggle={(e) => setShowAdvanced(e.currentTarget.open)}
+          >
+            <summary className="cursor-pointer text-sm font-semibold text-gray-800">Advanced 3D settings</summary>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="block text-sm font-semibold sm:col-span-2">
             Reusable 3D profile
             <select
@@ -437,12 +510,6 @@ export default function ProductPreview3dEditor({
               ))}
             </select>
           </label>
-
-          <PhotoFrameAdminFields
-            config={config}
-            writable={writable}
-            onChange={(patch) => setField(patch)}
-          />
 
           {config.geometryType === 'multi_grid' ? (
             <>
@@ -847,30 +914,6 @@ export default function ProductPreview3dEditor({
             </label>
           ) : null}
 
-          <div className="sm:col-span-2">
-            {suspendPreview ? (
-              <div className="flex h-[200px] items-center justify-center rounded-2xl border bg-white text-sm text-gray-600">
-                Live 3D preview paused while saving…
-              </div>
-            ) : (
-              <AdminPreview3dStage
-                value={config}
-                slotCount={Math.max(1, slots.length || 1)}
-                selectedSurfaceId={selectedSurfaceId}
-                onChangeSurfaces={(nextSurfaces) => {
-                  if (!writable) return;
-                  const autoMappings = slots.map((slot, index) => ({
-                    slotKey: slot.slotKey,
-                    areaLabel: slot.areaLabel,
-                    surfaceId: nextSurfaces[index]?.id || nextSurfaces[0]?.id || `face_${index + 1}`,
-                  }));
-                  setField({ surfaces: nextSurfaces, surfaceMappings: autoMappings, legacySequentialGlb: false });
-                }}
-                onSelectSurface={(surfaceId) => setSelectedSurfaceId(surfaceId || '')}
-              />
-            )}
-          </div>
-
           {(config.surfaces || []).length ? (
             <div className="sm:col-span-2 space-y-2 rounded-xl border bg-white p-3">
               <p className="text-sm font-bold text-gray-900">Surface appearance</p>
@@ -983,6 +1026,8 @@ export default function ProductPreview3dEditor({
               placeholder="Optional admin note"
             />
           </label>
+            </div>
+          </details>
         </div>
       )}
     </div>

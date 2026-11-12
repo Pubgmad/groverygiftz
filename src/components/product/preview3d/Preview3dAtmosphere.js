@@ -13,26 +13,25 @@ import { useEffect, useState } from 'react';
 import { ContactShadows, Environment } from '@react-three/drei';
 
 function WallRoom({ outerHint = null }) {
-  // Wall sits just behind the seated frame (frame ~ z=-0.06).
   const wallW = 5.6;
   const wallH = 3.6;
-  const wallZ = -0.14;
+  const wallZ = Number.isFinite(Number(outerHint?.wallZ)) ? Number(outerHint.wallZ) : -0.08;
   const frameLift = Number.isFinite(Number(outerHint?.liftY)) ? Number(outerHint.liftY) : 0.12;
-  const floorY = -wallH / 2 + 0.05 + frameLift * 0.1;
+  const floorY = -wallH / 2 + 0.05 + frameLift;
 
   return (
     <group name="WallRoom">
-      <mesh position={[0, frameLift * 0.15, wallZ]} receiveShadow>
+      <mesh position={[0, frameLift, wallZ]} receiveShadow>
         <planeGeometry args={[wallW, wallH]} />
         <meshStandardMaterial color="#f3ebe0" roughness={0.97} metalness={0} />
       </mesh>
       {[-2.4, -0.85, 0.85, 2.4].map((x) => (
-        <mesh key={`panel-${x}`} position={[x, frameLift * 0.15, wallZ + 0.003]} receiveShadow>
+        <mesh key={`panel-${x}`} position={[x, frameLift, wallZ + 0.003]} receiveShadow>
           <planeGeometry args={[0.04, wallH * 0.9]} />
           <meshStandardMaterial color="#e4d8c6" roughness={0.98} metalness={0} />
         </mesh>
       ))}
-      <mesh position={[0, -wallH / 2 + 0.14 + frameLift * 0.1, wallZ + 0.03]} receiveShadow>
+      <mesh position={[0, -wallH / 2 + 0.14 + frameLift, wallZ + 0.03]} receiveShadow>
         <boxGeometry args={[wallW * 0.98, 0.18, 0.06]} />
         <meshStandardMaterial color="#7a6a52" roughness={0.9} />
       </mesh>
@@ -40,15 +39,15 @@ function WallRoom({ outerHint = null }) {
         <planeGeometry args={[wallW * 1.2, 4.8]} />
         <meshStandardMaterial color="#8c7860" roughness={0.94} metalness={0} />
       </mesh>
-      <mesh rotation={[0, Math.PI / 2, 0]} position={[-wallW / 2 + 0.02, frameLift * 0.15, wallZ + 1.15]} receiveShadow>
+      <mesh rotation={[0, Math.PI / 2, 0]} position={[-wallW / 2 + 0.02, frameLift, wallZ + 1.15]} receiveShadow>
         <planeGeometry args={[2.5, wallH]} />
         <meshStandardMaterial color="#eee4d6" roughness={0.96} />
       </mesh>
-      <mesh rotation={[0, -Math.PI / 2, 0]} position={[wallW / 2 - 0.02, frameLift * 0.15, wallZ + 1.15]} receiveShadow>
+      <mesh rotation={[0, -Math.PI / 2, 0]} position={[wallW / 2 - 0.02, frameLift, wallZ + 1.15]} receiveShadow>
         <planeGeometry args={[2.5, wallH]} />
         <meshStandardMaterial color="#eee4d6" roughness={0.96} />
       </mesh>
-      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, wallH / 2 - 0.06 + frameLift * 0.1, wallZ + 0.85]}>
+      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, wallH / 2 - 0.06 + frameLift, wallZ + 0.85]}>
         <planeGeometry args={[wallW, 2.1]} />
         <meshStandardMaterial color="#f7f2ea" roughness={1} />
       </mesh>

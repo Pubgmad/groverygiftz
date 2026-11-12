@@ -5,7 +5,7 @@
  * Opening size drives PhotoPlane; borders from Admin-resolved dims.
  * Hardware millimetre sizes are APPROXIMATE from references — not tape-verified CAD.
  */
-import { useLayoutEffect, useMemo } from 'react';
+import { useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useTexture } from '@react-three/drei';
 
@@ -329,29 +329,35 @@ export default function PhotoFrameModel({
   const lip = Math.min(bl, br, bt, bb) * 0.18;
   // ExtrudedRing translates the moulding by -depth, so the body occupies [−depth, 0].
   const mouldingBackFace = -depth;
-  const backingCenterZ = mouldingBackFace - Math.max(0.004, sceneBacking / 2);
+  const backingCenterZ = mouldingBackFace - sceneBacking / 2;
   const panelW = outerW * 0.92;
   const panelH = outerH * 0.92;
   const roughness = material?.roughness ?? 0.72;
   const metalness = material?.metalness ?? 0.08;
   const profile = ['stepped', 'beveled', 'flat'].includes(mouldingProfile) ? mouldingProfile : 'stepped';
+  const groupRef = useRef(null);
 
   useLayoutEffect(() => {
-    const zBack = backingCenterZ - sceneBacking / 2 - 0.04;
-    const zFront = 0.04;
+    const group = groupRef.current;
+    if (!group) return undefined;
+    const box = new THREE.Box3().setFromObject(group);
+    if (box.isEmpty()) return undefined;
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
     const payload = {
-      min: [-outerW / 2, -outerH / 2, zBack],
-      max: [outerW / 2, outerH / 2, zFront],
-      center: [0, 0, (zBack + zFront) / 2],
-      size: [outerW, outerH, zFront - zBack],
+      min: [box.min.x, box.min.y, box.min.z],
+      max: [box.max.x, box.max.y, box.max.z],
+      center: [center.x, center.y, center.z],
+      size: [size.x, size.y, size.z],
     };
     if (typeof window !== 'undefined') window.__preview3dModelBounds = payload;
     onModelBounds?.(payload);
     return undefined;
-  }, [outerW, outerH, depth, sceneBacking, backingCenterZ, onModelBounds]);
+  }, [outerW, outerH, depth, sceneBacking, backingCenterZ, textureUrl, placeholderUrl, onModelBounds]);
 
   return (
     <group
+      ref={groupRef}
       onClick={(event) => {
         event.stopPropagation();
         onSelect?.();
@@ -377,7 +383,7 @@ export default function PhotoFrameModel({
         holeW={ow}
         holeH={oh}
         depth={Math.max(0.005, depth * 0.08)}
-        z={0.006}
+        z={0}
         color="#f3efe6"
         roughness={0.92}
         metalness={0.02}
@@ -426,23 +432,34 @@ export default function PhotoFrameModel({
   );
 }
 
-/** Convert resolved inch dims to scene meters scaled like dimensionsToSceneSize. */
-export function photoFrameDimsToScene(resolved, { maxSide = 1.35 } = {}) {
+/** Convert resolved inch dims to scene units. Inspect fits the canvas; wall keeps relative physical scale. */
+export function photoFrameDimsToScene(resolved, { maxSide = 1.35, wallRelative = false } = {}) {
   const unit = resolved.unit || 'inch';
-  const mpu = unit === 'mm' ? 0.001 : unit === 'cm' ? 0.01 : 0.0254;
-  const ow = Math.max(0.05, Number(resolved.openingWidth) || 1) * mpu;
-  const oh = Math.max(0.05, Number(resolved.openingHeight) || 1) * mpu;
-  const scale = maxSide / Math.max(ow + (resolved.borderLeft + resolved.borderRight) * mpu, oh + (resolved.borderTop + resolved.borderBottom) * mpu, 0.01);
+  const toInch = unit === 'mm' ? 0.0393701 : unit === 'cm' ? 0.393701 : 1;
+  const owIn = Math.max(0.05, Number(resolved.openingWidth) || 1) * toInch;
+  const ohIn = Math.max(0.05, Number(resolved.openingHeight) || 1) * toInch;
+  const blIn = Math.max(0, Number(resolved.borderLeft) || 0) * toInch;
+  const brIn = Math.max(0, Number(resolved.borderRight) || 0) * toInch;
+  const btIn = Math.max(0, Number(resolved.borderTop) || 0) * toInch;
+  const bbIn = Math.max(0, Number(resolved.borderBottom) || 0) * toInch;
+  const depthIn = Math.max(0.08, Number(resolved.depth) || 0.35) * toInch;
+  const backingIn = Math.max(0.04, Number(resolved.rearBackingThickness) || 0.12) * toInch;
+  // Wall: 1 inch ≈ 0.042 scene units so 5×7 stays smaller than 24×36 on the same room.
+  // Inspect: normalize longest outer side to maxSide so every size fits the viewport.
+  const outerMax = Math.max(owIn + blIn + brIn, ohIn + btIn + bbIn, 0.01);
+  const scale = wallRelative ? 0.042 : (maxSide / outerMax);
   return {
-    opening: [ow * scale, oh * scale],
+    opening: [owIn * scale, ohIn * scale],
     borders: {
-      left: Math.max(0.01, Number(resolved.borderLeft) || 0) * mpu * scale,
-      right: Math.max(0.01, Number(resolved.borderRight) || 0) * mpu * scale,
-      top: Math.max(0.01, Number(resolved.borderTop) || 0) * mpu * scale,
-      bottom: Math.max(0.01, Number(resolved.borderBottom) || 0) * mpu * scale,
+      left: Math.max(0.008, blIn * scale),
+      right: Math.max(0.008, brIn * scale),
+      top: Math.max(0.008, btIn * scale),
+      bottom: Math.max(0.008, bbIn * scale),
     },
-    depth: Math.max(0.02, Number(resolved.depth) || 0.35) * mpu * scale,
-    backing: Math.max(0.008, Number(resolved.rearBackingThickness) || 0.12) * mpu * scale,
+    depth: Math.max(0.012, depthIn * scale),
+    backing: Math.max(0.006, backingIn * scale),
     mouldingProfile: resolved.mouldingProfileKey || 'stepped',
+    scale,
+    wallRelative: wallRelative === true,
   };
 }
