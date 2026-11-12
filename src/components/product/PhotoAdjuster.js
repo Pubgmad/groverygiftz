@@ -414,28 +414,6 @@ export default function PhotoAdjuster({
           </div>
           <input type="range" min="1" max={maxZoom} step="0.05" value={draft.zoom || 1} disabled={editBusy} onChange={(event) => updateDraft({ zoom: Number(event.target.value), fitMode: 'custom' })} className="w-full accent-primary-600 disabled:opacity-60" />
         </div>
-
-        <div className="grid grid-cols-3 gap-2 border-t border-gray-100 px-4 pt-2">
-          {[
-            ['brightness', 'Light'],
-            ['contrast', 'Contrast'],
-            ['saturation', 'Color'],
-          ].map(([key, label]) => (
-            <label key={key} className="block text-[11px] font-semibold text-gray-700">
-              {label} {Number(draft[key] ?? 100)}%
-              <input
-                type="range"
-                min="60"
-                max="140"
-                step="1"
-                value={Number(draft[key] ?? 100)}
-                disabled={editBusy}
-                onChange={(event) => updateDraft({ [key]: Number(event.target.value) })}
-                className="mt-1 w-full accent-primary-600 disabled:opacity-60"
-              />
-            </label>
-          ))}
-        </div>
         </div>
 
         <div className="grid shrink-0 grid-cols-2 gap-2 border-t border-gray-100 bg-white px-4 pt-3" style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}>
