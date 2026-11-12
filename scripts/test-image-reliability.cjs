@@ -443,6 +443,6 @@ test('Add to Cart does not wait for Apply persist before opening the cart', asyn
 test('Add to Cart awaits source uploads instead of failing immediately', () => {
   assert.equal(productSource.includes('Please wait for your images and previews to finish saving.'), false);
   assert.equal(productSource.includes('await awaitSourceUploads()'), true);
-  assert.equal(productSource.includes('waitForPreview: true'), true);
+  assert.equal(productSource.includes('waitForPreview: false'), true);
   assert.equal(productSource.includes('void finishCartPreview(cartItemId)'), true);
 });

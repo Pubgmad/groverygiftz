@@ -1281,7 +1281,7 @@ export default function ProductDetail({ product }) {
     actionLockRef.current = true;
     flushSync(() => setActionLoading('buy'));
     try {
-      if (!(await addConfiguredProductToCart({ openCart: false, flush: true, waitForPreview: true }))) return;
+      if (!(await addConfiguredProductToCart({ openCart: false, flush: true, waitForPreview: false }))) return;
       setIsCartOpen(false);
       toast.success('Taking you to checkout...');
       startNavigationFeedback();
