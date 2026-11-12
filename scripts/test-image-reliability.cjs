@@ -14,6 +14,18 @@ function functionSource(name, nextName) {
 function runFunction(name, nextName, globals) {
   const context = vm.createContext({ JSON, Blob, console, ...globals });
   Object.assign(context, globals);
+  if (typeof context.fetch === 'function' && typeof context.fetchWithTimeout !== 'function') {
+    context.fetchWithTimeout = (url, options) => context.fetch(url, options);
+  }
+  if (typeof context.liveBlobUrl !== 'function') {
+    context.liveBlobUrl = (upload) => {
+      const preview = String(upload?.previewUrl || '');
+      return preview.startsWith('blob:') ? preview : '';
+    };
+  }
+  if (typeof context.setPreviewCardTick !== 'function') {
+    context.setPreviewCardTick = () => {};
+  }
   vm.runInContext(functionSource(name, nextName) + `\nglobalThis.subject = ${name};`, context);
   return context.subject;
 }
@@ -445,4 +457,6 @@ test('Add to Cart awaits source uploads instead of failing immediately', () => {
   assert.equal(productSource.includes('await awaitSourceUploads()'), true);
   assert.equal(productSource.includes('waitForPreview: false'), true);
   assert.equal(productSource.includes('void finishCartPreview(cartItemId)'), true);
+  assert.equal(productSource.includes('fetchWithTimeout'), true);
+  assert.equal(productSource.includes('setPreviewCardTick'), true);
 });

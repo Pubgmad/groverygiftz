@@ -89,6 +89,7 @@ function probeImageDecode(url) {
   return new Promise((resolve) => {
     const image = new Image();
     const timer = setTimeout(() => finish(null), 30000);
+    timer.unref?.();
     const finish = (result) => {
       clearTimeout(timer);
       image.onload = null;
@@ -135,11 +136,17 @@ export async function prepareImageUpload(file) {
 
   // Prefer createImageBitmap with EXIF orientation — do not revoke the blob on probe failure.
   // iOS Safari ≤15: createImageBitmap exists but the imageOrientation option throws DOMException.
-  // When bitmap succeeds, trust its dimensions — a second <img> probe was doubling decode time.
+  // Some Android WebViews hang inside createImageBitmap, so this path is always time-bounded.
   if (previewUrl && typeof createImageBitmap === 'function') {
+    let bitmapTimer;
     try {
       imagePerfMark('prepare:bitmap:start');
-      const bitmap = await createImageBitmap(previewBlob, { imageOrientation: 'from-image' });
+      const bitmap = await Promise.race([
+        createImageBitmap(previewBlob, { imageOrientation: 'from-image' }),
+        new Promise((_, reject) => {
+          bitmapTimer = setTimeout(() => reject(new Error('bitmap-timeout')), 8000);
+        }),
+      ]);
       const width = bitmap.width;
       const height = bitmap.height;
       bitmap.close?.();
@@ -149,7 +156,9 @@ export async function prepareImageUpload(file) {
         return { previewUrl, previewFile: null, previewName: '', width, height };
       }
     } catch {
-      // imageOrientation unsupported (iOS Safari ≤15) — one Image decode + EXIF heuristic below.
+      // imageOrientation unsupported (iOS Safari ≤15) or hung bitmap — Image decode below.
+    } finally {
+      clearTimeout(bitmapTimer);
     }
   }
 
@@ -183,6 +192,7 @@ export function verifyImageDecode(url, { revokeOnError = true } = {}) {
   return new Promise((resolve, reject) => {
     const image = new Image();
     const timer = setTimeout(() => finish(new Error('Image loading timed out. Please try again.')), 30000);
+    timer.unref?.();
     const finish = (error) => {
       clearTimeout(timer);
       image.onload = null;
@@ -271,8 +281,8 @@ function pushUniqueUrl(urls, seen, entry) {
 
 /**
  * Thumbnail sources for upload cards.
- * After Apply: prefer the saved composed preview (data URL / signed display).
- * Before Apply: prefer the live blob the editor uses, then durable URLs.
+ * After Apply: only the composed preview — never the original photo.
+ * Before Apply: live blob, then durable display/original URLs.
  */
 export function cardUploadUrls(upload, appliedPreview = null) {
   const seen = new Set();
@@ -285,7 +295,32 @@ export function cardUploadUrls(upload, appliedPreview = null) {
     pushUniqueUrl(urls, seen, appliedPreview.displayUrl);
     pushUniqueUrl(urls, seen, appliedPreview.previewUrl);
     pushUniqueUrl(urls, seen, appliedPreview.url);
+    if (urls.length) return urls;
   }
   for (const url of previewLoadUrls(upload)) pushUniqueUrl(urls, seen, url);
   return urls;
+}
+
+export async function fetchWithTimeout(url, options = {}, timeoutMs = 30000) {
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  let timer;
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      try { controller?.abort(); } catch {}
+      reject(new Error('Photo upload timed out. Please check your connection and try again.'));
+    }, timeoutMs);
+    timer.unref?.();
+  });
+  try {
+    const fetchOptions = controller ? { ...options, signal: controller.signal } : options;
+    // Race the timeout: some iOS WebViews abort fetch without ever settling the promise.
+    return await Promise.race([fetch(url, fetchOptions), timeoutPromise]);
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error('Photo upload timed out. Please check your connection and try again.');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }

@@ -14,7 +14,7 @@ import { GOOGLE_CONSENT_SYNC_EVENT } from '@/lib/googleConsent';
 import { FiMinus, FiPlus, FiX, FiClock, FiShoppingCart, FiZap, FiUpload, FiImage, FiChevronLeft, FiChevronRight, FiStar, FiLoader } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { startNavigationFeedback } from '@/components/layout/NavigationFeedback';
-import { appendImageUpload, attachLocalPreview, cardUploadUrls, editorUploadUrl, liveBlobUrl, prepareImageUpload, previewLoadUrls, stableUploadUrl } from '@/lib/clientImageUpload';
+import { appendImageUpload, attachLocalPreview, cardUploadUrls, editorUploadUrl, fetchWithTimeout, liveBlobUrl, prepareImageUpload, previewLoadUrls, stableUploadUrl } from '@/lib/clientImageUpload';
 import { alignPhotoSlots, clearPhotoSlot, filledPhotoCount, filledPhotos, planPhotoUploads, removeListPhotoByUrl, setPhotoSlot } from '@/lib/photoSlots';
 import { adjustmentsForUploadedPhoto, beginCanvasPhotoLook, endCanvasPhotoLook, formatFrameSizeLabel, getFrameSize, orientationCaption } from '@/lib/photoEditor';
 import PhotoUploadCard from '@/components/product/PhotoUploadCard';
@@ -97,6 +97,7 @@ export default function ProductDetail({ product }) {
   const [uploadingFields, setUploadingFields] = useState({});
   const [previewAdjustments, setPreviewAdjustments] = useState({});
   const [savedPreviewAreas, setSavedPreviewAreas] = useState({});
+  const [previewCardTick, setPreviewCardTick] = useState(0);
   const savedPreviewFilesRef = useRef({});
   const [savingPreviewAreas, setSavingPreviewAreas] = useState({});
   const previewSaveLocksRef = useRef(new Set());
@@ -134,6 +135,7 @@ export default function ProductDetail({ product }) {
     setCollageUploads({});
     setPreviewAdjustments({});
     setSavedPreviewAreas({});
+    setPreviewCardTick(0);
     savedPreviewFilesRef.current = {};
     galleryTouchRef.current = { startX: 0, endX: 0 };
     lightboxTouchRef.current = { startX: 0, endX: 0 };
@@ -434,7 +436,7 @@ export default function ProductDetail({ product }) {
       const safeLabel = String(label || `photo-${idx + 1}`).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `photo-${idx + 1}`;
       const formData = new FormData();
       formData.append('file', new File([blob], `${safeLabel}-final-preview.jpg`, { type: blob.type || 'image/jpeg' }));
-      const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
+      const res = await fetchWithTimeout('/api/customization-upload', { method: 'POST', body: formData }, 30000);
       const data = await readJsonResponse(res, { fallbackError: 'Unable to store the customized preview. Please try again.' });
       imagePerfMeasure('apply:upload', 'apply:upload:start');
       return { ...data, previewUrl: previewUrl || data.displayUrl || data.url || '' };
@@ -606,6 +608,7 @@ export default function ProductDetail({ product }) {
             pending: true,
           };
           setSavedPreviewAreas((prev) => ({ ...prev, [idx]: true }));
+          setPreviewCardTick((tick) => tick + 1);
         } else {
           throw new Error('Unable to generate the customized preview. Please try again.');
         }
@@ -638,6 +641,7 @@ export default function ProductDetail({ product }) {
               pending: false,
             };
             setSavedPreviewAreas((prev) => ({ ...prev, [idx]: true }));
+            setPreviewCardTick((tick) => tick + 1);
             imagePerfMeasure('apply:total', 'apply:total:start');
             return file;
           } catch (error) {
@@ -688,6 +692,7 @@ export default function ProductDetail({ product }) {
     }
     delete savedPreviewFilesRef.current[idx];
     setSavedPreviewAreas((prev) => ({ ...prev, [idx]: false }));
+    setPreviewCardTick((tick) => tick + 1);
   };
   const getProductPixelPayload = (extra = {}) => buildProductMetaPayload(product, {
     price: finalUnitPrice,
@@ -822,7 +827,7 @@ export default function ProductDetail({ product }) {
       const prepared = await prepareImageUpload(file);
       const formData = new FormData();
       appendImageUpload(formData, file, prepared);
-      const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
+      const res = await fetchWithTimeout('/api/customization-upload', { method: 'POST', body: formData }, 30000);
       const data = await readJsonResponse(res, { fallbackError: 'Upload failed' });
       const uploadedFile = attachLocalPreview(data, prepared);
       setCustomFieldValues((prev) => {
@@ -867,10 +872,10 @@ export default function ProductDetail({ product }) {
         photoUploadTokenRef.current[job.index] = token;
         setUploadingPhotoSlots((prev) => ({ ...prev, [job.index]: true }));
         imagePerfMark('upload:job:start');
-        let localPreview = { previewUrl: '', width: 0, height: 0 };
-        try {
+        const uploadTask = (async () => {
           const prepared = await prepareImageUpload(job.file);
-          localPreview = {
+          if (photoUploadTokenRef.current[job.index] !== token) return null;
+          const localPreview = {
             previewUrl: prepared.previewUrl || '',
             width: prepared.width || 0,
             height: prepared.height || 0,
@@ -881,42 +886,47 @@ export default function ProductDetail({ product }) {
             setActivePreviewSlot(job.index);
             editPreviewArea(job.index);
             setPreviewAdjustments((prev) => ({ ...prev, [job.index]: adjustmentsEarly }));
-            setCustomerPhotos((prev) => setPhotoSlot(alignPhotoSlots(prev, photoSlotCount), job.index, localPreview));
-          }
-          if (openEditor && localPreview.previewUrl) setEditorSlotKey(job.index);
-
-          const uploadTask = (async () => {
-            imagePerfMark('upload:network:start');
-            const formData = new FormData();
-            appendImageUpload(formData, job.file, prepared);
-            const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
-            const data = await readJsonResponse(res, { fallbackError: `Failed to upload ${job.file.name}` });
-            imagePerfMeasure('upload:network', 'upload:network:start');
-            if (photoUploadTokenRef.current[job.index] !== token) return null;
-            const uploadedFile = attachLocalPreview(data, prepared);
             setCustomerPhotos((prev) => {
-              const next = setPhotoSlot(alignPhotoSlots(prev, photoSlotCount), job.index, uploadedFile);
+              const next = setPhotoSlot(alignPhotoSlots(prev, photoSlotCount), job.index, localPreview);
               customerPhotosRef.current = next;
               return next;
             });
-            setUploadingPhotoSlots((prev) => ({ ...prev, [job.index]: false }));
-            imagePerfMeasure('upload:job', 'upload:job:start');
-            return uploadedFile;
-          })();
-          photoUploadPromiseRef.current[job.index] = uploadTask;
+          }
+          if (openEditor && localPreview.previewUrl) setEditorSlotKey(job.index);
+
+          imagePerfMark('upload:network:start');
+          const formData = new FormData();
+          appendImageUpload(formData, job.file, prepared);
+          const res = await fetchWithTimeout('/api/customization-upload', { method: 'POST', body: formData }, 30000);
+          const data = await readJsonResponse(res, { fallbackError: `Failed to upload ${job.file.name}` });
+          imagePerfMeasure('upload:network', 'upload:network:start');
+          if (photoUploadTokenRef.current[job.index] !== token) return null;
+          const uploadedFile = attachLocalPreview(data, prepared);
+          setCustomerPhotos((prev) => {
+            const next = setPhotoSlot(alignPhotoSlots(prev, photoSlotCount), job.index, uploadedFile);
+            customerPhotosRef.current = next;
+            return next;
+          });
+          setUploadingPhotoSlots((prev) => ({ ...prev, [job.index]: false }));
+          imagePerfMeasure('upload:job', 'upload:job:start');
+          if (openEditor && uploadedFile && !localPreview.previewUrl) setEditorSlotKey(job.index);
+          return uploadedFile;
+        })();
+        photoUploadPromiseRef.current[job.index] = uploadTask;
+        try {
           const uploadedFile = await uploadTask;
-          delete photoUploadPromiseRef.current[job.index];
+          if (photoUploadPromiseRef.current[job.index] === uploadTask) delete photoUploadPromiseRef.current[job.index];
           if (!uploadedFile && photoUploadTokenRef.current[job.index] === token) {
             throw new Error(`Failed to upload ${job.file.name}`);
           }
-          if (openEditor && uploadedFile && !localPreview.previewUrl) setEditorSlotKey(job.index);
           return uploadedFile;
         } catch (error) {
-          delete photoUploadPromiseRef.current[job.index];
+          if (photoUploadPromiseRef.current[job.index] === uploadTask) delete photoUploadPromiseRef.current[job.index];
           setUploadingPhotoSlots((prev) => ({ ...prev, [job.index]: false }));
           setCustomerPhotos((prev) => {
             const next = alignPhotoSlots(prev, photoSlotCount);
             if (next[job.index] && !next[job.index].url) return clearPhotoSlot(next, job.index);
+            customerPhotosRef.current = next;
             return next;
           });
           throw error;
@@ -955,6 +965,7 @@ export default function ProductDetail({ product }) {
     }
     delete savedPreviewFilesRef.current[slotIndex];
     setSavedPreviewAreas((prev) => ({ ...prev, [slotIndex]: false }));
+    setPreviewCardTick((tick) => tick + 1);
     setPreviewAdjustments((prev) => ({ ...prev, [slotIndex]: getDefaultPreviewAdjustments() }));
     setUploadingPhotoSlots((prev) => ({ ...prev, [slotIndex]: false }));
   };
@@ -993,7 +1004,7 @@ export default function ProductDetail({ product }) {
       }
       const formData = new FormData();
       appendImageUpload(formData, file, prepared);
-      const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
+      const res = await fetchWithTimeout('/api/customization-upload', { method: 'POST', body: formData }, 30000);
       const data = await readJsonResponse(res, { fallbackError: 'Upload failed' });
       const uploadedFile = attachLocalPreview(data, prepared);
       setVariantLabelUploads((prev) => {
@@ -1052,7 +1063,7 @@ export default function ProductDetail({ product }) {
         const prepared = await prepareImageUpload(file);
         const formData = new FormData();
         appendImageUpload(formData, file, prepared);
-        const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
+        const res = await fetchWithTimeout('/api/customization-upload', { method: 'POST', body: formData }, 30000);
         const data = await readJsonResponse(res, { fallbackError: `Failed to upload ${file.name}` });
         return attachLocalPreview(data, prepared);
       }));
@@ -1091,7 +1102,7 @@ export default function ProductDetail({ product }) {
       const prepared = await prepareImageUpload(file);
       const formData = new FormData();
       appendImageUpload(formData, file, prepared);
-      const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
+      const res = await fetchWithTimeout('/api/customization-upload', { method: 'POST', body: formData }, 30000);
       const data = await readJsonResponse(res, { fallbackError: `Failed to upload ${file.name}` });
       const uploadedFile = attachLocalPreview(data, prepared);
       setCollageUploads((prev) => {
@@ -1141,13 +1152,16 @@ export default function ProductDetail({ product }) {
   ].filter(Boolean);
 
   const awaitSourceUploads = async () => {
-    const deadline = Date.now() + 45000;
-    while (Date.now() < deadline) {
-      const pending = collectSourceUploadPromises();
-      if (!pending.length) return;
-      await Promise.allSettled(pending);
+    const pending = collectSourceUploadPromises();
+    if (!pending.length) return;
+    let timedOut = false;
+    const timeout = new Promise((resolve) => {
+      setTimeout(() => { timedOut = true; resolve(); }, 20000);
+    });
+    await Promise.race([Promise.allSettled(pending), timeout]);
+    if (timedOut && collectSourceUploadPromises().length) {
+      throw new Error('Your photo is still uploading. Please wait a moment and try again.');
     }
-    throw new Error('Your photo is still uploading. Please wait a moment and try again.');
   };
 
   const awaitPendingCartAssets = async () => {
@@ -1303,6 +1317,7 @@ export default function ProductDetail({ product }) {
   const editorPhotoUrl = editorUploadUrl(editorPhoto);
   const selectedVariantLabel = selectedVariantOptions.find((option) => option?.label)?.label || '';
   const slotCardUrls = (photo, slotKey) => {
+    void previewCardTick;
     // Read savedPreviewAreas so Apply/clear triggers a re-render with the composed preview.
     const applied = savedPreviewAreas[slotKey] ? (savedPreviewFilesRef.current[slotKey]?.file || null) : null;
     return cardUploadUrls(photo, applied);
@@ -1671,7 +1686,9 @@ export default function ProductDetail({ product }) {
                   </div>
                   <div className={uploadCardGridClass}>
                       {photos.map((photo, idx) => {
-                      const collageUrls = cardUploadUrls(photo);
+                      const collageUrls = cardUploadUrls(photo, savedPreviewAreas[`collage:${label}:${idx}`]
+                        ? (savedPreviewFilesRef.current[`collage:${label}:${idx}`]?.file || null)
+                        : null);
                       return (
                       <PhotoUploadCard
                         key={`${label}-${idx}-${photo.url || 'photo'}`}
