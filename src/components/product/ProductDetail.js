@@ -28,7 +28,7 @@ import ProductMakingVideos from '@/components/product/ProductMakingVideos';
 import ProductTrustStats from '@/components/product/ProductTrustStats';
 import { imagePerfMark, imagePerfMeasure } from '@/lib/imagePerf';
 import { readJsonResponse } from '@/lib/safeJsonResponse';
-import { durableUploadRef } from '@/lib/cartPersist';
+import { cartDisplayUploadRef, durableUploadRef } from '@/lib/cartPersist';
 
 /** Session caches for Apply/cart canvas work — avoid re-decoding the same URLs. */
 const previewImageCache = new Map();
@@ -417,7 +417,7 @@ export default function ProductDetail({ product }) {
     const matches = saved?.sourceUrl === uploadedFile.url && saved?.adjustments === adjustmentsKey;
     // Only reuse a durable server URL — never blob/data cache as cart final preview.
     if (matches && saved?.file?.url && !saved?.pending) {
-      return durableUploadRef(saved.file) || saved.file;
+      return cartDisplayUploadRef(saved.file) || durableUploadRef(saved.file) || saved.file;
     }
     // Already-baked local Apply preview: upload that blob without re-rendering the canvas.
     const localPreview = String(saved?.file?.previewUrl || '');
@@ -429,7 +429,7 @@ export default function ProductDetail({ product }) {
         adjustments: adjustmentsKey,
         pending: false,
       };
-      return durableUploadRef(file) || file;
+      return cartDisplayUploadRef(file) || durableUploadRef(file) || file;
     }
     const renderedPreview = await renderFinalPreviewImage(area, previewKey, uploadedFile);
     const file = await uploadRenderedPreviewImage(renderedPreview, areaLabel, uploadIndex);
@@ -439,7 +439,7 @@ export default function ProductDetail({ product }) {
       adjustments: adjustmentsKey,
       pending: false,
     };
-    return durableUploadRef(file) || file;
+    return cartDisplayUploadRef(file) || durableUploadRef(file) || file;
   };
 
   const buildCustomizationPreviewPayload = async () => {
@@ -469,7 +469,7 @@ export default function ProductDetail({ product }) {
             unit: area.unit || 'inch',
             instructions: area.instructions || '',
             frameImage: area.frameImage || '',
-            uploadedFile: durableUploadRef(uploadedFile) || uploadedFile,
+            uploadedFile: cartDisplayUploadRef(uploadedFile) || durableUploadRef(uploadedFile) || uploadedFile,
             adjustments,
             finalPreviewImage,
             finalPreviewDataUrl: '',
@@ -510,7 +510,7 @@ export default function ProductDetail({ product }) {
           unit: area.unit || 'inch',
           instructions: area.instructions || '',
           frameImage: area.frameImage || '',
-          uploadedFile: durableUploadRef(uploadedFile) || uploadedFile,
+          uploadedFile: cartDisplayUploadRef(uploadedFile) || durableUploadRef(uploadedFile) || uploadedFile,
           adjustments,
           finalPreviewImage,
           finalPreviewDataUrl: '',
@@ -1048,13 +1048,13 @@ export default function ProductDetail({ product }) {
       : variantLabelUploads;
     const variantUploads = Object.fromEntries(Object.entries(latestVariantUploads).filter(([, value]) => value?.url));
     const productCustomerNote = customerNotesEnabled ? customerNote.trim() : '';
-    const uploadedCustomerPhotos = latestPhotos.map((photo) => durableUploadRef(photo)).filter(Boolean);
+    const uploadedCustomerPhotos = latestPhotos.map((photo) => cartDisplayUploadRef(photo)).filter(Boolean);
     if (latestPhotos.length && uploadedCustomerPhotos.length < latestPhotos.length) {
       toast.error('Please wait for your images and previews to finish saving.');
       return false;
     }
     const durableVariantUploads = Object.fromEntries(
-      Object.entries(variantUploads).map(([key, value]) => [key, durableUploadRef(value)]).filter(([, value]) => value)
+      Object.entries(variantUploads).map(([key, value]) => [key, cartDisplayUploadRef(value)]).filter(([, value]) => value)
     );
     if (Object.keys(variantUploads).length && Object.keys(durableVariantUploads).length < Object.keys(variantUploads).length) {
       toast.error('Please wait for your images and previews to finish saving.');
@@ -1063,12 +1063,12 @@ export default function ProductDetail({ product }) {
     const durableCustomFieldValues = Object.fromEntries(
       Object.entries(customFieldValues).map(([key, value]) => [
         key,
-        value && typeof value === 'object' && value.url ? (durableUploadRef(value) || value) : value,
+        value && typeof value === 'object' && value.url ? (cartDisplayUploadRef(value) || durableUploadRef(value) || value) : value,
       ])
     );
     const durableCollageGroups = collageGroups.map((group) => ({
       ...group,
-      images: (group.images || []).map((photo) => durableUploadRef(photo) || photo),
+      images: (group.images || []).map((photo) => cartDisplayUploadRef(photo) || durableUploadRef(photo) || photo),
     }));
     const allCustomFields = {
       ...durableCustomFieldValues,

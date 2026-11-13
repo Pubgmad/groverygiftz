@@ -32,6 +32,21 @@ export function durableUploadRef(photo) {
 }
 
 /**
+ * Cart drawer copy: keep the live blob/data preview in memory so thumbs still show
+ * if the signed customer-file URL 401s/404s. persistCartNow already strips blobs
+ * before localStorage / Mongo.
+ */
+export function cartDisplayUploadRef(photo) {
+  const durable = durableUploadRef(photo);
+  if (!durable) return null;
+  const previewUrl = String(photo?.previewUrl || '');
+  if (previewUrl.startsWith('blob:') || previewUrl.startsWith('data:')) {
+    return { ...durable, previewUrl };
+  }
+  return durable;
+}
+
+/**
  * Deep-clean cart/order payloads before localStorage or Mongo writes.
  * Drops previewUrl / finalPreviewDataUrl and any blob:/data: string values.
  */

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { FiFile, FiImage } from 'react-icons/fi';
 import { getConfiguredImageSections, isImageAsset } from '@/lib/configuredImages';
 
@@ -11,8 +11,30 @@ const linkUrlFor = (asset) => {
 };
 
 function Thumbnail({ asset, sectionLabel, tileSize, assetIndex }) {
+  const sources = useMemo(() => {
+    const list = Array.isArray(asset?.displaySources) && asset.displaySources.length
+      ? asset.displaySources
+      : [asset?.url].filter(Boolean);
+    const seen = new Set();
+    return list.filter((entry) => {
+      const url = String(entry || '').trim();
+      if (!url || seen.has(url)) return false;
+      seen.add(url);
+      return true;
+    });
+  }, [asset]);
+  const sourceKey = sources.join('\n');
+  const [srcIndex, setSrcIndex] = useState(0);
   const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setSrcIndex(0);
+    setFailed(false);
+  }, [sourceKey]);
+
   const href = linkUrlFor(asset);
+  const activeSrc = sources[Math.min(srcIndex, Math.max(0, sources.length - 1))] || '';
+  const showImage = isImageAsset(asset) && !failed && Boolean(activeSrc);
 
   return (
     <a
@@ -22,12 +44,18 @@ function Thumbnail({ asset, sectionLabel, tileSize, assetIndex }) {
       title={asset.caption || asset.name || sectionLabel}
       className={`group relative block shrink-0 overflow-hidden rounded-md border border-gray-200 bg-gray-50 ${tileSize}`}
     >
-      {isImageAsset(asset) && !failed ? (
+      {showImage ? (
         <img
-          src={asset.url}
+          src={activeSrc}
           alt=""
           className="h-full w-full object-cover"
-          onError={() => setFailed(true)}
+          onError={() => {
+            if (srcIndex + 1 < sources.length) {
+              setSrcIndex((index) => index + 1);
+              return;
+            }
+            setFailed(true);
+          }}
         />
       ) : (
         <span className="flex h-full w-full flex-col items-center justify-center gap-1 px-1 text-center text-[10px] font-semibold text-gray-500">

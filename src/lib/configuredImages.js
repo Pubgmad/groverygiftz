@@ -28,18 +28,41 @@ const firstDurable = (...candidates) => {
   return '';
 };
 
-// Prefer a browser-displayable customer-file URL over original-file (attachment) or HEIC originals.
-const displayUrlFor = (asset) => firstDurable(
-  !isOriginalFileUrl(asset?.displayUrl) && !isHeicLikeUrl(asset?.displayUrl) ? asset?.displayUrl : '',
-  customerFileUrlFromStoragePath(asset?.previewStoragePath),
-  !isHeicLikeUrl(asset?.displayUrl) ? asset?.displayUrl : '',
-  !isEphemeralMediaUrl(asset?.previewUrl) ? asset?.previewUrl : '',
-  customerFileUrlFromOriginal(asset?.url),
-  customerFileUrlFromStoragePath(asset?.storagePath),
-  !isOriginalFileUrl(asset?.url) && !isHeicLikeUrl(asset?.url) ? asset?.url : '',
-  asset?.displayUrl,
-  asset?.url,
-);
+const pushDisplaySrc = (urls, seen, value, { allowEphemeral = false, allowOriginalFile = false } = {}) => {
+  const url = String(value || '').trim();
+  if (!url || seen.has(url)) return;
+  if (!allowEphemeral && isEphemeralMediaUrl(url)) return;
+  if (!allowOriginalFile && isOriginalFileUrl(url)) return;
+  seen.add(url);
+  urls.push(url);
+};
+
+/**
+ * Cart/admin <img> candidates. Blob/data first (same-session after Add to Cart),
+ * then signed JPEG displayUrl. Never use original-file (admin-only attachment).
+ */
+export const customerImageDisplaySources = (asset) => {
+  if (!asset) return [];
+  if (typeof asset === 'string') {
+    const url = asset.trim();
+    return url && !isEphemeralMediaUrl(url) && !isOriginalFileUrl(url) ? [url] : [];
+  }
+  const urls = [];
+  const seen = new Set();
+  pushDisplaySrc(urls, seen, asset.previewUrl, { allowEphemeral: true });
+  if (!isHeicLikeUrl(asset.displayUrl)) {
+    pushDisplaySrc(urls, seen, asset.displayUrl);
+  }
+  pushDisplaySrc(urls, seen, customerFileUrlFromStoragePath(asset.previewStoragePath));
+  pushDisplaySrc(urls, seen, customerFileUrlFromOriginal(asset.url));
+  pushDisplaySrc(urls, seen, customerFileUrlFromOriginal(asset.originalUrl));
+  pushDisplaySrc(urls, seen, customerFileUrlFromStoragePath(asset.storagePath));
+  if (!isHeicLikeUrl(asset.url)) pushDisplaySrc(urls, seen, asset.url);
+  if (!isHeicLikeUrl(asset.displayUrl)) pushDisplaySrc(urls, seen, asset.displayUrl);
+  return urls;
+};
+
+const displayUrlFor = (asset) => customerImageDisplaySources(asset)[0] || '';
 
 export const customerImageDisplaySrc = (asset) => displayUrlFor(asset);
 
@@ -65,14 +88,16 @@ export const isImageAsset = (asset) => {
 const normalizeAsset = (asset, caption) => {
   if (!asset) return null;
   if (typeof asset === 'string') {
-    if (!asset.trim() || isEphemeralMediaUrl(asset)) return null;
-    return { url: asset, name: caption, caption, type: 'image' };
+    const sources = customerImageDisplaySources(asset);
+    if (!sources.length) return null;
+    return { url: sources[0], displaySources: sources, name: caption, caption, type: 'image' };
   }
-  if (!hasUrl(asset)) return null;
-  const display = displayUrlFor(asset);
-  if (!display || isEphemeralMediaUrl(display)) return null;
+  if (!hasUrl(asset) && !String(asset?.previewUrl || '').trim()) return null;
+  const sources = customerImageDisplaySources(asset);
+  if (!sources.length) return null;
   return {
-    url: display,
+    url: sources[0],
+    displaySources: sources,
     originalUrl: linkUrlFor(asset),
     name: asset.name || caption,
     type: asset.type || '',

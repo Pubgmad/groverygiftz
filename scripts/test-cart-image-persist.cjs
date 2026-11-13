@@ -48,11 +48,12 @@ const cartPersistSource = fs.readFileSync(path.join(__dirname, '../src/lib/cartP
 const persistCtx = { module: { exports: {} }, exports: {}, console, process, require, Buffer };
 vm.createContext(persistCtx);
 vm.runInContext(`${cartPersistSource}
-module.exports = { isEphemeralMediaUrl, durableUploadRef, stripDisplayOnlyPreviewData, cartItemHasConfiguredImages, mergeCartItems, isSameCartLine };
+module.exports = { isEphemeralMediaUrl, durableUploadRef, cartDisplayUploadRef, stripDisplayOnlyPreviewData, cartItemHasConfiguredImages, mergeCartItems, isSameCartLine };
 `, persistCtx);
 const {
   isEphemeralMediaUrl,
   durableUploadRef,
+  cartDisplayUploadRef,
   stripDisplayOnlyPreviewData,
   cartItemHasConfiguredImages,
   mergeCartItems,
@@ -91,6 +92,20 @@ assert.ok(durable);
 assert.strictEqual(durable.previewUrl, undefined);
 assert.strictEqual(durable.previewStoragePath, 'customizations/previews/a.jpg');
 assert.ok(!isEphemeralMediaUrl(durable.displayUrl));
+
+const displayRef = cartDisplayUploadRef({
+  name: 'photo.heic',
+  type: 'image/heic',
+  url: '/api/customization-upload/original-file/customizations/a.heic',
+  displayUrl: '/api/customization-upload/customer-file/customizations/previews/a.jpg?exp=1&sig=x',
+  previewUrl: 'blob:http://local/preview',
+  storagePath: 'customizations/a.heic',
+  previewStoragePath: 'customizations/previews/a.jpg',
+});
+assert.equal(displayRef.previewUrl, 'blob:http://local/preview');
+assert.ok(displayRef.displayUrl.includes('previews/a.jpg'));
+const persisted = stripDisplayOnlyPreviewData({ customFields: { 'Customer Photos': [displayRef] } });
+assert.equal(persisted.customFields['Customer Photos'][0].previewUrl, undefined);
 
 assert.strictEqual(cartItemHasConfiguredImages({
   customFields: { 'Customer Photos': [{ url: '/api/x' }] },
@@ -180,12 +195,61 @@ assert.doesNotMatch(dispatchLabel, /Invalid Date/i, `dispatch date became ${disp
 
 const configuredImagesSource = fs.readFileSync(path.join(__dirname, '../src/lib/configuredImages.js'), 'utf8');
 assert.match(configuredImagesSource, /customerImageDisplaySrc/);
+assert.match(configuredImagesSource, /customerImageDisplaySources/);
 assert.match(configuredImagesSource, /previewStoragePath/);
 assert.match(configuredImagesSource, /original-file/);
 assert.doesNotMatch(
   configuredImagesSource.slice(configuredImagesSource.indexOf('const displayUrlFor'), configuredImagesSource.indexOf('export const customerImageDisplaySrc')),
   /\|\| String\(asset\?\.previewUrl/
 );
+
+const imagesSource = configuredImagesSource
+  .replace(/import \{ isEphemeralMediaUrl \} from '@\/lib\/cartPersist';/, '')
+  .replace(/export /g, '');
+const imagesCtx = { module: { exports: {} }, exports: {}, console };
+vm.createContext(imagesCtx);
+vm.runInContext(`${cartPersistSource}
+${imagesSource}
+module.exports = { customerImageDisplaySrc, customerImageDisplaySources, getConfiguredImageSections };
+`, imagesCtx);
+const {
+  customerImageDisplaySources,
+  getConfiguredImageSections,
+} = imagesCtx.module.exports;
+
+const livePhoto = {
+  name: 'photo.heic',
+  type: 'image/heic',
+  url: '/api/customization-upload/original-file/customizations/a.heic?name=photo.heic',
+  displayUrl: '/api/customization-upload/customer-file/customizations/previews/a.jpg?exp=1&sig=x',
+  previewUrl: 'blob:http://local/preview',
+  storagePath: 'customizations/a.heic',
+  previewStoragePath: 'customizations/previews/a.jpg',
+};
+const liveSources = customerImageDisplaySources(livePhoto);
+assert.equal(liveSources[0], 'blob:http://local/preview');
+assert.ok(liveSources.includes(livePhoto.displayUrl));
+assert.ok(!liveSources.some((url) => url.includes('original-file')), 'cart thumbs must not use original-file');
+
+const drawerSections = getConfiguredImageSections({
+  customFields: { 'Customer Photos': [livePhoto] },
+  customizationPreview: {
+    previews: [{
+      areaLabel: '12*10 inch',
+      uploadedFile: livePhoto,
+      finalPreviewImage: {
+        url: '/api/customization-upload/original-file/customizations/final.jpg',
+        displayUrl: '/api/customization-upload/customer-file/customizations/final.jpg?exp=1&sig=x',
+        previewUrl: 'blob:http://local/final',
+        type: 'image/jpeg',
+      },
+    }],
+  },
+}, { includeProductImages: false });
+assert.equal(drawerSections.find((section) => section.label === 'Customer Photos')?.items[0]?.displaySources[0], 'blob:http://local/preview');
+const previewSection = drawerSections.find((section) => section.label === 'Preview: 12*10 inch');
+assert.equal(previewSection?.items?.length, 2);
+assert.equal(previewSection.items[1].displaySources[0], 'blob:http://local/final');
 
 const guestConfigured = {
   cartItemId: 'guest-1',
