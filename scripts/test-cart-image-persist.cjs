@@ -48,13 +48,14 @@ const cartPersistSource = fs.readFileSync(path.join(__dirname, '../src/lib/cartP
 const persistCtx = { module: { exports: {} }, exports: {}, console, process, require, Buffer };
 vm.createContext(persistCtx);
 vm.runInContext(`${cartPersistSource}
-module.exports = { isEphemeralMediaUrl, durableUploadRef, stripDisplayOnlyPreviewData, cartItemHasConfiguredImages };
+module.exports = { isEphemeralMediaUrl, durableUploadRef, stripDisplayOnlyPreviewData, cartItemHasConfiguredImages, mergeCartItems, isSameCartLine };
 `, persistCtx);
 const {
   isEphemeralMediaUrl,
   durableUploadRef,
   stripDisplayOnlyPreviewData,
   cartItemHasConfiguredImages,
+  mergeCartItems,
 } = persistCtx.module.exports;
 
 assert.strictEqual(isEphemeralMediaUrl('blob:http://localhost/abc'), true);
@@ -144,5 +145,25 @@ assert.doesNotMatch(
   configuredImagesSource.slice(configuredImagesSource.indexOf('const displayUrlFor'), configuredImagesSource.indexOf('export const customerImageDisplaySrc')),
   /\|\| String\(asset\?\.previewUrl/
 );
+
+const guestConfigured = {
+  cartItemId: 'guest-1',
+  productId: 'p1',
+  variant: 'Size: 4*4 inch',
+  quantity: 1,
+  customFields: { 'Customer Photos': [{ url: '/api/customization-upload/customer-file/customizations/a.jpg' }] },
+};
+assert.equal(mergeCartItems([], [guestConfigured]).length, 1);
+assert.equal(mergeCartItems([], [guestConfigured])[0].cartItemId, 'guest-1');
+assert.equal(mergeCartItems([guestConfigured], [{ ...guestConfigured }]).length, 1);
+assert.equal(mergeCartItems([guestConfigured], [{ ...guestConfigured, quantity: 1 }])[0].quantity, 1);
+assert.equal(mergeCartItems([guestConfigured], [{ cartItemId: 'guest-2', productId: 'p2', quantity: 1 }]).length, 2);
+
+const accountPlain = { productId: 'p3', variant: 'Color: Red', quantity: 1, customFields: {} };
+const guestPhotos = { productId: 'p3', variant: 'Color: Red', quantity: 1, customFields: { 'Customer Photos': [{ url: '/api/x' }] } };
+const filled = mergeCartItems([accountPlain], [guestPhotos]);
+assert.equal(filled.length, 1);
+assert.equal(filled[0].quantity, 2);
+assert.ok(filled[0].customFields['Customer Photos'][0].url);
 
 console.log('Cart image persist tests passed');

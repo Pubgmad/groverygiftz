@@ -534,12 +534,19 @@ test('tracking exceptions cannot interrupt cart or checkout operations', () => {
 function cartFixture() {
   const b = fixture(); b.ready();
   b.c.cartRef = { current: [] };
-  b.c.isAuthenticatedCustomer = false;
   b.c.applyCart = (items) => { b.c.cartRef.current = items; };
-  b.c.persistGuestCart = () => {};
+  b.c.persistCartNow = () => {};
+  b.c.removeGuestCart = () => {};
   b.c.setIsCartOpen = () => {};
+  b.c.isSameCartLine = (cartItem, productId, variant, cartItemId) => {
+    if (cartItemId) return cartItem.cartItemId === cartItemId;
+    return cartItem.productId === productId && cartItem.variant === variant && !cartItem.cartItemId;
+  };
+  b.c.capQuantity = (quantity, availableStock) => {
+    const limit = Number(availableStock);
+    return Number.isFinite(limit) && limit >= 0 ? Math.min(quantity, limit) : quantity;
+  };
   const text = read('src/context/CartContext.js');
-  vm.runInContext(text.slice(text.indexOf('const isSameCartLine'), text.indexOf('const stripDisplayOnlyPreviewData')), b.c);
   vm.runInContext(text.slice(text.indexOf('  const addToCart ='), text.indexOf('  const cartCount =')) + '\nglobalThis.operations = { addToCart, removeFromCart, updateQuantity, clearCart };', b.c);
   return b;
 }

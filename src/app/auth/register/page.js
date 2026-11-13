@@ -9,12 +9,14 @@ import PasswordInput from '@/components/common/PasswordInput';
 import { PASSWORD_REQUIREMENTS, validateStrongPassword, strongPasswordMessage } from '@/lib/passwordPolicy';
 import { startNavigationFeedback } from '@/components/layout/NavigationFeedback';
 import { trackGA4Auth, clearGA4GoogleLogin } from '@/lib/ga4';
+import { useCart } from '@/context/CartContext';
 
 export default function RegisterPage() {
   const [formData, setFormData] = useState({ name: '', email: '', password: '', phone: '' });
   const [loading, setLoading] = useState(false);
   const [inputReady, setInputReady] = useState(false);
   const router = useRouter();
+  const { flushGuestCart } = useCart();
   const [callbackUrl, setCallbackUrl] = useState('/account');
   const passwordCheck = validateStrongPassword(formData.password);
 
@@ -61,6 +63,7 @@ export default function RegisterPage() {
           redirect: false,
         });
         if (loginResult?.ok && !loginResult.error) trackGA4Auth('login');
+        if (typeof flushGuestCart === 'function') flushGuestCart();
         if (loginResult?.error) {
           toast.success('Account created. Please sign in to continue.');
           startNavigationFeedback();

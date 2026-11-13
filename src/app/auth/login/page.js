@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import PasswordInput from '@/components/common/PasswordInput';
 import { startNavigationFeedback } from '@/components/layout/NavigationFeedback';
 import { trackGA4Auth, rememberGA4GoogleLogin, clearGA4GoogleLogin } from '@/lib/ga4';
+import { useCart } from '@/context/CartContext';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -14,6 +15,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [inputReady, setInputReady] = useState(false);
   const router = useRouter();
+  const { flushGuestCart } = useCart();
   const [callbackUrl, setCallbackUrl] = useState('/account');
 
   useEffect(() => {
@@ -30,6 +32,7 @@ export default function LoginPage() {
   }, []);
 
   const handleGoogleSignIn = () => {
+    if (typeof flushGuestCart === 'function') flushGuestCart();
     document.cookie = 'google_auth_intent=signin; path=/; max-age=600; SameSite=Lax';
     setLoading(true);
     startNavigationFeedback();
@@ -45,6 +48,7 @@ export default function LoginPage() {
     setLoading(false);
     if (res?.ok) {
       if (!res.error) trackGA4Auth('login');
+      if (typeof flushGuestCart === 'function') flushGuestCart();
       toast.success('Welcome back!');
       startNavigationFeedback();
       router.push(callbackUrl || '/account');

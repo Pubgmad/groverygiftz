@@ -47,7 +47,7 @@ const INDIAN_STATES = [
 ];
 
 export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
-  const { cart, cartTotal, clearCart, removePurchasedCartItems, cartReady } = useCart();
+  const { cart, cartTotal, clearCart, removePurchasedCartItems, flushGuestCart, cartReady } = useCart();
   const { data: session, status } = useSession();
   const router = useRouter();
   const [step, setStep] = useState(1);
@@ -81,6 +81,7 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
 
   useEffect(() => {
     if (status === 'unauthenticated') {
+      if (typeof flushGuestCart === 'function') flushGuestCart();
       router.replace(`/auth/register?callbackUrl=${encodeURIComponent(authenticationCallback)}`);
     }
   }, [status, router, authenticationCallback]);
@@ -265,6 +266,7 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
   const handleCashfreePayment = async () => {
     if (paymentLockRef.current || loading) return;
     if (status !== 'authenticated') {
+      if (typeof flushGuestCart === 'function') flushGuestCart();
       router.replace('/auth/register?callbackUrl=/checkout');
       return;
     }

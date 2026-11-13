@@ -2,15 +2,10 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { trackGA4Ecommerce } from '@/lib/ga4';
-import { cartItemHasConfiguredImages, stripDisplayOnlyPreviewData } from '@/lib/cartPersist';
+import { isSameCartLine, mergeCartItems, persistGuestCart, readGuestCart, removeGuestCart, stripDisplayOnlyPreviewData } from '@/lib/cartPersist';
 import { reconcileCartAgainstPurchasedItems } from '@/lib/cartReconcile';
 
 const CartContext = createContext();
-
-const isSameCartLine = (cartItem, productId, variant, cartItemId) => {
-  if (cartItemId) return cartItem.cartItemId === cartItemId;
-  return cartItem.productId === productId && cartItem.variant === variant && !cartItem.cartItemId;
-};
 
 const normalizeStockLimit = (value) => {
   const limit = Number(value);
@@ -20,60 +15,6 @@ const normalizeStockLimit = (value) => {
 const capQuantity = (quantity, availableStock) => {
   const limit = normalizeStockLimit(availableStock);
   return limit === null ? quantity : Math.min(quantity, limit);
-};
-
-const mergeCartItems = (accountCart = [], localCart = []) => {
-  const merged = [...accountCart];
-  localCart.forEach((item) => {
-    const existingIndex = !item.cartItemId ? merged.findIndex((entry) => isSameCartLine(entry, item.productId, item.variant)) : -1;
-    if (existingIndex >= 0) {
-      const existing = merged[existingIndex];
-      const guestHasImages = cartItemHasConfiguredImages(item);
-      const accountHasImages = cartItemHasConfiguredImages(existing);
-      // Prefer guest customization when the account line has no durable images yet.
-      const keepGuestConfig = guestHasImages && !accountHasImages;
-      merged[existingIndex] = {
-        ...existing,
-        ...(keepGuestConfig ? {
-          customFields: item.customFields,
-          collageUploads: item.collageUploads,
-          customizationPreview: item.customizationPreview,
-          giftWrap: item.giftWrap,
-          giftMessage: item.giftMessage,
-          cartItemId: item.cartItemId || existing.cartItemId,
-        } : {}),
-        quantity: capQuantity(Number(existing.quantity || 0) + Number(item.quantity || 1), existing.availableStock ?? item.availableStock),
-      };
-      return;
-    }
-    merged.push({ ...item, quantity: capQuantity(Number(item.quantity || 1), item.availableStock) });
-  });
-  return merged;
-};
-
-const persistGuestCart = (items) => {
-  try {
-    localStorage.setItem('groverygiftz-cart', JSON.stringify(stripDisplayOnlyPreviewData(items || [])));
-  } catch {}
-};
-
-const removeGuestCart = () => {
-  try {
-    localStorage.removeItem('groverygiftz-cart');
-  } catch {}
-};
-
-const readGuestCart = () => {
-  try {
-    const saved = localStorage.getItem('groverygiftz-cart');
-    if (!saved) return [];
-    const parsed = JSON.parse(saved);
-    if (Array.isArray(parsed)) return stripDisplayOnlyPreviewData(parsed);
-    removeGuestCart();
-  } catch {
-    removeGuestCart();
-  }
-  return [];
 };
 
 export function CartProvider({ children }) {
@@ -125,7 +66,18 @@ export function CartProvider({ children }) {
       }
     };
     hydrate();
-    return () => { cancelled = true; };
+    const persistOnLeave = () => {
+      const snapshot = cartRef.current || [];
+      if (snapshot.length) persistGuestCart(snapshot);
+    };
+    window.addEventListener('pagehide', persistOnLeave);
+    window.addEventListener('beforeunload', persistOnLeave);
+    return () => {
+      cancelled = true;
+      persistOnLeave();
+      window.removeEventListener('pagehide', persistOnLeave);
+      window.removeEventListener('beforeunload', persistOnLeave);
+    };
   }, []);
 
   useEffect(() => {
@@ -137,7 +89,7 @@ export function CartProvider({ children }) {
     fetch('/api/customers/saved-lists')
       .then((res) => res.ok ? res.json() : Promise.reject())
       .then(async (data) => {
-        const guestCart = cartRef.current || [];
+        const guestCart = mergeCartItems(cartRef.current || [], readGuestCart());
         let merged = mergeCartItems(data.cart || [], guestCart);
         try {
           const refreshRes = await fetch('/api/customization-upload/refresh-display', {
@@ -163,7 +115,11 @@ export function CartProvider({ children }) {
         activeCustomerRef.current = session.user.id;
       })
       .catch(() => {
-        syncedCustomerRef.current = session.user.id;
+        const guestCart = mergeCartItems(cartRef.current || [], readGuestCart());
+        if (guestCart.length) {
+          applyCart(guestCart);
+          persistGuestCart(guestCart);
+        }
         activeCustomerRef.current = session.user.id;
       })
       .finally(() => {
@@ -212,15 +168,20 @@ export function CartProvider({ children }) {
       body: JSON.stringify({ cart: snapshot }),
       signal: controller.signal,
     }).then((res) => {
-      if (res.ok && generation === persistGenerationRef.current) removeGuestCart();
+      if (res.ok && generation === persistGenerationRef.current && syncedCustomerRef.current) removeGuestCart();
     }).catch(() => {});
+  };
+
+  const flushGuestCart = () => {
+    const snapshot = cartRef.current || [];
+    if (snapshot.length) persistGuestCart(snapshot);
   };
 
   useEffect(() => {
     if (!localLoadedRef.current) return;
     const isCustomer = status === 'authenticated' && session?.user?.type === 'customer' && session.user.id;
     if (!isCustomer) {
-      persistGuestCart(cartRef.current);
+      if ((cartRef.current || []).length) persistGuestCart(cartRef.current);
       return;
     }
 
@@ -297,7 +258,7 @@ export function CartProvider({ children }) {
   const cartReady = localLoaded && (!currentCustomerId || (syncedCustomerRef.current === currentCustomerId && !cartSyncing));
 
   return (
-    <CartContext.Provider value={{ cart, addToCart, removeFromCart, updateQuantity, clearCart, removePurchasedCartItems, cartCount, cartTotal, cartReady, cartSyncing, isCartOpen, setIsCartOpen }}>
+    <CartContext.Provider value={{ cart, addToCart, removeFromCart, updateQuantity, clearCart, removePurchasedCartItems, flushGuestCart, cartCount, cartTotal, cartReady, cartSyncing, isCartOpen, setIsCartOpen }}>
       {children}
     </CartContext.Provider>
   );
