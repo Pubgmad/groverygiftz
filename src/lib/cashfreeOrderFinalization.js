@@ -1,6 +1,7 @@
 import dbConnect from '@/lib/db';
 import Settings from '@/models/Settings';
 import Order from '@/models/Order';
+import Customer from '@/models/Customer';
 import { getNextPaidOrderNumber, isFinalOrderNumber } from '@/lib/orderNumbers';
 import { deductOrderInventory } from '@/lib/inventory';
 import { getCashfreeConfig } from '@/lib/cashfreeConfig';
@@ -8,6 +9,7 @@ import { sendMetaPurchaseEvent } from '@/lib/metaConversionApi';
 import { buildMetaPurchase } from '@/lib/metaPurchase';
 import { buildGA4Purchase } from '@/lib/ga4Data';
 import { getOrderDeliveryEstimate } from '@/lib/orderDeliveryEstimate';
+import { cartLineKey, reconcileCartAgainstPurchasedItems } from '@/lib/cartReconcile';
 
 export const CASHFREE_VERSION = '2025-01-01';
 
@@ -214,6 +216,14 @@ export async function finalizeCashfreeOrder(orderId, { retryTracking = false } =
     await order.save();
   }
 
+  if (order.paymentStatus === 'paid' && order.customer) {
+    try {
+      await reconcileCustomerCartAfterPaidOrder(order);
+    } catch (cartError) {
+      console.error('Cart reconcile after Cashfree finalize failed:', cartError);
+    }
+  }
+
   let tracking;
   try {
     tracking = await sendMetaPurchaseEvent(order._id);
@@ -246,4 +256,18 @@ export async function finalizeCashfreeOrder(orderId, { retryTracking = false } =
   }
 
   return responseForOrder(order, true, settings);
+}
+
+async function reconcileCustomerCartAfterPaidOrder(order) {
+  const customerId = order?.customer;
+  if (!customerId) return;
+  const customer = await Customer.findById(customerId).select('cart');
+  if (!customer) return;
+  const current = Array.isArray(customer.cart) ? customer.cart : [];
+  const next = reconcileCartAgainstPurchasedItems(current, order.items || []);
+  const prevKeys = current.map(cartLineKey).join('|');
+  const nextKeys = next.map(cartLineKey).join('|');
+  if (prevKeys === nextKeys) return;
+  customer.cart = next;
+  await customer.save();
 }

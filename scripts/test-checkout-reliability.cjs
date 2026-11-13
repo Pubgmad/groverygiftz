@@ -146,13 +146,13 @@ test('checkout outcome URLs stay on-site and preserve legacy Cashfree identifier
 
 function outcomeFixture(mode, result = { success: true, paymentStatus: 'paid', orderNumber: 'GG0064', items: [{ product: 'p', price: 500, quantity: 1 }], subtotal: 500, shippingCost: 100, total: 600, deliveryEstimate: '8 working days' }) {
   const storage = new Map();
-  const calls = { cleared: 0, ga: 0, meta: 0, confirmation: 0, routes: [], result: null, step: 1, messages: [] };
+  const calls = { cleared: 0, reconciled: 0, ga: 0, meta: 0, confirmation: 0, routes: [], result: null, step: 1, messages: [] };
   const c = load(['src/lib/checkoutPayment.js'], {
     mode, orderId: 'provider-order',
     window: { sessionStorage: { getItem: (key) => storage.get(key), setItem: (key, value) => storage.set(key, value) }, scrollTo() {} },
     session: { user: { id: 'customer-1' } }, receiptOwnerRef: { current: 'customer-1' }, returnVerifyRef: { current: '' },
     cart: [{ product: 'new-cart-product', quantity: 1 }], cartTotal: 500, grandTotal: 600, shippingCost: 100, deliveryEstimate: '8 working days',
-    clearCart: () => calls.cleared++, router: { replace: (url) => calls.routes.push(url) },
+    clearCart: () => calls.cleared++, removePurchasedCartItems: () => calls.reconciled++, router: { replace: (url) => calls.routes.push(url) },
     trackGA4Purchase: () => calls.ga++, trackVerifiedMetaPurchase: () => calls.meta++, trackGA4OrderConfirmation: () => calls.confirmation++,
     setOrderResult: (value) => { calls.result = value; }, setStep: (value) => { calls.step = value; },
     setVerificationMessage: (value) => calls.messages.push(value), toast: { error: (value) => calls.messages.push(value) },
@@ -169,10 +169,12 @@ test('paid checkout and Cashfree return navigate to confirmation and clear the c
     const f = outcomeFixture(mode);
     assert.equal(await f.c.verify('provider-order'), true);
     assert.deepEqual(f.calls.routes, ['/checkout/success?cashfree_order_id=provider-order']);
-    assert.equal(f.calls.cleared, 1);
+    assert.equal(f.calls.reconciled, 1);
+    assert.equal(f.calls.cleared, 0);
     assert.equal(f.calls.ga + f.calls.meta, 0);
     await f.c.verify('provider-order');
-    assert.equal(f.calls.cleared, 1);
+    assert.equal(f.calls.reconciled, 1);
+    assert.equal(f.calls.cleared, 0);
   }
 });
 
@@ -187,6 +189,7 @@ test('verified confirmation renders the same order without clearing a new cart o
   assert.equal(f.calls.meta, 1);
   assert.equal(f.calls.confirmation, 1);
   assert.equal(f.calls.cleared, 0);
+  assert.equal(f.calls.reconciled, 1);
   assert.equal(f.calls.routes.length, 0);
 });
 
@@ -197,6 +200,7 @@ test('pending, unauthorized and failed outcomes never show success, clear cart o
       assert.equal(await f.c.verify('provider-order'), false);
       assert.equal(f.calls.result, null);
       assert.equal(f.calls.cleared, 0);
+      assert.equal(f.calls.reconciled, 0);
       assert.equal(f.calls.ga + f.calls.meta, 0);
       assert.equal(f.calls.routes.length, 0);
     }
@@ -215,4 +219,23 @@ test('routes share one checkout flow, legacy returns redirect, and return UI can
   assert.match(pending, /retryPaymentVerification/);
   assert.doesNotMatch(pending, /handleCashfreePayment|Pay \{/);
   assert.match(flow, /encodeURIComponent\(authenticationCallback\)/);
+  assert.match(flow, /removePurchasedCartItems\(verifyData.items\)/);
+});
+
+test('paid order lines are removed from the cart without deleting later or unrelated items', () => {
+  const c = load(['src/lib/cartReconcile.js']);
+  const cart = [
+    { cartItemId: 'line-1', productId: 'p1', variant: 'Size: Large', title: 'Purchased' },
+    { cartItemId: 'line-2', productId: 'p2', variant: '', title: 'Added after checkout' },
+    { productId: 'p3', variant: 'Color: Red', title: 'Unconfigured leftover' },
+  ];
+  const purchased = [
+    { cartItemId: 'line-1', productId: 'p1', variant: 'Size: Large' },
+    { productId: 'p3', variant: 'Color: Red' },
+  ];
+  const next = c.reconcileCartAgainstPurchasedItems(cart, purchased);
+  assert.deepEqual(next.map((item) => item.title), ['Added after checkout']);
+  assert.deepEqual(c.reconcileCartAgainstPurchasedItems(next, purchased).map((item) => item.title), ['Added after checkout']);
+  assert.deepEqual(c.reconcileCartAgainstPurchasedItems(cart, []), cart);
+  assert.equal(c.cartLineKey({ cartItemId: 'line-1', productId: 'other' }), 'id:line-1');
 });

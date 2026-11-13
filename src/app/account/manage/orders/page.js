@@ -15,6 +15,7 @@ import { MAX_SHIPPING_LABEL_ORDERS } from '@/lib/shippingLabelLayout';
 import { ORDER_SOURCE_LABELS, OPS_STATUS_LABELS, isDelayedOrder } from '@/lib/opsConstants';
 import { todayIstYmd, tomorrowIstYmd } from '@/lib/istTime';
 import { FiPlus, FiRefreshCw } from 'react-icons/fi';
+import { customerImageDisplaySrc } from '@/lib/configuredImages';
 
 const statusOptions = [
   { value: 'ordered', label: 'Ordered' },
@@ -114,7 +115,7 @@ function DownloadButton({ href, filename, children, tone = 'primary' }) {
 }
 
 function CustomerPhotoThumb({ file, index, label }) {
-  const displayUrl = file?.displayUrl || file?.url || '';
+  const displayUrl = customerImageDisplaySrc(file);
   const downloadHref = originalDownloadHref(file);
   if (!displayUrl && !downloadHref) return null;
   return (
@@ -182,9 +183,9 @@ function CollageUploadDetails({ groups }) {
           <div className="grid min-w-0 max-w-full grid-cols-3 gap-2 sm:grid-cols-5">
             {group.images.map((image, index) => (
               <div key={image.url || index} className="min-w-0 space-y-1">
-                <a href={originalDownloadHref(image) || image.displayUrl || image.url} target="_blank" rel="noopener noreferrer" className="relative block aspect-square overflow-hidden rounded-lg border bg-white">
+                <a href={originalDownloadHref(image) || customerImageDisplaySrc(image) || image.displayUrl || image.url} target="_blank" rel="noopener noreferrer" className="relative block aspect-square overflow-hidden rounded-lg border bg-white">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={image.displayUrl || image.url} alt={`${group.label} ${index + 1}`} className="h-full w-full object-cover" />
+                  <img src={customerImageDisplaySrc(image) || image.displayUrl || image.url} alt={`${group.label} ${index + 1}`} className="h-full w-full object-cover" />
                   <span className="absolute left-1 top-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[10px] font-bold text-white">{index + 1}</span>
                 </a>
                 <DownloadButton href={originalDownloadHref(image)} filename={buildDownloadName('collage-original', group.label, index, image)}>Original {index + 1}{fileSizeLabel(image)}</DownloadButton>
@@ -204,7 +205,8 @@ function PreviewDetails({ preview }) {
         <p className="font-semibold text-primary-800">Saved preview / crop instructions</p>
         <p><span className="font-medium">Preview:</span> {preview.previewTitle || '-'}</p>
         {previews.map((entry, index) => {
-          const finalPreviewUrl = entry.finalPreviewImage?.displayUrl
+          const finalPreviewUrl = customerImageDisplaySrc(entry.finalPreviewImage)
+            || entry.finalPreviewImage?.displayUrl
             || (entry.finalPreviewImage?.url && !String(entry.finalPreviewImage.url).startsWith('blob:') ? entry.finalPreviewImage.url : '')
             || (entry.finalPreviewDataUrl && !String(entry.finalPreviewDataUrl).startsWith('blob:') && !String(entry.finalPreviewDataUrl).startsWith('data:') ? entry.finalPreviewDataUrl : '');
           return (

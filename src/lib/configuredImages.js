@@ -11,6 +11,15 @@ const customerFileUrlFromOriginal = (url = '') => {
   return encodedPath ? `/api/customization-upload/customer-file/${encodedPath}` : '';
 };
 
+const customerFileUrlFromStoragePath = (relativePath = '') => {
+  const path = String(relativePath || '').replace(/^\/+/, '');
+  if (!path.startsWith('customizations/')) return '';
+  return `/api/customization-upload/customer-file/${path.split('/').filter(Boolean).map(encodeURIComponent).join('/')}`;
+};
+
+const isOriginalFileUrl = (url = '') => String(url || '').includes('/api/customization-upload/original-file/');
+const isHeicLikeUrl = (url = '') => /\.(heic|heif)(\?|#|$)/i.test(String(url || '').split('?')[0]);
+
 const firstDurable = (...candidates) => {
   for (const candidate of candidates) {
     const url = String(candidate || '').trim();
@@ -19,13 +28,20 @@ const firstDurable = (...candidates) => {
   return '';
 };
 
-// Prefer durable displayUrl over ephemeral blob previewUrl (which dies after refresh / revoke).
+// Prefer a browser-displayable customer-file URL over original-file (attachment) or HEIC originals.
 const displayUrlFor = (asset) => firstDurable(
-  asset?.displayUrl,
-  asset?.previewUrl,
+  !isOriginalFileUrl(asset?.displayUrl) && !isHeicLikeUrl(asset?.displayUrl) ? asset?.displayUrl : '',
+  customerFileUrlFromStoragePath(asset?.previewStoragePath),
+  !isHeicLikeUrl(asset?.displayUrl) ? asset?.displayUrl : '',
+  !isEphemeralMediaUrl(asset?.previewUrl) ? asset?.previewUrl : '',
   customerFileUrlFromOriginal(asset?.url),
+  customerFileUrlFromStoragePath(asset?.storagePath),
+  !isOriginalFileUrl(asset?.url) && !isHeicLikeUrl(asset?.url) ? asset?.url : '',
+  asset?.displayUrl,
   asset?.url,
-) || String(asset?.previewUrl || asset?.url || '').trim();
+);
+
+export const customerImageDisplaySrc = (asset) => displayUrlFor(asset);
 
 const linkUrlFor = (asset) => firstDurable(
   asset?.originalUrl,
@@ -54,7 +70,7 @@ const normalizeAsset = (asset, caption) => {
   }
   if (!hasUrl(asset)) return null;
   const display = displayUrlFor(asset);
-  if (!display) return null;
+  if (!display || isEphemeralMediaUrl(display)) return null;
   return {
     url: display,
     originalUrl: linkUrlFor(asset),

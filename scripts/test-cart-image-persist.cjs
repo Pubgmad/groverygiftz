@@ -136,4 +136,13 @@ const jpegOnly = access.resignCustomerDisplayUrls([{
 }]);
 assert.ok(jpegOnly[0].customFields['Customer Photos'][0].displayUrl.includes('customizations/b.jpg'));
 
+const configuredImagesSource = fs.readFileSync(path.join(__dirname, '../src/lib/configuredImages.js'), 'utf8');
+assert.match(configuredImagesSource, /customerImageDisplaySrc/);
+assert.match(configuredImagesSource, /previewStoragePath/);
+assert.match(configuredImagesSource, /original-file/);
+assert.doesNotMatch(
+  configuredImagesSource.slice(configuredImagesSource.indexOf('const displayUrlFor'), configuredImagesSource.indexOf('export const customerImageDisplaySrc')),
+  /\|\| String\(asset\?\.previewUrl/
+);
+
 console.log('Cart image persist tests passed');

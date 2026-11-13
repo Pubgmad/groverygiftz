@@ -47,7 +47,7 @@ const INDIAN_STATES = [
 ];
 
 export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
-  const { cart, cartTotal, clearCart, cartReady } = useCart();
+  const { cart, cartTotal, clearCart, removePurchasedCartItems, cartReady } = useCart();
   const { data: session, status } = useSession();
   const router = useRouter();
   const [step, setStep] = useState(1);
@@ -197,8 +197,14 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
   }, [cartReady, cart, status, session?.user?.type, step, mode, orderId]);
 
   const showSuccessfulOrder = (verifyData, verifiedOrderId, fallbackItems = cart, fallbackTotals = {}) => {
+    if (!isCheckoutReturnCompleted(session.user.id, verifiedOrderId)) {
+      if (Array.isArray(verifyData.items) && verifyData.items.length && typeof removePurchasedCartItems === 'function') {
+        removePurchasedCartItems(verifyData.items);
+      } else if (mode !== 'confirmation') {
+        clearCart();
+      }
+    }
     if (mode !== 'confirmation') {
-      if (!isCheckoutReturnCompleted(session.user.id, verifiedOrderId)) clearCart();
       rememberCheckoutReturn(session.user.id, verifiedOrderId, true);
       router.replace(checkoutOutcomeUrl('confirmation', verifiedOrderId), { scroll: false });
       return;

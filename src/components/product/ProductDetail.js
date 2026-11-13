@@ -447,7 +447,7 @@ export default function ProductDetail({ product }) {
 
     if (previewEnabled) {
       previewAreas.forEach((area, idx) => {
-        const uploadedFile = customerPhotos[idx] || null;
+        const uploadedFile = customerPhotosRef.current[idx] || customerPhotos[idx] || null;
         if (!uploadedFile?.url) return;
         const areaLabel = area.label || (`Photo ${idx + 1}`);
         jobs.push(async () => {
@@ -479,7 +479,7 @@ export default function ProductDetail({ product }) {
     }
 
     selectedVariantUploadOptions.forEach((selected, variantIndex) => {
-      const uploadedFile = variantLabelUploads[selected.label] || null;
+      const uploadedFile = variantLabelUploadsRef.current[selected.label] || variantLabelUploads[selected.label] || null;
       if (!uploadedFile?.url) return;
       const previewKey = `variant-${selected.label}`;
       const area = {
@@ -816,7 +816,11 @@ export default function ProductDetail({ product }) {
             imagePerfMeasure('upload:network', 'upload:network:start');
             if (photoUploadTokenRef.current[job.index] !== token) return null;
             const uploadedFile = attachLocalPreview(data, prepared);
-            setCustomerPhotos((prev) => setPhotoSlot(alignPhotoSlots(prev, photoSlotCount), job.index, uploadedFile));
+            setCustomerPhotos((prev) => {
+              const next = setPhotoSlot(alignPhotoSlots(prev, photoSlotCount), job.index, uploadedFile);
+              customerPhotosRef.current = next;
+              return next;
+            });
             setUploadingPhotoSlots((prev) => ({ ...prev, [job.index]: false }));
             imagePerfMeasure('upload:job', 'upload:job:start');
             return uploadedFile;
@@ -913,7 +917,11 @@ export default function ProductDetail({ product }) {
       const res = await fetch('/api/customization-upload', { method: 'POST', body: formData });
       const data = await readJsonResponse(res, { fallbackError: 'Upload failed' });
       const uploadedFile = attachLocalPreview(data, prepared);
-      setVariantLabelUploads((prev) => ({ ...prev, [label]: { ...uploadedFile, label } }));
+      setVariantLabelUploads((prev) => {
+        const next = { ...prev, [label]: { ...uploadedFile, label } };
+        variantLabelUploadsRef.current = next;
+        return next;
+      });
       if (!localPreview.previewUrl) setEditorSlotKey(previewKey);
       toast.success(`${label} photo ready`);
       trackMetaCustomEvent('CustomizeProduct', getProductPixelPayload({ customization_type: 'variant_label_upload', field_label: label, file_type: data.type || file.type || '' }));
@@ -1010,7 +1018,9 @@ export default function ProductDetail({ product }) {
     if (editorSlotKey === `variant-${label}`) setEditorSlotKey(null);
   };
   const addConfiguredProductToCart = async ({ openCart = true } = {}) => {
-    if (uploadingCustomerPhotos || Object.values(uploadingFields).some(Boolean) || Object.values(uploadingVariantLabels).some(Boolean) || Object.values(uploadingCollageLabels).some(Boolean) || previewSaveLocksRef.current.size > 0) {
+    const pendingUploads = Object.values(photoUploadPromiseRef.current).filter(Boolean);
+    if (pendingUploads.length) await Promise.allSettled(pendingUploads);
+    if ((!pendingUploads.length && uploadingCustomerPhotos) || Object.values(photoUploadPromiseRef.current).some(Boolean) || Object.values(uploadingFields).some(Boolean) || Object.values(uploadingVariantLabels).some(Boolean) || Object.values(uploadingCollageLabels).some(Boolean) || previewSaveLocksRef.current.size > 0) {
       toast.error('Please wait for your images and previews to finish saving.');
       return false;
     }
@@ -1032,12 +1042,24 @@ export default function ProductDetail({ product }) {
       maxImages: Number(template.maxImages || template.minImages || 0),
       images: collageUploads[template.label] || [],
     })).filter((group) => group.images.length > 0);
-    const variantUploads = Object.fromEntries(Object.entries(variantLabelUploads).filter(([, value]) => value?.url));
+    const latestPhotos = filledPhotos(customerPhotosRef.current?.length ? customerPhotosRef.current : customerPhotos);
+    const latestVariantUploads = Object.keys(variantLabelUploadsRef.current || {}).length
+      ? variantLabelUploadsRef.current
+      : variantLabelUploads;
+    const variantUploads = Object.fromEntries(Object.entries(latestVariantUploads).filter(([, value]) => value?.url));
     const productCustomerNote = customerNotesEnabled ? customerNote.trim() : '';
-    const uploadedCustomerPhotos = filledPhotos(customerPhotos).map((photo) => durableUploadRef(photo) || photo);
+    const uploadedCustomerPhotos = latestPhotos.map((photo) => durableUploadRef(photo)).filter(Boolean);
+    if (latestPhotos.length && uploadedCustomerPhotos.length < latestPhotos.length) {
+      toast.error('Please wait for your images and previews to finish saving.');
+      return false;
+    }
     const durableVariantUploads = Object.fromEntries(
-      Object.entries(variantUploads).map(([key, value]) => [key, durableUploadRef(value) || value])
+      Object.entries(variantUploads).map(([key, value]) => [key, durableUploadRef(value)]).filter(([, value]) => value)
     );
+    if (Object.keys(variantUploads).length && Object.keys(durableVariantUploads).length < Object.keys(variantUploads).length) {
+      toast.error('Please wait for your images and previews to finish saving.');
+      return false;
+    }
     const durableCustomFieldValues = Object.fromEntries(
       Object.entries(customFieldValues).map(([key, value]) => [
         key,

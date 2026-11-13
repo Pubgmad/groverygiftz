@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { trackGA4Ecommerce } from '@/lib/ga4';
 import { cartItemHasConfiguredImages, stripDisplayOnlyPreviewData } from '@/lib/cartPersist';
+import { reconcileCartAgainstPurchasedItems } from '@/lib/cartReconcile';
 
 const CartContext = createContext();
 
@@ -86,6 +87,8 @@ export function CartProvider({ children }) {
   const [cartSyncing, setCartSyncing] = useState(false);
   const syncedCustomerRef = useRef('');
   const activeCustomerRef = useRef('');
+  const persistGenerationRef = useRef(0);
+  const persistAbortRef = useRef(null);
 
   const applyCart = (nextCart) => {
     cartRef.current = nextCart;
@@ -191,6 +194,28 @@ export function CartProvider({ children }) {
     }
   }, [status, session?.user?.id, session?.user?.type]);
 
+  const persistCartNow = (items, { authenticated } = {}) => {
+    const snapshot = stripDisplayOnlyPreviewData(items || []);
+    persistGenerationRef.current += 1;
+    const generation = persistGenerationRef.current;
+    const isCustomer = authenticated ?? (status === 'authenticated' && session?.user?.type === 'customer' && session.user.id);
+    if (!isCustomer) {
+      persistGuestCart(snapshot);
+      return;
+    }
+    persistAbortRef.current?.abort();
+    const controller = new AbortController();
+    persistAbortRef.current = controller;
+    fetch('/api/customers/saved-lists', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cart: snapshot }),
+      signal: controller.signal,
+    }).then((res) => {
+      if (res.ok && generation === persistGenerationRef.current) removeGuestCart();
+    }).catch(() => {});
+  };
+
   useEffect(() => {
     if (!localLoadedRef.current) return;
     const isCustomer = status === 'authenticated' && session?.user?.type === 'customer' && session.user.id;
@@ -200,17 +225,13 @@ export function CartProvider({ children }) {
     }
 
     if (syncingRef.current || syncedCustomerRef.current !== session.user.id) return;
+    const generation = persistGenerationRef.current;
     const timer = setTimeout(() => {
-      fetch('/api/customers/saved-lists', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cart: stripDisplayOnlyPreviewData(cartRef.current) }),
-      }).catch(() => {});
+      if (generation !== persistGenerationRef.current) return;
+      persistCartNow(cartRef.current, { authenticated: true });
     }, 350);
     return () => clearTimeout(timer);
   }, [cart, status, session?.user?.id, session?.user?.type]);
-
-  const isAuthenticatedCustomer = status === 'authenticated' && session?.user?.type === 'customer' && session.user.id;
 
   const addToCart = (item, options = {}) => {
     const prev = cartRef.current || [];
@@ -225,7 +246,7 @@ export function CartProvider({ children }) {
       nextCart = [...prev, { ...item, quantity: capQuantity(item.quantity, item.availableStock) }];
     }
     applyCart(nextCart);
-    if (!isAuthenticatedCustomer) persistGuestCart(nextCart);
+    persistCartNow(nextCart);
     const addedLine = nextCart.find((entry) => isSameCartLine(entry, item.productId, item.variant, item.cartItemId));
     const addedQuantity = Number(addedLine?.quantity || 0) - Number(existing?.quantity || 0);
     if (addedQuantity > 0) trackGA4Ecommerce('add_to_cart', [{ ...addedLine, quantity: addedQuantity }]);
@@ -237,7 +258,7 @@ export function CartProvider({ children }) {
     const removed = (cartRef.current || []).filter((item) => isSameCartLine(item, productId, variant, cartItemId));
     const nextCart = (cartRef.current || []).filter((item) => !isSameCartLine(item, productId, variant, cartItemId));
     applyCart(nextCart);
-    if (!isAuthenticatedCustomer) persistGuestCart(nextCart);
+    persistCartNow(nextCart);
     if (removed.length) trackGA4Ecommerce('remove_from_cart', removed);
   };
 
@@ -248,7 +269,7 @@ export function CartProvider({ children }) {
       isSameCartLine(item, productId, variant, cartItemId) ? { ...item, quantity: capQuantity(quantity, item.availableStock) } : item
     );
     applyCart(nextCart);
-    if (!isAuthenticatedCustomer) persistGuestCart(nextCart);
+    persistCartNow(nextCart);
     previous.forEach((item) => {
       const updated = nextCart.find((entry) => isSameCartLine(entry, item.productId, item.variant, cartItemId));
       const difference = Number(updated?.quantity || 0) - Number(item.quantity || 0);
@@ -258,7 +279,16 @@ export function CartProvider({ children }) {
 
   const clearCart = () => {
     applyCart([]);
-    if (!isAuthenticatedCustomer) persistGuestCart([]);
+    removeGuestCart();
+    persistCartNow([]);
+  };
+
+  const removePurchasedCartItems = (purchasedItems = []) => {
+    const nextCart = reconcileCartAgainstPurchasedItems(cartRef.current || [], purchasedItems);
+    applyCart(nextCart);
+    if (!nextCart.length) removeGuestCart();
+    persistCartNow(nextCart);
+    return nextCart;
   };
 
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -267,7 +297,7 @@ export function CartProvider({ children }) {
   const cartReady = localLoaded && (!currentCustomerId || (syncedCustomerRef.current === currentCustomerId && !cartSyncing));
 
   return (
-    <CartContext.Provider value={{ cart, addToCart, removeFromCart, updateQuantity, clearCart, cartCount, cartTotal, cartReady, cartSyncing, isCartOpen, setIsCartOpen }}>
+    <CartContext.Provider value={{ cart, addToCart, removeFromCart, updateQuantity, clearCart, removePurchasedCartItems, cartCount, cartTotal, cartReady, cartSyncing, isCartOpen, setIsCartOpen }}>
       {children}
     </CartContext.Provider>
   );

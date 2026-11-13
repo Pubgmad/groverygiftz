@@ -10,6 +10,7 @@ import { getOrderDeliveryEstimate } from '@/lib/orderDeliveryEstimate';
 import { stripMakingCostFromOrder } from '@/lib/makingCost';
 import { buildAdminOrderFilter, parseOrderReportFilters, ORDER_STATUS_ALIASES } from '@/lib/adminOrderQuery';
 import { mergeStaffOrderFilter } from '@/lib/opsStaffAccess';
+import { resignCustomerDisplayUrls } from '@/lib/customerFileAccess';
 
 export async function GET(req) {
   await dbConnect();
@@ -75,10 +76,10 @@ export async function GET(req) {
   const settings = await Settings.findOne().select('deliveryHolidays').lean();
   const deliveryHolidays = settings?.deliveryHolidays || [];
   const displayOrders = orders.map((order) => {
-    const next = {
+    const next = resignCustomerDisplayUrls({
       ...order,
       deliveryEstimate: getOrderDeliveryEstimate(order, deliveryHolidays) || order.deliveryEstimate,
-    };
+    });
     return session.user.type === 'admin' ? next : stripMakingCostFromOrder(next);
   });
 

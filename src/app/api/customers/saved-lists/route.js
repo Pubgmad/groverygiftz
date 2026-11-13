@@ -6,6 +6,7 @@ import dbConnect from '@/lib/db';
 import Customer from '@/models/Customer';
 import { authOptions } from '@/lib/auth';
 import { stripDisplayOnlyPreviewData } from '@/lib/cartPersist';
+import { resignCustomerDisplayUrls } from '@/lib/customerFileAccess';
 
 const MAX_CART_ITEMS = 100;
 const MAX_WISHLIST_ITEMS = 300;
@@ -28,7 +29,10 @@ export async function GET() {
   const customer = await Customer.findById(session.user.id).select('cart wishlist').lean();
   if (!customer) return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
 
-  return NextResponse.json({ cart: customer.cart || [], wishlist: customer.wishlist || [] });
+  return NextResponse.json({
+    cart: resignCustomerDisplayUrls(customer.cart || []),
+    wishlist: customer.wishlist || [],
+  });
 }
 
 export async function PUT(req) {
