@@ -117,9 +117,26 @@ export function resolveCustomerDisplayPath(asset = {}) {
   return fromUrl.startsWith('customizations/') ? fromUrl : '';
 }
 
+function isPlainObject(value) {
+  if (!value || typeof value !== 'object') return false;
+  if (Array.isArray(value)) return false;
+  // Cross-realm safe: vm tests and mongoose Date/ObjectId from lean() docs.
+  const tag = Object.prototype.toString.call(value);
+  if (tag !== '[object Object]') return false;
+  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(value)) return false;
+  if (typeof value._bsontype === 'string') return false;
+  const proto = Object.getPrototypeOf(value);
+  if (proto === null) return true;
+  const ctorName = proto.constructor && proto.constructor.name;
+  return !ctorName || ctorName === 'Object';
+}
+
 export function resignCustomerDisplayUrls(value) {
   if (Array.isArray(value)) return value.map(resignCustomerDisplayUrls);
-  if (!value || typeof value !== 'object') return value;
+  // Skip Date / ObjectId / Buffer / other class instances. Walking them with
+  // Object.entries turns paidAt/createdAt/expectedDispatchDate into {} and Admin
+  // Orders then renders "Invalid Date IST".
+  if (!isPlainObject(value)) return value;
 
   const next = Object.fromEntries(
     Object.entries(value).map(([key, entry]) => [key, resignCustomerDisplayUrls(entry)])

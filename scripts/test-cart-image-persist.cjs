@@ -137,6 +137,47 @@ const jpegOnly = access.resignCustomerDisplayUrls([{
 }]);
 assert.ok(jpegOnly[0].customFields['Customer Photos'][0].displayUrl.includes('customizations/b.jpg'));
 
+class FakeObjectId {
+  constructor(id) {
+    this.id = id;
+  }
+  toString() {
+    return this.id;
+  }
+  toJSON() {
+    return this.id;
+  }
+}
+
+const paidAt = new Date('2026-11-10T10:30:00.000Z');
+const createdAt = new Date('2026-11-10T09:00:00.000Z');
+const expectedDispatchDate = new Date('2026-11-12T00:00:00.000+05:30');
+const orderLike = {
+  _id: new FakeObjectId('507f1f77bcf86cd799439011'),
+  paidAt,
+  createdAt,
+  expectedDispatchDate,
+  parcelRefs: [{ dispatchedAt: new Date('2026-11-13T08:15:00.000Z'), trackingNumber: 'AWB1' }],
+  items: [{ customFields: { 'Customer Photos': [heicAsset] } }],
+};
+const resignedOrder = access.resignCustomerDisplayUrls(orderLike);
+assert.ok(resignedOrder.paidAt instanceof Date, 'paidAt must stay a Date');
+assert.ok(resignedOrder.createdAt instanceof Date, 'createdAt must stay a Date');
+assert.ok(resignedOrder.expectedDispatchDate instanceof Date, 'expectedDispatchDate must stay a Date');
+assert.ok(resignedOrder.parcelRefs[0].dispatchedAt instanceof Date, 'parcel dispatchedAt must stay a Date');
+assert.strictEqual(resignedOrder._id.toString(), '507f1f77bcf86cd799439011');
+assert.ok(resignedOrder.items[0].customFields['Customer Photos'][0].displayUrl.includes('customizations/previews/a.jpg'));
+
+const jsonOrder = JSON.parse(JSON.stringify(resignedOrder));
+const formatDate = (date) => (date ? new Date(date).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) + ' IST' : '-');
+const orderDateLabel = formatDate(jsonOrder.paidAt || jsonOrder.createdAt);
+const dispatchLabel = formatDate(jsonOrder.expectedDispatchDate);
+assert.equal(jsonOrder._id, '507f1f77bcf86cd799439011');
+assert.ok(!Number.isNaN(new Date(jsonOrder.paidAt).getTime()), 'JSON paidAt must parse');
+assert.ok(!Number.isNaN(new Date(jsonOrder.expectedDispatchDate).getTime()), 'JSON expectedDispatchDate must parse');
+assert.doesNotMatch(orderDateLabel, /Invalid Date/i, `order date became ${orderDateLabel}`);
+assert.doesNotMatch(dispatchLabel, /Invalid Date/i, `dispatch date became ${dispatchLabel}`);
+
 const configuredImagesSource = fs.readFileSync(path.join(__dirname, '../src/lib/configuredImages.js'), 'utf8');
 assert.match(configuredImagesSource, /customerImageDisplaySrc/);
 assert.match(configuredImagesSource, /previewStoragePath/);
