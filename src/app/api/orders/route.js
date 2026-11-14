@@ -11,6 +11,7 @@ import { stripMakingCostFromOrder } from '@/lib/makingCost';
 import { buildAdminOrderFilter, parseOrderReportFilters, ORDER_STATUS_ALIASES } from '@/lib/adminOrderQuery';
 import { mergeStaffOrderFilter } from '@/lib/opsStaffAccess';
 import { resignCustomerDisplayUrls } from '@/lib/customerFileAccess';
+import { attachAdminConfirmationEmails } from '@/lib/orderConfirmationOutbox';
 
 export async function GET(req) {
   await dbConnect();
@@ -82,6 +83,7 @@ export async function GET(req) {
     });
     return session.user.type === 'admin' ? next : stripMakingCostFromOrder(next);
   });
+  if (session.user.type === 'admin') await attachAdminConfirmationEmails(displayOrders);
 
   return NextResponse.json({ orders: displayOrders, total, page, limit, pages: Math.ceil(total / limit) });
 }

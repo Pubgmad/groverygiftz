@@ -67,6 +67,18 @@ const normalizeStatus = (status) => {
 };
 
 const formatDate = (date) => date ? new Date(date).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) + ' IST' : '-';
+const confirmationSubmissionLabel = (status) => {
+  if (status === 'sent') return 'Accepted by mail server';
+  if (status === 'failed' || status === 'skipped') return 'Not sent';
+  return 'Queued';
+};
+const confirmationArchiveLabel = (status) => {
+  if (status === 'archived') return 'Saved in Sent Items';
+  if (status === 'failed') return 'Not saved in Sent Items';
+  if (status === 'skipped') return 'Sent folder not configured';
+  if (status === 'pending' || status === 'processing') return 'Saving to Sent Items';
+  return '—';
+};
 const isUploadedFile = (value) => value && typeof value === 'object' && value.url;
 const addressLine = (address = {}) => [address.line1, address.line2, address.city, address.state, address.pincode].filter(Boolean).join(', ');
 
@@ -806,6 +818,22 @@ export default function AdminOrdersPage() {
                     Outside Tamil Nadu order. Delivery charge applies and timeline is usually 10 to 15 days.
                   </div>
                 )}
+                {selected.confirmationEmail ? (
+                  <div className="min-w-0 rounded-xl border border-primary-100 bg-primary-50/70 p-3 space-y-1.5">
+                    <p className="font-semibold text-gray-900">Confirmation email</p>
+                    <p className="break-words"><span className="text-gray-500">Order ID:</span> <span className="font-medium">{selected.confirmationEmail.orderNumber || selected.orderNumber}</span></p>
+                    <p className="min-w-0 [overflow-wrap:anywhere]"><span className="text-gray-500">Recipient:</span> <span className="font-medium text-primary-700">{selected.confirmationEmail.to || selected.shippingAddress?.email || selected.guestEmail || '—'}</span></p>
+                    <p className="break-words"><span className="text-gray-500">Mail server:</span> <span className="font-medium">{confirmationSubmissionLabel(selected.confirmationEmail.submissionStatus)}</span></p>
+                    <p className="break-words"><span className="text-gray-500">Accepted at:</span> <span className="font-medium">{formatDate(selected.confirmationEmail.smtpAcceptedAt)}</span></p>
+                    <p className="break-words"><span className="text-gray-500">Sent folder:</span> <span className="font-medium">{confirmationArchiveLabel(selected.confirmationEmail.archiveStatus)}</span></p>
+                    {selected.confirmationEmail.submissionStatus === 'sent' ? (
+                      <p className="text-xs leading-5 text-gray-500">Mail-server acceptance does not guarantee the customer received the email.</p>
+                    ) : null}
+                    {selected.confirmationEmail.lastError && selected.confirmationEmail.archiveStatus !== 'archived' ? (
+                      <p className="break-words text-xs text-amber-800">Last issue: {selected.confirmationEmail.lastError}</p>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div><span className="text-gray-500">Order date:</span> {formatDate(selected.paidAt || selected.createdAt)}</div>
                 {selected.confirmationSchedule?.expectedReadyDateIst ? (
                   <div><span className="text-gray-500">Expected ready:</span> <span className="font-medium">{formatLongIstDate(selected.confirmationSchedule.expectedReadyDateIst)}</span></div>

@@ -349,7 +349,7 @@ test('checkout and browser bundles do not contain SMTP secrets', () => {
   assert.match(checkout, /<wbr \/>/);
   assert.match(checkout, /Kindly take screenshot for your reference/);
   assert.doesNotMatch(checkout, /screen shot/);
-  assert.doesNotMatch(checkout, /SMTP_PASSWORD|SMTP_HOST|MAIL_FROM|nodemailer/);
+  assert.doesNotMatch(checkout, /SMTP_PASSWORD|SMTP_HOST|MAIL_FROM|nodemailer|IMAP_PASSWORD|IMAP_HOST/);
   const emailLib = fs.readFileSync(path.join(__dirname, '../src/lib/email.js'), 'utf8');
   assert.match(emailLib, /SMTP_PASSWORD/);
   assert.match(emailLib, /MAIL_FROM/);
@@ -368,4 +368,72 @@ test('checkout and browser bundles do not contain SMTP secrets', () => {
   assert.match(confirmationApi, /session\?\.user\?\.type !== 'customer'/);
   assert.match(confirmationApi, /customer: session\.user\.id/);
   assert.doesNotMatch(confirmationApi, /SMTP_/);
+});
+
+function loadImap() {
+  const source = strip('src/lib/imapSentArchive.js');
+  const context = { console, process, Buffer, Set, String, Array, Number };
+  vm.createContext(context);
+  vm.runInContext(`${source}\nthis.api = { discoverSentMailboxPath, getImapConfig, safeImapError, normalizeMessageId };`, context);
+  return context.api;
+}
+
+test('IMAP Sent folder discovery uses special-use then verified names', () => {
+  const imap = loadImap();
+  assert.equal(imap.discoverSentMailboxPath([
+    { path: 'INBOX' },
+    { path: 'Drafts', specialUse: '\\Drafts' },
+    { path: 'Sent Items', specialUse: '\\Sent' },
+    { path: 'Sent' },
+  ]), 'Sent Items');
+  assert.equal(imap.discoverSentMailboxPath([
+    { path: 'INBOX' },
+    { path: 'Sent Messages', specialUseFlags: new Set(['\\Sent']) },
+  ]), 'Sent Messages');
+  assert.equal(imap.discoverSentMailboxPath([
+    { path: 'INBOX' },
+    { path: 'Sent' },
+  ]), 'Sent');
+  assert.equal(imap.discoverSentMailboxPath([{ path: 'INBOX' }, { path: 'Junk' }]), '');
+  assert.equal(imap.normalizeMessageId('<abc@mail>'), 'abc@mail');
+});
+
+test('compiled RFC message keeps recipient, subject, html and text parts', async () => {
+  const nodemailer = require('nodemailer');
+  const compiler = nodemailer.createTransport({ streamTransport: true, buffer: true, newline: 'windows' });
+  const info = await compiler.sendMail({
+    from: 'GroveryGiftz <orders@example.com>',
+    to: 'buyer@example.com',
+    subject: 'GroveryGiftz | Order Confirmed — #GG0450',
+    text: 'Expected Ready Date: November 20, 2026',
+    html: '<p>Expected Ready Date: November 20, 2026</p>',
+  });
+  const raw = String(info.message);
+  assert.match(raw, /buyer@example.com/);
+  assert.match(raw, /GG0450/);
+  assert.match(raw, /text\/plain/);
+  assert.match(raw, /text\/html/);
+  assert.match(raw, /Message-ID:/i);
+});
+
+test('archive failures do not resend customer email and skip duplicate Sent copies', () => {
+  const outbox = fs.readFileSync(path.join(__dirname, '../src/lib/orderConfirmationOutbox.js'), 'utf8');
+  const archiveFn = outbox.slice(outbox.indexOf('async function archiveSentCopy'));
+  assert.match(outbox, /archiveRfc822ToSent/);
+  assert.match(outbox, /processPendingArchives/);
+  assert.doesNotMatch(archiveFn.slice(0, 2500), /sendTransactionalEmail/);
+  assert.doesNotMatch(archiveFn.slice(0, 2500), /job\.status\s*=/);
+  const imap = fs.readFileSync(path.join(__dirname, '../src/lib/imapSentArchive.js'), 'utf8');
+  assert.match(imap, /alreadyPresent/);
+  assert.match(imap, /IMAP_PASSWORD/);
+  assert.match(imap, /rejectUnauthorized: true/);
+  assert.doesNotMatch(imap, /console\.(log|info|debug)/);
+  const admin = fs.readFileSync(path.join(__dirname, '../src/app/account/manage/orders/page.js'), 'utf8');
+  assert.match(admin, /Confirmation email/);
+  assert.match(admin, /Accepted by mail server/);
+  assert.match(admin, /Saved in Sent Items/);
+  assert.match(admin, /does not guarantee the customer received/);
+  assert.doesNotMatch(admin, /IMAP_PASSWORD|SMTP_PASSWORD|rawRfc822/);
+  const view = outbox.slice(outbox.indexOf('export function adminConfirmationEmailView'));
+  assert.doesNotMatch(view.slice(0, 900), /rawRfc822/);
 });

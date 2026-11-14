@@ -8,7 +8,7 @@ const nextConfig = {
   },
   // Keep native/barcode helpers out of the webpack server bundle.
   experimental: {
-    serverComponentsExternalPackages: ['bwip-js', 'pdf-lib', 'qrcode'],
+    serverComponentsExternalPackages: ['bwip-js', 'pdf-lib', 'qrcode', 'imapflow', 'nodemailer'],
   },
   webpack: (config) => {
     // pdfjs optional Node canvas stub — browser JPEG export uses DOM canvas only.

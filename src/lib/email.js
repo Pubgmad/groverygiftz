@@ -41,18 +41,52 @@ function createTransporter(config) {
   });
 }
 
-export async function sendTransactionalEmail({ to, subject, text, html }) {
-  const config = getSmtpConfig();
-  if (!config) throw new Error('SMTP email is not configured');
-  const transporter = createTransporter(config);
-  const info = await transporter.sendMail({
-    from: config.from,
+function normalizeMessageId(value) {
+  return String(value || '').trim().replace(/^<|>$/g, '');
+}
+
+export async function compileTransactionalEmail({ from, to, subject, text, html, messageId, date } = {}) {
+  const compiler = nodemailer.createTransport({
+    streamTransport: true,
+    buffer: true,
+    newline: 'windows',
+  });
+  const info = await compiler.sendMail({
+    from,
     to,
     subject,
     text,
     html,
+    messageId: messageId || undefined,
+    date: date || new Date(),
+    headers: {
+      'X-GroveryGiftz-Notification': 'order-confirmation',
+    },
   });
-  return { messageId: info?.messageId || '', acceptedAt: new Date() };
+  const raw = Buffer.isBuffer(info.message) ? info.message : Buffer.from(String(info.message || ''), 'utf8');
+  return {
+    raw,
+    messageId: normalizeMessageId(info.messageId),
+    envelope: info.envelope || { from, to: [to] },
+  };
+}
+
+export async function sendTransactionalEmail({ to, subject, text, html, raw, envelope } = {}) {
+  const config = getSmtpConfig();
+  if (!config) throw new Error('SMTP email is not configured');
+  const transporter = createTransporter(config);
+  const compiled = raw
+    ? { raw: Buffer.isBuffer(raw) ? raw : Buffer.from(String(raw), 'utf8'), messageId: '', envelope }
+    : await compileTransactionalEmail({ from: config.from, to, subject, text, html });
+  const info = await transporter.sendMail({
+    envelope: compiled.envelope || { from: config.from, to },
+    raw: compiled.raw,
+  });
+  return {
+    messageId: normalizeMessageId(info.messageId || compiled.messageId),
+    acceptedAt: new Date(),
+    raw: compiled.raw,
+  };
 }
 
 export async function sendPasswordResetEmail({ to, resetLink }) {

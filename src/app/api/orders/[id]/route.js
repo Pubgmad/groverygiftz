@@ -12,6 +12,7 @@ import { assertCanAccessOrder } from '@/lib/opsStaffAccess';
 import { isPaymentSatisfiedForDispatch } from '@/lib/opsConstants';
 import { logAdminAudit } from '@/lib/adminAccess';
 import { resignCustomerDisplayUrls } from '@/lib/customerFileAccess';
+import { attachAdminConfirmationEmails } from '@/lib/orderConfirmationOutbox';
 
 export async function GET(req, { params }) {
   const session = await getServerSession(authOptions);
@@ -38,6 +39,7 @@ export async function GET(req, { params }) {
 
   // Re-sign display URLs and prefer HEIC JPEG previews for cart/admin <img> tags.
   const withDisplay = resignCustomerDisplayUrls(order);
+  if (session.user.type === 'admin') await attachAdminConfirmationEmails(withDisplay);
   return NextResponse.json(session.user.type === 'admin' ? withDisplay : stripMakingCostFromOrder(withDisplay));
 }
 
