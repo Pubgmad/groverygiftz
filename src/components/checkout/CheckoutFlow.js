@@ -354,7 +354,7 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
             <p className="break-words text-2xl font-extrabold text-primary-600">{orderResult.orderNumber}</p>
             <ConfirmationEmailNotice orderResult={orderResult} />
             <p className="text-sm text-gray-500 mt-4">Estimated delivery: <span className="font-semibold text-gray-900">{orderResult.deliveryEstimate}</span></p>
-            <p className="mt-3 inline-flex rounded-full bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800">Kindly take screen shot for your reference</p>
+            <p className="mt-3 inline-flex rounded-full bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800">Kindly take screenshot for your reference</p>
           </div>
 
           <div className="space-y-3 mb-6">
@@ -567,20 +567,25 @@ function ConfirmationEmailNotice({ orderResult }) {
     : status === 'failed'
       ? "We couldn't send your confirmation email yet. Your order is still confirmed."
       : "We'll send your order confirmation to:";
+  const at = to.lastIndexOf('@');
+  const localPart = at > 0 ? to.slice(0, at) : to;
+  const domainPart = at > 0 ? to.slice(at + 1) : '';
 
   return (
-    <div className="mx-auto mt-5 max-w-xl rounded-2xl border border-primary-100 bg-primary-50/80 px-4 py-4 text-left">
-      <div className="flex items-start gap-3">
-        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-primary-700 shadow-sm">
-          <FiMail size={18} />
+    <div className="mx-auto mt-5 w-full max-w-xl rounded-2xl border border-primary-200 bg-gradient-to-b from-primary-50 to-white px-3.5 py-4 sm:px-5">
+      <div className="flex items-center justify-center gap-2">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-600 text-white shadow-sm">
+          <FiMail size={15} />
         </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold text-gray-900">Email Confirmation</p>
-          <p className="mt-1 text-sm text-gray-600">{heading}</p>
-          <p className="mt-2 break-all text-base font-extrabold text-primary-700">{to}</p>
-          <p className="mt-2 text-xs leading-5 text-gray-500">Please check your inbox (and Spam folder) for your order details and estimated delivery date.</p>
-        </div>
+        <p className="text-sm font-bold text-gray-900">Email Confirmation</p>
       </div>
+      <p className="mt-3 text-sm leading-5 text-gray-600">{heading}</p>
+      <p className="mt-3 rounded-xl bg-white px-3 py-2.5 text-[15px] font-bold leading-6 text-primary-700 ring-1 ring-inset ring-primary-100">
+        <span className="inline-block max-w-full hyphens-none [overflow-wrap:anywhere]">
+          {domainPart ? <>{localPart}<wbr />@{domainPart}</> : localPart}
+        </span>
+      </p>
+      <p className="mt-3 text-xs leading-5 text-gray-500">Please check your inbox (and Spam folder) for your order details and estimated delivery date.</p>
     </div>
   );
 }

@@ -345,7 +345,10 @@ test('checkout and browser bundles do not contain SMTP secrets', () => {
   assert.match(checkout, /We'll send your order confirmation to:/);
   assert.match(checkout, /We couldn't send your confirmation email yet/);
   assert.match(checkout, /Your order confirmation has been sent to:/);
-  assert.match(checkout, /break-all/);
+  assert.match(checkout, /overflow-wrap:anywhere/);
+  assert.match(checkout, /<wbr \/>/);
+  assert.match(checkout, /Kindly take screenshot for your reference/);
+  assert.doesNotMatch(checkout, /screen shot/);
   assert.doesNotMatch(checkout, /SMTP_PASSWORD|SMTP_HOST|MAIL_FROM|nodemailer/);
   const emailLib = fs.readFileSync(path.join(__dirname, '../src/lib/email.js'), 'utf8');
   assert.match(emailLib, /SMTP_PASSWORD/);
