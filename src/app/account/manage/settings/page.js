@@ -12,6 +12,12 @@ import ReadOnlyBanner from '@/components/admin/ReadOnlyBanner';
 
 const formatAdminHolidayDate = (value) => {
   if (!value) return '';
+  if (typeof value === 'object' && !(value instanceof Date)) {
+    const ymd = formatAdminHolidayDate(value.date || value.value || value.day || '');
+    const name = String(value.name || value.description || '').trim();
+    return ymd && name ? `${ymd}|${name}` : ymd;
+  }
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}(\|.+)?$/.test(value.trim())) return value.trim();
   const date = value instanceof Date ? value : new Date(String(value));
   if (Number.isNaN(date.getTime())) return '';
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -23,6 +29,16 @@ const formatAdminHolidayDate = (value) => {
   const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   return `${byType.year}-${byType.month}-${byType.day}`;
 };
+
+const parseAdminHolidays = (text) => String(text || '').split(/\r?\n|,/).map((line) => {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+  const [datePart, ...nameParts] = trimmed.split('|');
+  const date = String(datePart || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const name = nameParts.join('|').trim();
+  return name ? { date, name } : date;
+}).filter(Boolean);
 
 
 export default function AdminSettingsPage() {
@@ -196,7 +212,7 @@ export default function AdminSettingsPage() {
       shippingCost: Number(rest.shippingCost) || 40,
       tamilNaduShippingCost: Number(rest.tamilNaduShippingCost) || 0,
       otherStateShippingCost: Number(rest.otherStateShippingCost) || 0,
-      deliveryHolidays: deliveryHolidaysText.split(/\r?\n|,/).map((s) => s.trim()).filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date)),
+      deliveryHolidays: parseAdminHolidays(deliveryHolidaysText),
       tickerMessages: tickerMessagesText.split('\n').map((s) => s.trim()).filter(Boolean),
       heroTrustBadges: heroTrustBadgesText.split('\n').map((s) => s.trim()).filter(Boolean),
       giftFinderOccasions: (rest.giftFinderOccasions || []).filter((r) => r.value?.trim() && r.label?.trim()),
@@ -288,8 +304,8 @@ export default function AdminSettingsPage() {
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Government / Public Holidays</label>
-            <textarea value={form.deliveryHolidaysText} onChange={e => setForm(p => ({ ...p, deliveryHolidaysText: e.target.value }))} className="w-full border rounded-lg px-4 py-2 font-mono text-sm" rows={4} placeholder={"2026-08-15\n2026-10-02"} />
-            <p className="mt-1 text-xs text-gray-500">Enter one holiday date per line in YYYY-MM-DD format. These dates are skipped along with Sundays when calculating expected delivery.</p>
+            <textarea value={form.deliveryHolidaysText} onChange={e => setForm(p => ({ ...p, deliveryHolidaysText: e.target.value }))} className="w-full border rounded-lg px-4 py-2 font-mono text-sm" rows={4} placeholder={"2026-08-15|Independence Day\n2026-10-02|Gandhi Jayanti"} />
+            <p className="mt-1 text-xs text-gray-500">Enter one company holiday per line as YYYY-MM-DD or YYYY-MM-DD|Holiday name. Sundays are skipped automatically. These dates are used for expected ready and delivery dates.</p>
           </div>
         </div>
 

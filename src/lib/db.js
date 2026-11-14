@@ -43,6 +43,9 @@ export default async function dbConnect() {
   }
   try {
     cached.conn = await cached.promise;
+    if (cached.conn && process.env.NEXT_RUNTIME !== 'edge' && process.env.NEXT_PHASE !== 'phase-production-build') {
+      import('@/lib/orderConfirmationOutbox').then((mod) => mod.ensureNotificationWorker?.()).catch(() => {});
+    }
     return cached.conn;
   } catch (error) {
     cached.promise = null;

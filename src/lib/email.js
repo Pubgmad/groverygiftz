@@ -1,33 +1,65 @@
 import nodemailer from 'nodemailer';
 
-function smtpConfig() {
+function truthyEnv(value) {
+  const text = String(value || '').trim().toLowerCase();
+  return text === '1' || text === 'true' || text === 'yes';
+}
+
+export function getSmtpConfig() {
   const host = process.env.SMTP_HOST || process.env.EMAIL_SERVER_HOST;
   const port = Number(process.env.SMTP_PORT || process.env.EMAIL_SERVER_PORT || 587);
   const user = process.env.SMTP_USER || process.env.EMAIL_SERVER_USER;
-  const pass = process.env.SMTP_PASS || process.env.EMAIL_SERVER_PASSWORD;
-  const from = process.env.SMTP_FROM || process.env.EMAIL_FROM || user;
+  const pass = process.env.SMTP_PASSWORD || process.env.SMTP_PASS || process.env.EMAIL_SERVER_PASSWORD;
+  const from = process.env.MAIL_FROM || process.env.SMTP_FROM || process.env.EMAIL_FROM || user;
+  const secureEnv = process.env.SMTP_SECURE;
 
   if (!host || !user || !pass || !from) return null;
 
   return {
     host,
     port,
-    secure: port === 465,
+    secure: secureEnv == null || String(secureEnv).trim() === '' ? port === 465 : truthyEnv(secureEnv),
     auth: { user, pass },
     from,
   };
+}
+
+function smtpConfig() {
+  return getSmtpConfig();
+}
+
+function createTransporter(config) {
+  return nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    auth: config.auth,
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 20000,
+    tls: { rejectUnauthorized: true },
+  });
+}
+
+export async function sendTransactionalEmail({ to, subject, text, html }) {
+  const config = getSmtpConfig();
+  if (!config) throw new Error('SMTP email is not configured');
+  const transporter = createTransporter(config);
+  const info = await transporter.sendMail({
+    from: config.from,
+    to,
+    subject,
+    text,
+    html,
+  });
+  return { messageId: info?.messageId || '', acceptedAt: new Date() };
 }
 
 export async function sendPasswordResetEmail({ to, resetLink }) {
   const config = smtpConfig();
   if (!config) throw new Error('SMTP email is not configured');
 
-  const transporter = nodemailer.createTransport({
-    host: config.host,
-    port: config.port,
-    secure: config.secure,
-    auth: config.auth,
-  });
+  const transporter = createTransporter(config);
 
   await transporter.sendMail({
     from: config.from,

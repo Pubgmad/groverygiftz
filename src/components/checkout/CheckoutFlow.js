@@ -6,7 +6,7 @@ import { formatPrice } from '@/lib/utils';
 import { buildCartMetaPayload, META_READY_EVENT, trackMetaEvent, trackVerifiedMetaPurchase } from '@/lib/metaPixel';
 import { isGA4TrackingAllowed, trackGA4Ecommerce, trackGA4OrderConfirmation, trackGA4Purchase } from '@/lib/ga4';
 import { GOOGLE_CONSENT_SYNC_EVENT } from '@/lib/googleConsent';
-import { FiChevronRight, FiCheckCircle, FiShield, FiTruck, FiCreditCard, FiMapPin, FiEdit2, FiGift, FiStar } from 'react-icons/fi';
+import { FiChevronRight, FiCheckCircle, FiShield, FiTruck, FiCreditCard, FiMapPin, FiEdit2, FiGift, FiStar, FiMail } from 'react-icons/fi';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
@@ -225,6 +225,7 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
       shippingCost: verifyData.shippingCost ?? fallbackTotals.shippingCost ?? shippingCost,
       total: paidTotal,
       deliveryEstimate: verifyData.deliveryEstimate || fallbackTotals.deliveryEstimate || deliveryEstimate,
+      confirmationEmail: verifyData.confirmationEmail || null,
     });
     setStep(3);
     setVerificationMessage('');
@@ -351,7 +352,8 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
             <h1 className="text-3xl font-display font-bold mb-2">Order placed successfully</h1>
             <p className="text-gray-500 mb-2">Payment received through Cashfree. Your GroveryGiftz order ID is</p>
             <p className="break-words text-2xl font-extrabold text-primary-600">{orderResult.orderNumber}</p>
-            <p className="text-sm text-gray-500 mt-2">Estimated delivery: <span className="font-semibold text-gray-900">{orderResult.deliveryEstimate}</span></p>
+            <ConfirmationEmailNotice orderResult={orderResult} />
+            <p className="text-sm text-gray-500 mt-4">Estimated delivery: <span className="font-semibold text-gray-900">{orderResult.deliveryEstimate}</span></p>
             <p className="mt-3 inline-flex rounded-full bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800">Kindly take screen shot for your reference</p>
           </div>
 
@@ -521,6 +523,66 @@ function loadCashfreeScript() {
     script.onerror = () => resolve(false);
     document.body.appendChild(script);
   });
+}
+
+function ConfirmationEmailNotice({ orderResult }) {
+  const [emailState, setEmailState] = useState(orderResult?.confirmationEmail || null);
+
+  useEffect(() => {
+    setEmailState(orderResult?.confirmationEmail || null);
+  }, [orderResult?.confirmationEmail, orderResult?.cashfreeOrderId, orderResult?.orderNumber]);
+
+  useEffect(() => {
+    const cashfreeOrderId = orderResult?.cashfreeOrderId;
+    const orderNumber = orderResult?.orderNumber;
+    if (!cashfreeOrderId && !orderNumber) return undefined;
+    if (emailState?.status === 'sent' && emailState?.to) return undefined;
+    let cancelled = false;
+    const query = cashfreeOrderId
+      ? `cashfreeOrderId=${encodeURIComponent(cashfreeOrderId)}`
+      : `orderNumber=${encodeURIComponent(orderNumber)}`;
+    const refresh = async () => {
+      try {
+        const res = await fetch(`/api/orders/confirmation-email?${query}`, { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && data?.to) setEmailState({ to: data.to, status: data.status || 'queued' });
+      } catch {}
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 2500);
+    const stop = window.setTimeout(() => window.clearInterval(timer), 20000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.clearTimeout(stop);
+    };
+  }, [orderResult?.cashfreeOrderId, orderResult?.orderNumber, emailState?.status, emailState?.to]);
+
+  const to = String(emailState?.to || '').trim();
+  if (!to) return null;
+  const status = emailState?.status || 'queued';
+  const heading = status === 'sent'
+    ? 'Your order confirmation has been sent to:'
+    : status === 'failed'
+      ? "We couldn't send your confirmation email yet. Your order is still confirmed."
+      : "We'll send your order confirmation to:";
+
+  return (
+    <div className="mx-auto mt-5 max-w-xl rounded-2xl border border-primary-100 bg-primary-50/80 px-4 py-4 text-left">
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-primary-700 shadow-sm">
+          <FiMail size={18} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-bold text-gray-900">Email Confirmation</p>
+          <p className="mt-1 text-sm text-gray-600">{heading}</p>
+          <p className="mt-2 break-all text-base font-extrabold text-primary-700">{to}</p>
+          <p className="mt-2 text-xs leading-5 text-gray-500">Please check your inbox (and Spam folder) for your order details and estimated delivery date.</p>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function CheckoutReviewForm({ orderNumber, item, customerName }) {

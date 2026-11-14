@@ -10,6 +10,8 @@ import { buildMetaPurchase } from '@/lib/metaPurchase';
 import { buildGA4Purchase } from '@/lib/ga4Data';
 import { getOrderDeliveryEstimate } from '@/lib/orderDeliveryEstimate';
 import { cartLineKey, reconcileCartAgainstPurchasedItems } from '@/lib/cartReconcile';
+import { confirmationRecipientEmail, persistOrderConfirmationSchedule } from '@/lib/orderConfirmationSchedule';
+import { confirmationEmailStateForOrder, enqueueOrderConfirmationEmail, processOrderConfirmationJobs } from '@/lib/orderConfirmationOutbox';
 
 export const CASHFREE_VERSION = '2025-01-01';
 
@@ -60,7 +62,45 @@ export class CashfreeFinalizeError extends Error {
 
 const getDisplayDeliveryEstimate = (order, settings = {}) => getOrderDeliveryEstimate(order, settings?.deliveryHolidays || []) || order.deliveryEstimate;
 
-const responseForOrder = (order, success, settings = {}) => ({
+async function attachOrderConfirmation(order, settings = {}) {
+  if (!order || order.paymentStatus !== 'paid') return;
+  try {
+    const persisted = await persistOrderConfirmationSchedule(order, settings);
+    if (persisted.persisted) {
+      const displayDeliveryEstimate = getDisplayDeliveryEstimate(order, settings);
+      if (displayDeliveryEstimate) order.deliveryEstimate = displayDeliveryEstimate;
+      await order.save();
+    }
+  } catch (error) {
+    console.error('Order confirmation schedule failed');
+  }
+  try {
+    const job = await enqueueOrderConfirmationEmail(order);
+    if (job && (job.status === 'pending' || job.status === 'failed')) {
+      await Promise.race([
+        processOrderConfirmationJobs({ jobId: job._id, orderDoc: order, limit: 1 }),
+        new Promise((resolve) => setTimeout(resolve, 8000)),
+      ]);
+    }
+  } catch (error) {
+    console.error('Order confirmation email enqueue failed');
+  }
+}
+
+async function confirmationEmailPayload(order) {
+  const fallbackTo = typeof confirmationRecipientEmail === 'function' ? confirmationRecipientEmail(order) : '';
+  try {
+    const state = await confirmationEmailStateForOrder(order._id);
+    return {
+      to: state?.to || fallbackTo,
+      status: state?.status || 'queued',
+    };
+  } catch {
+    return { to: fallbackTo, status: 'queued' };
+  }
+}
+
+const responseForOrder = (order, success, settings = {}, confirmationEmail = null) => ({
   success,
   paymentStatus: order.paymentStatus,
   orderNumber: order.orderNumber,
@@ -69,6 +109,7 @@ const responseForOrder = (order, success, settings = {}) => ({
   subtotal: order.subtotal,
   total: order.total,
   items: order.items || [],
+  confirmationEmail: success && order?.paymentStatus === 'paid' ? confirmationEmail : null,
   metaPurchase: success ? buildMetaPurchase(order) : null,
   ga4Purchase: success ? buildGA4Purchase(order) : null,
 });
@@ -216,6 +257,9 @@ export async function finalizeCashfreeOrder(orderId, { retryTracking = false } =
     await order.save();
   }
 
+  await attachOrderConfirmation(order, settings);
+  const confirmationEmail = order.paymentStatus === 'paid' ? await confirmationEmailPayload(order) : null;
+
   if (order.paymentStatus === 'paid' && order.customer) {
     try {
       await reconcileCustomerCartAfterPaidOrder(order);
@@ -255,7 +299,7 @@ export async function finalizeCashfreeOrder(orderId, { retryTracking = false } =
     }
   }
 
-  return responseForOrder(order, true, settings);
+  return responseForOrder(order, true, settings, confirmationEmail);
 }
 
 async function reconcileCustomerCartAfterPaidOrder(order) {

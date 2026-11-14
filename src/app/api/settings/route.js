@@ -112,6 +112,27 @@ export async function PUT(req) {
   }
   // The dedicated two-field endpoint is the only writer of delivery durations.
   DELIVERY_ESTIMATE_KEYS.forEach((key) => { delete body[key]; });
+  if (Object.prototype.hasOwnProperty.call(body, 'deliveryHolidays')) {
+    if (!Array.isArray(body.deliveryHolidays)) delete body.deliveryHolidays;
+    else {
+      body.deliveryHolidays = body.deliveryHolidays.map((item) => {
+        if (typeof item === 'string') {
+          const [datePart, ...nameParts] = item.trim().split('|');
+          const date = String(datePart || '').trim();
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+          const name = nameParts.join('|').trim();
+          return name ? { date, name } : date;
+        }
+        if (item && typeof item === 'object') {
+          const date = String(item.date || item.value || item.day || '').trim();
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+          const name = String(item.name || item.description || item.label || '').trim();
+          return name ? { date, name } : date;
+        }
+        return null;
+      }).filter(Boolean);
+    }
+  }
   if (GOOGLE_REVIEW_SETTING_KEYS.some((key) => Object.prototype.hasOwnProperty.call(body, key))) {
     body.googleReviewsCache = null;
     body.googleReviewsCacheFetchedAt = null;
