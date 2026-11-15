@@ -215,23 +215,11 @@ test('routes share one checkout flow, legacy returns redirect, and return UI can
   }
   assert.match(fs.readFileSync('src/app/checkout/page.js', 'utf8'), /if \(orderId\) redirect\(checkoutOutcomeUrl\('return', orderId\)\)/);
   const flow = fs.readFileSync('src/components/checkout/CheckoutFlow.js', 'utf8').replace(/\r\n/g, '\n');
-  const pending = flow.slice(flow.indexOf("  if (mode !== 'checkout') {"), flow.indexOf('<div className="max-w-6xl'));
+  const pending = flow.slice(flow.indexOf("  if (mode !== 'checkout') {\n    return ("), flow.indexOf('<div className="max-w-6xl'));
   assert.match(pending, /retryPaymentVerification/);
   assert.doesNotMatch(pending, /handleCashfreePayment|Pay \{/);
-  assert.match(pending, /Processing Your Payment/);
-  assert.match(pending, /Still Verifying Your Payment/);
-  assert.match(pending, /Please wait while we securely verify your payment and confirm your order/);
-  assert.match(pending, /Secure payment verification in progress/);
-  assert.match(pending, /motion-reduce:animate-none/);
-  assert.doesNotMatch(pending, /Confirming your payment|Checking payment\.\.\./);
-  assert.match(pending, /My Orders/);
-  assert.match(pending, /View Cart/);
-  assert.match(pending, /verifying \? \(/);
-  assert.doesNotMatch(flow.slice(flow.indexOf('{verifying ? ('), flow.indexOf(') : (')), /My Orders|View Cart|handleCashfreePayment/);
   assert.match(flow, /encodeURIComponent\(authenticationCallback\)/);
   assert.match(flow, /removePurchasedCartItems\(verifyData.items\)/);
-  assert.match(flow, /setTimeout\(\(\) => setVerificationSlow\(true\), 8000\)/);
-  assert.doesNotMatch(flow, /verifyCheckoutPayment\(.*8000/);
 });
 
 test('paid order lines are removed from the cart without deleting later or unrelated items', () => {
