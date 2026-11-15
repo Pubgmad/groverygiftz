@@ -63,6 +63,7 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
   const paymentLockRef = useRef(false);
   const [returnOrderId, setReturnOrderId] = useState('');
   const [verificationMessage, setVerificationMessage] = useState('');
+  const [verificationSlow, setVerificationSlow] = useState(false);
   const ga4CheckoutRef = useRef(false);
 
   const hasSelectedState = Boolean(address.state);
@@ -161,6 +162,15 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [status, session?.user?.id, session?.user?.type, cartReady, cart.length, router, mode, orderId]);
+
+  useEffect(() => {
+    if (mode === 'checkout' || !loading) {
+      setVerificationSlow(false);
+      return undefined;
+    }
+    const timer = window.setTimeout(() => setVerificationSlow(true), 8000);
+    return () => window.clearTimeout(timer);
+  }, [loading, mode]);
 
   useEffect(() => {
     const track = () => {
@@ -415,17 +425,56 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
   }
 
   if (mode !== 'checkout') {
+    const verifying = Boolean(loading || !verificationMessage);
+    const delayed = verifying && verificationSlow;
     return (
-      <div className="mx-auto flex min-h-[60vh] max-w-xl items-center px-4 py-10">
-        <div className="w-full min-w-0 space-y-5 text-center">
-          <h1 className="text-2xl font-bold">{loading || !verificationMessage ? 'Confirming your payment' : 'Payment confirmation'}</h1>
-          <p role="status" aria-live="polite" className="break-words text-sm text-gray-600">{verificationMessage || 'Please wait while we securely check your order.'}</p>
-          <div className="flex flex-wrap justify-center gap-3">
-            {returnOrderId && <button type="button" onClick={retryPaymentVerification} disabled={loading} className="btn-primary w-full px-5 py-3 sm:w-auto disabled:opacity-50">{loading ? 'Checking payment...' : 'Check payment status'}</button>}
-            <Link href="/account/orders" className="btn-outline w-full px-5 py-3 sm:w-auto">My Orders</Link>
-            <Link href="/cart" className="btn-outline w-full px-5 py-3 sm:w-auto">View Cart</Link>
+      <div className="mx-auto flex min-h-[70vh] max-w-lg items-center justify-center px-4 pb-28 pt-8 sm:pt-12">
+        <section
+          className="w-full min-w-0 overflow-hidden rounded-2xl border border-primary-100 bg-white shadow-sm"
+          aria-labelledby="payment-processing-heading"
+          aria-busy={verifying}
+        >
+          <div className="h-1.5 bg-gradient-to-r from-primary-600 via-primary-500 to-accent-500" />
+          <div className="px-5 py-8 text-center sm:px-8 sm:py-10">
+            {verifying ? (
+              <>
+                <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-primary-50 text-primary-600" aria-hidden="true">
+                  <span className="relative flex h-12 w-12 items-center justify-center">
+                    <span className="absolute inset-0 rounded-full border-2 border-primary-100" />
+                    <span className="absolute inset-0 rounded-full border-2 border-transparent border-r-accent-500 border-t-primary-600 animate-spin motion-reduce:animate-none" />
+                    <FiShield size={20} />
+                  </span>
+                </div>
+                <h1 id="payment-processing-heading" className="break-words font-display text-2xl font-bold leading-tight text-gray-950 sm:text-[1.65rem]">
+                  {delayed ? 'Still Verifying Your Payment' : 'Processing Your Payment'}
+                </h1>
+                <p role="status" aria-live="polite" className="mx-auto mt-3 max-w-sm break-words text-sm leading-6 text-gray-600">
+                  {delayed
+                    ? "This is taking a little longer than usual. Please don't make another payment while we check your order."
+                    : 'Please wait while we securely verify your payment and confirm your order.'}
+                </p>
+                <p className="mt-5 inline-flex max-w-full items-center gap-2 rounded-full bg-primary-50 px-3 py-1.5 text-xs font-semibold text-primary-700">
+                  <FiShield size={12} className="shrink-0" aria-hidden="true" />
+                  <span className="min-w-0 break-words">Secure payment verification in progress</span>
+                </p>
+              </>
+            ) : (
+              <>
+                <h1 id="payment-processing-heading" className="break-words font-display text-2xl font-bold leading-tight text-gray-950">Payment confirmation</h1>
+                <p role="status" aria-live="polite" className="mx-auto mt-3 max-w-sm break-words text-sm leading-6 text-gray-600">{verificationMessage}</p>
+                <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center">
+                  {returnOrderId ? (
+                    <button type="button" onClick={retryPaymentVerification} disabled={loading} className="btn-primary min-h-[44px] w-full px-5 py-3 sm:w-auto disabled:opacity-50">
+                      Check payment status
+                    </button>
+                  ) : null}
+                  <Link href="/account/orders" className="btn-outline inline-flex min-h-[44px] w-full items-center justify-center px-5 py-3 sm:w-auto">My Orders</Link>
+                  <Link href="/cart" className="btn-outline inline-flex min-h-[44px] w-full items-center justify-center px-5 py-3 sm:w-auto">View Cart</Link>
+                </div>
+              </>
+            )}
           </div>
-        </div>
+        </section>
       </div>
     );
   }
