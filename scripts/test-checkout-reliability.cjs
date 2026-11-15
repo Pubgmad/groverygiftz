@@ -138,9 +138,9 @@ test('server pricing retains existing base offers, variant adjustments, own pric
 
 test('checkout outcome URLs stay on-site and preserve legacy Cashfree identifiers', () => {
   const c = payment();
-  assert.equal(c.checkoutOutcomeUrl('return', 'PENDING-LEGACY123'), '/checkout/return?cashfree_order_id=PENDING-LEGACY123');
+  assert.equal(c.checkoutOutcomeUrl('return', 'PENDING-LEGACY123'), '/checkout/success?cashfree_order_id=PENDING-LEGACY123');
   assert.equal(c.checkoutOutcomeUrl('confirmation', 'PENDING-LEGACY123'), '/checkout/success?cashfree_order_id=PENDING-LEGACY123');
-  assert.equal(c.checkoutOutcomeUrl('return', 'https://untrusted.invalid/order'), '/checkout/return');
+  assert.equal(c.checkoutOutcomeUrl('return', 'https://untrusted.invalid/order'), '/checkout/success');
   assert.equal(c.checkoutOutcomeUrl('confirmation', ''), '/checkout/success');
 });
 
@@ -208,16 +208,21 @@ test('pending, unauthorized and failed outcomes never show success, clear cart o
 });
 
 test('routes share one checkout flow, legacy returns redirect, and return UI cannot start another payment', () => {
-  for (const path of ['src/app/checkout/page.js', 'src/app/checkout/return/page.js', 'src/app/checkout/success/page.js']) {
+  for (const path of ['src/app/checkout/page.js', 'src/app/checkout/success/page.js']) {
     const wrapper = fs.readFileSync(path, 'utf8');
     assert.match(wrapper, /import CheckoutFlow from '@\/components\/checkout\/CheckoutFlow'/);
     assert.doesNotMatch(wrapper, /create-cashfree-order|clearCart|Order\.create/);
   }
-  assert.match(fs.readFileSync('src/app/checkout/page.js', 'utf8'), /if \(orderId\) redirect\(checkoutOutcomeUrl\('return', orderId\)\)/);
+  const returnPage = fs.readFileSync('src/app/checkout/return/page.js', 'utf8');
+  assert.match(returnPage, /redirect\(checkoutOutcomeUrl\('confirmation', orderId\)\)/);
+  assert.doesNotMatch(returnPage, /CheckoutFlow|create-cashfree-order|clearCart|Order\.create/);
+  assert.match(fs.readFileSync('src/app/checkout/page.js', 'utf8'), /if \(orderId\) redirect\(checkoutOutcomeUrl\('confirmation', orderId\)\)/);
   const flow = fs.readFileSync('src/components/checkout/CheckoutFlow.js', 'utf8').replace(/\r\n/g, '\n');
-  const pending = flow.slice(flow.indexOf("  if (mode !== 'checkout') {\n    return ("), flow.indexOf('<div className="max-w-6xl'));
+  const pending = flow.slice(flow.indexOf("  if (mode !== 'checkout') {"), flow.indexOf('<div className="max-w-6xl'));
   assert.match(pending, /retryPaymentVerification/);
   assert.doesNotMatch(pending, /handleCashfreePayment|Pay \{/);
+  assert.doesNotMatch(pending, /Confirming your payment|Checking payment\.\.\.|Please wait while we securely check your order/);
+  assert.match(pending, /We couldn't confirm this payment yet/);
   assert.match(flow, /encodeURIComponent\(authenticationCallback\)/);
   assert.match(flow, /removePurchasedCartItems\(verifyData.items\)/);
 });

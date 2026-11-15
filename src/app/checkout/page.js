@@ -4,6 +4,6 @@ import { checkoutOutcomeUrl } from '@/lib/checkoutPayment';
 
 export default function CheckoutPage({ searchParams }) {
   const orderId = typeof searchParams?.cashfree_order_id === 'string' ? searchParams.cashfree_order_id : '';
-  if (orderId) redirect(checkoutOutcomeUrl('return', orderId));
+  if (orderId) redirect(checkoutOutcomeUrl('confirmation', orderId));
   return <CheckoutFlow />;
 }

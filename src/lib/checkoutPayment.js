@@ -1,6 +1,6 @@
 const returnKey = (customerId) => `gg-checkout-return:${customerId}`;
 const validOrderId = (value) => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,200}$/.test(value);
-export const PAYMENT_RETURN_PATH = '/checkout/return';
+export const PAYMENT_RETURN_PATH = '/checkout/success';
 export const ORDER_CONFIRMATION_PATH = '/checkout/success';
 
 export function checkoutOutcomeUrl(mode, orderId) {

@@ -294,17 +294,25 @@ function checkoutFixture(session, headers = permitted) {
   let record;
   let providerBody;
   const pricing = source('src/lib/offers.js') + '\nconst checkOfferActive = (product, now) => getOfferStatus(product, now) === "active";\n' + ['src/lib/utils.js', 'src/lib/stock.js', 'src/lib/orderPricing.js'].map(source).join('\n');
-  const c = context(pricing + '\n' + source('src/lib/checkoutPayment.js') + '\n' + source('src/lib/centralDeliveryEstimates.js') + '\n' + source('src/app/api/orders/create-cashfree-order/route.js'), {
+  const deliveryStack = [
+    source('src/lib/businessCalendar.js'),
+    source('src/lib/deliveryDate.js').replace(/^import[\s\S]*?from ['"][^'"]+['"];\r?\n/gm, ''),
+    source('src/lib/centralDeliveryEstimates.js').replace(/^import[\s\S]*?from ['"][^'"]+['"];\r?\n/gm, ''),
+  ].join('\n');
+  const c = context(pricing + '\n' + source('src/lib/checkoutPayment.js') + '\n' + deliveryStack + '\n' + source('src/app/api/orders/create-cashfree-order/route.js'), {
     randomUUID: crypto.randomUUID,
     NextResponse: { json: (body, init = {}) => ({ body, status: init.status || 200 }) },
     dbConnect: async () => {}, getServerSession: async () => session, authOptions: {},
     Settings: { findOne: () => ({ lean: async () => ({ tamilNaduShippingCost: 100, tamilNaduDeliveryEstimate: '8 working days' }) }) },
     getCashfreeConfig: () => ({ enabled: true, appId: 'sandbox-id', secretKey: 'sandbox-secret', environment: 'sandbox' }),
     Product: { find: () => ({ select: () => ({ lean: async () => [{ _id: 'p', regularPrice: 500, stock: 10 }] }) }) },
+    MakingCost: { find: () => ({ lean: async () => [] }) },
     hydrateProductShippingTemplates: async () => {}, assertStockAvailable() {}, getGroupedStockRequests: () => [],
+    assertCustomizationRequirements() {}, stripDisplayOnlyPreviewData: (item) => item, snapshotOrderItemCost: () => ({}),
     buildDeliveryEstimateText: () => '8 working days',
     fetch: async (url, options) => { providerBody = JSON.parse(options.body); return { ok: true, json: async () => ({ order_id: 'provider-order', cf_order_id: 'test-provider', payment_session_id: 'sandbox-session' }) }; },
     Order: { create: async (data) => { record = data; return { ...data, _id: 'test-order' }; } },
+    console: { error() {}, info() {}, warn() {} },
   });
   const req = { ...request(headers), json: async () => ({ items: [{ productId: 'p', title: 'Product', price: 500, quantity: 2 }], shippingAddress: { fullName: 'Test Customer', email: 'test@example.invalid', phone: '9876543210', state: 'Tamil Nadu', pincode: '600001' }, metaAttribution: { allowed: true, clientUserAgent: 'forged-body-agent', clientIpAddress: '203.0.113.99' } }) };
   return { c, req, record: () => record, providerBody: () => providerBody };
@@ -348,7 +356,7 @@ test('Cashfree callbacks use the configured site origin, never an arbitrary Orig
   const fixture = checkoutFixture({ user: { type: 'customer', id: 'customer-1' } }, { origin: 'https://untrusted.invalid' });
   fixture.c.process.env.NEXTAUTH_URL = 'https://groverygiftz.in';
   assert.equal((await fixture.c.POST(fixture.req)).status, 201);
-  assert.equal(fixture.providerBody().order_meta.return_url, 'https://groverygiftz.in/checkout/return?cashfree_order_id={order_id}');
+  assert.equal(fixture.providerBody().order_meta.return_url, 'https://groverygiftz.in/checkout/success?cashfree_order_id={order_id}');
 });
 
 test('automatic checkout preserves totals and captures the actual browser without an acceptance cookie', async () => {

@@ -77,7 +77,9 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
   const deliveryEstimate = buildCurrentDeliveryEstimate(settings, address.state);
   const grandTotal = cartTotal + shippingCost;
   const getCartPixelPayload = (items = cart, total = grandTotal, extra = {}) => buildCartMetaPayload(items, total, extra);
-  const authenticationCallback = mode === 'confirmation' ? checkoutOutcomeUrl('confirmation', orderId) : orderId || mode === 'return' ? checkoutOutcomeUrl('return', orderId) : '/checkout';
+  const authenticationCallback = (mode !== 'checkout' || orderId)
+    ? checkoutOutcomeUrl('confirmation', orderId)
+    : '/checkout';
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -144,7 +146,7 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
     const returnedOrderId = orderId || readCheckoutReturn(session.user.id, mode !== 'checkout' || cart.length === 0);
     if (mode === 'checkout') {
       if (returnVerifyRef.current === `checkout:${returnedOrderId}`) return;
-      if (returnedOrderId) router.replace(checkoutOutcomeUrl('return', returnedOrderId), { scroll: false });
+      if (returnedOrderId) router.replace(checkoutOutcomeUrl('confirmation', returnedOrderId), { scroll: false });
       return;
     }
     if (!returnedOrderId) {
@@ -415,17 +417,28 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
   }
 
   if (mode !== 'checkout') {
-    return (
-      <div className="mx-auto flex min-h-[60vh] max-w-xl items-center px-4 py-10">
-        <div className="w-full min-w-0 space-y-5 text-center">
-          <h1 className="text-2xl font-bold">{loading || !verificationMessage ? 'Confirming your payment' : 'Payment confirmation'}</h1>
-          <p role="status" aria-live="polite" className="break-words text-sm text-gray-600">{verificationMessage || 'Please wait while we securely check your order.'}</p>
-          <div className="flex flex-wrap justify-center gap-3">
-            {returnOrderId && <button type="button" onClick={retryPaymentVerification} disabled={loading} className="btn-primary w-full px-5 py-3 sm:w-auto disabled:opacity-50">{loading ? 'Checking payment...' : 'Check payment status'}</button>}
-            <Link href="/account/orders" className="btn-outline w-full px-5 py-3 sm:w-auto">My Orders</Link>
-            <Link href="/cart" className="btn-outline w-full px-5 py-3 sm:w-auto">View Cart</Link>
+    if (verificationMessage) {
+      return (
+        <div className="min-h-[70vh] bg-gradient-to-b from-primary-50/80 to-white px-4 py-14">
+          <div className="mx-auto max-w-3xl rounded-2xl border bg-white p-6 text-center shadow-sm md:p-8">
+            <h1 className="break-words font-display text-2xl font-bold text-gray-950">We couldn't confirm this payment yet</h1>
+            <p role="status" aria-live="polite" className="mx-auto mt-3 max-w-lg break-words text-sm leading-6 text-gray-600">{verificationMessage}</p>
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center">
+              {returnOrderId ? (
+                <button type="button" onClick={retryPaymentVerification} disabled={loading} className="btn-primary min-h-[44px] w-full px-5 py-3 sm:w-auto disabled:opacity-50">
+                  Check payment status
+                </button>
+              ) : null}
+              <Link href="/account/orders" className="btn-outline inline-flex min-h-[44px] w-full items-center justify-center px-5 py-3 sm:w-auto">My Orders</Link>
+              <Link href="/cart" className="btn-outline inline-flex min-h-[44px] w-full items-center justify-center px-5 py-3 sm:w-auto">View Cart</Link>
+            </div>
           </div>
         </div>
+      );
+    }
+    return (
+      <div className="min-h-[70vh] bg-gradient-to-b from-primary-50/80 to-white px-4 py-14" aria-busy="true">
+        <p className="sr-only" role="status" aria-live="polite">Confirming your order</p>
       </div>
     );
   }
