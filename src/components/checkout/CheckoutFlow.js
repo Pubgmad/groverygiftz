@@ -16,6 +16,35 @@ import useDeliverySettings from '@/hooks/useDeliverySettings';
 import { checkoutOutcomeUrl, forgetCheckoutReturn, isCheckoutReturnCompleted, readCheckoutReturn, rememberCheckoutReturn, verifyCheckoutPayment } from '@/lib/checkoutPayment';
 
 const STEPS = ['Address', 'Payment', 'Confirm'];
+const CHECKOUT_DRAFT_KEY = (customerId) => `gg-checkout-draft:${customerId}`;
+const emptyAddress = () => ({ fullName: '', email: '', phone: '', whatsappNumber: '', line1: '', line2: '', city: '', state: '', pincode: '' });
+
+const readCheckoutDraft = (customerId) => {
+  if (!customerId || typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(CHECKOUT_DRAFT_KEY(customerId));
+    if (!raw) return null;
+    const draft = JSON.parse(raw);
+    if (!draft || typeof draft !== 'object') return null;
+    const age = Date.now() - Number(draft.updatedAt || 0);
+    if (!Number.isFinite(age) || age < 0 || age > 72 * 3600000) return null;
+    return draft;
+  } catch {
+    return null;
+  }
+};
+
+const writeCheckoutDraft = (customerId, draft) => {
+  if (!customerId || typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(CHECKOUT_DRAFT_KEY(customerId), JSON.stringify({ ...draft, updatedAt: Date.now() }));
+  } catch {}
+};
+
+const clearCheckoutDraft = (customerId) => {
+  if (!customerId || typeof window === 'undefined') return;
+  try { window.sessionStorage.removeItem(CHECKOUT_DRAFT_KEY(customerId)); } catch {}
+};
 
 const cartLineKey = (item) => item.cartItemId || `${item.productId || ''}:${item.variant || ''}`;
 
@@ -51,7 +80,7 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [step, setStep] = useState(1);
-  const [address, setAddress] = useState({ fullName: '', email: '', phone: '', whatsappNumber: '', line1: '', line2: '', city: '', state: '', pincode: '' });
+  const [address, setAddress] = useState(emptyAddress);
   const [orderNote, setOrderNote] = useState('');
   const [loading, setLoading] = useState(false);
   const [latestCartDelivery, setLatestCartDelivery] = useState({});
@@ -61,6 +90,8 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
   const returnVerifyRef = useRef('');
   const receiptOwnerRef = useRef('');
   const paymentLockRef = useRef(false);
+  const checkoutDraftLoadedRef = useRef('');
+  const checkoutStepHistoryRef = useRef(false);
   const [returnOrderId, setReturnOrderId] = useState('');
   const [verificationMessage, setVerificationMessage] = useState('');
   const ga4CheckoutRef = useRef(false);
@@ -82,10 +113,10 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
     : '/checkout';
 
   useEffect(() => {
-    if (status === 'unauthenticated') {
-      if (typeof flushGuestCart === 'function') flushGuestCart();
-      router.replace(`/auth/register?callbackUrl=${encodeURIComponent(authenticationCallback)}`);
-    }
+    // Only redirect after NextAuth settles — never treat "loading" as logged out.
+    if (status !== 'unauthenticated') return;
+    if (typeof flushGuestCart === 'function') flushGuestCart();
+    router.replace(`/auth/register?callbackUrl=${encodeURIComponent(authenticationCallback)}`);
   }, [status, router, authenticationCallback]);
 
   useEffect(() => {
@@ -94,14 +125,47 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
   }, []);
 
   useEffect(() => {
+    if (mode !== 'checkout' || status !== 'authenticated' || session?.user?.type !== 'customer' || !session.user.id) return;
+    if (checkoutDraftLoadedRef.current === session.user.id) return;
+    checkoutDraftLoadedRef.current = session.user.id;
+    const draft = readCheckoutDraft(session.user.id);
+    if (!draft) return;
+    if (draft.address && typeof draft.address === 'object') {
+      setAddress((prev) => ({ ...prev, ...draft.address }));
+    }
+    if (typeof draft.orderNote === 'string') setOrderNote(draft.orderNote);
+    if (Number(draft.step) === 2) setStep(2);
+  }, [mode, status, session?.user?.id, session?.user?.type]);
+
+  useEffect(() => {
     if (address.state) window.localStorage?.setItem('groveryDeliveryState', address.state);
   }, [address.state]);
+
+  useEffect(() => {
+    if (mode !== 'checkout' || status !== 'authenticated' || session?.user?.type !== 'customer' || !session.user.id || step === 3) return;
+    writeCheckoutDraft(session.user.id, { address, orderNote, step });
+  }, [address, orderNote, step, mode, status, session?.user?.id, session?.user?.type]);
 
   useEffect(() => {
     if (session?.user?.type === 'customer') {
       setAddress((p) => ({ ...p, fullName: p.fullName || session.user.name || '', email: p.email || session.user.email || '' }));
     }
   }, [session]);
+
+  useEffect(() => {
+    if (mode !== 'checkout' || step !== 2) return undefined;
+    if (!window.history.state?.ggCheckoutStep) {
+      window.history.pushState({ ggCheckoutStep: 2 }, '');
+      checkoutStepHistoryRef.current = true;
+    }
+    const onPopState = () => {
+      checkoutStepHistoryRef.current = false;
+      setStep(1);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [mode, step]);
 
   useEffect(() => {
     const productIds = [...new Set(cart.map((item) => item.productId).filter(Boolean))];
@@ -233,6 +297,7 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
     });
     setStep(3);
     setVerificationMessage('');
+    if (session?.user?.id) clearCheckoutDraft(session.user.id);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -260,10 +325,25 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
     finally { paymentLockRef.current = false; setLoading(false); }
   };
 
+  const returnToCheckoutAddress = () => {
+    forgetCheckoutReturn(session?.user?.id);
+    setReturnOrderId('');
+    setVerificationMessage('');
+    if (typeof window !== 'undefined' && window.history.state?.ggCheckoutStep) {
+      checkoutStepHistoryRef.current = false;
+      window.history.back();
+      return;
+    }
+    router.replace('/checkout', { scroll: false });
+    setStep(1);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleAddressNext = () => {
     const err = validateAddress();
     if (err) { toast.error(err); return; }
     trackGA4Ecommerce('add_shipping_info', cart);
+    if (session?.user?.id) writeCheckoutDraft(session.user.id, { address, orderNote, step: 2 });
     setStep(2);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -496,7 +576,7 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
             <>
               <div className="bg-white rounded-2xl border shadow-sm p-5 flex items-start justify-between gap-4">
                 <div><div className="flex items-center gap-2 mb-1"><FiMapPin size={14} className="text-primary-600" /><span className="font-semibold text-sm">Delivering to</span></div><p className="text-sm font-bold">{address.fullName} - {address.phone}</p><p className="text-sm text-gray-500">{address.line1}{address.line2 ? `, ${address.line2}` : ''}, {address.city}, {address.state} - {address.pincode}</p></div>
-                <button disabled={loading} onClick={() => { forgetCheckoutReturn(session.user.id); setReturnOrderId(''); setVerificationMessage(''); router.replace('/checkout', { scroll: false }); setStep(1); }} className="text-primary-600 hover:text-primary-700 text-sm flex items-center gap-1 font-medium flex-shrink-0 disabled:opacity-50"><FiEdit2 size={14} /> Edit</button>
+                <button disabled={loading} onClick={returnToCheckoutAddress} className="text-primary-600 hover:text-primary-700 text-sm flex items-center gap-1 font-medium flex-shrink-0 disabled:opacity-50"><FiEdit2 size={14} /> Edit</button>
               </div>
 
               <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">

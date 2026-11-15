@@ -40,11 +40,23 @@ export default function PhotoAdjuster({
   const closeRef = useRef(onClose);
   const savingRef = useRef(saving);
   const triedFallbackRef = useRef(false);
+  const historyPushedRef = useRef(false);
+  const closedByPopRef = useRef(false);
   closeRef.current = onClose;
   savingRef.current = saving;
   baselineRef.current = baseline;
 
   useEffect(() => { draftRef.current = draft; }, [draft]);
+
+  const requestClose = () => {
+    if (savingRef.current) return;
+    if (typeof window !== 'undefined' && window.history.state?.ggPhotoEditor) {
+      closedByPopRef.current = false;
+      window.history.back();
+      return;
+    }
+    closeRef.current?.();
+  };
 
   useEffect(() => {
     if (!open) return undefined;
@@ -55,15 +67,32 @@ export default function PhotoAdjuster({
     setImageSize({ width: 0, height: 0 });
     setActiveSrc(photoUrl || '');
     triedFallbackRef.current = false;
+    closedByPopRef.current = false;
     document.body.classList.add('photo-editor-open');
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    const onKey = (event) => { if (event.key === 'Escape' && !savingRef.current) closeRef.current?.(); };
+    if (typeof window !== 'undefined' && !window.history.state?.ggPhotoEditor) {
+      window.history.pushState({ ggPhotoEditor: true }, '');
+      historyPushedRef.current = true;
+    }
+    const onKey = (event) => { if (event.key === 'Escape') requestClose(); };
+    const onPopState = () => {
+      closedByPopRef.current = true;
+      historyPushedRef.current = false;
+      closeRef.current?.();
+    };
     window.addEventListener('keydown', onKey);
+    window.addEventListener('popstate', onPopState);
     return () => {
       document.body.classList.remove('photo-editor-open');
       document.body.style.overflow = previous;
       window.removeEventListener('keydown', onKey);
+      window.removeEventListener('popstate', onPopState);
+      // Closed via Apply/X without Back: drop the extra history entry safely.
+      if (historyPushedRef.current && !closedByPopRef.current && window.history.state?.ggPhotoEditor) {
+        historyPushedRef.current = false;
+        window.history.back();
+      }
     };
   }, [open]);
 
@@ -275,7 +304,7 @@ export default function PhotoAdjuster({
     <div className="fixed inset-0 z-[90] flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-white text-gray-950 md:items-center md:justify-center md:bg-gray-950/50 md:p-4" style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top)' }} role="dialog" aria-modal="true" aria-labelledby="photo-adjuster-title">
       <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-white md:h-[min(92dvh,760px)] md:max-h-[95dvh] md:max-w-lg md:rounded-3xl md:shadow-xl">
         <header className="grid shrink-0 grid-cols-[44px_1fr_auto] items-center gap-2 border-b border-gray-100 px-3 py-2.5">
-          <button type="button" onClick={onClose} disabled={saving} className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-gray-100 text-gray-800" aria-label="Close photo editor">
+          <button type="button" onClick={requestClose} disabled={saving} className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-gray-100 text-gray-800" aria-label="Close photo editor">
             <FiX size={20} />
           </button>
           <div className="min-w-0 text-center">
@@ -414,7 +443,7 @@ export default function PhotoAdjuster({
         </div>
 
         <div className="grid shrink-0 grid-cols-2 gap-2 border-t border-gray-100 bg-white px-4 pt-3" style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}>
-          <button type="button" disabled={saving} onClick={onClose} className="flex min-h-12 items-center justify-center rounded-2xl border border-gray-200 text-sm font-bold text-gray-800">
+          <button type="button" disabled={saving} onClick={requestClose} className="flex min-h-12 items-center justify-center rounded-2xl border border-gray-200 text-sm font-bold text-gray-800">
             Cancel
           </button>
           <button

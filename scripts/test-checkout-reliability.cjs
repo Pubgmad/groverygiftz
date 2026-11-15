@@ -156,6 +156,7 @@ function outcomeFixture(mode, result = { success: true, paymentStatus: 'paid', o
     trackGA4Purchase: () => calls.ga++, trackVerifiedMetaPurchase: () => calls.meta++, trackGA4OrderConfirmation: () => calls.confirmation++,
     setOrderResult: (value) => { calls.result = value; }, setStep: (value) => { calls.step = value; },
     setVerificationMessage: (value) => calls.messages.push(value), toast: { error: (value) => calls.messages.push(value) },
+    clearCheckoutDraft() {}, writeCheckoutDraft() {}, readCheckoutDraft() { return null; },
   });
   c.verifyCheckoutPayment = async () => result;
   const flow = fs.readFileSync('src/components/checkout/CheckoutFlow.js', 'utf8');

@@ -106,6 +106,18 @@ export const authOptions = {
   pages: {
     signIn: '/auth/login',
   },
-  session: { strategy: 'jwt' },
+  // Persistent customer sessions: JWT lasts 180 days and is refreshed while the site is used.
+  // Accounts/orders remain in Mongo independently of this cookie lifetime.
+  session: {
+    strategy: 'jwt',
+    maxAge: 180 * 24 * 60 * 60,
+    updateAge: 24 * 60 * 60,
+  },
+  jwt: {
+    maxAge: 180 * 24 * 60 * 60,
+  },
+  // Keep NextAuth cookie names unchanged so existing sessions stay valid.
+  // SameSite=Lax allows the session cookie on Cashfree top-level return navigations.
+  useSecureCookies: String(process.env.NEXTAUTH_URL || '').startsWith('https://'),
   secret: process.env.NEXTAUTH_SECRET,
 };

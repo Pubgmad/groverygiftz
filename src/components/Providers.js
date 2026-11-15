@@ -5,7 +5,7 @@ import { WishlistProvider } from '@/context/WishlistContext';
 
 export default function Providers({ children }) {
   return (
-    <SessionProvider>
+    <SessionProvider refetchInterval={5 * 60} refetchOnWindowFocus>
       <CartProvider>
         <WishlistProvider>
           {children}
