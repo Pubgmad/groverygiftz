@@ -86,7 +86,7 @@ export default function CartDrawer() {
               {selectedState && <div className="flex items-center justify-between text-sm"><span className="text-gray-600">Delivery charge</span><span className="font-bold text-gray-900">{shippingSummary.cost === 0 ? 'FREE' : formatPrice(shippingSummary.cost)}</span></div>}
               {selectedState && <div className="flex items-center justify-between border-t pt-2"><span className="font-bold text-gray-900">Checkout total</span><span className="text-xl font-bold text-primary-700">{formatPrice(checkoutTotal)}</span></div>}
               {!selectedState && <div className="rounded-lg bg-primary-50 px-3 py-2 text-xs text-gray-600">Select state on product or checkout page to see delivery charge.</div>}
-              <p className="line-clamp-2 text-xs text-gray-600">Estimated delivery: {buildCurrentDeliveryEstimate(settings, selectedState)}</p>
+              <p className="break-words text-xs text-gray-600">Estimated delivery: {buildCurrentDeliveryEstimate(settings, selectedState)}</p>
             </div>
             <Link href="/checkout" onClick={() => setIsCartOpen(false)} className="btn-accent flex w-full items-center justify-center gap-2 py-3.5 text-center text-base font-bold">Checkout Now</Link>
             <div className="flex items-center justify-between gap-3 pb-1 text-sm">

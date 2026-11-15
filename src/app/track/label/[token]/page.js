@@ -60,10 +60,25 @@ export default function LabelTrackPage() {
               <p className="text-xs font-semibold text-gray-500">Status</p>
               <p className="font-semibold text-gray-900">{data.statusLabel || data.status}</p>
             </div>
-            {data.deliveryEstimate ? (
+            {(data.expectedReadyDate || data.estimatedDeliveryDate) ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {data.expectedReadyDate ? (
+                  <div className="rounded-xl border bg-gray-50 p-4">
+                    <p className="text-xs font-semibold text-gray-500">Expected Ready Date</p>
+                    <p className="break-words font-semibold text-gray-900">{data.expectedReadyDate}</p>
+                  </div>
+                ) : null}
+                {data.estimatedDeliveryDate ? (
+                  <div className="rounded-xl border bg-gray-50 p-4">
+                    <p className="text-xs font-semibold text-gray-500">Estimated Delivery Date</p>
+                    <p className="break-words font-semibold text-gray-900">{data.estimatedDeliveryDate}</p>
+                  </div>
+                ) : null}
+              </div>
+            ) : data.deliveryEstimate ? (
               <div className="rounded-xl border bg-gray-50 p-4">
                 <p className="text-xs font-semibold text-gray-500">Estimated delivery</p>
-                <p className="font-semibold text-gray-900">{data.deliveryEstimate}</p>
+                <p className="break-words font-semibold text-gray-900">{data.deliveryEstimate}</p>
               </div>
             ) : null}
             {data.trackingNumber ? (

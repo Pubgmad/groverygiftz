@@ -1,21 +1,31 @@
-import { buildDeliveryEstimateText, formatDeliveryDate } from '@/lib/deliveryDate';
+import { formatLongIstDate } from '@/lib/businessCalendar';
 
 export const getEstimateBaseText = (estimate = '') => String(estimate || '').split(' - expected by ')[0].trim();
 
 export const isOrderOutOfTamilNadu = (order) => String(order?.shippingAddress?.state || '').trim().toLowerCase() !== 'tamil nadu';
 
-export function getOrderDeliveryEstimate(order, holidays = []) {
+export function getConfirmedScheduleDates(order) {
   const snap = order?.confirmationSchedule;
-  if (snap?.estimatedDeliveryDateIst && snap?.shippingEstimateLabel) {
-    const expected = formatDeliveryDate(new Date(`${snap.estimatedDeliveryDateIst}T06:30:00+05:30`));
-    return `${snap.shippingEstimateLabel} - expected by ${expected} (Sundays and government/public holidays skipped)`;
+  if (!snap?.estimatedDeliveryDateIst) return null;
+  const estimatedDeliveryDate = formatLongIstDate(snap.estimatedDeliveryDateIst);
+  const expectedReadyDate = formatLongIstDate(snap.expectedReadyDateIst);
+  if (!estimatedDeliveryDate) return null;
+  return {
+    expectedReadyDateIst: snap.expectedReadyDateIst || '',
+    estimatedDeliveryDateIst: snap.estimatedDeliveryDateIst,
+    expectedReadyDate,
+    estimatedDeliveryDate,
+    durationLabel: String(snap.shippingEstimateLabel || '').trim(),
+  };
+}
+
+export function getOrderDeliveryEstimate(order, holidays = []) {
+  const dates = getConfirmedScheduleDates(order);
+  if (dates?.estimatedDeliveryDate) {
+    const label = dates.durationLabel || getEstimateBaseText(order?.deliveryEstimate);
+    return label
+      ? `${label} - expected by ${dates.estimatedDeliveryDate} (Sundays and government/public holidays skipped)`
+      : dates.estimatedDeliveryDate;
   }
-  if (String(order?.deliveryEstimate || '').includes(' - expected by ')) return order.deliveryEstimate;
-  const baseEstimate = getEstimateBaseText(order?.deliveryEstimate);
-  if (!baseEstimate) return order?.deliveryEstimate || null;
-  if (!/\d/.test(baseEstimate)) return baseEstimate;
-  return buildDeliveryEstimateText(baseEstimate, {
-    startDate: order.paidAt || order.createdAt,
-    holidays,
-  });
+  return order?.deliveryEstimate || null;
 }

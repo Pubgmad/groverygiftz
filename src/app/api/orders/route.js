@@ -6,7 +6,7 @@ import Settings from '@/models/Settings';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { can, getRequestAdminAccess } from '@/lib/adminAccess';
-import { getOrderDeliveryEstimate } from '@/lib/orderDeliveryEstimate';
+import { getConfirmedScheduleDates, getOrderDeliveryEstimate } from '@/lib/orderDeliveryEstimate';
 import { stripMakingCostFromOrder } from '@/lib/makingCost';
 import { buildAdminOrderFilter, parseOrderReportFilters, ORDER_STATUS_ALIASES } from '@/lib/adminOrderQuery';
 import { mergeStaffOrderFilter } from '@/lib/opsStaffAccess';
@@ -77,9 +77,12 @@ export async function GET(req) {
   const settings = await Settings.findOne().select('deliveryHolidays').lean();
   const deliveryHolidays = settings?.deliveryHolidays || [];
   const displayOrders = orders.map((order) => {
+    const dates = getConfirmedScheduleDates(order);
     const next = resignCustomerDisplayUrls({
       ...order,
       deliveryEstimate: getOrderDeliveryEstimate(order, deliveryHolidays) || order.deliveryEstimate,
+      expectedReadyDate: dates?.expectedReadyDate || '',
+      estimatedDeliveryDate: dates?.estimatedDeliveryDate || '',
     });
     return session.user.type === 'admin' ? next : stripMakingCostFromOrder(next);
   });

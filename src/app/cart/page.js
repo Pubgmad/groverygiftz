@@ -64,7 +64,7 @@ export default function CartPage() {
                 {item.variant && <p className="text-xs text-gray-400 mb-1">{item.variant}</p>}
                 {item.giftWrap && <p className="text-xs text-primary-600 mb-1">Gift wrapped</p>}
                 {item.deliveryState && <p className="text-xs text-gray-500 mb-1">State: {item.deliveryState}</p>}
-                <p className="text-xs text-gray-500 mb-1">Estimated delivery: {buildCurrentDeliveryEstimate(settings, item.deliveryState)}</p>
+                <p className="mb-1 break-words text-xs text-gray-500">Estimated delivery: {buildCurrentDeliveryEstimate(settings, item.deliveryState)}</p>
                 <ConfiguredImageSections item={item} />
                 <p className="font-bold text-primary-600">{formatPrice(item.price)}</p>
               </div>

@@ -8,7 +8,7 @@ import { getCashfreeConfig } from '@/lib/cashfreeConfig';
 import { sendMetaPurchaseEvent } from '@/lib/metaConversionApi';
 import { buildMetaPurchase } from '@/lib/metaPurchase';
 import { buildGA4Purchase } from '@/lib/ga4Data';
-import { getOrderDeliveryEstimate } from '@/lib/orderDeliveryEstimate';
+import { getConfirmedScheduleDates, getOrderDeliveryEstimate } from '@/lib/orderDeliveryEstimate';
 import { cartLineKey, reconcileCartAgainstPurchasedItems } from '@/lib/cartReconcile';
 import { confirmationRecipientEmail, persistOrderConfirmationSchedule } from '@/lib/orderConfirmationSchedule';
 import { confirmationEmailStateForOrder, enqueueOrderConfirmationEmail, processOrderConfirmationJobs } from '@/lib/orderConfirmationOutbox';
@@ -100,19 +100,25 @@ async function confirmationEmailPayload(order) {
   }
 }
 
-const responseForOrder = (order, success, settings = {}, confirmationEmail = null) => ({
-  success,
-  paymentStatus: order.paymentStatus,
-  orderNumber: order.orderNumber,
-  deliveryEstimate: getDisplayDeliveryEstimate(order, settings),
-  shippingCost: order.shippingCost,
-  subtotal: order.subtotal,
-  total: order.total,
-  items: order.items || [],
-  confirmationEmail: success && order?.paymentStatus === 'paid' ? confirmationEmail : null,
-  metaPurchase: success ? buildMetaPurchase(order) : null,
-  ga4Purchase: success ? buildGA4Purchase(order) : null,
-});
+const responseForOrder = (order, success, settings = {}, confirmationEmail = null) => {
+  const dates = getConfirmedScheduleDates(order);
+  return {
+    success,
+    paymentStatus: order.paymentStatus,
+    orderNumber: order.orderNumber,
+    deliveryEstimate: getDisplayDeliveryEstimate(order, settings),
+    expectedReadyDate: dates?.expectedReadyDate || '',
+    estimatedDeliveryDate: dates?.estimatedDeliveryDate || '',
+    confirmationSchedule: dates,
+    shippingCost: order.shippingCost,
+    subtotal: order.subtotal,
+    total: order.total,
+    items: order.items || [],
+    confirmationEmail: success && order?.paymentStatus === 'paid' ? confirmationEmail : null,
+    metaPurchase: success ? buildMetaPurchase(order) : null,
+    ga4Purchase: success ? buildGA4Purchase(order) : null,
+  };
+};
 
 export async function finalizeCashfreeOrder(orderId, { retryTracking = false } = {}) {
   await dbConnect();

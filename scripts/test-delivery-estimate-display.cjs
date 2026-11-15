@@ -3,17 +3,15 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const deliveryDate = fs.readFileSync(path.join(__dirname, '../src/lib/deliveryDate.js'), 'utf8').replace(/export /g, '');
-const central = fs.readFileSync(path.join(__dirname, '../src/lib/centralDeliveryEstimates.js'), 'utf8')
-  .replace(/export /g, '')
-  .replace(/import \{ buildDeliveryEstimateText \} from '@\/lib\/deliveryDate';/, '');
-const display = fs.readFileSync(path.join(__dirname, '../src/lib/deliveryEstimateDisplay.js'), 'utf8')
-  .replace(/export /g, '')
-  .replace(/import \{ buildCurrentDeliveryEstimate, getCentralDeliveryEstimate \} from '@\/lib\/centralDeliveryEstimates';/, '');
+const strip = (text) => text.replace(/^import[\s\S]*?from ['"][^'"]+['"];\r?\n/gm, '').replace(/export /g, '');
+const calendar = strip(fs.readFileSync(path.join(__dirname, '../src/lib/businessCalendar.js'), 'utf8'));
+const deliveryDate = strip(fs.readFileSync(path.join(__dirname, '../src/lib/deliveryDate.js'), 'utf8'));
+const central = strip(fs.readFileSync(path.join(__dirname, '../src/lib/centralDeliveryEstimates.js'), 'utf8'));
+const display = strip(fs.readFileSync(path.join(__dirname, '../src/lib/deliveryEstimateDisplay.js'), 'utf8'));
 
-const context = { module: { exports: {} }, exports: {}, console };
+const context = { module: { exports: {} }, exports: {}, console, Intl, Date };
 vm.createContext(context);
-vm.runInContext(`${deliveryDate}\n${central}\n${display}\nmodule.exports = { getDeliveryEstimateDisplay, buildCurrentDeliveryEstimate, getCentralDeliveryEstimate };`, context);
+vm.runInContext(`${calendar}\n${deliveryDate}\n${central}\n${display}\nmodule.exports = { getDeliveryEstimateDisplay, buildCurrentDeliveryEstimate, getCentralDeliveryEstimate };`, context);
 const { getDeliveryEstimateDisplay, buildCurrentDeliveryEstimate } = context.module.exports;
 
 const settings = {

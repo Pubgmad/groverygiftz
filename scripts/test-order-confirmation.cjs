@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const path = require('node:path');
 
 const strip = (file) => fs.readFileSync(path.join(__dirname, '..', file), 'utf8')
-  .replace(/^import .*;\r?\n/gm, '')
+  .replace(/^import[\s\S]*?from ['"][^'"]+['"];\r?\n/gm, '')
   .replace(/export /g, '');
 
 function loadCalendar() {
@@ -339,8 +339,62 @@ test('email layout stays table-based, escaped, and 600px wide for long names and
   assert.equal(email.buildOrderConfirmationEmail({ orderNumber: 'GG1', shippingAddress: { email: 'a@b.com' }, items: [{ title: 'X', price: 1, quantity: 1 }] }).ok, false);
 });
 
+function loadWebsiteDates() {
+  const calendar = strip('src/lib/businessCalendar.js');
+  const delivery = strip('src/lib/deliveryDate.js');
+  const estimate = strip('src/lib/orderDeliveryEstimate.js');
+  const context = { console, Intl, Date, Number, String, Array, Math };
+  vm.createContext(context);
+  vm.runInContext(`${calendar}\n${delivery}\n${estimate}\nthis.api = { buildDeliveryEstimateText, getConfirmedScheduleDates, getOrderDeliveryEstimate, computeConfirmationSchedule, formatLongIstDate };`, context);
+  return context.api;
+}
+
+test('live website delivery dates match the confirmation email calendar engine', () => {
+  const api = loadWebsiteDates();
+  const holidays = ['2026-08-26'];
+  const placedAt = new Date('2026-08-23T12:00:00+05:30');
+  const schedule = api.computeConfirmationSchedule({
+    placedAt,
+    destinationState: 'Tamil Nadu',
+    tamilNaduEstimate: '8 working days',
+    destinationEstimate: '8 working days',
+    holidays,
+  });
+  assert.equal(schedule.ok, true);
+  assert.equal(schedule.estimatedDeliveryDateIst, '2026-09-03');
+  const live = api.buildDeliveryEstimateText('8 working days', { startDate: placedAt, holidays });
+  assert.match(live, /September 3, 2026/);
+  const emailReady = api.formatLongIstDate(schedule.expectedReadyDateIst);
+  const emailDelivery = api.formatLongIstDate(schedule.estimatedDeliveryDateIst);
+  const dates = api.getConfirmedScheduleDates({ confirmationSchedule: schedule });
+  assert.equal(dates.expectedReadyDate, emailReady);
+  assert.equal(dates.estimatedDeliveryDate, emailDelivery);
+  const monday = new Date('2026-11-16T11:00:00+05:30');
+  const tn = api.computeConfirmationSchedule({
+    placedAt: monday,
+    destinationState: 'Tamil Nadu',
+    tamilNaduEstimate: '6 working days',
+    destinationEstimate: '6 working days',
+    holidays: [],
+  });
+  const other = api.computeConfirmationSchedule({
+    placedAt: monday,
+    destinationState: 'Maharashtra',
+    tamilNaduEstimate: '6 working days',
+    destinationEstimate: '12-15 working days',
+    holidays: [],
+  });
+  assert.equal(tn.expectedReadyDateIst, other.expectedReadyDateIst);
+  assert.match(api.buildDeliveryEstimateText('6 working days', { startDate: monday, holidays: [] }), /November 23, 2026/);
+  assert.match(api.buildDeliveryEstimateText('12-15 working days', { startDate: monday, holidays: [] }), /December 3, 2026/);
+});
+
 test('checkout and browser bundles do not contain SMTP secrets', () => {
   const checkout = fs.readFileSync(path.join(__dirname, '../src/components/checkout/CheckoutFlow.js'), 'utf8');
+  assert.match(checkout, /Expected Ready Date/);
+  assert.match(checkout, /Estimated Delivery Date/);
+  assert.match(checkout, /expectedReadyDate/);
+  assert.match(checkout, /estimatedDeliveryDate/);
   assert.match(checkout, /Email Confirmation/);
   assert.match(checkout, /We'll send your order confirmation to:/);
   assert.match(checkout, /We couldn't send your confirmation email yet/);

@@ -13,6 +13,7 @@ import { isPaymentSatisfiedForDispatch } from '@/lib/opsConstants';
 import { logAdminAudit } from '@/lib/adminAccess';
 import { resignCustomerDisplayUrls } from '@/lib/customerFileAccess';
 import { attachAdminConfirmationEmails } from '@/lib/orderConfirmationOutbox';
+import { getConfirmedScheduleDates, getOrderDeliveryEstimate } from '@/lib/orderDeliveryEstimate';
 
 export async function GET(req, { params }) {
   const session = await getServerSession(authOptions);
@@ -37,8 +38,13 @@ export async function GET(req, { params }) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  // Re-sign display URLs and prefer HEIC JPEG previews for cart/admin <img> tags.
-  const withDisplay = resignCustomerDisplayUrls(order);
+  const dates = getConfirmedScheduleDates(order);
+  const withDisplay = resignCustomerDisplayUrls({
+    ...order,
+    deliveryEstimate: getOrderDeliveryEstimate(order) || order.deliveryEstimate,
+    expectedReadyDate: dates?.expectedReadyDate || '',
+    estimatedDeliveryDate: dates?.estimatedDeliveryDate || '',
+  });
   if (session.user.type === 'admin') await attachAdminConfirmationEmails(withDisplay);
   return NextResponse.json(session.user.type === 'admin' ? withDisplay : stripMakingCostFromOrder(withDisplay));
 }

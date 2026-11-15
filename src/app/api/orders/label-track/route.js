@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import Order from '@/models/Order';
 import Settings from '@/models/Settings';
-import { getOrderDeliveryEstimate } from '@/lib/orderDeliveryEstimate';
+import { getConfirmedScheduleDates, getOrderDeliveryEstimate } from '@/lib/orderDeliveryEstimate';
 import { verifyShippingLabelToken } from '@/lib/shippingLabelToken';
 import { ORDER_STATUS_LABELS } from '@/lib/adminOrderQuery';
 
@@ -22,7 +22,7 @@ export async function GET(req) {
 
   await dbConnect();
   const order = await Order.findById(orderId)
-    .select('orderNumber status trackingNumber deliveryEstimate paidAt createdAt isOutOfTamilNadu')
+    .select('orderNumber status trackingNumber deliveryEstimate paidAt createdAt isOutOfTamilNadu confirmationSchedule')
     .lean();
   if (!order) {
     return NextResponse.json({ error: 'Order not found.' }, { status: 404, headers: { 'Cache-Control': 'no-store' } });
@@ -30,6 +30,7 @@ export async function GET(req) {
 
   const settings = await Settings.findOne().select('deliveryHolidays siteName tradeName').lean();
   const statusKey = String(order.status || 'ordered');
+  const dates = getConfirmedScheduleDates(order);
 
   return NextResponse.json({
     orderNumber: order.orderNumber,
@@ -37,6 +38,8 @@ export async function GET(req) {
     statusLabel: ORDER_STATUS_LABELS[statusKey] || statusKey,
     trackingNumber: order.trackingNumber || null,
     deliveryEstimate: getOrderDeliveryEstimate(order, settings?.deliveryHolidays || []) || order.deliveryEstimate || null,
+    expectedReadyDate: dates?.expectedReadyDate || null,
+    estimatedDeliveryDate: dates?.estimatedDeliveryDate || null,
     brand: settings?.tradeName || settings?.siteName || 'GroveryGiftz',
   }, { headers: { 'Cache-Control': 'no-store' } });
 }

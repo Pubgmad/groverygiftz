@@ -225,6 +225,8 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
       shippingCost: verifyData.shippingCost ?? fallbackTotals.shippingCost ?? shippingCost,
       total: paidTotal,
       deliveryEstimate: verifyData.deliveryEstimate || fallbackTotals.deliveryEstimate || deliveryEstimate,
+      expectedReadyDate: verifyData.expectedReadyDate || verifyData.confirmationSchedule?.expectedReadyDate || '',
+      estimatedDeliveryDate: verifyData.estimatedDeliveryDate || verifyData.confirmationSchedule?.estimatedDeliveryDate || '',
       confirmationEmail: verifyData.confirmationEmail || null,
     });
     setStep(3);
@@ -353,7 +355,24 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
             <p className="text-gray-500 mb-2">Payment received through Cashfree. Your GroveryGiftz order ID is</p>
             <p className="break-words text-2xl font-extrabold text-primary-600">{orderResult.orderNumber}</p>
             <ConfirmationEmailNotice orderResult={orderResult} />
-            <p className="text-sm text-gray-500 mt-4">Estimated delivery: <span className="font-semibold text-gray-900">{orderResult.deliveryEstimate}</span></p>
+            {(orderResult.expectedReadyDate || orderResult.estimatedDeliveryDate) ? (
+              <div className="mx-auto mt-4 grid w-full max-w-xl gap-2 sm:grid-cols-2">
+                {orderResult.expectedReadyDate ? (
+                  <div className="rounded-xl border border-primary-100 bg-primary-50/80 px-3 py-3 text-left">
+                    <p className="text-xs font-semibold text-primary-700">Expected Ready Date</p>
+                    <p className="mt-1 break-words text-sm font-bold text-gray-900">{orderResult.expectedReadyDate}</p>
+                  </div>
+                ) : null}
+                {orderResult.estimatedDeliveryDate ? (
+                  <div className="rounded-xl border border-orange-100 bg-orange-50/80 px-3 py-3 text-left">
+                    <p className="text-xs font-semibold text-orange-800">Estimated Delivery Date</p>
+                    <p className="mt-1 break-words text-sm font-bold text-gray-900">{orderResult.estimatedDeliveryDate}</p>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <p className="mt-4 break-words text-sm text-gray-500">Estimated delivery: <span className="font-semibold text-gray-900">{orderResult.deliveryEstimate}</span></p>
+            )}
             <p className="mt-3 inline-flex rounded-full bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800">Kindly take screenshot for your reference</p>
           </div>
 
@@ -450,7 +469,7 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
                   <div className="sm:col-span-2"><label className="block text-sm font-medium mb-1.5">State *</label><select value={address.state} onChange={e => setAddress(p => ({ ...p, state: e.target.value }))} className="w-full border rounded-xl px-4 py-2.5 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 text-sm bg-white"><option value="">Select state</option>{INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
                 </div>
                 {hasSelectedState && (
-                  <div className={`rounded-xl border px-4 py-3 text-sm ${outOfTamilNadu ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-green-200 bg-green-50 text-green-700'}`}>
+                  <div className={`break-words rounded-xl border px-4 py-3 text-sm ${outOfTamilNadu ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-green-200 bg-green-50 text-green-700'}`}>
                     {outOfTamilNadu ? `Outside Tamil Nadu: delivery charge ${formatPrice(shippingCost)} applies. Estimated delivery ${deliveryEstimate}.` : `Tamil Nadu delivery is free. Estimated delivery ${deliveryEstimate}.`}
                   </div>
                 )}
@@ -506,7 +525,7 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
               <div className="border-t border-dashed" />
               <div className="flex justify-between font-bold text-base"><span>Total Amount</span><span className="text-primary-600 text-lg">{formatPrice(grandTotal)}</span></div>
             </div>
-            <div className="px-5 pb-5"><div className="bg-primary-50/70 rounded-xl p-3 flex items-center gap-2 text-sm text-gray-600"><FiTruck size={16} className="text-primary-600 flex-shrink-0" /><span>Estimated delivery: <span className="font-semibold text-gray-800">{deliveryEstimate}</span></span></div></div>
+            <div className="px-5 pb-5"><div className="flex items-start gap-2 rounded-xl bg-primary-50/70 p-3 text-sm text-gray-600"><FiTruck size={16} className="mt-0.5 flex-shrink-0 text-primary-600" /><span className="min-w-0 break-words">Estimated delivery: <span className="font-semibold text-gray-800">{deliveryEstimate}</span></span></div></div>
           </div>
         </div>
       </div>

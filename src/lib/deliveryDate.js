@@ -1,3 +1,12 @@
+import {
+  addWorkingDaysFromOrderDate,
+  formatLongIstDate,
+  isNonWorkingYmd,
+  istYmd,
+  parseMaxWorkingDays,
+  parseYmd,
+} from '@/lib/businessCalendar';
+
 const DELIVERY_TIME_ZONE = 'Asia/Kolkata';
 
 const getDateParts = (date) => {
@@ -39,37 +48,53 @@ export function normalizeDeliveryHolidays(holidays = []) {
     .filter(Boolean));
 }
 
+function ymdToIstNoonDate(ymd) {
+  const parsed = parseYmd(ymd);
+  if (!parsed) return new Date(NaN);
+  return new Date(Date.UTC(parsed.year, parsed.month - 1, parsed.day, 6, 30));
+}
+
 export function addWorkingDays(startDate, days, holidays = []) {
   const totalDays = Math.max(0, Number(days || 0));
-  const date = new Date(startDate || Date.now());
-  const holidayDates = normalizeDeliveryHolidays(holidays);
-  let added = 0;
-  while (added < totalDays) {
-    date.setDate(date.getDate() + 1);
-    const isSunday = new Intl.DateTimeFormat('en-US', { timeZone: DELIVERY_TIME_ZONE, weekday: 'short' }).format(date) === 'Sun';
-    const isHoliday = holidayDates.has(toDeliveryDateKey(date));
-    if (!isSunday && !isHoliday) added += 1;
-  }
-  return date;
+  const orderDateIst = istYmd(startDate || new Date());
+  if (!orderDateIst) return new Date(startDate || Date.now());
+  if (totalDays < 1) return ymdToIstNoonDate(orderDateIst);
+  const ymd = addWorkingDaysFromOrderDate(orderDateIst, totalDays, holidays);
+  return ymdToIstNoonDate(ymd);
 }
 
 export const addDaysSkippingSundays = addWorkingDays;
 
 export function extractMaxDays(text, fallbackDays = 8) {
+  const parsed = parseMaxWorkingDays(text);
+  if (parsed) return parsed;
   const matches = String(text || '').match(/\d+/g);
   if (!matches?.length) return fallbackDays;
   return Math.max(...matches.map(Number));
 }
 
 export function formatDeliveryDate(date) {
-  return new Intl.DateTimeFormat('en-IN', { timeZone: DELIVERY_TIME_ZONE, weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).format(date);
+  const ymd = date instanceof Date ? istYmd(date) : String(date || '');
+  return formatLongIstDate(ymd) || new Intl.DateTimeFormat('en-IN', {
+    timeZone: DELIVERY_TIME_ZONE,
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(date);
 }
 
 export function buildDeliveryEstimateText(baseEstimate, options = {}) {
-  const fallbackDays = Number(options.fallbackDays || 8);
-  const days = extractMaxDays(baseEstimate, fallbackDays);
+  const label = String(baseEstimate || '').trim();
+  const maxDays = parseMaxWorkingDays(label);
+  if (!maxDays) return label || 'Delivery estimate unavailable';
   const holidays = options.holidays || options.deliveryHolidays || [];
-  const date = addWorkingDays(options.startDate || Date.now(), days, holidays);
-  const label = String(baseEstimate || '').trim() || (days + ' days');
-  return label + ' - expected by ' + formatDeliveryDate(date) + ' (Sundays and government/public holidays skipped)';
+  const start = options.startDate || Date.now();
+  const orderDateIst = istYmd(start);
+  if (!orderDateIst) return label;
+  const workingDays = maxDays + (isNonWorkingYmd(orderDateIst, holidays) ? 1 : 0);
+  const ymd = addWorkingDaysFromOrderDate(orderDateIst, workingDays, holidays);
+  const expected = formatLongIstDate(ymd);
+  if (!expected) return label;
+  return `${label} - expected by ${expected} (Sundays and government/public holidays skipped)`;
 }

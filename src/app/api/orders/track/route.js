@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import Order from '@/models/Order';
 import Settings from '@/models/Settings';
-import { getOrderDeliveryEstimate } from '@/lib/orderDeliveryEstimate';
+import { getConfirmedScheduleDates, getOrderDeliveryEstimate } from '@/lib/orderDeliveryEstimate';
 
 export async function GET(req) {
   const { searchParams } = new URL(req?.url || 'http://localhost', 'http://localhost');
@@ -25,12 +25,15 @@ export async function GET(req) {
   }
 
   const settings = await Settings.findOne().select('deliveryHolidays').lean();
+  const dates = getConfirmedScheduleDates(order);
 
   return NextResponse.json({
     orderNumber: order.orderNumber,
     status: order.status,
     trackingNumber: order.trackingNumber || null,
     deliveryEstimate: getOrderDeliveryEstimate(order, settings?.deliveryHolidays || []) || order.deliveryEstimate || null,
+    expectedReadyDate: dates?.expectedReadyDate || null,
+    estimatedDeliveryDate: dates?.estimatedDeliveryDate || null,
     createdAt: order.createdAt,
   });
 }

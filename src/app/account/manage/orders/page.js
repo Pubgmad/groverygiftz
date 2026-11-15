@@ -769,7 +769,9 @@ export default function AdminOrdersPage() {
                         </td>
                         <td className="p-4 text-xs cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>{order.assignedToName || '—'}</td>
                         <td className="p-4 text-xs cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>
-                          {order.expectedDispatchDate ? formatDate(order.expectedDispatchDate) : '—'}
+                          {order.confirmationSchedule?.expectedReadyDateIst
+                            ? formatLongIstDate(order.confirmationSchedule.expectedReadyDateIst)
+                            : (order.expectedDispatchDate ? formatDate(order.expectedDispatchDate) : '—')}
                           {isDelayedOrder(order) ? <span className="mt-1 block font-semibold text-red-600">Delayed</span> : null}
                         </td>
                         <td className="p-4 cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}><span className={`px-2 py-1 rounded-full text-xs font-semibold ${paymentStatusColors[order.paymentStatus] || paymentStatusColors.pending}`}>{order.paymentMethod || 'Cashfree'} {order.paymentStatus}</span></td>
@@ -836,9 +838,13 @@ export default function AdminOrdersPage() {
                 ) : null}
                 <div><span className="text-gray-500">Order date:</span> {formatDate(selected.paidAt || selected.createdAt)}</div>
                 {selected.confirmationSchedule?.expectedReadyDateIst ? (
-                  <div><span className="text-gray-500">Expected ready:</span> <span className="font-medium">{formatLongIstDate(selected.confirmationSchedule.expectedReadyDateIst)}</span></div>
+                  <div className="break-words"><span className="text-gray-500">Expected Ready Date:</span> <span className="font-medium">{formatLongIstDate(selected.confirmationSchedule.expectedReadyDateIst)}</span></div>
                 ) : null}
-                <div className="break-words"><span className="text-gray-500">Estimated delivery:</span> <span className="font-medium">{getOrderDeliveryEstimate(selected, deliveryHolidays) || '-'}</span></div>
+                {selected.confirmationSchedule?.estimatedDeliveryDateIst ? (
+                  <div className="break-words"><span className="text-gray-500">Estimated Delivery Date:</span> <span className="font-medium">{formatLongIstDate(selected.confirmationSchedule.estimatedDeliveryDateIst)}</span></div>
+                ) : (
+                  <div className="break-words"><span className="text-gray-500">Estimated delivery:</span> <span className="font-medium">{getOrderDeliveryEstimate(selected, deliveryHolidays) || '-'}</span></div>
+                )}
                 {selected.notes && <div className="min-w-0 rounded-lg border bg-yellow-50 p-3 break-words"><span className="text-gray-500">Customer note:</span> <p className="font-medium text-gray-900 whitespace-pre-wrap">{selected.notes}</p></div>}
                 <div>
                   <span className="text-gray-500">Status:</span>

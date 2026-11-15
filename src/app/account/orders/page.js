@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { FiArrowLeft, FiBox, FiCheck, FiShoppingBag, FiTruck } from 'react-icons/fi';
 import CourierTrackingIdDisplay from '@/components/orders/CourierTrackingIdDisplay';
 import { formatPrice } from '@/lib/utils';
+import { formatLongIstDate } from '@/lib/businessCalendar';
 
 const normalizeStatus = (status) => {
   if (status === 'processing') return 'on_process';
@@ -206,6 +207,18 @@ function OrdersContent() {
                         ) : (
                           <p className="text-gray-500">No address available for this order.</p>
                         )}
+                        {(order.confirmationSchedule?.expectedReadyDateIst || order.confirmationSchedule?.estimatedDeliveryDateIst || order.expectedReadyDate || order.estimatedDeliveryDate || order.deliveryEstimate) ? (
+                          <div className="mt-3 space-y-1 break-words border-t border-gray-200 pt-3 text-gray-700">
+                            {(order.expectedReadyDate || order.confirmationSchedule?.expectedReadyDateIst) ? (
+                              <p><span className="text-gray-500">Expected Ready Date:</span> <span className="font-semibold text-gray-900">{order.expectedReadyDate || formatLongIstDate(order.confirmationSchedule.expectedReadyDateIst)}</span></p>
+                            ) : null}
+                            {(order.estimatedDeliveryDate || order.confirmationSchedule?.estimatedDeliveryDateIst) ? (
+                              <p><span className="text-gray-500">Estimated Delivery Date:</span> <span className="font-semibold text-gray-900">{order.estimatedDeliveryDate || formatLongIstDate(order.confirmationSchedule.estimatedDeliveryDateIst)}</span></p>
+                            ) : (
+                              <p><span className="text-gray-500">Estimated delivery:</span> <span className="font-semibold text-gray-900">{order.deliveryEstimate}</span></p>
+                            )}
+                          </div>
+                        ) : null}
                       </div>
                       <OrderTimeline order={order} />
                     </div>

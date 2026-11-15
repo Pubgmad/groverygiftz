@@ -352,7 +352,7 @@ test('CAPI retains hashed matching, verified purchase time and checkout source',
   assert.equal(event.test_event_code, 'TEST-ONLY');
 });
 test('cashfree verification response exposes tracking only after confirmed payment', () => {
-  const c = load('', { getDisplayDeliveryEstimate: () => '8 working days' });
+  const c = load('', { getDisplayDeliveryEstimate: () => '8 working days', getConfirmedScheduleDates: () => null });
   const text = read('src/lib/cashfreeOrderFinalization.js');
   const start = text.indexOf('const responseForOrder =');
   const end = text.indexOf('export async function finalizeCashfreeOrder', start);
@@ -384,6 +384,7 @@ function paymentFixture(providerStatus, providerOverrides = {}) {
     deductOrderInventory: async () => { deductions += 1; },
     sendMetaPurchaseEvent: async () => { conversions += 1; },
     getOrderDeliveryEstimate: () => '8 working days',
+    getConfirmedScheduleDates: () => null,
   });
   return { context, doc, counts: () => ({ deductions, conversions, numbers }) };
 }

@@ -5,14 +5,15 @@ const vm = require('node:vm');
 const { execFileSync } = require('node:child_process');
 const read = (file) => fs.readFileSync(file, 'utf8');
 const plain = (value) => JSON.parse(JSON.stringify(value));
-const strip = (text) => text.replace(/^import .*;\r?\n/gm, '').replace(/export /g, '');
+const strip = (text) => text.replace(/^import[\s\S]*?from ['"][^'"]+['"];\r?\n/gm, '').replace(/export /g, '');
 const source = (file) => strip(read(file));
+const calendar = source('src/lib/businessCalendar.js');
 const dates = source('src/lib/deliveryDate.js');
 const central = source('src/lib/centralDeliveryEstimates.js');
 const settings = { tamilNaduDeliveryEstimate: '3-4 working days', otherStateDeliveryEstimate: '5-7 days', tamilNaduShippingCost: 0, otherStateShippingCost: 120, deliveryHolidays: [] };
 function load(text = '', globals = {}) {
-  const c = vm.createContext({ console, URL, ...globals });
-  vm.runInContext(dates + '\n' + central + '\n' + text, c);
+  const c = vm.createContext({ console, URL, Intl, Date, ...globals });
+  vm.runInContext(calendar + '\n' + dates + '\n' + central + '\n' + text, c);
   return c;
 }
 
@@ -74,7 +75,7 @@ test('existing and future template reads, edits and variants use the latest sing
 test('central estimates still skip Sundays and configured holidays in the actual expected-date calculation', () => {
   const c = load();
   const value = c.buildCurrentDeliveryEstimate({ ...settings, tamilNaduDeliveryEstimate: '8 working days', deliveryHolidays: ['2026-08-26'] }, 'Tamil Nadu', { startDate: new Date('2026-08-23T12:00:00+05:30') });
-  assert.match(value, /2 Sept|2 Sep/);
+  assert.match(value, /September 3, 2026/);
 });
 
 function baseline(file) { return strip(execFileSync('git', ['show', `HEAD:${file}`], { encoding: 'utf8' })); }
@@ -115,7 +116,18 @@ test('placed orders retain their stored dated promise despite new central values
   const order = { paidAt: '2026-08-23T12:00:00+05:30', shippingAddress: { state: 'Tamil Nadu' }, deliveryEstimate: 'Within 8 working days - expected by Wed, 2 Sept, 2026 (Sundays and government/public holidays skipped)' };
   assert.equal(c.getOrderDeliveryEstimate(order, ['2026-09-02']), order.deliveryEstimate);
   const legacy = c.getOrderDeliveryEstimate({ ...order, deliveryEstimate: '8 working days' }, ['2026-08-26']);
-  assert.match(legacy, /^8 working days - expected by/);
+  assert.equal(legacy, '8 working days');
+  const snapshot = c.getOrderDeliveryEstimate({
+    ...order,
+    deliveryEstimate: 'stale stored estimate',
+    confirmationSchedule: {
+      expectedReadyDateIst: '2026-11-20',
+      estimatedDeliveryDateIst: '2026-11-23',
+      shippingEstimateLabel: '12-15 working days',
+    },
+  }, ['2026-11-19']);
+  assert.match(snapshot, /November 23, 2026/);
+  assert.match(snapshot, /12-15 working days/);
 });
 
 function apiFixture({ admin = true, fail = false } = {}) {
