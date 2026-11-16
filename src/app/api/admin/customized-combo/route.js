@@ -1,44 +1,50 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
+import mongoose from 'mongoose';
 import dbConnect from '@/lib/db';
 import Product from '@/models/Product';
+import Settings from '@/models/Settings';
 import { requireAdminPermission } from '@/lib/adminAccess';
 import {
   COMBO_SOURCE_PRODUCT_TITLE_RX,
-  ensureThirteenByTwenty,
   extractSizeOptionsFromProduct,
 } from '@/lib/customizedCombo';
 
 /**
- * GET: sizes for WhatsApp Customized Combo from the existing Website product variants.
- * Ensures missing 13×20 is present (backward-compatible add).
+ * GET: Customized Combo source product + all configured variants/sizes.
+ * Does not mutate products. Prefer Settings.whatsappComboProductId when set.
  */
 export async function GET() {
   const { error } = await requireAdminPermission('orders', 'read');
   if (error) return error;
   await dbConnect();
 
-  const product = await Product.findOne({
-    title: COMBO_SOURCE_PRODUCT_TITLE_RX,
-    isActive: { $ne: false },
-  });
+  const settings = await Settings.findOne().select('whatsappComboProductId').lean();
+  let product = null;
+  const configuredId = String(settings?.whatsappComboProductId || '').trim();
+  if (configuredId && mongoose.Types.ObjectId.isValid(configuredId)) {
+    product = await Product.findOne({
+      _id: configuredId,
+      isActive: { $ne: false },
+    });
+  }
+  if (!product) {
+    product = await Product.findOne({
+      title: COMBO_SOURCE_PRODUCT_TITLE_RX,
+      isActive: { $ne: false },
+    });
+  }
 
   if (!product) {
     return NextResponse.json({
-      error: 'Source product not found: Personalized Single Photo Frame, Premium Frame with Matte Finish',
+      error: 'Customized Combo source product is not configured. Set Settings.whatsappComboProductId or ensure the combo frame product exists.',
       product: null,
       sizes: [],
+      options: [],
     }, { status: 404 });
   }
 
-  const added = ensureThirteenByTwenty(product);
-  if (added) {
-    product.markModified('variants');
-    await product.save();
-  }
-
   const { variantName, options } = extractSizeOptionsFromProduct(product);
-  // Prefer natural size sort (e.g. 4x4 … 36x24) while keeping original labels
   const sizes = options
     .map((o) => o.label)
     .sort((a, b) => {
@@ -61,10 +67,15 @@ export async function GET() {
       customizationPreview: product.customizationPreview || null,
       customFields: product.customFields || [],
       variants: product.variants || [],
+      collageEnabled: product.collageEnabled || false,
+      collageTemplates: product.collageTemplates || [],
     },
     variantName,
     sizes,
-    options,
-    addedThirteenByTwenty: added,
+    options: options.map((o) => ({
+      ...o,
+      value: `${o.variantName || variantName}: ${o.label}`,
+    })),
+    source: configuredId && String(product._id) === configuredId ? 'settings' : 'title_fallback',
   });
 }

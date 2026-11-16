@@ -5,35 +5,13 @@ import toast from 'react-hot-toast';
 import { FiX } from 'react-icons/fi';
 import { parseWhatsAppCustomerDetails, validateParsedCustomer } from '@/lib/whatsappCustomerParse';
 import { fromDatetimeLocalIst, toDatetimeLocalIst } from '@/lib/istTime';
-import { buildComboPhotoSlots } from '@/lib/customizedCombo';
 import { expectedDeliveryFromDispatchYmd } from '@/lib/whatsappOrderDates';
-import { sanitizeDecimalInput, sanitizeIntegerInput } from '@/lib/sanitizeNumericInput';
+import { sanitizeDecimalInput } from '@/lib/sanitizeNumericInput';
+import { resolveProductCustomizationPlan } from '@/lib/websiteProductPhotoConfig';
 import {
-  buildWebsitePhotoSlotsForQuantity,
-  isProductPreviewEnabled,
-  listWebsiteVariantOptions,
-  mergeSlotsPreserveUploads,
-} from '@/lib/websiteProductPhotoConfig';
-import AdminWebsitePhotoSlot from '@/components/admin/AdminWebsitePhotoSlot';
-
-const emptyItem = () => ({
-  productId: '',
-  variant: '',
-  variantId: '',
-  quantity: '1',
-  instructions: '',
-  photos: [],
-  customFieldValues: {},
-  photoSlots: [],
-});
-
-function buildCatalogPhotoSlotsForItem(product, quantity, variantValue = '') {
-  return buildWebsitePhotoSlotsForQuantity(product, quantity, variantValue);
-}
-
-function listVariantOptions(product) {
-  return listWebsiteVariantOptions(product);
-}
+  CatalogProductSection,
+  ComboProductSection,
+} from '@/components/admin/WhatsAppOrderProductSection';
 
 const emptyCustomer = {
   customerName: '',
@@ -65,12 +43,16 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
   const [showParsedEditor, setShowParsedEditor] = useState(false);
   const [customerDetailsReviewed, setCustomerDetailsReviewed] = useState(false);
   const [customerSource, setCustomerSource] = useState('');
-  const [productMode, setProductMode] = useState('customized_combo');
+  const [productMode, setProductMode] = useState('catalog');
   const [comboProduct, setComboProduct] = useState(null);
-  const [comboSizes, setComboSizes] = useState([]);
+  const [comboOptions, setComboOptions] = useState([]);
+  const [comboError, setComboError] = useState('');
   const [comboSelections, setComboSelections] = useState([]);
-  const [comboPhotoSlots, setComboPhotoSlots] = useState([]);
-  const [customSizeDraft, setCustomSizeDraft] = useState('');
+  const [catalogProductId, setCatalogProductId] = useState('');
+  const [catalogCustomFields, setCatalogCustomFields] = useState({});
+  const [catalogDefaultSlots, setCatalogDefaultSlots] = useState([]);
+  const [catalogExcludedDefaults, setCatalogExcludedDefaults] = useState([]);
+  const [catalogAdditionalVariants, setCatalogAdditionalVariants] = useState([]);
   const [paymentScreenshot, setPaymentScreenshot] = useState(null);
   const [form, setForm] = useState({
     orderSource: 'whatsapp',
@@ -89,7 +71,6 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
     expectedDispatchDate: '',
     assignedTo: '',
     internalNotes: '',
-    items: [emptyItem()],
   });
 
   useEffect(() => {
@@ -141,47 +122,21 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
       .then((d) => {
         if (cancelled) return;
         if (d.product) setComboProduct(d.product);
-        setComboSizes(Array.isArray(d.sizes) ? d.sizes : []);
+        else setComboProduct(null);
+        setComboOptions(Array.isArray(d.options) && d.options.length
+          ? d.options
+          : (d.sizes || []).map((label) => ({ label, value: `Size: ${label}` })));
+        setComboError(d.error || '');
         if (d.error) toast.error(d.error);
       })
-      .catch(() => { if (!cancelled) toast.error('Unable to load Customized Combo sizes'); });
+      .catch(() => {
+        if (!cancelled) {
+          setComboError('Unable to load Customized Combo');
+          toast.error('Unable to load Customized Combo');
+        }
+      });
     return () => { cancelled = true; };
   }, [open]);
-
-  // Auto-build combo photo slots whenever variants/qty change (no Done button).
-  useEffect(() => {
-    if (productMode !== 'customized_combo') return;
-    const valid = comboSelections.filter((row) => row.size && Number(row.quantity) > 0);
-    if (!valid.length) {
-      setComboPhotoSlots([]);
-      return;
-    }
-    const preview = comboProduct?.customizationPreview || {};
-    const frameImage = preview.frameImage || '';
-    const instructions = preview.instructions || preview.shortGuidance || '';
-    const areaWidth = Number(preview.width) || Number(preview.areas?.[0]?.width) || 8;
-    const areaHeight = Number(preview.height) || Number(preview.areas?.[0]?.height) || 10;
-    const areaUnit = preview.unit || preview.areas?.[0]?.unit || 'inch';
-    const next = buildComboPhotoSlots(valid).map((slot) => {
-      const area = {
-        label: slot.label,
-        width: areaWidth,
-        height: areaHeight,
-        unit: areaUnit,
-        frameImage,
-        instructions,
-      };
-      return {
-        ...slot,
-        frameImage,
-        instructions,
-        required: true,
-        allowPreview: isProductPreviewEnabled(comboProduct),
-        area,
-      };
-    });
-    setComboPhotoSlots((prev) => mergeSlotsPreserveUploads(next, prev));
-  }, [comboSelections, comboProduct, productMode]);
 
   const orderTotalPreview = useMemo(() => {
     const combo = Number(String(form.manualComboPrice ?? '').trim());
@@ -211,8 +166,6 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
     if (customerFieldKeys.has(key)) setCustomerDetailsReviewed(false);
     setForm((prev) => ({ ...prev, [key]: value }));
   };
-
-  const selectedProduct = (id) => products.find((p) => String(p._id) === String(id));
 
   const applyAddress = (addr) => {
     if (!addr) return;
@@ -344,60 +297,51 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
     }
   };
 
-  const uploadComboSlotPhotos = async (orderId, slots) => {
-    const sizeOrder = [];
-    slots.forEach((slot) => {
-      if (!sizeOrder.includes(slot.size)) sizeOrder.push(slot.size);
-    });
-    for (const slot of slots) {
-      const printFile = slot.photo?.file || slot.file;
-      if (!printFile) continue;
-      const itemIndex = sizeOrder.indexOf(slot.size);
-      const body = new FormData();
-      body.append('file', printFile);
-      body.append('itemIndex', String(Math.max(0, itemIndex)));
-      body.append('mode', 'append');
-      body.append('slotLabel', slot.label || `${slot.size} — Photo ${slot.frameIndex}`);
-      body.append('slotKey', slot.slotKey || `combo-${slot.size}-${slot.frameIndex}`);
-      body.append('reason', `Customized Combo ${slot.size} frame ${slot.frameIndex}`);
-      const res = await fetch(`/api/admin/orders/${orderId}/photos`, { method: 'POST', body });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || `Photo upload failed for ${slot.label}`);
-
-      const refFile = slot.reference?.file;
-      if (refFile) {
-        const refBody = new FormData();
-        refBody.append('file', refFile);
-        refBody.append('itemIndex', String(Math.max(0, itemIndex)));
-        refBody.append('mode', 'append');
-        refBody.append('slotLabel', `Reference — ${slot.label || slot.size}`);
-        refBody.append('slotKey', `${slot.slotKey || 'combo'}-reference`);
-        refBody.append('reason', `Reference image for ${slot.size} frame ${slot.frameIndex}`);
-        const refRes = await fetch(`/api/admin/orders/${orderId}/photos`, { method: 'POST', body: refBody });
-        const refData = await refRes.json().catch(() => ({}));
-        if (!refRes.ok) throw new Error(refData.error || `Reference upload failed for ${slot.label}`);
-      }
+  const buildCatalogLineItems = () => {
+    if (!catalogProductId) return [];
+    const product = products.find((p) => String(p._id) === String(catalogProductId));
+    const plan = resolveProductCustomizationPlan(product);
+    const items = [];
+    const activeDefaults = catalogDefaultSlots.filter((slot) => !catalogExcludedDefaults.includes(slot.slotKey));
+    if (activeDefaults.length || Object.keys(catalogCustomFields || {}).length) {
+      items.push({
+        productId: catalogProductId,
+        variant: plan.defaultVariantValue || '',
+        quantity: 1,
+        instructions: '',
+        customFieldValues: catalogCustomFields,
+        photoSlots: activeDefaults,
+        excludedCustomizationSlots: catalogExcludedDefaults,
+      });
     }
+    catalogAdditionalVariants.forEach((row) => {
+      if (!row.variant || !(Number(row.quantity) > 0)) return;
+      const activeSlots = (row.photoSlots || []).filter((slot) => !(row.excludedSlotKeys || []).includes(slot.slotKey));
+      items.push({
+        productId: catalogProductId,
+        variant: row.variant,
+        variantId: row.variantId || '',
+        quantity: Number(row.quantity) || 1,
+        instructions: '',
+        photoSlots: activeSlots,
+        excludedCustomizationSlots: row.excludedSlotKeys || [],
+      });
+    });
+    return items;
   };
 
-  const updateCatalogItem = (index, patch) => {
-    setForm((prev) => {
-      const items = [...prev.items];
-      const current = { ...items[index], ...patch };
-      const product = products.find((p) => String(p._id) === String(current.productId));
-      if (
-        Object.prototype.hasOwnProperty.call(patch, 'productId')
-        || Object.prototype.hasOwnProperty.call(patch, 'quantity')
-        || Object.prototype.hasOwnProperty.call(patch, 'variant')
-      ) {
-        const nextSlots = buildCatalogPhotoSlotsForItem(product, current.quantity, current.variant || '');
-        current.photoSlots = mergeSlotsPreserveUploads(nextSlots, items[index].photoSlots || []);
-        current.photos = (current.photoSlots || []).map((s) => s.photo?.file).filter(Boolean);
-      }
-      items[index] = current;
-      return { ...prev, items };
-    });
-  };
+  const buildComboLineItemsForSubmit = () => comboSelections
+    .filter((row) => (row.size || row.variantValue) && Number(row.quantity) > 0)
+    .map((row) => ({
+      productId: comboProduct._id,
+      variant: row.variantValue || `Size: ${row.size}`,
+      variantId: row.variantId || '',
+      quantity: Number(row.quantity) || 1,
+      instructions: '',
+      photoSlots: row.photoSlots || [],
+      isCustomizedCombo: true,
+      comboSize: row.size || '',
+    }));
 
   const submit = async (e) => {
     e.preventDefault();
@@ -460,38 +404,31 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
         return;
       }
     }
-    let lineItems = form.items;
+    let lineItems = [];
     if (productMode === 'customized_combo') {
       if (!comboProduct?._id) {
         toast.error('Customized Combo source product is not available');
         return;
       }
-      if (!comboSelections.some((row) => row.size && Number(row.quantity) > 0)) {
+      if (!comboSelections.some((row) => (row.size || row.variantValue) && Number(row.quantity) > 0)) {
         toast.error('Add at least one Customized Combo variant and quantity');
         return;
       }
-      if (!comboPhotoSlots.length) {
-        toast.error('Photo slots could not be generated for the selected variants');
+      lineItems = buildComboLineItemsForSubmit();
+    } else {
+      if (!catalogProductId) {
+        toast.error('Select a product');
         return;
       }
-      lineItems = comboSelections
-        .filter((row) => row.size && Number(row.quantity) > 0)
-        .map((row) => ({
-          productId: comboProduct._id,
-          variant: `Size: ${row.size}`,
-          quantity: Number(row.quantity) || 1,
-          instructions: '',
-          photos: comboPhotoSlots
-            .filter((slot) => slot.size === row.size && (slot.photo?.file || slot.file))
-            .map((slot) => slot.photo?.file || slot.file),
-          comboSlots: comboPhotoSlots.filter((slot) => slot.size === row.size),
-        }));
-    } else if (!form.items.some((item) => item.productId)) {
-      toast.error('Select at least one product and add a variant');
-      return;
-    } else if (!form.items.some((item) => item.productId && (item.variant || listVariantOptions(selectedProduct(item.productId)).length === 0))) {
-      toast.error('Choose a variant for each selected product');
-      return;
+      lineItems = buildCatalogLineItems();
+      if (!lineItems.length) {
+        toast.error('Add default customizations or at least one additional variant');
+        return;
+      }
+      if (catalogAdditionalVariants.some((row) => row.variant === '' && Number(row.quantity) > 0)) {
+        toast.error('Choose a variant for each additional variant row');
+        return;
+      }
     }
 
     let paymentDateIso;
@@ -553,7 +490,8 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
           quantity: Number(item.quantity) || 1,
           customizationInstructions: item.instructions,
           customFields: item.customFieldValues || undefined,
-          isCustomizedCombo: productMode === 'customized_combo',
+          isCustomizedCombo: productMode === 'customized_combo' || item.isCustomizedCombo,
+          excludedCustomizationSlots: item.excludedCustomizationSlots || undefined,
         })),
       };
       const createBody = new FormData();
@@ -571,11 +509,8 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
       let photoError = '';
       if (data.order?._id) {
         try {
-          if (productMode === 'customized_combo') {
-            await uploadComboSlotPhotos(data.order._id, comboPhotoSlots);
-          } else if (lineItems.some((item) => (
-            (item.photos || []).length > 0
-            || (item.photoSlots || []).some((s) => s?.photo?.file || s?.reference?.file)
+          if (lineItems.some((item) => (
+            (item.photoSlots || []).some((s) => s?.photo?.file || s?.reference?.file)
           ))) {
             await uploadItemPhotos(data.order._id, lineItems);
           }
@@ -614,12 +549,14 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
         expectedDispatchDate: '',
         assignedTo: '',
         internalNotes: '',
-        items: [emptyItem()],
       }));
       setPaymentScreenshot(null);
       setComboSelections([]);
-      setComboPhotoSlots([]);
-      setCustomSizeDraft('');
+      setCatalogProductId('');
+      setCatalogCustomFields({});
+      setCatalogDefaultSlots([]);
+      setCatalogExcludedDefaults([]);
+      setCatalogAdditionalVariants([]);
     } catch (err) {
       toast.error(err.message || 'Create failed');
     } finally {
@@ -854,17 +791,10 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
             </label>
           </div>
 
-          <div className="space-y-3 rounded-xl border bg-gray-50 p-3">
+                    <div className="space-y-3 rounded-xl border bg-gray-50 p-3">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <h3 className="font-bold text-gray-900">Products / Customized Combo</h3>
               <div className="flex flex-wrap gap-2 text-xs font-semibold">
-                <button
-                  type="button"
-                  className={`min-h-[40px] rounded-lg px-3 py-1.5 ${productMode === 'customized_combo' ? 'bg-emerald-700 text-white' : 'border bg-white'}`}
-                  onClick={() => setProductMode('customized_combo')}
-                >
-                  Customized Combo
-                </button>
                 <button
                   type="button"
                   className={`min-h-[40px] rounded-lg px-3 py-1.5 ${productMode === 'catalog' ? 'bg-emerald-700 text-white' : 'border bg-white'}`}
@@ -872,334 +802,42 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
                 >
                   Select Product
                 </button>
+                <button
+                  type="button"
+                  className={`min-h-[40px] rounded-lg px-3 py-1.5 ${productMode === 'customized_combo' ? 'bg-emerald-700 text-white' : 'border bg-white'}`}
+                  onClick={() => setProductMode('customized_combo')}
+                >
+                  Customized Combo
+                </button>
               </div>
             </div>
 
-            {productMode === 'customized_combo' ? (
-              <div className="space-y-3">
-                <p className="text-[11px] text-gray-600">
-                  Variants from configured Website product:{' '}
-                  <strong>{comboProduct?.title || 'Loading…'}</strong>
-                  . Upload slots appear automatically when you add a variant and quantity.
-                </p>
-                {comboSelections.map((row, index) => (
-                  <div key={`combo-${index}`} className="grid gap-2 rounded-xl border bg-white p-3 sm:grid-cols-3">
-                    <label className={`${labelClass} sm:col-span-2`}>Variant / size
-                      {row.isCustom ? (
-                        <input
-                          value={row.size}
-                          onChange={(e) => {
-                            const size = e.target.value;
-                            setComboSelections((prev) => prev.map((r, i) => (i === index ? { ...r, size } : r)));
-                          }}
-                          placeholder="e.g. 12x10"
-                          className={fieldClass}
-                        />
-                      ) : (
-                        <select
-                          value={row.size}
-                          onChange={(e) => {
-                            const size = e.target.value;
-                            setComboSelections((prev) => prev.map((r, i) => (i === index ? { ...r, size } : r)));
-                          }}
-                          className={fieldClass}
-                        >
-                          <option value="">Select variant</option>
-                          {comboSizes.map((s) => (
-                            <option key={s} value={s}>{s}</option>
-                          ))}
-                        </select>
-                      )}
-                      {row.isCustom ? (
-                        <span className="mt-1 block text-[10px] font-normal text-amber-800">
-                          Order-specific size — not saved to website product
-                        </span>
-                      ) : null}
-                    </label>
-                    <label className={labelClass}>Qty
-                      <input
-                        inputMode="numeric"
-                        value={row.quantity}
-                        onChange={(e) => {
-                          const quantity = sanitizeIntegerInput(e.target.value);
-                          setComboSelections((prev) => prev.map((r, i) => (i === index ? { ...r, quantity } : r)));
-                        }}
-                        className={fieldClass}
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      className="min-h-[40px] sm:col-span-3 text-left text-sm font-semibold text-red-700"
-                      onClick={() => setComboSelections((prev) => prev.filter((_, i) => i !== index))}
-                    >
-                      Remove variant
-                    </button>
-                  </div>
-                ))}
-                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
-                  <button
-                    type="button"
-                    className="min-h-[44px] rounded-xl border border-emerald-300 bg-white px-4 py-2 text-sm font-bold text-emerald-800"
-                    onClick={() => setComboSelections((prev) => [...prev, { size: '', quantity: '1', isCustom: false }])}
-                  >
-                    + Add Variant
-                  </button>
-                  <label className="text-xs font-semibold text-gray-700">
-                    Additional size (order only)
-                    <span className="mt-1 flex flex-col gap-2 sm:flex-row">
-                      <input
-                        value={customSizeDraft}
-                        onChange={(e) => setCustomSizeDraft(e.target.value)}
-                        placeholder="12x10"
-                        className="min-h-[44px] rounded-xl border px-3 py-2 text-sm font-normal"
-                      />
-                      <button
-                        type="button"
-                        className="min-h-[44px] rounded-xl border bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900"
-                        onClick={() => {
-                          const size = String(customSizeDraft || '').trim();
-                          if (!size) {
-                            toast.error('Enter a custom size label');
-                            return;
-                          }
-                          setComboSelections((prev) => [...prev, { size, quantity: '1', isCustom: true }]);
-                          setCustomSizeDraft('');
-                        }}
-                      >
-                        Add custom
-                      </button>
-                    </span>
-                  </label>
-                </div>
-                {comboPhotoSlots.length > 0 ? (
-                  <div className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/30 p-3">
-                    <p className="text-xs font-bold text-gray-800">
-                      Customer photos ({comboPhotoSlots.length} frames) — website upload &amp; preview editor
-                    </p>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {comboPhotoSlots.map((slot, slotIndex) => (
-                        <AdminWebsitePhotoSlot
-                          key={slot.slotKey}
-                          label={slot.label}
-                          sizeLabel={slot.size}
-                          frameImage={slot.frameImage || ''}
-                          instructions={slot.instructions || ''}
-                          required
-                          allowPreview={slot.allowPreview !== false}
-                          area={slot.area || null}
-                          extraLabel={slot.size || ''}
-                          value={slot.photo || null}
-                          referenceValue={slot.reference || null}
-                          onChange={(photo) => setComboPhotoSlots((prev) => prev.map((s, i) => (
-                            i === slotIndex
-                              ? { ...s, photo, file: photo?.file || null, previewUrl: photo?.previewUrl || '' }
-                              : s
-                          )))}
-                          onReferenceChange={(reference) => setComboPhotoSlots((prev) => prev.map((s, i) => (
-                            i === slotIndex ? { ...s, reference } : s
-                          )))}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
+            {productMode === 'catalog' ? (
+              <CatalogProductSection
+                products={products}
+                productId={catalogProductId}
+                onProductIdChange={setCatalogProductId}
+                customFieldValues={catalogCustomFields}
+                onCustomFieldChange={setCatalogCustomFields}
+                defaultSlots={catalogDefaultSlots}
+                onDefaultSlotsChange={setCatalogDefaultSlots}
+                excludedDefaultKeys={catalogExcludedDefaults}
+                onExcludedDefaultKeysChange={setCatalogExcludedDefaults}
+                additionalVariants={catalogAdditionalVariants}
+                onAdditionalVariantsChange={setCatalogAdditionalVariants}
+              />
             ) : (
-              <>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-[11px] text-gray-500">Website catalog products. Add one variant row per size/option.</p>
-                  <button
-                    type="button"
-                    className="min-h-[44px] rounded-xl border border-emerald-300 bg-white px-4 py-2 text-sm font-bold text-emerald-800"
-                    onClick={() => setForm((p) => {
-                      const last = p.items[p.items.length - 1];
-                      const next = emptyItem();
-                      if (last?.productId) {
-                        next.productId = last.productId;
-                        next.photoSlots = buildCatalogPhotoSlotsForItem(
-                          products.find((prod) => String(prod._id) === String(last.productId)),
-                          1,
-                          '',
-                        );
-                      }
-                      return { ...p, items: [...p.items, next] };
-                    })}
-                  >
-                    + Add Variant
-                  </button>
-                </div>
-                {form.items.map((item, index) => {
-                  const product = selectedProduct(item.productId);
-                  const variants = listVariantOptions(product);
-                  const customFields = (Array.isArray(product?.customFields) ? product.customFields : [])
-                    .filter((field) => field?.type !== 'file');
-                  const slots = Array.isArray(item.photoSlots) ? item.photoSlots : [];
-                  return (
-                    <div key={index} className="grid gap-2 rounded-xl border bg-white p-3 sm:grid-cols-2">
-                      <div className="sm:col-span-2 flex items-center justify-between gap-2">
-                        <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Variant {index + 1}</p>
-                        {form.items.length > 1 ? (
-                          <button
-                            type="button"
-                            className="min-h-[40px] text-sm font-semibold text-red-700"
-                            onClick={() => setForm((p) => ({ ...p, items: p.items.filter((_, i) => i !== index) }))}
-                          >
-                            Remove variant
-                          </button>
-                        ) : null}
-                      </div>
-                      <label className={`${labelClass} sm:col-span-2`}>Product
-                        <select
-                          required={productMode === 'catalog'}
-                          value={item.productId}
-                          onChange={(e) => updateCatalogItem(index, {
-                            productId: e.target.value,
-                            variant: '',
-                            variantId: '',
-                            customFieldValues: {},
-                          })}
-                          className={fieldClass}
-                        >
-                          <option value="">Select product</option>
-                          {products.map((p) => (
-                            <option key={p._id} value={p._id}>{p.title}</option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className={labelClass}>Variant / size
-                        {variants.length ? (
-                          <select
-                            value={item.variant}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              const match = variants.find((v) => v.value === value);
-                              updateCatalogItem(index, {
-                                variant: value,
-                                variantId: match?.optionId || '',
-                              });
-                            }}
-                            className={fieldClass}
-                          >
-                            <option value="">Select variant</option>
-                            {variants.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
-                          </select>
-                        ) : (
-                          <input
-                            value={item.variant}
-                            onChange={(e) => updateCatalogItem(index, { variant: e.target.value })}
-                            className={fieldClass}
-                            placeholder={product ? 'No variants on this product' : 'Select a product first'}
-                          />
-                        )}
-                      </label>
-                      <label className={labelClass}>Qty
-                        <input
-                          inputMode="numeric"
-                          value={item.quantity}
-                          onChange={(e) => updateCatalogItem(index, { quantity: sanitizeIntegerInput(e.target.value) })}
-                          className={fieldClass}
-                        />
-                      </label>
-                      {customFields.length ? (
-                        <div className="sm:col-span-2 space-y-2 rounded-xl border border-primary-50 bg-primary-50/40 p-3">
-                          <p className="text-xs font-bold text-gray-800">Product custom fields (from Website config)</p>
-                          {customFields.map((field) => (
-                            <label key={field.label} className={`block ${labelClass}`}>
-                              {field.label}{field.required ? ' *' : ''}
-                              {field.type === 'textarea' ? (
-                                <textarea
-                                  value={item.customFieldValues?.[field.label] || ''}
-                                  onChange={(e) => setForm((prev) => {
-                                    const items = [...prev.items];
-                                    items[index] = {
-                                      ...items[index],
-                                      customFieldValues: { ...(items[index].customFieldValues || {}), [field.label]: e.target.value },
-                                    };
-                                    return { ...prev, items };
-                                  })}
-                                  rows={2}
-                                  className={`${fieldClass} font-normal`}
-                                />
-                              ) : (
-                                <input
-                                  value={item.customFieldValues?.[field.label] || ''}
-                                  onChange={(e) => setForm((prev) => {
-                                    const items = [...prev.items];
-                                    items[index] = {
-                                      ...items[index],
-                                      customFieldValues: { ...(items[index].customFieldValues || {}), [field.label]: e.target.value },
-                                    };
-                                    return { ...prev, items };
-                                  })}
-                                  className={`${fieldClass} font-normal`}
-                                />
-                              )}
-                            </label>
-                          ))}
-                        </div>
-                      ) : null}
-                      <label className={`${labelClass} sm:col-span-2`}>Customization instructions
-                        <textarea
-                          value={item.instructions}
-                          onChange={(e) => updateCatalogItem(index, { instructions: e.target.value })}
-                          rows={2}
-                          className={fieldClass}
-                        />
-                      </label>
-                      {slots.length > 0 ? (
-                        <div className="sm:col-span-2 space-y-2">
-                          <p className="text-xs font-bold text-gray-800">
-                            Customer photos ({slots.length}) — from Website product configuration
-                          </p>
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            {slots.map((slot, slotIndex) => (
-                              <AdminWebsitePhotoSlot
-                                key={slot.slotKey}
-                                label={slot.label}
-                                sizeLabel={slot.sizeLabel}
-                                frameImage={slot.frameImage}
-                                instructions={slot.instructions}
-                                required={slot.required !== false}
-                                allowPreview={slot.allowPreview !== false}
-                                area={slot.area || null}
-                                extraLabel={slot.variantLabel || item.variant || ''}
-                                value={slot.photo || null}
-                                referenceValue={slot.reference || null}
-                                onChange={(photo) => setForm((prev) => {
-                                  const items = [...prev.items];
-                                  const nextSlots = [...(items[index].photoSlots || [])];
-                                  nextSlots[slotIndex] = { ...nextSlots[slotIndex], photo };
-                                  items[index] = {
-                                    ...items[index],
-                                    photoSlots: nextSlots,
-                                    photos: nextSlots.map((s) => s.photo?.file).filter(Boolean),
-                                  };
-                                  return { ...prev, items };
-                                })}
-                                onReferenceChange={(reference) => setForm((prev) => {
-                                  const items = [...prev.items];
-                                  const nextSlots = [...(items[index].photoSlots || [])];
-                                  nextSlots[slotIndex] = { ...nextSlots[slotIndex], reference };
-                                  items[index] = { ...items[index], photoSlots: nextSlots };
-                                  return { ...prev, items };
-                                })}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      ) : product ? (
-                        <p className="sm:col-span-2 text-[11px] text-gray-500">
-                          This Website product has no configured photo slots. Photos can still be added later in Order Details.
-                        </p>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </>
+              <ComboProductSection
+                comboProduct={comboProduct}
+                comboOptions={comboOptions}
+                comboError={comboError}
+                selections={comboSelections}
+                onSelectionsChange={setComboSelections}
+              />
             )}
           </div>
 
-          <div className="grid gap-3 rounded-xl border border-amber-100 bg-amber-50/40 p-3 sm:grid-cols-2">
+<div className="grid gap-3 rounded-xl border border-amber-100 bg-amber-50/40 p-3 sm:grid-cols-2">
             <label className={`${labelClass} sm:col-span-2`}>
               {priceLabel}
               <input

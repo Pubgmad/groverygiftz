@@ -1,12 +1,10 @@
 /**
- * WhatsApp Customized Combo — sizes come from the existing Website product variants
- * "Personalized Single Photo Frame, Premium Frame with Matte Finish"
- * (also matches British spelling "Personalised").
+ * WhatsApp Customized Combo — sizes come from a configured Website product's variants.
+ * Prefer Settings.whatsappComboProductId; fall back to the historical title match.
+ * Does NOT mutate product documents or invent sizes.
  */
 
 export const COMBO_SOURCE_PRODUCT_TITLE_RX = /personal+i[sz]ed\s+single\s+photo\s+frame.*matte\s+finish/i;
-
-export const REQUIRED_COMBO_SIZES = ['13×20', '13x20'];
 
 /** Normalize size labels for comparison (× vs x, spaces). */
 export function normalizeSizeLabel(label = '') {
@@ -21,7 +19,25 @@ export function extractSizeOptionsFromProduct(product) {
   const variants = Array.isArray(product?.variants) ? product.variants : [];
   const sizeVariant = variants.find((v) => /^size$/i.test(String(v?.name || '').trim()))
     || variants.find((v) => (v.options || []).some((o) => /\d+\s*[x×]\s*\d+/i.test(String(o?.label || o?.name || ''))));
-  if (!sizeVariant) return { variantName: 'Size', options: [] };
+  if (!sizeVariant) {
+    // Fall back to all variant options if no Size group exists
+    const options = variants.flatMap((v) => (v.options || []).map((o) => ({
+      label: String(o.label || o.name || '').trim(),
+      sku: o.sku || '',
+      stock: o.stock,
+      price: o.price,
+      salePrice: o.salePrice,
+      optionId: o._id || o.sku || '',
+      requiresImageUpload: Boolean(o.requiresImageUpload),
+      previewWidth: o.previewWidth,
+      previewHeight: o.previewHeight,
+      previewUnit: o.previewUnit || 'inch',
+      previewFrameImage: o.previewFrameImage || '',
+      previewInstructions: o.previewInstructions || '',
+      variantName: v.name || 'Variant',
+    }))).filter((o) => o.label);
+    return { variantName: 'Variant', options };
+  }
   const options = (sizeVariant.options || [])
     .map((o) => ({
       label: String(o.label || o.name || '').trim(),
@@ -29,6 +45,14 @@ export function extractSizeOptionsFromProduct(product) {
       stock: o.stock,
       price: o.price,
       salePrice: o.salePrice,
+      optionId: o._id || o.sku || '',
+      requiresImageUpload: Boolean(o.requiresImageUpload),
+      previewWidth: o.previewWidth,
+      previewHeight: o.previewHeight,
+      previewUnit: o.previewUnit || 'inch',
+      previewFrameImage: o.previewFrameImage || '',
+      previewInstructions: o.previewInstructions || '',
+      variantName: sizeVariant.name || 'Size',
     }))
     .filter((o) => o.label);
   return { variantName: sizeVariant.name || 'Size', options };
@@ -39,26 +63,9 @@ export function hasSizeOption(options, wanted) {
   return (options || []).some((o) => normalizeSizeLabel(o.label) === target);
 }
 
-/**
- * Ensure 13×20 exists on the Size variant (mutates product doc for save).
- * Returns true if a variant option was added.
- */
-export function ensureThirteenByTwenty(product) {
-  if (!product) return false;
-  if (!Array.isArray(product.variants)) product.variants = [];
-  let sizeVariant = product.variants.find((v) => /^size$/i.test(String(v?.name || '').trim()));
-  if (!sizeVariant) {
-    sizeVariant = { name: 'Size', options: [] };
-    product.variants.push(sizeVariant);
-  }
-  if (!Array.isArray(sizeVariant.options)) sizeVariant.options = [];
-  if (hasSizeOption(sizeVariant.options, '13x20')) return false;
-  sizeVariant.options.push({
-    label: '13×20',
-    sku: '',
-    stock: 0,
-  });
-  return true;
+/** @deprecated No longer used — kept only so old imports do not break. Does nothing. */
+export function ensureThirteenByTwenty() {
+  return false;
 }
 
 /** Build line items for order create from combo size selections. */
@@ -67,17 +74,18 @@ export function buildComboLineItems(productId, selections = []) {
     .filter((row) => row?.size && Number(row.quantity) > 0)
     .map((row) => ({
       productId,
-      variant: `Size: ${row.size}`,
+      variant: row.variantValue || `Size: ${row.size}`,
       quantity: Math.max(1, Number(row.quantity) || 1),
       customizationInstructions: row.instructions || '',
       isCustomizedCombo: true,
       comboSize: row.size,
+      variantId: row.variantId || '',
     }));
 }
 
 /**
- * Expand size×qty into individual photo slots for the create modal.
- * One quantity = one frame = one photo slot.
+ * @deprecated Prefer buildAdditionalVariantSlots(comboProduct, variantValue, qty)
+ * from websiteProductPhotoConfig. Kept for backward-compatible callers.
  */
 export function buildComboPhotoSlots(selections = []) {
   const slots = [];

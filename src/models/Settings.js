@@ -147,6 +147,8 @@ const SettingsSchema = new mongoose.Schema({
   courierTrackingUrlTemplate: { type: String, default: '' },
   /** Atomic counter for Editor round-robin assignment (auto-assign only; manual overrides do not increment). */
   editorRoundRobinCursor: { type: Number, default: 0 },
+  /** Optional Product _id used as the Customized Combo source (variant/sizes). */
+  whatsappComboProductId: { type: String, default: '' },
 }, { timestamps: true });
 
 export default mongoose.models.Settings || mongoose.model('Settings', SettingsSchema);
