@@ -1,15 +1,21 @@
 'use client';
 
 /**
- * Website-identical photo upload + edit experience for Admin WhatsApp order creation.
- * Reuses customer PhotoUploadCard + PhotoAdjuster (crop / reposition / replace / remove).
+ * Website-identical photo upload + edit for Admin WhatsApp order creation.
+ * Reuses customer PhotoUploadCard + PhotoAdjuster with the same area / aspect /
+ * orientation / fitMode behavior as ProductDetail.
  */
 
 import { useMemo, useState } from 'react';
 import PhotoUploadCard from '@/components/product/PhotoUploadCard';
 import PhotoAdjuster from '@/components/product/PhotoAdjuster';
 import { prepareImageUpload } from '@/lib/clientImageUpload';
-import { getFrameSize } from '@/lib/photoEditor';
+import {
+  adjustmentsForUploadedPhoto,
+  formatFrameSizeLabel,
+  getFrameSize,
+  orientationCaption,
+} from '@/lib/photoEditor';
 import { imagePerfMark, imagePerfMeasure } from '@/lib/imagePerf';
 
 const getDefaultPreviewAdjustments = () => ({ zoom: 1, x: 0, y: 0, orientation: 'auto', rotation: 0, fitMode: 'fit' });
@@ -45,9 +51,7 @@ async function loadImage(url) {
   });
 }
 
-/**
- * Bake editor adjustments into a JPEG File (same approach as storefront Apply).
- */
+/** Bake editor adjustments into a JPEG File (same approach as storefront Apply). */
 async function bakeEditedPreview({ photoUrl, area, adjustments }) {
   const img = await loadImage(photoUrl);
   const oriented = getFrameSize(area, adjustments?.orientation);
@@ -97,23 +101,42 @@ export default function AdminWebsitePhotoSlot({
   onChange,
   onReferenceChange,
   disabled = false,
+  allowPreview = true,
+  area: areaProp = null,
+  extraLabel = '',
 }) {
   const [editorOpen, setEditorOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
 
-  const dims = useMemo(() => parseSizeLabel(sizeLabel || label), [sizeLabel, label]);
+  const dims = useMemo(() => {
+    if (areaProp && (Number(areaProp.width) > 0 || Number(areaProp.height) > 0)) {
+      return {
+        width: Number(areaProp.width) > 0 ? Number(areaProp.width) : 1,
+        height: Number(areaProp.height) > 0 ? Number(areaProp.height) : 1,
+        unit: areaProp.unit || 'inch',
+      };
+    }
+    return parseSizeLabel(sizeLabel || label);
+  }, [areaProp, sizeLabel, label]);
+
   const area = useMemo(() => ({
-    label: label || sizeLabel || 'Photo',
+    label: areaProp?.label || label || sizeLabel || 'Photo',
     width: dims.width,
     height: dims.height,
     unit: dims.unit,
-    frameImage: frameImage || '',
-    instructions: instructions || '',
-  }), [label, sizeLabel, dims, frameImage, instructions]);
+    frameImage: areaProp?.frameImage || frameImage || '',
+    instructions: areaProp?.instructions || instructions || '',
+  }), [areaProp, label, sizeLabel, dims, frameImage, instructions]);
 
   const photoUrl = value?.previewUrl || value?.displayUrl || value?.url || '';
+  const originalUrl = value?.originalPreviewUrl || value?.originalUrl || '';
   const adjustments = value?.adjustments || getDefaultPreviewAdjustments();
+  const oriented = useMemo(
+    () => getFrameSize(area, adjustments.orientation),
+    [area, adjustments.orientation],
+  );
+  const resolvedSizeLabel = sizeLabel || formatFrameSizeLabel(area) || '';
 
   const setPhoto = (next) => onChange?.(next);
 
@@ -126,42 +149,52 @@ export default function AdminWebsitePhotoSlot({
       const prepared = await prepareImageUpload(file);
       imagePerfMeasure('admin-slot:prepare', 'admin-slot:prepare:start');
       const previewUrl = prepared.previewUrl || URL.createObjectURL(file);
+      const nextAdjustments = adjustmentsForUploadedPhoto(
+        prepared.width || 0,
+        prepared.height || 0,
+        area,
+      );
       setPhoto({
         file,
         originalFile: file,
         previewUrl,
         displayUrl: previewUrl,
+        originalPreviewUrl: previewUrl,
         name: file.name,
         type: file.type,
         size: file.size,
         width: prepared.width || 0,
         height: prepared.height || 0,
-        adjustments: getDefaultPreviewAdjustments(),
+        adjustments: nextAdjustments,
         editedFile: null,
       });
-      setEditorOpen(true);
+      if (allowPreview) setEditorOpen(true);
     } catch (error) {
       console.error(error);
+      const previewUrl = URL.createObjectURL(file);
       setPhoto({
         file,
         originalFile: file,
-        previewUrl: URL.createObjectURL(file),
+        previewUrl,
+        originalPreviewUrl: previewUrl,
         name: file.name,
         type: file.type,
         size: file.size,
         adjustments: getDefaultPreviewAdjustments(),
       });
+      if (allowPreview) setEditorOpen(true);
     } finally {
       setUploading(false);
     }
   };
 
   const handleApply = async (draft) => {
-    if (!photoUrl) return false;
+    if (!photoUrl && !originalUrl) return false;
+    const sourceUrl = originalUrl || photoUrl;
     setSaving(true);
     try {
       const editedFile = await bakeEditedPreview({
-        photoUrl,
+        photoUrl: sourceUrl,
         area,
         adjustments: draft,
       });
@@ -171,6 +204,7 @@ export default function AdminWebsitePhotoSlot({
         file: editedFile,
         editedFile,
         originalFile: value?.originalFile || value?.file || null,
+        originalPreviewUrl: value?.originalPreviewUrl || originalUrl || photoUrl,
         previewUrl,
         displayUrl: previewUrl,
         name: editedFile.name,
@@ -182,7 +216,6 @@ export default function AdminWebsitePhotoSlot({
       return true;
     } catch (error) {
       console.error(error);
-      // Still save adjustments + keep original for upload if bake fails
       setPhoto({
         ...(value || {}),
         adjustments: { ...getDefaultPreviewAdjustments(), ...draft },
@@ -197,6 +230,9 @@ export default function AdminWebsitePhotoSlot({
   const handleRemove = () => {
     if (value?.previewUrl?.startsWith?.('blob:')) {
       try { URL.revokeObjectURL(value.previewUrl); } catch {}
+    }
+    if (value?.originalPreviewUrl?.startsWith?.('blob:') && value.originalPreviewUrl !== value.previewUrl) {
+      try { URL.revokeObjectURL(value.originalPreviewUrl); } catch {}
     }
     setPhoto(null);
     setEditorOpen(false);
@@ -226,18 +262,21 @@ export default function AdminWebsitePhotoSlot({
     <div className="space-y-2 rounded-2xl border border-primary-100 bg-white p-3">
       <PhotoUploadCard
         label={label}
-        sizeLabel={sizeLabel}
+        sizeLabel={resolvedSizeLabel}
         required={required}
         missingRequired={required && !photoUrl}
         photoUrl={photoUrl}
         uploading={uploading || saving}
         disabled={disabled}
-        aspectWidth={dims.width}
-        aspectHeight={dims.height}
-        instructions={instructions}
+        orientation={adjustments.orientation}
+        orientationLabel={photoUrl ? orientationCaption(adjustments.orientation) : ''}
+        aspectWidth={oriented.width}
+        aspectHeight={oriented.height}
+        fitMode={adjustments.fitMode || 'fit'}
+        instructions={area.instructions || instructions}
         onUpload={handleUpload}
         onRemove={handleRemove}
-        onEdit={() => photoUrl && setEditorOpen(true)}
+        onEdit={allowPreview && photoUrl ? () => setEditorOpen(true) : undefined}
       />
 
       <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-3">
@@ -271,18 +310,21 @@ export default function AdminWebsitePhotoSlot({
         ) : null}
       </div>
 
-      <PhotoAdjuster
-        open={editorOpen && Boolean(photoUrl)}
-        label={label}
-        area={area}
-        photoUrl={photoUrl}
-        blobUrl={String(photoUrl || '').startsWith('blob:') ? photoUrl : ''}
-        baseline={adjustments}
-        saving={saving}
-        onClose={() => setEditorOpen(false)}
-        onApply={handleApply}
-        onReplace={(file) => handleUpload([file])}
-      />
+      {allowPreview ? (
+        <PhotoAdjuster
+          open={editorOpen && Boolean(photoUrl || originalUrl)}
+          label={label}
+          extraLabel={extraLabel || ''}
+          area={area}
+          photoUrl={photoUrl || originalUrl}
+          blobUrl={String(photoUrl || originalUrl || '').startsWith('blob:') ? (photoUrl || originalUrl) : ''}
+          baseline={adjustments}
+          saving={saving}
+          onClose={() => setEditorOpen(false)}
+          onApply={handleApply}
+          onReplace={(file) => handleUpload([file])}
+        />
+      ) : null}
     </div>
   );
 }

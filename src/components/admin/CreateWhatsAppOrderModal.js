@@ -8,6 +8,12 @@ import { fromDatetimeLocalIst, toDatetimeLocalIst } from '@/lib/istTime';
 import { buildComboPhotoSlots } from '@/lib/customizedCombo';
 import { expectedDeliveryFromDispatchYmd } from '@/lib/whatsappOrderDates';
 import { sanitizeDecimalInput, sanitizeIntegerInput } from '@/lib/sanitizeNumericInput';
+import {
+  buildWebsitePhotoSlotsForQuantity,
+  isProductPreviewEnabled,
+  listWebsiteVariantOptions,
+  mergeSlotsPreserveUploads,
+} from '@/lib/websiteProductPhotoConfig';
 import AdminWebsitePhotoSlot from '@/components/admin/AdminWebsitePhotoSlot';
 
 const emptyItem = () => ({
@@ -21,147 +27,12 @@ const emptyItem = () => ({
   photoSlots: [],
 });
 
-function photoSlotCountForProduct(product) {
-  const preview = product?.customizationPreview || {};
-  if (preview.enabled === false && preview.uploadEnabled === false) return 0;
-  const areas = Array.isArray(preview.areas) ? preview.areas.length : 0;
-  const fileFields = (product?.customFields || []).filter((f) => String(f?.type || '') === 'file').length;
-  const required = Math.max(0, Number(preview.requiredImageCount || 0));
-  const max = Math.max(0, Number(preview.maxImageCount || 0));
-  const variantUploadHints = (product?.variants || []).flatMap((v) => v.options || [])
-    .filter((o) => o?.requiresImageUpload).length;
-  return Math.max(areas, fileFields, required, max, variantUploadHints > 0 ? 1 : 0, 0);
-}
-
-function previewEnabledForProduct(product) {
-  const preview = product?.customizationPreview || {};
-  if (preview.enabled === false) return false;
-  if (preview.previewEnabled === false) return false;
-  return true;
-}
-
-/**
- * Build base photo slots from website product configuration.
- */
-function buildCatalogPhotoSlots(product) {
-  const preview = product?.customizationPreview || {};
-  if (preview.uploadEnabled === false && preview.enabled === false) return [];
-  const areas = Array.isArray(preview.areas) ? preview.areas : [];
-  const fileFields = (product?.customFields || []).filter((f) => String(f?.type || '') === 'file');
-  const count = photoSlotCountForProduct(product);
-  if (!count) return [];
-
-  if (areas.length > 0) {
-    return Array.from({ length: Math.max(count, areas.length) }, (_, index) => {
-      const area = areas[index] || areas[areas.length - 1] || {};
-      return {
-        slotKey: `catalog-area-${index}`,
-        label: area.label || `Photo ${index + 1}`,
-        sizeLabel: area.width && area.height ? `${area.width}×${area.height} ${area.unit || 'inch'}` : '',
-        frameImage: area.frameImage || preview.frameImage || '',
-        instructions: area.instructions || preview.instructions || '',
-        required: index < Math.max(Number(preview.requiredImageCount || 0), areas.filter((a) => a.required !== false).length)
-          ? area.required !== false
-          : false,
-        photo: null,
-        reference: null,
-        allowPreview: previewEnabledForProduct(product),
-      };
-    });
-  }
-
-  if (fileFields.length > 0) {
-    const slots = fileFields.map((field, index) => ({
-      slotKey: `catalog-field-${index}`,
-      label: field.label || `Photo ${index + 1}`,
-      sizeLabel: '',
-      frameImage: preview.frameImage || '',
-      instructions: preview.shortGuidance || preview.instructions || '',
-      required: field.required === true,
-      photo: null,
-      reference: null,
-      customFieldLabel: field.label,
-      allowPreview: previewEnabledForProduct(product),
-    }));
-    while (slots.length < count) {
-      const index = slots.length;
-      slots.push({
-        slotKey: `catalog-extra-${index}`,
-        label: `Photo ${index + 1}`,
-        sizeLabel: '',
-        frameImage: preview.frameImage || '',
-        instructions: preview.instructions || '',
-        required: index < Number(preview.requiredImageCount || 0),
-        photo: null,
-        reference: null,
-        allowPreview: previewEnabledForProduct(product),
-      });
-    }
-    return slots;
-  }
-
-  return Array.from({ length: count }, (_, index) => ({
-    slotKey: `catalog-${index}`,
-    label: `Photo ${index + 1}`,
-    sizeLabel: '',
-    frameImage: preview.frameImage || '',
-    instructions: preview.instructions || preview.shortGuidance || '',
-    required: index < Number(preview.requiredImageCount || 0),
-    photo: null,
-    reference: null,
-    allowPreview: previewEnabledForProduct(product),
-  }));
-}
-
-/** Expand website slots × quantity (one unit may need multiple labeled photos). */
-function buildCatalogPhotoSlotsForItem(product, quantity, variantLabel = '') {
-  const base = buildCatalogPhotoSlots(product);
-  if (!base.length) return [];
-  const qty = Math.max(1, Number(quantity) || 1);
-  const slots = [];
-  for (let unit = 1; unit <= qty; unit += 1) {
-    base.forEach((slot) => {
-      slots.push({
-        ...slot,
-        photo: null,
-        reference: null,
-        unitIndex: unit,
-        variantLabel,
-        slotKey: `${slot.slotKey}-u${unit}`,
-        label: qty > 1
-          ? `${variantLabel ? `${variantLabel} — ` : ''}Frame ${unit}${base.length > 1 ? ` · ${slot.label}` : ''}`
-          : (variantLabel ? `${variantLabel} — ${slot.label}` : slot.label),
-        sizeLabel: slot.sizeLabel || variantLabel || '',
-      });
-    });
-  }
-  return slots;
-}
-
-function mergeSlotsPreserveUploads(nextSlots = [], prevSlots = []) {
-  const byKey = Object.fromEntries((prevSlots || []).map((s) => [s.slotKey, s]));
-  return (nextSlots || []).map((slot) => {
-    const prev = byKey[slot.slotKey];
-    if (!prev) return slot;
-    return {
-      ...slot,
-      photo: prev.photo || null,
-      reference: prev.reference || null,
-      file: prev.file || prev.photo?.file || null,
-      previewUrl: prev.previewUrl || prev.photo?.previewUrl || '',
-    };
-  });
+function buildCatalogPhotoSlotsForItem(product, quantity, variantValue = '') {
+  return buildWebsitePhotoSlotsForQuantity(product, quantity, variantValue);
 }
 
 function listVariantOptions(product) {
-  return (product?.variants || []).flatMap((v) => (v.options || []).map((o) => ({
-    value: `${v.name}: ${o.label}`,
-    label: `${v.name}: ${o.label}`,
-    variantName: v.name || '',
-    optionLabel: o.label || '',
-    optionId: o._id || o.sku || `${v.name}:${o.label}`,
-    requiresImageUpload: Boolean(o.requiresImageUpload),
-  })));
+  return listWebsiteVariantOptions(product);
 }
 
 const emptyCustomer = {
@@ -285,17 +156,30 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
       setComboPhotoSlots([]);
       return;
     }
-    const frameImage = comboProduct?.customizationPreview?.frameImage || '';
-    const instructions = comboProduct?.customizationPreview?.instructions
-      || comboProduct?.customizationPreview?.shortGuidance
-      || '';
-    const next = buildComboPhotoSlots(valid).map((slot) => ({
-      ...slot,
-      frameImage,
-      instructions,
-      required: true,
-      allowPreview: previewEnabledForProduct(comboProduct),
-    }));
+    const preview = comboProduct?.customizationPreview || {};
+    const frameImage = preview.frameImage || '';
+    const instructions = preview.instructions || preview.shortGuidance || '';
+    const areaWidth = Number(preview.width) || Number(preview.areas?.[0]?.width) || 8;
+    const areaHeight = Number(preview.height) || Number(preview.areas?.[0]?.height) || 10;
+    const areaUnit = preview.unit || preview.areas?.[0]?.unit || 'inch';
+    const next = buildComboPhotoSlots(valid).map((slot) => {
+      const area = {
+        label: slot.label,
+        width: areaWidth,
+        height: areaHeight,
+        unit: areaUnit,
+        frameImage,
+        instructions,
+      };
+      return {
+        ...slot,
+        frameImage,
+        instructions,
+        required: true,
+        allowPreview: isProductPreviewEnabled(comboProduct),
+        area,
+      };
+    });
     setComboPhotoSlots((prev) => mergeSlotsPreserveUploads(next, prev));
   }, [comboSelections, comboProduct, productMode]);
 
@@ -506,7 +390,7 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
         || Object.prototype.hasOwnProperty.call(patch, 'quantity')
         || Object.prototype.hasOwnProperty.call(patch, 'variant')
       ) {
-        const nextSlots = buildCatalogPhotoSlotsForItem(product, current.quantity, current.variant);
+        const nextSlots = buildCatalogPhotoSlotsForItem(product, current.quantity, current.variant || '');
         current.photoSlots = mergeSlotsPreserveUploads(nextSlots, items[index].photoSlots || []);
         current.photos = (current.photoSlots || []).map((s) => s.photo?.file).filter(Boolean);
       }
@@ -1101,6 +985,9 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
                           frameImage={slot.frameImage || ''}
                           instructions={slot.instructions || ''}
                           required
+                          allowPreview={slot.allowPreview !== false}
+                          area={slot.area || null}
+                          extraLabel={slot.size || ''}
                           value={slot.photo || null}
                           referenceValue={slot.reference || null}
                           onChange={(photo) => setComboPhotoSlots((prev) => prev.map((s, i) => (
@@ -1273,6 +1160,9 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
                                 frameImage={slot.frameImage}
                                 instructions={slot.instructions}
                                 required={slot.required !== false}
+                                allowPreview={slot.allowPreview !== false}
+                                area={slot.area || null}
+                                extraLabel={slot.variantLabel || item.variant || ''}
                                 value={slot.photo || null}
                                 referenceValue={slot.reference || null}
                                 onChange={(photo) => setForm((prev) => {
