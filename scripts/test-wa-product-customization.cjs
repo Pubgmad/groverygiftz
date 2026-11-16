@@ -22,31 +22,39 @@ assert.ok(configSrc.includes('selectedVariantValue'));
 assert.ok(configSrc.includes('storageKind'));
 assert.ok(configSrc.includes('buildCollageUploadsPayload'));
 
-// UI must show collage uploads + original section + product/component on combo rows
+// UI must show collage uploads + original section + catalog-wide sizes
 assert.ok(sectionSrc.includes('CollageUploadSection'));
 assert.ok(sectionSrc.includes('Original Product Details'));
 assert.ok(sectionSrc.includes('Exclude for this order only'));
-assert.ok(sectionSrc.includes('Product / component'));
 assert.ok(sectionSrc.includes('Additional Variants'));
 assert.ok(sectionSrc.includes('Custom Variant — This Order Only'));
 assert.ok(sectionSrc.includes('+ Add Text Field'));
 assert.ok(sectionSrc.includes('ORDER_LOCAL_CUSTOM_VARIANT'));
-assert.ok(sectionSrc.includes('listAdditionalVariantChoices'));
-assert.ok(sectionSrc.includes('Select variant / size'));
+assert.ok(sectionSrc.includes('listWebsiteCatalogSizeChoices'));
+assert.ok(sectionSrc.includes('CatalogSizeSelect'));
+assert.ok(sectionSrc.includes('Select website size'));
+assert.ok(sectionSrc.includes('All website-supported sizes'));
 assert.ok(!sectionSrc.includes('This product has no configured variants to add'));
 assert.ok(!sectionSrc.includes('Done — Generate'));
 assert.ok(!sectionSrc.includes('Done-Generate'));
+assert.ok(!sectionSrc.includes('PRODUCT SIZE (FROM PREVIEW CONFIG)'));
+assert.ok(!/Sizes derived from this product/.test(sectionSrc));
 assert.ok(configSrc.includes('buildOrderLocalCustomVariantSlots'));
 assert.ok(configSrc.includes('ORDER_LOCAL_CUSTOM_VARIANT'));
-assert.ok(configSrc.includes('listAdditionalVariantChoices'));
+assert.ok(configSrc.includes('listWebsiteCatalogSizeChoices'));
 assert.ok(configSrc.includes('listAreaDerivedSizeOptions'));
+assert.ok(configSrc.includes('isWebsiteSizeLikeLabel'));
 assert.ok(configSrc.includes('AreaSize:'));
+assert.ok(configSrc.includes('catalog:${productId}|variant|'));
+assert.ok(modalSrc.includes('catalogSizeChoice'));
+assert.ok(modalSrc.includes('sourceProductId'));
 
 // Combo must not mutate 13×20 into products
 assert.ok(comboSrc.includes('return false'));
 assert.ok(!comboSrc.includes('sizeVariant.options.push'));
 assert.ok(!apiSrc.includes('ensureThirteenByTwenty(product)'));
 assert.ok(apiSrc.includes('whatsappComboProductId'));
+assert.ok(sectionSrc.includes('catalog-wide website sizes'));
 
 // Persistence fields
 assert.ok(orderModelSrc.includes('excludedCustomizationSlots'));
@@ -94,6 +102,9 @@ function resolvePlan(product, selectedVariantValue = '') {
 }
 
 const multiPhoto = {
+  _id: 'p1',
+  title: 'Multi Photo Frame',
+  isActive: true,
   customizationPreview: {
     enabled: true,
     areas: [
@@ -105,7 +116,7 @@ const multiPhoto = {
     { label: 'Custom Name', type: 'text', required: true },
     { label: 'Extra PDF', type: 'file', required: false },
   ],
-  variants: [{ name: 'Size', options: [{ label: '12x8' }, { label: '12x10' }] }],
+  variants: [{ name: 'Size', options: [{ label: '12x8', _id: 'o1' }, { label: '12x10', _id: 'o2' }] }],
 };
 const planA = resolvePlan(multiPhoto);
 assert.strictEqual(planA.defaultSlots.length, 3, 'areas + file field');
@@ -153,66 +164,138 @@ function expandQty(baseCount, qty) {
 assert.strictEqual(expandQty(1, 3), 3);
 assert.strictEqual(expandQty(2, 2), 4);
 
-// Additional Variants choice resolution (mirrors listAdditionalVariantChoices)
-function listChoices(product) {
-  const fromVariants = (product.variants || []).flatMap((v) => (v.options || []).map((o) => {
-    const optionLabel = String(o?.label || o?.name || '').trim();
-    if (!optionLabel) return null;
-    const variantName = String(v?.name || v?.type || 'Variant').trim() || 'Variant';
-    return { value: `${variantName}: ${optionLabel}`, source: 'variants' };
-  })).filter(Boolean);
-  if (fromVariants.length) return { choices: fromVariants, source: 'variants' };
-  const preview = product.customizationPreview || {};
-  if (preview.enabled === false) return { choices: [], source: 'none' };
-  const seen = new Set();
-  const fromAreas = [];
-  (preview.areas || []).forEach((area) => {
-    const width = Number(area?.width) || 0;
-    const height = Number(area?.height) || 0;
-    const rawLabel = String(area?.label || '').trim();
-    const hasRealDimensions = width > 1 && height > 1;
-    const labelLooksLikeSize = /\d+\s*[x×*]\s*\d+/i.test(rawLabel);
-    if (!hasRealDimensions && !labelLooksLikeSize) return;
-    const sizeLabel = hasRealDimensions ? `${width}×${height}` : rawLabel;
-    const key = sizeLabel.toLowerCase().replace(/\s+/g, '');
-    if (seen.has(key)) return;
-    seen.add(key);
-    fromAreas.push({ value: `AreaSize: ${sizeLabel}`, source: 'area_size' });
-  });
-  if (fromAreas.length) return { choices: fromAreas, source: 'area_sizes' };
-  return { choices: [], source: 'none' };
+function isWebsiteSizeLikeLabel(label) {
+  const s = String(label || '').trim();
+  if (!s) return false;
+  if (/\d+\s*[x×*]\s*\d+/i.test(s)) return true;
+  if (/\d+(?:\.\d+)?\s*(?:inch|inches|in|cm|mm)\b/i.test(s)) return true;
+  return false;
 }
 
-const withVariants = listChoices(multiPhoto);
-assert.strictEqual(withVariants.source, 'variants');
-assert.strictEqual(withVariants.choices.length, 2);
+function normalizeWebsiteSizeKey(label) {
+  return String(label || '')
+    .toLowerCase()
+    .replace(/[×*]/g, 'x')
+    .replace(/\s+/g, '')
+    .replace(/inches\b/g, 'inch');
+}
 
-const areaOnly = listChoices({
+function listWebsiteCatalogSizeChoices(products = []) {
+  const choices = [];
+  const seenValue = new Set();
+  products.forEach((product) => {
+    if (!product || product.isActive === false) return;
+    const productId = String(product._id || '').trim();
+    if (!productId) return;
+    const productTitle = String(product.title || 'Product').trim() || 'Product';
+    const sizeKeysOnProduct = new Set();
+    (product.variants || []).forEach((v) => {
+      (v.options || []).forEach((o) => {
+        const sizeLabel = String(o?.label || o?.name || '').trim();
+        if (!isWebsiteSizeLikeLabel(sizeLabel)) return;
+        const sizeKey = normalizeWebsiteSizeKey(sizeLabel);
+        sizeKeysOnProduct.add(sizeKey);
+        const variantValue = `${v.name || 'Variant'}: ${sizeLabel}`;
+        const value = `catalog:${productId}|variant|${variantValue}`;
+        if (seenValue.has(value)) return;
+        seenValue.add(value);
+        choices.push({
+          value,
+          sizeLabel,
+          sizeKey,
+          productId,
+          productTitle,
+          source: 'variants',
+        });
+      });
+    });
+    const preview = product.customizationPreview || {};
+    if (preview.enabled === false) return;
+    const seenArea = new Set();
+    (preview.areas || []).forEach((area) => {
+      const width = Number(area?.width) || 0;
+      const height = Number(area?.height) || 0;
+      const rawLabel = String(area?.label || '').trim();
+      const hasRealDimensions = width > 1 && height > 1;
+      const labelLooksLikeSize = isWebsiteSizeLikeLabel(rawLabel);
+      if (!hasRealDimensions && !labelLooksLikeSize) return;
+      const sizeLabel = labelLooksLikeSize ? rawLabel : `${width}×${height}`;
+      if (!isWebsiteSizeLikeLabel(sizeLabel)) return;
+      const sizeKey = normalizeWebsiteSizeKey(sizeLabel);
+      if (sizeKeysOnProduct.has(sizeKey) || seenArea.has(sizeKey)) return;
+      seenArea.add(sizeKey);
+      const value = `catalog:${productId}|area|AreaSize: ${sizeLabel}`;
+      if (seenValue.has(value)) return;
+      seenValue.add(value);
+      choices.push({
+        value,
+        sizeLabel,
+        sizeKey,
+        productId,
+        productTitle,
+        source: 'area_size',
+      });
+    });
+  });
+  return { choices, source: 'catalog' };
+}
+
+const catalogA = {
+  _id: 'a1',
+  title: 'Our Love in Dates',
+  isActive: true,
+  variants: [{ name: 'Size', options: [{ label: '12*8 inch' }, { label: '12*18 inch' }, { label: 'Brown' }] }],
+};
+const catalogB = {
+  _id: 'b1',
+  title: '3 frame combo Offer',
+  isActive: true,
   variants: [],
   customizationPreview: {
     enabled: true,
     areas: [
-      { label: 'Front Photo', width: 8, height: 10 },
-      { label: '12x18 custom', width: 0, height: 0 },
-      { label: 'Back Photo', width: 1, height: 1 },
+      { label: '12*8 inch ', width: 8, height: 12 },
+      { label: '12*8 inch ', width: 8, height: 12 },
     ],
   },
-});
-assert.strictEqual(areaOnly.source, 'area_sizes');
-assert.ok(areaOnly.choices.some((c) => c.value.includes('8×10') || c.value.includes('8x10')));
-assert.ok(areaOnly.choices.some((c) => c.value.includes('12x18')));
-assert.ok(!areaOnly.choices.some((c) => /Back Photo/i.test(c.value)));
-
-const none = listChoices({
+};
+const catalogC = {
+  _id: 'c1',
+  title: 'Big Surprise Photo Frame',
+  isActive: true,
   variants: [],
-  customizationPreview: { enabled: true, areas: [{ label: 'Front Photo', width: 1, height: 1 }] },
-});
-assert.strictEqual(none.source, 'none');
-assert.strictEqual(none.choices.length, 0);
+  customizationPreview: {
+    enabled: true,
+    areas: [{ label: '20 × 30 inch', width: 20, height: 30 }],
+  },
+};
+const catalogD = {
+  _id: 'd1',
+  title: 'Wallet',
+  isActive: true,
+  variants: [{ name: 'Colour', options: [{ label: 'Brown' }] }],
+};
 
-// UI must always render Variant / size select for additional rows (not custom-only by default)
-assert.ok(sectionSrc.includes('hasVariantChoices'));
-assert.ok(sectionSrc.includes('newVariantRow(product, seed)'));
-assert.ok(!/newVariantRow\(hasWebsiteVariants/.test(sectionSrc));
+const catalog = listWebsiteCatalogSizeChoices([catalogA, catalogB, catalogC, catalogD]);
+assert.strictEqual(catalog.source, 'catalog');
+assert.ok(catalog.choices.length >= 4);
+assert.ok(catalog.choices.every((c) => c.value.startsWith('catalog:')));
+assert.ok(catalog.choices.some((c) => c.sizeLabel.includes('12*8') && c.productTitle.includes('Our Love')));
+assert.ok(catalog.choices.some((c) => c.sizeLabel.includes('12*8') && c.productTitle.includes('3 frame')));
+assert.ok(catalog.choices.some((c) => /20/.test(c.sizeLabel) && /30/.test(c.sizeLabel)));
+assert.ok(!catalog.choices.some((c) => c.sizeLabel === 'Brown'), 'non-size options excluded');
+assert.ok(!catalog.choices.some((c) => /13×20|13x20/.test(c.sizeLabel)), 'no hardcoded 13x20');
+
+// Same size from different products must stay distinct
+const twelveByEight = catalog.choices.filter((c) => normalizeWebsiteSizeKey(c.sizeLabel).includes('12x8'));
+assert.ok(twelveByEight.length >= 2, '12*8 from multiple products');
+assert.strictEqual(new Set(twelveByEight.map((c) => c.productId)).size, twelveByEight.length);
+
+// UI must use catalog-wide choices, not selected-product-only preview sizes
+assert.ok(sectionSrc.includes('hasCatalogSizes'));
+assert.ok(sectionSrc.includes('sourceProductId'));
+assert.ok(sectionSrc.includes('groupCatalogSizeChoices'));
+assert.ok(!/listAdditionalVariantChoices\(product\)/.test(sectionSrc));
 
 console.log('OK: WA product customization resolution checks passed');
+console.log(`Catalog fixture choices: ${catalog.choices.length}`);

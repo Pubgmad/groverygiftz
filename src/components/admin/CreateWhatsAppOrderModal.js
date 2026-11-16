@@ -361,21 +361,24 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
       });
     }
     catalogAdditionalVariants.forEach((row) => {
-      const isCustom = row.isCustom || row.variant === ORDER_LOCAL_CUSTOM_VARIANT;
+      const isCustom = row.isCustom
+        || row.variant === ORDER_LOCAL_CUSTOM_VARIANT
+        || row.catalogChoiceValue === ORDER_LOCAL_CUSTOM_VARIANT;
       const isAreaDerived = String(row.variant || '').startsWith('AreaSize:');
       const customLabel = String(row.customLabel || '').trim();
       if (!(Number(row.quantity) > 0)) return;
       if (isCustom) {
         if (!customLabel) return;
-      } else if (!row.variant || row.variant === ORDER_LOCAL_CUSTOM_VARIANT) {
+      } else if (!row.catalogChoiceValue && (!row.variant || row.variant === ORDER_LOCAL_CUSTOM_VARIANT)) {
         return;
       }
       const activeSlots = (row.photoSlots || []).filter((slot) => !(row.excludedSlotKeys || []).includes(slot.slotKey));
       const areaSizeLabel = isAreaDerived
         ? String(row.variant).replace(/^AreaSize:\s*/i, '').trim()
         : '';
+      const sourceProductId = String(row.sourceProductId || catalogProductId || '').trim();
       items.push({
-        productId: catalogProductId,
+        productId: sourceProductId || catalogProductId,
         variant: isCustom
           ? `Custom: ${customLabel}`
           : (isAreaDerived ? `Size: ${areaSizeLabel}` : row.variant),
@@ -383,10 +386,13 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
         quantity: Number(row.quantity) || 1,
         instructions: '',
         photoSlots: activeSlots,
+        customFieldValues: row.customFieldValues || {},
         excludedCustomizationSlots: row.excludedSlotKeys || [],
         isOrderLocalCustomVariant: isCustom || undefined,
         customVariantLabel: isCustom ? customLabel : undefined,
         isAreaDerivedSize: isAreaDerived || undefined,
+        catalogSizeChoice: !isCustom ? (row.catalogChoiceValue || undefined) : undefined,
+        additionalVariantOfProductId: catalogProductId || undefined,
       });
     });
     return items;
@@ -394,17 +400,27 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
 
   const buildComboLineItemsForSubmit = () => {
     const rows = comboSelections
-      .filter((row) => (row.size || row.variantValue) && Number(row.quantity) > 0)
-      .map((row) => ({
-        productId: row.productId || comboProduct?._id,
-        variant: row.variantValue || `Size: ${row.size}`,
-        variantId: row.variantId || '',
-        quantity: Number(row.quantity) || 1,
-        instructions: '',
-        photoSlots: row.photoSlots || [],
-        isCustomizedCombo: true,
-        comboSize: row.size || '',
-      }));
+      .filter((row) => (row.size || row.variantValue || row.catalogChoiceValue) && Number(row.quantity) > 0)
+      .map((row) => {
+        const isAreaDerived = String(row.variantValue || '').startsWith('AreaSize:');
+        const areaSizeLabel = isAreaDerived
+          ? String(row.variantValue).replace(/^AreaSize:\s*/i, '').trim()
+          : '';
+        return {
+          productId: row.productId || comboProduct?._id,
+          variant: isAreaDerived
+            ? `Size: ${areaSizeLabel || row.size}`
+            : (row.variantValue || `Size: ${row.size}`),
+          variantId: isAreaDerived ? '' : (row.variantId || ''),
+          quantity: Number(row.quantity) || 1,
+          instructions: '',
+          photoSlots: row.photoSlots || [],
+          isCustomizedCombo: true,
+          comboSize: row.size || areaSizeLabel || '',
+          catalogSizeChoice: row.catalogChoiceValue || undefined,
+          isAreaDerivedSize: isAreaDerived || undefined,
+        };
+      });
     if (!rows.length) return rows;
     // Attach source text/collage customizations to the first combo line
     const collagePayload = buildCollageUploadsPayload(
@@ -498,7 +514,7 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
         toast.error('Customized Combo source product is not available');
         return;
       }
-      if (!comboSelections.some((row) => (row.size || row.variantValue) && Number(row.quantity) > 0)) {
+      if (!comboSelections.some((row) => (row.size || row.variantValue || row.catalogChoiceValue) && Number(row.quantity) > 0)) {
         toast.error('Add at least one Customized Combo variant and quantity');
         return;
       }
@@ -515,11 +531,13 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
       }
       if (catalogAdditionalVariants.some((row) => {
         if (!(Number(row.quantity) > 0)) return false;
-        const isCustom = row.isCustom || row.variant === ORDER_LOCAL_CUSTOM_VARIANT;
+        const isCustom = row.isCustom
+          || row.variant === ORDER_LOCAL_CUSTOM_VARIANT
+          || row.catalogChoiceValue === ORDER_LOCAL_CUSTOM_VARIANT;
         if (isCustom) return !String(row.customLabel || '').trim();
-        return !row.variant;
+        return !(row.catalogChoiceValue || row.variant);
       })) {
-        toast.error('Choose a website variant or enter a custom label for each additional variant row');
+        toast.error('Choose a website size or enter a custom label for each additional variant row');
         return;
       }
     }

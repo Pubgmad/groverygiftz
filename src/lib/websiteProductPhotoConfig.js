@@ -361,6 +361,23 @@ export function listWebsiteVariantOptions(product) {
   })).filter(Boolean);
 }
 
+/** True when a label is a website size (dimensions), not color/qty/accessory text. */
+export function isWebsiteSizeLikeLabel(label) {
+  const s = String(label || '').trim();
+  if (!s) return false;
+  if (/\d+\s*[x×*]\s*\d+/i.test(s)) return true;
+  if (/\d+(?:\.\d+)?\s*(?:inch|inches|in|cm|mm)\b/i.test(s)) return true;
+  return false;
+}
+
+export function normalizeWebsiteSizeKey(label) {
+  return String(label || '')
+    .toLowerCase()
+    .replace(/[×*]/g, 'x')
+    .replace(/\s+/g, '')
+    .replace(/inches\b/g, 'inch');
+}
+
 /**
  * When product.variants is empty, some catalog products still expose size-like
  * dimensions on customizationPreview.areas (storefront uses them as slot labels,
@@ -380,17 +397,20 @@ export function listAreaDerivedSizeOptions(product) {
     // Only treat as a selectable size when dimensions are real, or the label
     // itself looks like a size (e.g. "12x8"). Skip generic slot labels like "Front Photo".
     const hasRealDimensions = width > 1 && height > 1;
-    const labelLooksLikeSize = /\d+\s*[x×*]\s*\d+/i.test(rawLabel);
+    const labelLooksLikeSize = isWebsiteSizeLikeLabel(rawLabel);
     if (!hasRealDimensions && !labelLooksLikeSize) return;
-    const sizeLabel = hasRealDimensions
-      ? (formatFrameSizeLabel({
+    // Prefer the website area label when it already names the size (e.g. "12*8 inch")
+    // so catalog keys match storefront naming instead of width×height reordering.
+    const sizeLabel = labelLooksLikeSize
+      ? rawLabel
+      : (formatFrameSizeLabel({
         width,
         height,
         unit: area?.unit || preview.unit || 'inch',
-      }) || rawLabel)
-      : rawLabel;
+      }) || rawLabel);
     if (!sizeLabel || !/\d/.test(sizeLabel)) return;
-    const key = sizeLabel.toLowerCase().replace(/\s+/g, '');
+    if (!isWebsiteSizeLikeLabel(sizeLabel)) return;
+    const key = normalizeWebsiteSizeKey(sizeLabel);
     if (seen.has(key)) return;
     seen.add(key);
     options.push({
@@ -413,12 +433,12 @@ export function listAreaDerivedSizeOptions(product) {
 }
 
 /**
- * Source of truth for Additional Variants dropdown:
- * 1) website product.variants (same as ProductDetail)
- * 2) else size-like preview area dimensions
+ * Per-product size choices (variants first, else area-derived).
+ * Prefer listWebsiteCatalogSizeChoices for Additional Variants / Combo.
  */
 export function listAdditionalVariantChoices(product) {
-  const fromVariants = listWebsiteVariantOptions(product);
+  const fromVariants = listWebsiteVariantOptions(product)
+    .filter((opt) => isWebsiteSizeLikeLabel(opt.optionLabel) || isWebsiteSizeLikeLabel(opt.label));
   if (fromVariants.length) {
     return { choices: fromVariants, source: 'variants' };
   }
@@ -427,6 +447,127 @@ export function listAdditionalVariantChoices(product) {
     return { choices: fromAreas, source: 'area_sizes' };
   }
   return { choices: [], source: 'none' };
+}
+
+/**
+ * Catalog-wide website size dropdown for Additional Variants and Customized Combo.
+ * Includes every size-like option from all active products (variants + area sizes).
+ * Same size on different products stays as separate choices (different upload/preview rules).
+ * Never hardcodes sizes — Admin catalog changes appear automatically.
+ */
+export function listWebsiteCatalogSizeChoices(products = []) {
+  const list = Array.isArray(products) ? products : [];
+  const choices = [];
+  const seenValue = new Set();
+
+  list.forEach((product) => {
+    if (!product || product.isActive === false) return;
+    const productId = String(product._id || '').trim();
+    if (!productId) return;
+    const productTitle = String(product.title || 'Product').trim() || 'Product';
+    const sizeKeysOnProduct = new Set();
+
+    listWebsiteVariantOptions(product).forEach((opt) => {
+      const sizeLabel = String(opt.optionLabel || opt.label || '').trim();
+      if (!isWebsiteSizeLikeLabel(sizeLabel)) return;
+      const sizeKey = normalizeWebsiteSizeKey(sizeLabel);
+      sizeKeysOnProduct.add(sizeKey);
+      const value = `catalog:${productId}|variant|${opt.value}`;
+      if (seenValue.has(value)) return;
+      seenValue.add(value);
+      choices.push({
+        value,
+        label: `${sizeLabel} — ${productTitle}`,
+        shortLabel: sizeLabel,
+        sizeLabel,
+        sizeKey,
+        productId,
+        productTitle,
+        variantValue: opt.value,
+        variantId: opt.optionId || '',
+        optionId: opt.optionId || '',
+        optionLabel: opt.optionLabel,
+        variantName: opt.variantName,
+        source: 'variants',
+        isAreaDerived: false,
+        requiresImageUpload: Boolean(opt.requiresImageUpload),
+        previewWidth: opt.previewWidth,
+        previewHeight: opt.previewHeight,
+        previewUnit: opt.previewUnit || 'inch',
+        previewFrameImage: opt.previewFrameImage || '',
+        previewInstructions: opt.previewInstructions || '',
+      });
+    });
+
+    listAreaDerivedSizeOptions(product).forEach((opt) => {
+      const sizeLabel = String(opt.optionLabel || opt.label || '').trim();
+      const sizeKey = normalizeWebsiteSizeKey(sizeLabel);
+      // Prefer the real website variant when the same size already exists on this product.
+      if (sizeKeysOnProduct.has(sizeKey)) return;
+      sizeKeysOnProduct.add(sizeKey);
+      const value = `catalog:${productId}|area|${opt.value}`;
+      if (seenValue.has(value)) return;
+      seenValue.add(value);
+      choices.push({
+        value,
+        label: `${sizeLabel} — ${productTitle}`,
+        shortLabel: sizeLabel,
+        sizeLabel,
+        sizeKey,
+        productId,
+        productTitle,
+        variantValue: opt.value,
+        variantId: '',
+        optionId: '',
+        optionLabel: opt.optionLabel,
+        variantName: 'Size',
+        source: 'area_size',
+        isAreaDerived: true,
+        requiresImageUpload: false,
+        previewWidth: opt.previewWidth,
+        previewHeight: opt.previewHeight,
+        previewUnit: opt.previewUnit || 'inch',
+        previewFrameImage: opt.previewFrameImage || '',
+        previewInstructions: opt.previewInstructions || '',
+      });
+    });
+  });
+
+  choices.sort((a, b) => {
+    const sizeCmp = String(a.sizeLabel).localeCompare(String(b.sizeLabel), undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    });
+    if (sizeCmp) return sizeCmp;
+    return String(a.productTitle).localeCompare(String(b.productTitle), undefined, { sensitivity: 'base' });
+  });
+
+  return { choices, source: 'catalog' };
+}
+
+export function findCatalogSizeChoice(choices, value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  return (choices || []).find((choice) => choice.value === raw) || null;
+}
+
+export function groupCatalogSizeChoices(choices = []) {
+  const groups = [];
+  const bySize = new Map();
+  (choices || []).forEach((choice) => {
+    const key = choice.sizeKey || normalizeWebsiteSizeKey(choice.sizeLabel);
+    if (!bySize.has(key)) {
+      const group = {
+        sizeKey: key,
+        sizeLabel: choice.sizeLabel || choice.shortLabel || choice.label,
+        choices: [],
+      };
+      bySize.set(key, group);
+      groups.push(group);
+    }
+    bySize.get(key).choices.push(choice);
+  });
+  return groups;
 }
 
 export function getTextCustomFields(product) {
@@ -551,6 +692,52 @@ export function buildOrderLocalCustomVariantSlots(product, customLabel, quantity
   return [];
 }
 
+/**
+ * Area-derived catalog size → upload slots for that size only.
+ * Multi-size combo products (e.g. 12*8 + 8*6 areas) must not load unrelated sizes.
+ */
+export function buildAreaDerivedSizeSlots(product, sizeLabel, quantity) {
+  const label = String(sizeLabel || '').trim();
+  if (!label || !product) return [];
+  const sizeKey = normalizeWebsiteSizeKey(label);
+  const productLevel = buildProductLevelPhotoSlots(product);
+  const matching = productLevel.filter((slot) => {
+    const keys = [
+      normalizeWebsiteSizeKey(slot?.area?.label),
+      normalizeWebsiteSizeKey(slot?.label),
+      normalizeWebsiteSizeKey(slot?.sizeLabel),
+      normalizeWebsiteSizeKey(formatFrameSizeLabel(slot?.area || {})),
+    ].filter(Boolean);
+    return keys.includes(sizeKey);
+  });
+  const areaChoices = listAreaDerivedSizeOptions(product);
+  // Single-size products with non-size area labels (e.g. "Upload Photo here") fall back
+  // to all product-level slots. Multi-size products keep only matching areas.
+  const useSlots = matching.length
+    ? matching
+    : (areaChoices.length <= 1 ? productLevel : []);
+  if (!useSlots.length) return [];
+
+  const qty = Math.max(1, Number(quantity) || 1);
+  const expanded = [];
+  for (let unit = 1; unit <= qty; unit += 1) {
+    useSlots.forEach((slot, index) => {
+      expanded.push({
+        ...slot,
+        unitIndex: unit,
+        variantLabel: label,
+        sizeLabel: slot.sizeLabel || label,
+        label: qty > 1
+          ? `${label} — Unit ${unit}${useSlots.length > 1 ? ` · ${slot.area?.label || slot.label}` : ''}`
+          : (useSlots.length > 1 ? `${label} — ${slot.label}` : label),
+        slotKey: `area-size-${sizeKey}-u${unit}-${slot.slotKey || index}`,
+        isAreaDerivedSize: true,
+      });
+    });
+  }
+  return expanded;
+}
+
 /** Slots for an Additional Variant / Combo size row. */
 export function buildAdditionalVariantSlots(product, variantValue, quantity) {
   if (!variantValue || variantValue === ORDER_LOCAL_CUSTOM_VARIANT) {
@@ -559,7 +746,7 @@ export function buildAdditionalVariantSlots(product, variantValue, quantity) {
   // Area-derived size choice (not a real website variant ID)
   if (String(variantValue).startsWith('AreaSize:')) {
     const sizeLabel = String(variantValue).replace(/^AreaSize:\s*/i, '').trim();
-    return buildOrderLocalCustomVariantSlots(product, sizeLabel, quantity);
+    return buildAreaDerivedSizeSlots(product, sizeLabel, quantity);
   }
   const selected = findVariantOption(product, variantValue);
   const hasVariantUpload = Boolean(selected?.requiresImageUpload);
