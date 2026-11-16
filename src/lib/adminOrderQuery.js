@@ -138,14 +138,24 @@ export function buildAdminOrderFilter(filters = {}) {
     filter.assignedTo = filters.assignedTo;
   }
   if (filters.orderId) {
-    filter.orderNumber = { $regex: escapeRegex(filters.orderId), $options: 'i' };
+    const orderId = String(filters.orderId).trim();
+    const escaped = escapeRegex(orderId);
+    // GG/G-style IDs use a prefix match so unique orderNumber indexes stay usable.
+    const pattern = /^g[\w-]*$/i.test(orderId) ? `^${escaped}` : escaped;
+    filter.orderNumber = { $regex: pattern, $options: 'i' };
   }
   if (filters.name) {
-    filter['shippingAddress.fullName'] = { $regex: escapeRegex(filters.name), $options: 'i' };
+    const name = String(filters.name).trim().replace(/\s+/g, ' ').slice(0, 80);
+    filter['shippingAddress.fullName'] = { $regex: escapeRegex(name), $options: 'i' };
   }
   if (filters.mobile) {
-    const mobileTerm = filters.mobile.replace(/\D/g, '') || filters.mobile;
-    const mobileRegex = { $regex: escapeRegex(mobileTerm), $options: 'i' };
+    let digits = String(filters.mobile).replace(/\D/g, '');
+    if (digits.length === 12 && digits.startsWith('91')) digits = digits.slice(2);
+    if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
+    const mobileTerm = digits || String(filters.mobile).trim();
+    // Prefer suffix match for longer digit queries (handles +91 / spaces / leading zeros).
+    const pattern = digits.length >= 7 ? `${escapeRegex(digits)}$` : escapeRegex(mobileTerm);
+    const mobileRegex = { $regex: pattern, $options: 'i' };
     filter.$and = [
       ...(filter.$and || []),
       {

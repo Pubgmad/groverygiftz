@@ -5,6 +5,7 @@ import { getOrderDeliveryEstimate, isOrderOutOfTamilNadu } from '@/lib/orderDeli
 import { formatLongIstDate } from '@/lib/businessCalendar';
 import toast from 'react-hot-toast';
 import useAdminAccess from '@/hooks/useAdminAccess';
+import useDebouncedValue from '@/hooks/useDebouncedValue';
 import ReadOnlyBanner from '@/components/admin/ReadOnlyBanner';
 import AdminSelect from '@/components/admin/AdminSelect';
 import DownloadCsvButton from '@/components/admin/DownloadCsvButton';
@@ -15,8 +16,36 @@ import OrderDesignSheetsPanel from '@/components/admin/OrderDesignSheetsPanel';
 import { MAX_SHIPPING_LABEL_ORDERS } from '@/lib/shippingLabelLayout';
 import { ORDER_SOURCE_LABELS, OPS_STATUS_LABELS, isDelayedOrder } from '@/lib/opsConstants';
 import { todayIstYmd, tomorrowIstYmd } from '@/lib/istTime';
-import { FiPlus, FiRefreshCw } from 'react-icons/fi';
+import { FiPlus, FiRefreshCw, FiX } from 'react-icons/fi';
 import { customerImageDisplaySrc } from '@/lib/configuredImages';
+
+function AdminDateField({ label, value, onChange, title }) {
+  return (
+    <div className="min-w-0">
+      <label className="mb-1 block text-xs font-semibold text-gray-500">{label}</label>
+      <div className="flex min-h-[44px] items-stretch gap-1">
+        <input
+          type="date"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="min-h-[44px] w-full min-w-0 rounded-lg border px-3 py-2 text-sm"
+          title={title || label}
+        />
+        {value ? (
+          <button
+            type="button"
+            onClick={() => onChange('')}
+            className="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-lg border bg-white text-gray-500 hover:bg-gray-50"
+            aria-label={`Clear ${label}`}
+            title={`Clear ${label}`}
+          >
+            <FiX size={16} />
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 const statusOptions = [
   { value: 'ordered', label: 'Ordered' },
@@ -277,7 +306,8 @@ export default function AdminOrdersPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [orderDate, setOrderDate] = useState('');
+  const [orderDateFrom, setOrderDateFrom] = useState('');
+  const [orderDateTo, setOrderDateTo] = useState('');
   const [expectedFrom, setExpectedFrom] = useState('');
   const [expectedTo, setExpectedTo] = useState('');
   const [urgencyFilter, setUrgencyFilter] = useState('');
@@ -292,10 +322,17 @@ export default function AdminOrdersPage() {
   const [sourceFilter, setSourceFilter] = useState('');
   const [selectingMatching, setSelectingMatching] = useState(false);
   const pageSize = 10;
+  const debouncedOrderFilter = useDebouncedValue(orderFilter, 300);
+  const debouncedNameFilter = useDebouncedValue(nameFilter, 300);
+  const debouncedMobileFilter = useDebouncedValue(mobileFilter, 300);
+  const orderDateError = orderDateFrom && orderDateTo && orderDateFrom > orderDateTo
+    ? 'Order Date From cannot be after Order Date To'
+    : '';
   const dateError = dateFrom && dateTo && dateFrom > dateTo ? 'Paid From cannot be after Paid To' : '';
   const expectedError = expectedFrom && expectedTo && expectedFrom > expectedTo
     ? 'Expected dispatch From cannot be after To'
     : '';
+  const hasAnyDateFilter = Boolean(orderDateFrom || orderDateTo || dateFrom || dateTo || expectedFrom || expectedTo);
   const checkedCount = checkedIds.size;
   const selectedLabelIds = useMemo(() => [...checkedIds], [checkedIds]);
   const pageIds = useMemo(() => orders.map((order) => String(order._id)), [orders]);
@@ -312,18 +349,29 @@ export default function AdminOrdersPage() {
 
   const filterQuery = () => {
     const query = new URLSearchParams();
-    if (orderFilter.trim()) query.set('orderId', orderFilter.trim());
-    if (nameFilter.trim()) query.set('name', nameFilter.trim());
-    if (mobileFilter.trim()) query.set('mobile', mobileFilter.trim());
+    if (debouncedOrderFilter.trim()) query.set('orderId', debouncedOrderFilter.trim());
+    if (debouncedNameFilter.trim()) query.set('name', debouncedNameFilter.trim());
+    if (debouncedMobileFilter.trim()) query.set('mobile', debouncedMobileFilter.trim());
     if (statusFilter) query.set('status', statusFilter);
     if (sourceFilter) query.set('source', sourceFilter);
-    if (orderDate) query.set('orderDate', orderDate);
+    if (orderDateFrom) query.set('orderDateFrom', orderDateFrom);
+    if (orderDateTo) query.set('orderDateTo', orderDateTo);
     if (dateFrom) query.set('dateFrom', dateFrom);
     if (dateTo) query.set('dateTo', dateTo);
     if (expectedFrom) query.set('expectedFrom', expectedFrom);
     if (expectedTo) query.set('expectedTo', expectedTo);
     if (urgencyFilter) query.set('urgency', urgencyFilter);
     return query;
+  };
+
+  const clearAllDates = () => {
+    setOrderDateFrom('');
+    setOrderDateTo('');
+    setDateFrom('');
+    setDateTo('');
+    setExpectedFrom('');
+    setExpectedTo('');
+    setCurrentPage(1);
   };
 
   const fetchOrders = async () => {
@@ -350,15 +398,19 @@ export default function AdminOrdersPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    setOrderDate(params.get('orderDate') || '');
+    const legacyOrderDate = params.get('orderDate') || '';
+    setOrderDateFrom(params.get('orderDateFrom') || params.get('createdFrom') || legacyOrderDate || '');
+    setOrderDateTo(params.get('orderDateTo') || params.get('createdTo') || legacyOrderDate || '');
     setDateFrom(params.get('dateFrom') || '');
     setDateTo(params.get('dateTo') || '');
     setExpectedFrom(params.get('expectedFrom') || '');
     setExpectedTo(params.get('expectedTo') || '');
     setStatusFilter(params.get('status') || '');
     setUrgencyFilter(params.get('urgency') || '');
+    setSourceFilter(params.get('source') || params.get('orderSource') || '');
     setOrderFilter(params.get('orderId') || params.get('orderNumber') || '');
     setNameFilter(params.get('name') || '');
+    setMobileFilter(params.get('mobile') || params.get('mobileNumber') || '');
     setFiltersReady(true);
   }, []);
 
@@ -374,7 +426,7 @@ export default function AdminOrdersPage() {
 
   useEffect(() => {
     if (!filtersReady) return;
-    if (dateError || expectedError) {
+    if (orderDateError || dateError || expectedError) {
       setOrders([]);
       setTotalOrders(0);
       setTotalPages(1);
@@ -382,7 +434,7 @@ export default function AdminOrdersPage() {
       return;
     }
     fetchOrders();
-  }, [filtersReady, currentPage, orderFilter, nameFilter, mobileFilter, statusFilter, sourceFilter, orderDate, dateFrom, dateTo, dateError, expectedFrom, expectedTo, expectedError, urgencyFilter]);
+  }, [filtersReady, currentPage, debouncedOrderFilter, debouncedNameFilter, debouncedMobileFilter, statusFilter, sourceFilter, orderDateFrom, orderDateTo, dateFrom, dateTo, orderDateError, dateError, expectedFrom, expectedTo, expectedError, urgencyFilter]);
 
   useEffect(() => {
     fetch('/api/settings')
@@ -397,7 +449,7 @@ export default function AdminOrdersPage() {
 
   const paginatedOrders = orders;
 
-  useEffect(() => { setCurrentPage(1); }, [orderFilter, nameFilter, mobileFilter, statusFilter, orderDate, dateFrom, dateTo, expectedFrom, expectedTo, urgencyFilter]);
+  useEffect(() => { setCurrentPage(1); }, [debouncedOrderFilter, debouncedNameFilter, debouncedMobileFilter, statusFilter, sourceFilter, orderDateFrom, orderDateTo, dateFrom, dateTo, expectedFrom, expectedTo, urgencyFilter]);
   useEffect(() => { if (currentPage > totalPages) setCurrentPage(totalPages); }, [currentPage, totalPages]);
   useEffect(() => {
     if (selected?._id && !orders.some((order) => order._id === selected._id)) setSelected(null);
@@ -462,7 +514,7 @@ export default function AdminOrdersPage() {
   };
 
   const selectAllMatching = async () => {
-    if (selectingMatching || dateError) return;
+    if (selectingMatching || orderDateError || dateError || expectedError) return;
     setSelectingMatching(true);
     try {
       const query = filterQuery();
@@ -529,11 +581,7 @@ export default function AdminOrdersPage() {
               setMobileFilter('');
               setStatusFilter('');
               setSourceFilter('');
-              setOrderDate('');
-              setDateFrom('');
-              setDateTo('');
-              setExpectedFrom('');
-              setExpectedTo('');
+              clearAllDates();
               setUrgencyFilter('');
               setCurrentPage(1);
             }}
@@ -544,7 +592,7 @@ export default function AdminOrdersPage() {
           <DownloadCsvButton
             href={`/api/admin/orders/export?${filterQuery().toString()}`}
             fallbackName="orders.csv"
-            disabled={!!dateError}
+            disabled={!!(orderDateError || dateError || expectedError)}
           />
         </div>
       </div>
@@ -564,7 +612,7 @@ export default function AdminOrdersPage() {
               <button type="button" onClick={selectCurrentPage} disabled={!pageIds.length} className="inline-flex min-h-[44px] items-center justify-center rounded-xl border px-3 py-2 text-sm font-semibold disabled:opacity-50">
                 Select current page
               </button>
-              <button type="button" onClick={selectAllMatching} disabled={!!dateError || selectingMatching} className="inline-flex min-h-[44px] items-center justify-center rounded-xl border px-3 py-2 text-sm font-semibold disabled:opacity-50">
+              <button type="button" onClick={selectAllMatching} disabled={!!(orderDateError || dateError || expectedError) || selectingMatching} className="inline-flex min-h-[44px] items-center justify-center rounded-xl border px-3 py-2 text-sm font-semibold disabled:opacity-50">
                 {selectingMatching ? 'Selecting…' : `Select all matching (max ${MAX_SHIPPING_LABEL_ORDERS})`}
               </button>
               <button type="button" onClick={clearSelection} disabled={!checkedCount} className="inline-flex min-h-[44px] items-center justify-center rounded-xl border px-3 py-2 text-sm font-semibold disabled:opacity-50">
@@ -585,10 +633,10 @@ export default function AdminOrdersPage() {
 
       <div className={`grid gap-6 ${selected ? 'xl:grid-cols-3' : ''}`}>
         <div className={`${selected ? 'xl:col-span-2' : ''} bg-white rounded-xl border overflow-hidden`}>
-          <div className="grid min-w-0 gap-3 border-b bg-gray-50 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7">
+          <div className="grid min-w-0 grid-cols-1 gap-3 border-b bg-gray-50 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             <div className="min-w-0">
               <label className="mb-1 block text-xs font-semibold text-gray-500">Order ID</label>
-              <input value={orderFilter} onChange={(e) => { setOrderFilter(e.target.value); setCurrentPage(1); }} placeholder="GG0001 or G4746" className="min-h-[44px] w-full min-w-0 rounded-lg border px-3 py-2 text-sm" />
+              <input value={orderFilter} onChange={(e) => setOrderFilter(e.target.value)} placeholder="GG0001 or G4746" className="min-h-[44px] w-full min-w-0 rounded-lg border px-3 py-2 text-sm" />
             </div>
             <div className="min-w-0">
               <label className="mb-1 block text-xs font-semibold text-gray-500">Source</label>
@@ -605,11 +653,11 @@ export default function AdminOrdersPage() {
             </div>
             <div className="min-w-0">
               <label className="mb-1 block text-xs font-semibold text-gray-500">Customer Name</label>
-              <input value={nameFilter} onChange={(e) => { setNameFilter(e.target.value); setCurrentPage(1); }} placeholder="Search name" className="min-h-[44px] w-full min-w-0 rounded-lg border px-3 py-2 text-sm" />
+              <input value={nameFilter} onChange={(e) => setNameFilter(e.target.value)} placeholder="Search name" className="min-h-[44px] w-full min-w-0 rounded-lg border px-3 py-2 text-sm" />
             </div>
             <div className="min-w-0">
               <label className="mb-1 block text-xs font-semibold text-gray-500">Mobile Number</label>
-              <input value={mobileFilter} onChange={(e) => { setMobileFilter(e.target.value); setCurrentPage(1); }} placeholder="Search mobile" className="min-h-[44px] w-full min-w-0 rounded-lg border px-3 py-2 text-sm" />
+              <input value={mobileFilter} onChange={(e) => setMobileFilter(e.target.value)} placeholder="Search mobile" inputMode="tel" className="min-h-[44px] w-full min-w-0 rounded-lg border px-3 py-2 text-sm" />
             </div>
             <div className="min-w-0">
               <label className="mb-1 block text-xs font-semibold text-gray-500">Status</label>
@@ -618,72 +666,6 @@ export default function AdminOrdersPage() {
                 onChange={(next) => { setStatusFilter(next); setCurrentPage(1); }}
                 options={statusFilterOptions}
               />
-            </div>
-            <div className="min-w-0">
-              <label className="mb-1 block text-xs font-semibold text-gray-500">Order Date</label>
-              <input
-                type="date"
-                value={orderDate}
-                onChange={(e) => { setOrderDate(e.target.value); setCurrentPage(1); }}
-                className="min-h-[44px] w-full min-w-0 rounded-lg border px-3 py-2 text-sm"
-                title="Show orders created on this IST calendar day"
-              />
-            </div>
-            <div className="min-w-0">
-              <label className="mb-1 block text-xs font-semibold text-gray-500">Paid From</label>
-              <input type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setCurrentPage(1); }} className="min-h-[44px] w-full min-w-0 rounded-lg border px-3 py-2 text-sm" />
-            </div>
-            <div className="min-w-0">
-              <label className="mb-1 block text-xs font-semibold text-gray-500">Paid To</label>
-              <input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setCurrentPage(1); }} className="min-h-[44px] w-full min-w-0 rounded-lg border px-3 py-2 text-sm" />
-            </div>
-            <div className="min-w-0">
-              <label className="mb-1 block text-xs font-semibold text-gray-500">Expected dispatch From</label>
-              <input type="date" value={expectedFrom} onChange={(e) => { setExpectedFrom(e.target.value); setCurrentPage(1); }} className="min-h-[44px] w-full min-w-0 rounded-lg border px-3 py-2 text-sm" />
-            </div>
-            <div className="min-w-0">
-              <label className="mb-1 block text-xs font-semibold text-gray-500">Expected dispatch To</label>
-              <input type="date" value={expectedTo} onChange={(e) => { setExpectedTo(e.target.value); setCurrentPage(1); }} className="min-h-[44px] w-full min-w-0 rounded-lg border px-3 py-2 text-sm" />
-            </div>
-            <div className="min-w-0 sm:col-span-2">
-              <label className="mb-1 block text-xs font-semibold text-gray-500">Expected dispatch shortcuts</label>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className="min-h-[40px] rounded-lg border bg-white px-3 py-1.5 text-xs font-semibold"
-                  onClick={() => {
-                    const d = todayIstYmd();
-                    setExpectedFrom(d);
-                    setExpectedTo(d);
-                    setCurrentPage(1);
-                  }}
-                >
-                  Today
-                </button>
-                <button
-                  type="button"
-                  className="min-h-[40px] rounded-lg border bg-white px-3 py-1.5 text-xs font-semibold"
-                  onClick={() => {
-                    const d = tomorrowIstYmd();
-                    setExpectedFrom(d);
-                    setExpectedTo(d);
-                    setCurrentPage(1);
-                  }}
-                >
-                  Tomorrow
-                </button>
-                <button
-                  type="button"
-                  className="min-h-[40px] rounded-lg border bg-white px-3 py-1.5 text-xs font-semibold text-gray-600"
-                  onClick={() => {
-                    setExpectedFrom('');
-                    setExpectedTo('');
-                    setCurrentPage(1);
-                  }}
-                >
-                  Clear dates
-                </button>
-              </div>
             </div>
             <div className="min-w-0">
               <label className="mb-1 block text-xs font-semibold text-gray-500">Priority</label>
@@ -697,8 +679,81 @@ export default function AdminOrdersPage() {
                 ]}
               />
             </div>
-            {dateError ? <p className="text-sm text-red-600 sm:col-span-2 lg:col-span-3 xl:col-span-6">{dateError}</p> : null}
-            {expectedError ? <p className="text-sm text-red-600 sm:col-span-2 lg:col-span-3 xl:col-span-6">{expectedError}</p> : null}
+            <AdminDateField
+              label="Order Date From"
+              value={orderDateFrom}
+              onChange={(next) => { setOrderDateFrom(next); setCurrentPage(1); }}
+              title="Orders placed on or after this IST calendar day"
+            />
+            <AdminDateField
+              label="Order Date To"
+              value={orderDateTo}
+              onChange={(next) => { setOrderDateTo(next); setCurrentPage(1); }}
+              title="Orders placed on or before this IST calendar day"
+            />
+            <AdminDateField
+              label="Paid From"
+              value={dateFrom}
+              onChange={(next) => { setDateFrom(next); setCurrentPage(1); }}
+              title="Orders paid on or after this IST calendar day"
+            />
+            <AdminDateField
+              label="Paid To"
+              value={dateTo}
+              onChange={(next) => { setDateTo(next); setCurrentPage(1); }}
+              title="Orders paid on or before this IST calendar day"
+            />
+            <AdminDateField
+              label="Expected dispatch From"
+              value={expectedFrom}
+              onChange={(next) => { setExpectedFrom(next); setCurrentPage(1); }}
+            />
+            <AdminDateField
+              label="Expected dispatch To"
+              value={expectedTo}
+              onChange={(next) => { setExpectedTo(next); setCurrentPage(1); }}
+            />
+            <div className="min-w-0 sm:col-span-2 lg:col-span-3 xl:col-span-4">
+              <label className="mb-1 block text-xs font-semibold text-gray-500">Date shortcuts</label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className={`min-h-[44px] rounded-lg border px-3 py-2 text-xs font-semibold ${expectedFrom === todayIstYmd() && expectedTo === todayIstYmd() ? 'border-primary-500 bg-primary-50 text-primary-700' : 'bg-white'}`}
+                  onClick={() => {
+                    const d = todayIstYmd();
+                    setExpectedFrom(d);
+                    setExpectedTo(d);
+                    setCurrentPage(1);
+                  }}
+                >
+                  Today
+                </button>
+                <button
+                  type="button"
+                  className={`min-h-[44px] rounded-lg border px-3 py-2 text-xs font-semibold ${expectedFrom === tomorrowIstYmd() && expectedTo === tomorrowIstYmd() ? 'border-primary-500 bg-primary-50 text-primary-700' : 'bg-white'}`}
+                  onClick={() => {
+                    const d = tomorrowIstYmd();
+                    setExpectedFrom(d);
+                    setExpectedTo(d);
+                    setCurrentPage(1);
+                  }}
+                >
+                  Tomorrow
+                </button>
+                <button
+                  type="button"
+                  className="min-h-[44px] rounded-lg border bg-white px-3 py-2 text-xs font-semibold text-gray-700 disabled:opacity-50"
+                  disabled={!hasAnyDateFilter}
+                  onClick={clearAllDates}
+                >
+                  Clear dates
+                </button>
+              </div>
+              <p className="mt-1 text-[11px] text-gray-500">Today/Tomorrow set Expected dispatch. Clear dates resets Order, Paid, and Dispatch date filters.</p>
+            </div>
+            {orderDateError ? <p className="text-sm text-red-600 sm:col-span-2 lg:col-span-3 xl:col-span-4">{orderDateError}</p> : null}
+            {dateError ? <p className="text-sm text-red-600 sm:col-span-2 lg:col-span-3 xl:col-span-4">{dateError}</p> : null}
+            {expectedError ? <p className="text-sm text-red-600 sm:col-span-2 lg:col-span-3 xl:col-span-4">{expectedError}</p> : null}
           </div>
 
           {loading ? <p className="p-6 text-center">Loading...</p> : (<>

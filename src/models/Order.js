@@ -356,10 +356,14 @@ const OrderSchema = new mongoose.Schema({
 
 OrderSchema.index({ paymentStatus: 1, paidAt: -1 });
 OrderSchema.index({ paymentStatus: 1, createdAt: -1 });
+OrderSchema.index({ createdAt: -1 });
 OrderSchema.index({ customer: 1, paymentStatus: 1, status: 1 });
 OrderSchema.index({ orderSource: 1, paymentStatus: 1, paidAt: -1 });
 OrderSchema.index({ opsStatus: 1, expectedDispatchDate: 1 });
 OrderSchema.index({ assignedTo: 1, opsStatus: 1 });
+OrderSchema.index({ 'shippingAddress.fullName': 1 });
+OrderSchema.index({ 'shippingAddress.phone': 1 });
+OrderSchema.index({ 'shippingAddress.whatsappNumber': 1 });
 OrderSchema.index({ 'paymentRecords.paidAt': -1 });
 OrderSchema.index({ 'paymentRecords.kind': 1, 'paymentRecords.paidAt': -1 });
 OrderSchema.index({ 'parcelRefs.dispatchedAt': -1 });

@@ -6,51 +6,54 @@ import ProductCard from '@/components/product/ProductCard';
 import SearchTracker from '@/components/meta/SearchTracker';
 import GA4SearchTracker from '@/components/analytics/GA4SearchTracker';
 import { buildSearchKeywordMaps } from '@/lib/giftFinderResolve';
+import { escapeRegex } from '@/lib/adminFilters';
+import { findProductsForSearch, normalizeProductSearchQuery, rankProductMatches } from '@/lib/productSearch';
 
 export default async function SearchPage({ searchParams }) {
-  const q = searchParams?.q || '';
-  const occasion = searchParams?.occasion || '';
-  const giftType = searchParams?.giftType || '';
+  const q = normalizeProductSearchQuery(searchParams?.q || '');
+  const occasion = String(searchParams?.occasion || '').trim();
+  const giftType = String(searchParams?.giftType || '').trim();
   let products = [];
 
   if (q || occasion || giftType) {
     await dbConnect();
     const settings = await Settings.findOne().lean();
     const { occasionKeywords, giftTypeKeywords } = buildSearchKeywordMaps(settings || {});
-
-    const andFilters = [{ isActive: true }];
-
     const keywordList = [
       ...(occasionKeywords[occasion] || []),
       ...(giftTypeKeywords[giftType] || []),
-    ];
+    ].map((term) => normalizeProductSearchQuery(term)).filter(Boolean).slice(0, 12);
 
-    if (q) {
-      andFilters.push({
-        $or: [
-          { title: { $regex: q, $options: 'i' } },
-          { description: { $regex: q, $options: 'i' } },
-        ],
-      });
-    }
-
-    if (keywordList.length > 0) {
-      andFilters.push({
-        $or: keywordList.flatMap((term) => ([
-          { title: { $regex: term, $options: 'i' } },
-          { description: { $regex: term, $options: 'i' } },
-          { slug: { $regex: term.replace(/\s+/g, '-'), $options: 'i' } },
-        ])),
-      });
-    }
-
-    products = await Product.find({ $and: andFilters }).limit(40).lean();
-
-    if (products.length === 0 && q) {
-      try {
-        products = await Product.find({ $text: { $search: q }, isActive: true }).limit(40).lean();
-      } catch {
-        products = [];
+    if (q && !keywordList.length) {
+      const result = await findProductsForSearch(Product, q, { limit: 40, activeOnly: true });
+      products = result.products;
+    } else {
+      const andFilters = [{ isActive: true }];
+      if (q) {
+        const escaped = escapeRegex(q);
+        andFilters.push({
+          $or: [
+            { title: { $regex: escaped, $options: 'i' } },
+            { description: { $regex: escaped, $options: 'i' } },
+            { slug: { $regex: escapeRegex(q.replace(/\s+/g, '-')), $options: 'i' } },
+          ],
+        });
+      }
+      if (keywordList.length > 0) {
+        andFilters.push({
+          $or: keywordList.flatMap((term) => ([
+            { title: { $regex: escapeRegex(term), $options: 'i' } },
+            { description: { $regex: escapeRegex(term), $options: 'i' } },
+            { slug: { $regex: escapeRegex(term.replace(/\s+/g, '-')), $options: 'i' } },
+          ])),
+        });
+      }
+      products = await Product.find({ $and: andFilters }).limit(40).lean();
+      if (products.length === 0 && q) {
+        const fallback = await findProductsForSearch(Product, q, { limit: 40, activeOnly: true });
+        products = fallback.products;
+      } else if (q) {
+        products = rankProductMatches(products, q);
       }
     }
   }

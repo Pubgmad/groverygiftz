@@ -13,6 +13,7 @@ import { sanitizeProductPayload } from '@/lib/productPayload';
 import { hydrateProductShippingTemplates } from '@/lib/shippingTemplateHydration';
 import { centralizeProductDeliveryEstimates } from '@/lib/centralDeliveryEstimates';
 import { readDeliveryEstimateSettings } from '@/lib/deliveryEstimateSettings';
+import { buildProductTextFilter, findProductsForSearch, normalizeProductSearchQuery } from '@/lib/productSearch';
 
 export async function GET(req) {
   await dbConnect();
@@ -20,17 +21,33 @@ export async function GET(req) {
   const session = await getServerSession(authOptions);
   const access = await getRequestAdminAccess(session);
   const page = Number(searchParams.get('page')) || 1;
-  const limit = Number(searchParams.get('limit')) || 20;
-  const search = searchParams.get('search') || '';
+  const limit = Math.min(Math.max(Number(searchParams.get('limit')) || 20, 1), 100);
+  const search = normalizeProductSearchQuery(searchParams.get('search') || '');
   const collection = searchParams.get('collection');
   const featured = searchParams.get('featured');
   const bestSeller = searchParams.get('bestSeller');
   const offer = searchParams.get('offer');
   const latest = searchParams.get('latest');
   const includeAll = searchParams.get('all') === 'true';
+  const activeOnly = !includeAll || !can(access, 'products', 'read');
+
+  // Suggestion / storefront search path: ranked matches without loading the whole catalog.
+  if (search && !collection && featured !== 'true' && bestSeller !== 'true' && offer !== 'true' && latest !== 'true') {
+    const result = await findProductsForSearch(Product, search, { limit, activeOnly });
+    await hydrateProductShippingTemplates(result.products);
+    return NextResponse.json({
+      products: result.products,
+      total: result.products.length,
+      pages: 1,
+      page: 1,
+    }, { headers: { 'Cache-Control': 'no-store' } });
+  }
 
   const filter = {};
-  if (search) filter.title = { $regex: search, $options: 'i' };
+  if (search) {
+    const built = buildProductTextFilter(search, { activeOnly: false });
+    if (built.filter?.$or) filter.$or = built.filter.$or;
+  }
   if (collection) filter.collections = collection;
   if (featured === 'true') filter.isFeatured = true;
   if (bestSeller === 'true') filter.isBestSeller = true;
@@ -41,7 +58,7 @@ export async function GET(req) {
     filter.createdAt = { $gte: latestSince };
   }
   // Expose inactive products only to authenticated admins.
-  if (!includeAll || !can(access, 'products', 'read')) filter.isActive = true;
+  if (activeOnly) filter.isActive = true;
 
   const [products, total] = await Promise.all([
     Product.find(filter).populate('collections', 'name slug').sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),

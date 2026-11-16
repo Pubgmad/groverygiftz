@@ -59,14 +59,21 @@ export default function Header() {
       return;
     }
     setSuggesting(true);
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const timer = setTimeout(() => {
-      fetch(`/api/products?search=${encodeURIComponent(query)}&limit=6`)
+      fetch(`/api/products?search=${encodeURIComponent(query)}&limit=6`, controller ? { signal: controller.signal } : undefined)
         .then((res) => res.json())
         .then((data) => setSuggestions(data.products || []))
-        .catch(() => setSuggestions([]))
+        .catch((error) => {
+          if (error?.name === 'AbortError') return;
+          setSuggestions([]);
+        })
         .finally(() => setSuggesting(false));
-    }, 180);
-    return () => clearTimeout(timer);
+    }, 250);
+    return () => {
+      clearTimeout(timer);
+      controller?.abort();
+    };
   }, [searchQuery]);
 
   const visibleMegaCollections = menuCollections;
