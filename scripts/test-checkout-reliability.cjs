@@ -138,31 +138,37 @@ test('server pricing retains existing base offers, variant adjustments, own pric
 
 test('checkout outcome URLs stay on-site and preserve legacy Cashfree identifiers', () => {
   const c = payment();
-  assert.equal(c.checkoutOutcomeUrl('return', 'PENDING-LEGACY123'), '/checkout/success?cashfree_order_id=PENDING-LEGACY123');
+  assert.equal(c.checkoutOutcomeUrl('return', 'PENDING-LEGACY123'), '/checkout/return?cashfree_order_id=PENDING-LEGACY123');
   assert.equal(c.checkoutOutcomeUrl('confirmation', 'PENDING-LEGACY123'), '/checkout/success?cashfree_order_id=PENDING-LEGACY123');
-  assert.equal(c.checkoutOutcomeUrl('return', 'https://untrusted.invalid/order'), '/checkout/success');
+  assert.equal(c.checkoutOutcomeUrl('return', 'https://untrusted.invalid/order'), '/checkout/return');
   assert.equal(c.checkoutOutcomeUrl('confirmation', ''), '/checkout/success');
 });
 
-function outcomeFixture(mode, result = { success: true, paymentStatus: 'paid', orderNumber: 'GG0064', items: [{ product: 'p', price: 500, quantity: 1 }], subtotal: 500, shippingCost: 100, total: 600, deliveryEstimate: '8 working days' }) {
+function outcomeFixture(mode, result = { success: true, paymentStatus: 'paid', orderNumber: 'GG0064', items: [{ product: 'p', price: 500, quantity: 1 }], subtotal: 500, shippingCost: 100, total: 600, deliveryEstimate: '8 working days' }, extras = {}) {
   const storage = new Map();
-  const calls = { cleared: 0, reconciled: 0, ga: 0, meta: 0, confirmation: 0, routes: [], result: null, step: 1, messages: [] };
+  const calls = { cleared: 0, reconciled: 0, ga: 0, meta: 0, confirmation: 0, routes: [], result: null, step: 1, messages: [], drafts: [] };
   const c = load(['src/lib/checkoutPayment.js'], {
     mode, orderId: 'provider-order',
     window: { sessionStorage: { getItem: (key) => storage.get(key), setItem: (key, value) => storage.set(key, value) }, scrollTo() {} },
     session: { user: { id: 'customer-1' } }, receiptOwnerRef: { current: 'customer-1' }, returnVerifyRef: { current: '' },
-    cart: [{ product: 'new-cart-product', quantity: 1 }], cartTotal: 500, grandTotal: 600, shippingCost: 100, deliveryEstimate: '8 working days',
+    cart: extras.cart === undefined ? [{ product: 'new-cart-product', quantity: 1 }] : extras.cart,
+    cartReady: extras.cartReady !== false,
+    cartTotal: 500, grandTotal: 600, shippingCost: 100, deliveryEstimate: '8 working days',
+    address: { fullName: 'Test', state: 'Tamil Nadu' }, orderNote: '',
+    emptyAddress: () => ({ fullName: '', email: '', phone: '', whatsappNumber: '', line1: '', line2: '', city: '', state: '', pincode: '' }),
+    unpaidPaymentMessage: (error) => error || 'Payment was not completed. You can check the status or try again.',
     clearCart: () => calls.cleared++, removePurchasedCartItems: () => calls.reconciled++, router: { replace: (url) => calls.routes.push(url) },
     trackGA4Purchase: () => calls.ga++, trackVerifiedMetaPurchase: () => calls.meta++, trackGA4OrderConfirmation: () => calls.confirmation++,
     setOrderResult: (value) => { calls.result = value; }, setStep: (value) => { calls.step = value; },
-    setVerificationMessage: (value) => calls.messages.push(value), toast: { error: (value) => calls.messages.push(value) },
-    clearCheckoutDraft() {}, writeCheckoutDraft() {}, readCheckoutDraft() { return null; },
+    setReturnOrderId: () => {}, setVerificationMessage: (value) => calls.messages.push(value), toast: { error: (value) => calls.messages.push(value) },
+    clearCheckoutDraft() {}, writeCheckoutDraft(_id, draft) { calls.drafts.push(draft); }, readCheckoutDraft() { return null; },
   });
   c.verifyCheckoutPayment = async () => result;
   const flow = fs.readFileSync('src/components/checkout/CheckoutFlow.js', 'utf8');
-  const handlers = flow.slice(flow.indexOf('  const showSuccessfulOrder ='), flow.indexOf('  const handleAddressNext ='));
+  const start = flow.indexOf('  const restoreUnpaidCheckout =');
+  const handlers = flow.slice(start > -1 ? start : flow.indexOf('  const showSuccessfulOrder ='), flow.indexOf('  const handleAddressNext ='));
   vm.runInContext(handlers + '\nglobalThis.verify = verifyCashfreeOrder;', c);
-  return { c, calls };
+  return { c, calls, storage };
 }
 
 test('paid checkout and Cashfree return navigate to confirmation and clear the completed cart only once', async () => {
@@ -203,27 +209,44 @@ test('pending, unauthorized and failed outcomes never show success, clear cart o
       assert.equal(f.calls.cleared, 0);
       assert.equal(f.calls.reconciled, 0);
       assert.equal(f.calls.ga + f.calls.meta, 0);
-      assert.equal(f.calls.routes.length, 0);
+      // Unpaid Cashfree returns restore checkout Step 2 instead of a dead-end pending page.
+      assert.deepEqual(f.calls.routes, ['/checkout']);
+      assert.equal(f.calls.step, 2);
+      assert.equal(f.calls.drafts.at(-1)?.step, 2);
     }
   }
 });
 
-test('routes share one checkout flow, legacy returns redirect, and return UI cannot start another payment', () => {
-  for (const path of ['src/app/checkout/page.js', 'src/app/checkout/success/page.js']) {
+test('unpaid return with an empty cart keeps a recoverable pending fallback', async () => {
+  const f = outcomeFixture('return', { success: false, paymentStatus: 'pending' }, { cart: [] });
+  assert.equal(await f.c.verify('provider-order'), false);
+  assert.equal(f.calls.routes.length, 0);
+  assert.ok(f.calls.messages.length > 0);
+  assert.equal(f.calls.cleared, 0);
+});
+
+test('routes share one checkout flow, Cashfree returns verify then restore or confirm, and return UI cannot start another payment', () => {
+  for (const path of ['src/app/checkout/page.js', 'src/app/checkout/success/page.js', 'src/app/checkout/return/page.js']) {
     const wrapper = fs.readFileSync(path, 'utf8');
     assert.match(wrapper, /import CheckoutFlow from '@\/components\/checkout\/CheckoutFlow'/);
     assert.doesNotMatch(wrapper, /create-cashfree-order|clearCart|Order\.create/);
   }
   const returnPage = fs.readFileSync('src/app/checkout/return/page.js', 'utf8');
-  assert.match(returnPage, /redirect\(checkoutOutcomeUrl\('confirmation', orderId\)\)/);
-  assert.doesNotMatch(returnPage, /CheckoutFlow|create-cashfree-order|clearCart|Order\.create/);
+  assert.match(returnPage, /mode="return"/);
+  assert.doesNotMatch(returnPage, /redirect\(/);
   assert.match(fs.readFileSync('src/app/checkout/page.js', 'utf8'), /if \(orderId\) redirect\(checkoutOutcomeUrl\('confirmation', orderId\)\)/);
+  assert.match(fs.readFileSync('src/lib/checkoutPayment.js', 'utf8'), /PAYMENT_RETURN_PATH = '\/checkout\/return'/);
+  assert.match(fs.readFileSync('src/lib/checkoutPayment.js', 'utf8'), /ORDER_CONFIRMATION_PATH = '\/checkout\/success'/);
   const flow = fs.readFileSync('src/components/checkout/CheckoutFlow.js', 'utf8').replace(/\r\n/g, '\n');
-  const pending = flow.slice(flow.indexOf("  if (mode !== 'checkout') {"), flow.indexOf('<div className="max-w-6xl'));
+  assert.match(flow, /restoreUnpaidCheckout/);
+  assert.match(flow, /Checking payment status\.\.\./);
+  assert.match(flow, /checkout-incomplete:/);
+  assert.doesNotMatch(flow, /Confirming your payment|Please wait while we securely check your order/);
+  const pendingStart = flow.indexOf("We couldn't confirm this payment yet");
+  const pending = flow.slice(pendingStart, flow.indexOf('<div className="max-w-6xl', pendingStart));
   assert.match(pending, /retryPaymentVerification/);
-  assert.doesNotMatch(pending, /handleCashfreePayment|Pay \{/);
-  assert.doesNotMatch(pending, /Confirming your payment|Checking payment\.\.\.|Please wait while we securely check your order/);
-  assert.match(pending, /We couldn't confirm this payment yet/);
+  assert.doesNotMatch(pending, /handleCashfreePayment|onClick=\{handleCashfreePayment\}/);
+  assert.match(pending, /Return to checkout/);
   assert.match(flow, /encodeURIComponent\(authenticationCallback\)/);
   assert.match(flow, /removePurchasedCartItems\(verifyData.items\)/);
 });

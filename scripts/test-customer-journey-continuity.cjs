@@ -65,13 +65,17 @@ test('photo editor uses history so Back/X close without committing unsaved edits
   assert.doesNotMatch(editor, /onApply\?\.\(draft\).*requestClose|requestClose.*onApply/);
 });
 
-test('Cashfree return still targets the success route without the intermediate checking page', () => {
+test('Cashfree return verifies then restores checkout Step 2 when unpaid, success only when paid', () => {
   const payment = read('src/lib/checkoutPayment.js');
-  assert.match(payment, /PAYMENT_RETURN_PATH = '\/checkout\/success'/);
+  assert.match(payment, /PAYMENT_RETURN_PATH = '\/checkout\/return'/);
+  assert.match(payment, /ORDER_CONFIRMATION_PATH = '\/checkout\/success'/);
   const returnPage = read('src/app/checkout/return/page.js');
-  assert.match(returnPage, /redirect\(checkoutOutcomeUrl\('confirmation', orderId\)\)/);
-  assert.doesNotMatch(returnPage, /CheckoutFlow|Confirming your payment/);
+  assert.match(returnPage, /mode="return"/);
+  assert.doesNotMatch(returnPage, /Confirming your payment/);
   const flow = read('src/components/checkout/CheckoutFlow.js');
-  assert.doesNotMatch(flow, /Confirming your payment|Checking payment\.\.\.|Please wait while we securely check your order/);
+  assert.match(flow, /restoreUnpaidCheckout/);
+  assert.match(flow, /Checking payment status\.\.\./);
+  assert.doesNotMatch(flow, /Confirming your payment|Please wait while we securely check your order/);
   assert.match(flow, /verifyCheckoutPayment|verifyCashfreeOrder/);
+  assert.match(flow, /checkout-incomplete:/);
 });

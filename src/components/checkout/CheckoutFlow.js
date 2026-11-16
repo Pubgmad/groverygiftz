@@ -15,6 +15,8 @@ import { buildCurrentDeliveryEstimate } from '@/lib/centralDeliveryEstimates';
 import useDeliverySettings from '@/hooks/useDeliverySettings';
 import { checkoutOutcomeUrl, forgetCheckoutReturn, isCheckoutReturnCompleted, readCheckoutReturn, rememberCheckoutReturn, verifyCheckoutPayment } from '@/lib/checkoutPayment';
 
+const unpaidPaymentMessage = (error) => error || 'Payment was not completed. You can check the status or try again.';
+
 const STEPS = ['Address', 'Payment', 'Confirm'];
 const CHECKOUT_DRAFT_KEY = (customerId) => `gg-checkout-draft:${customerId}`;
 const emptyAddress = () => ({ fullName: '', email: '', phone: '', whatsappNumber: '', line1: '', line2: '', city: '', state: '', pincode: '' });
@@ -207,12 +209,36 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
       setOrderResult(null);
       setStep(1);
     }
-    const returnedOrderId = orderId || readCheckoutReturn(session.user.id, mode !== 'checkout' || cart.length === 0);
+
+    // Checkout: only reopen the success page for a verified completed payment.
+    // Incomplete Cashfree attempts stay on Step 2 so Back / Buy It Now are not hijacked.
     if (mode === 'checkout') {
-      if (returnVerifyRef.current === `checkout:${returnedOrderId}`) return;
-      if (returnedOrderId) router.replace(checkoutOutcomeUrl('confirmation', returnedOrderId), { scroll: false });
+      const completedId = readCheckoutReturn(session.user.id, true);
+      const incompleteId = readCheckoutReturn(session.user.id, false);
+      if (completedId && isCheckoutReturnCompleted(session.user.id, completedId) && cart.length === 0) {
+        if (returnVerifyRef.current === `checkout:${completedId}`) return;
+        returnVerifyRef.current = `checkout:${completedId}`;
+        router.replace(checkoutOutcomeUrl('confirmation', completedId), { scroll: false });
+        return;
+      }
+      if (incompleteId) {
+        setReturnOrderId(incompleteId);
+        // Land once on Step 2 after an abandoned Cashfree attempt; allow Back to Step 1 afterward.
+        if (returnVerifyRef.current !== `checkout-incomplete:${incompleteId}`) {
+          returnVerifyRef.current = `checkout-incomplete:${incompleteId}`;
+          setStep(2);
+          const draft = readCheckoutDraft(session.user.id);
+          writeCheckoutDraft(session.user.id, {
+            address: draft?.address && typeof draft.address === 'object' ? draft.address : address,
+            orderNote: typeof draft?.orderNote === 'string' ? draft.orderNote : orderNote,
+            step: 2,
+          });
+        }
+      }
       return;
     }
+
+    const returnedOrderId = orderId || readCheckoutReturn(session.user.id, true);
     if (!returnedOrderId) {
       setVerificationMessage('No payment reference was found. Please view your orders or return to your cart.');
       return;
@@ -223,7 +249,9 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
     setLoading(true);
     setStep(2);
     verifyCashfreeOrder(returnedOrderId, undefined, undefined, controller.signal)
-      .catch((error) => { if (!controller.signal.aborted) setVerificationMessage('Unable to confirm payment. Please check again.'); })
+      .catch(() => {
+        if (!controller.signal.aborted) restoreUnpaidCheckout(returnedOrderId, 'Unable to confirm payment. Please check again.');
+      })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [status, session?.user?.id, session?.user?.type, cartReady, cart.length, router, mode, orderId]);
@@ -263,6 +291,28 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
     return () => window.removeEventListener(GOOGLE_CONSENT_SYNC_EVENT, trackCheckout);
   }, [cartReady, cart, status, session?.user?.type, step, mode, orderId]);
 
+  const restoreUnpaidCheckout = (attemptOrderId, message) => {
+    const notice = unpaidPaymentMessage(message);
+    if (session?.user?.id && attemptOrderId) {
+      rememberCheckoutReturn(session.user.id, attemptOrderId, false);
+      const draft = readCheckoutDraft(session.user.id);
+      writeCheckoutDraft(session.user.id, {
+        address: draft?.address && typeof draft.address === 'object' ? { ...emptyAddress(), ...draft.address } : address,
+        orderNote: typeof draft?.orderNote === 'string' ? draft.orderNote : orderNote,
+        step: 2,
+      });
+    }
+    setReturnOrderId(attemptOrderId || '');
+    setVerificationMessage('');
+    setOrderResult(null);
+    setStep(2);
+    toast.error(notice);
+    if (mode !== 'checkout') {
+      returnVerifyRef.current = `restored:${attemptOrderId || ''}`;
+      router.replace('/checkout', { scroll: false });
+    }
+  };
+
   const showSuccessfulOrder = (verifyData, verifiedOrderId, fallbackItems = cart, fallbackTotals = {}) => {
     if (!isCheckoutReturnCompleted(session.user.id, verifiedOrderId)) {
       if (Array.isArray(verifyData.items) && verifyData.items.length && typeof removePurchasedCartItems === 'function') {
@@ -273,6 +323,7 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
     }
     if (mode !== 'confirmation') {
       rememberCheckoutReturn(session.user.id, verifiedOrderId, true);
+      if (session?.user?.id) clearCheckoutDraft(session.user.id);
       router.replace(checkoutOutcomeUrl('confirmation', verifiedOrderId), { scroll: false });
       return;
     }
@@ -309,7 +360,25 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
       showSuccessfulOrder(verifyData, orderId, fallbackItems, fallbackTotals);
       return true;
     }
-    const message = verifyData.error || 'Payment is pending. Please contact support if amount was debited.';
+    const message = verifyData.error || 'Payment confirmation is still pending. Please check again.';
+    // Abandoned / unpaid / still-pending returns restore checkout Step 2 (cart intact).
+    // Standalone pending UI is only a fallback when there is nothing to restore.
+    if (mode === 'return' || mode === 'confirmation') {
+      if (cartReady && cart.length > 0) {
+        restoreUnpaidCheckout(orderId, message);
+        return false;
+      }
+      // Cart still loading: keep a non-blank status; retry path stays available.
+      if (!cartReady) {
+        setVerificationMessage(message);
+        toast.error(message);
+        return false;
+      }
+    }
+    if (mode === 'checkout' && cart.length > 0) {
+      restoreUnpaidCheckout(orderId, message);
+      return false;
+    }
     setVerificationMessage(message);
     toast.error(message);
     return false;
@@ -509,6 +578,7 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
                   Check payment status
                 </button>
               ) : null}
+              <Link href="/checkout" className="btn-primary inline-flex min-h-[44px] w-full items-center justify-center px-5 py-3 sm:w-auto">Return to checkout</Link>
               <Link href="/account/orders" className="btn-outline inline-flex min-h-[44px] w-full items-center justify-center px-5 py-3 sm:w-auto">My Orders</Link>
               <Link href="/cart" className="btn-outline inline-flex min-h-[44px] w-full items-center justify-center px-5 py-3 sm:w-auto">View Cart</Link>
             </div>
@@ -516,9 +586,11 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
         </div>
       );
     }
+    // Brief visible status only while Cashfree return is verified — never a blank page.
     return (
-      <div className="min-h-[70vh] bg-gradient-to-b from-primary-50/80 to-white px-4 py-14" aria-busy="true">
-        <p className="sr-only" role="status" aria-live="polite">Confirming your order</p>
+      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-3 px-4 text-center" aria-busy="true">
+        <span className="h-8 w-8 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" aria-hidden="true" />
+        <p role="status" aria-live="polite" className="text-sm text-gray-600">Checking payment status...</p>
       </div>
     );
   }

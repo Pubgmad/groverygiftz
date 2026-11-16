@@ -356,7 +356,7 @@ test('Cashfree callbacks use the configured site origin, never an arbitrary Orig
   const fixture = checkoutFixture({ user: { type: 'customer', id: 'customer-1' } }, { origin: 'https://untrusted.invalid' });
   fixture.c.process.env.NEXTAUTH_URL = 'https://groverygiftz.in';
   assert.equal((await fixture.c.POST(fixture.req)).status, 201);
-  assert.equal(fixture.providerBody().order_meta.return_url, 'https://groverygiftz.in/checkout/success?cashfree_order_id={order_id}');
+  assert.equal(fixture.providerBody().order_meta.return_url, 'https://groverygiftz.in/checkout/return?cashfree_order_id={order_id}');
 });
 
 test('automatic checkout preserves totals and captures the actual browser without an acceptance cookie', async () => {
