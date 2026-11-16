@@ -340,19 +340,93 @@ export function mergeSlotsPreserveUploads(nextSlots = [], prevSlots = []) {
 }
 
 export function listWebsiteVariantOptions(product) {
-  return (product?.variants || []).flatMap((v) => (v.options || []).map((o) => ({
-    value: `${v.name}: ${o.label}`,
-    label: `${v.name}: ${o.label}`,
-    variantName: v.name || '',
-    optionLabel: o.label || '',
-    optionId: o._id || o.sku || `${v.name}:${o.label}`,
-    requiresImageUpload: Boolean(o.requiresImageUpload),
-    previewWidth: o.previewWidth,
-    previewHeight: o.previewHeight,
-    previewUnit: o.previewUnit || 'inch',
-    previewFrameImage: o.previewFrameImage || '',
-    previewInstructions: o.previewInstructions || '',
-  })));
+  return (product?.variants || []).flatMap((v) => (v.options || []).map((o) => {
+    const optionLabel = String(o?.label || o?.name || '').trim();
+    if (!optionLabel) return null;
+    const variantName = String(v?.name || v?.type || 'Variant').trim() || 'Variant';
+    return {
+      value: `${variantName}: ${optionLabel}`,
+      label: `${variantName}: ${optionLabel}`,
+      variantName,
+      optionLabel,
+      optionId: o._id || o.sku || `${variantName}:${optionLabel}`,
+      requiresImageUpload: Boolean(o.requiresImageUpload),
+      previewWidth: o.previewWidth,
+      previewHeight: o.previewHeight,
+      previewUnit: o.previewUnit || 'inch',
+      previewFrameImage: o.previewFrameImage || '',
+      previewInstructions: o.previewInstructions || '',
+      source: 'variants',
+    };
+  })).filter(Boolean);
+}
+
+/**
+ * When product.variants is empty, some catalog products still expose size-like
+ * dimensions on customizationPreview.areas (storefront uses them as slot labels,
+ * not a Size picker). Surface those as selectable Additional Variant choices
+ * without inventing website variant IDs.
+ */
+export function listAreaDerivedSizeOptions(product) {
+  const preview = product?.customizationPreview || {};
+  if (preview.enabled === false) return [];
+  const areas = Array.isArray(preview.areas) ? preview.areas : [];
+  const seen = new Set();
+  const options = [];
+  areas.forEach((area) => {
+    const width = Number(area?.width) || 0;
+    const height = Number(area?.height) || 0;
+    const rawLabel = String(area?.label || '').trim();
+    // Only treat as a selectable size when dimensions are real, or the label
+    // itself looks like a size (e.g. "12x8"). Skip generic slot labels like "Front Photo".
+    const hasRealDimensions = width > 1 && height > 1;
+    const labelLooksLikeSize = /\d+\s*[x×*]\s*\d+/i.test(rawLabel);
+    if (!hasRealDimensions && !labelLooksLikeSize) return;
+    const sizeLabel = hasRealDimensions
+      ? (formatFrameSizeLabel({
+        width,
+        height,
+        unit: area?.unit || preview.unit || 'inch',
+      }) || rawLabel)
+      : rawLabel;
+    if (!sizeLabel || !/\d/.test(sizeLabel)) return;
+    const key = sizeLabel.toLowerCase().replace(/\s+/g, '');
+    if (seen.has(key)) return;
+    seen.add(key);
+    options.push({
+      value: `AreaSize: ${sizeLabel}`,
+      label: sizeLabel,
+      variantName: 'Size',
+      optionLabel: sizeLabel,
+      optionId: '',
+      requiresImageUpload: false,
+      previewWidth: width,
+      previewHeight: height,
+      previewUnit: area?.unit || preview.unit || 'inch',
+      previewFrameImage: area?.frameImage || preview.frameImage || '',
+      previewInstructions: area?.instructions || '',
+      source: 'area_size',
+      isAreaDerived: true,
+    });
+  });
+  return options;
+}
+
+/**
+ * Source of truth for Additional Variants dropdown:
+ * 1) website product.variants (same as ProductDetail)
+ * 2) else size-like preview area dimensions
+ */
+export function listAdditionalVariantChoices(product) {
+  const fromVariants = listWebsiteVariantOptions(product);
+  if (fromVariants.length) {
+    return { choices: fromVariants, source: 'variants' };
+  }
+  const fromAreas = listAreaDerivedSizeOptions(product);
+  if (fromAreas.length) {
+    return { choices: fromAreas, source: 'area_sizes' };
+  }
+  return { choices: [], source: 'none' };
 }
 
 export function getTextCustomFields(product) {
@@ -481,6 +555,11 @@ export function buildOrderLocalCustomVariantSlots(product, customLabel, quantity
 export function buildAdditionalVariantSlots(product, variantValue, quantity) {
   if (!variantValue || variantValue === ORDER_LOCAL_CUSTOM_VARIANT) {
     return [];
+  }
+  // Area-derived size choice (not a real website variant ID)
+  if (String(variantValue).startsWith('AreaSize:')) {
+    const sizeLabel = String(variantValue).replace(/^AreaSize:\s*/i, '').trim();
+    return buildOrderLocalCustomVariantSlots(product, sizeLabel, quantity);
   }
   const selected = findVariantOption(product, variantValue);
   const hasVariantUpload = Boolean(selected?.requiresImageUpload);

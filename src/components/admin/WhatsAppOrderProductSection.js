@@ -8,7 +8,7 @@ import { sanitizeIntegerInput } from '@/lib/sanitizeNumericInput';
 import {
   buildAdditionalVariantSlots,
   buildOrderLocalCustomVariantSlots,
-  listWebsiteVariantOptions,
+  listAdditionalVariantChoices,
   mergeSlotsPreserveUploads,
   resolveProductCustomizationPlan,
   getTextCustomFields,
@@ -19,8 +19,8 @@ import {
 const fieldClass = 'mt-1 w-full min-h-[44px] rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-base sm:text-sm';
 const labelClass = 'block text-sm font-semibold text-gray-900';
 
-function newVariantRow(seed = {}) {
-  return {
+function newVariantRow(product, seed = {}) {
+  const row = {
     rowId: `row-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     variant: seed.variant || '',
     variantId: seed.variantId || '',
@@ -30,6 +30,10 @@ function newVariantRow(seed = {}) {
     photoSlots: seed.photoSlots || [],
     excludedSlotKeys: [],
   };
+  if (!row.photoSlots.length && product) {
+    row.photoSlots = rebuildAdditionalSlots(product, row);
+  }
+  return row;
 }
 
 function rebuildAdditionalSlots(product, row) {
@@ -279,6 +283,12 @@ export function CatalogProductSection({
     () => resolveProductCustomizationPlan(product, { selectedVariantValue: selectedVariant }),
     [product, selectedVariant],
   );
+  const additionalChoices = useMemo(
+    () => listAdditionalVariantChoices(product),
+    [product],
+  );
+  const variantChoices = additionalChoices.choices;
+  const hasVariantChoices = variantChoices.length > 0;
 
   useEffect(() => {
     if (!product) {
@@ -310,17 +320,20 @@ export function CatalogProductSection({
         } else {
           next.isCustom = false;
           next.customLabel = '';
-          const match = plan.variantOptions.find((v) => v.value === patch.variant);
+          const match = variantChoices.find((v) => v.value === patch.variant);
           next.variantId = match?.optionId || '';
         }
       }
       if (Object.prototype.hasOwnProperty.call(patch, 'variant')
         || Object.prototype.hasOwnProperty.call(patch, 'quantity')
         || Object.prototype.hasOwnProperty.call(patch, 'customLabel')
-        || Object.prototype.hasOwnProperty.call(patch, 'isCustom')) {
-        const nextSlots = rebuildAdditionalSlots(product, next);
-        next.photoSlots = mergeSlotsPreserveUploads(nextSlots, row.photoSlots || []);
-        next.excludedSlotKeys = (next.excludedSlotKeys || []).filter((key) => next.photoSlots.some((s) => s.slotKey === key));
+        || Object.prototype.hasOwnProperty.call(patch, 'isCustom')
+        || Object.prototype.hasOwnProperty.call(patch, 'photoSlots')) {
+        if (!Object.prototype.hasOwnProperty.call(patch, 'photoSlots')) {
+          const nextSlots = rebuildAdditionalSlots(product, next);
+          next.photoSlots = mergeSlotsPreserveUploads(nextSlots, row.photoSlots || []);
+          next.excludedSlotKeys = (next.excludedSlotKeys || []).filter((key) => next.photoSlots.some((s) => s.slotKey === key));
+        }
       }
       return next;
     }));
@@ -433,12 +446,14 @@ export function CatalogProductSection({
                 type="button"
                 className="min-h-[44px] w-full sm:w-auto rounded-xl border border-emerald-300 bg-white px-4 py-2 text-sm font-bold text-emerald-800"
                 onClick={() => {
-                  const hasWebsiteVariants = plan.variantOptions.length > 0;
+                  // Prefer website / area-derived size dropdown. Only default to
+                  // order-local custom when the product has no selectable sizes.
+                  const seed = hasVariantChoices
+                    ? {}
+                    : { isCustom: true, variant: ORDER_LOCAL_CUSTOM_VARIANT };
                   onAdditionalVariantsChange([
                     ...additionalVariants,
-                    newVariantRow(hasWebsiteVariants
-                      ? {}
-                      : { isCustom: true, variant: ORDER_LOCAL_CUSTOM_VARIANT }),
+                    newVariantRow(product, seed),
                   ]);
                 }}
               >
@@ -448,12 +463,17 @@ export function CatalogProductSection({
 
             {additionalVariants.map((row) => {
               const isCustom = row.isCustom || row.variant === ORDER_LOCAL_CUSTOM_VARIANT;
-              const hasSelection = isCustom ? Boolean(String(row.customLabel || '').trim()) : Boolean(row.variant);
+              const hasSelection = isCustom
+                ? true
+                : Boolean(row.variant);
+              const choiceSourceLabel = additionalChoices.source === 'area_sizes'
+                ? 'Product size (from preview config)'
+                : 'Website variant';
               return (
               <div key={row.rowId} className="grid gap-2 rounded-xl border bg-white p-3 sm:grid-cols-2">
                 <div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-2">
                   <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
-                    {isCustom ? 'Custom variant — this order only' : 'Website variant'}
+                    {isCustom ? 'Custom variant — this order only' : choiceSourceLabel}
                   </p>
                   <button
                     type="button"
@@ -467,24 +487,31 @@ export function CatalogProductSection({
                     Remove Variant
                   </button>
                 </div>
-                {plan.variantOptions.length ? (
-                  <label className={`${labelClass} ${isCustom ? 'sm:col-span-2' : ''}`}>
-                    Variant / size
-                    <select
-                      value={isCustom ? ORDER_LOCAL_CUSTOM_VARIANT : (row.variant || '')}
-                      onChange={(e) => updateAdditionalRow(row.rowId, { variant: e.target.value })}
-                      className={fieldClass}
-                    >
-                      <option value="">Select variant</option>
-                      {plan.variantOptions.map((v) => (
-                        <option key={v.value} value={v.value}>{v.label}</option>
-                      ))}
-                      <option value={ORDER_LOCAL_CUSTOM_VARIANT}>Custom Variant — This Order Only</option>
-                    </select>
-                  </label>
-                ) : null}
+                <label className={`${labelClass} ${isCustom ? 'sm:col-span-2' : 'sm:col-span-1'} col-span-full`}>
+                  Variant / size
+                  <select
+                    value={isCustom ? ORDER_LOCAL_CUSTOM_VARIANT : (row.variant || '')}
+                    onChange={(e) => updateAdditionalRow(row.rowId, { variant: e.target.value })}
+                    className={fieldClass}
+                  >
+                    {!isCustom ? <option value="">Select variant / size</option> : null}
+                    {variantChoices.map((v) => (
+                      <option key={v.value} value={v.value}>{v.label}</option>
+                    ))}
+                    <option value={ORDER_LOCAL_CUSTOM_VARIANT}>Custom Variant — This Order Only</option>
+                  </select>
+                  {!hasVariantChoices ? (
+                    <span className="mt-1 block text-[10px] font-normal text-gray-500">
+                      This product has no website size options. Use a custom order-only label, or pick Custom above.
+                    </span>
+                  ) : additionalChoices.source === 'area_sizes' ? (
+                    <span className="mt-1 block text-[10px] font-normal text-gray-500">
+                      Sizes derived from this product&apos;s preview configuration (no conventional variants array).
+                    </span>
+                  ) : null}
+                </label>
                 {isCustom ? (
-                  <label className={`${labelClass} ${plan.variantOptions.length ? 'sm:col-span-2' : 'sm:col-span-2'}`}>
+                  <label className={`${labelClass} sm:col-span-2`}>
                     Custom label / size
                     <input
                       value={row.customLabel || ''}
@@ -501,7 +528,7 @@ export function CatalogProductSection({
                     </span>
                   </label>
                 ) : null}
-                <label className={labelClass}>
+                <label className={`${labelClass} col-span-full sm:col-span-1`}>
                   Qty
                   <input
                     inputMode="numeric"
@@ -511,7 +538,7 @@ export function CatalogProductSection({
                   />
                 </label>
                 {(row.photoSlots || []).length ? (
-                  <div className="sm:col-span-2">
+                  <div className="sm:col-span-2 col-span-full">
                     <SlotGrid
                       slots={row.photoSlots}
                       excludedKeys={row.excludedSlotKeys || []}
@@ -535,12 +562,18 @@ export function CatalogProductSection({
                     />
                   </div>
                 ) : hasSelection ? (
-                  <p className="sm:col-span-2 text-[11px] text-gray-500">
+                  <p className="sm:col-span-2 col-span-full text-[11px] text-gray-500">
                     {isCustom
                       ? 'No product-level upload sections to copy for this custom variant. Add photos later in Order Details if needed.'
-                      : 'No upload slots for this variant configuration.'}
+                      : row.variant
+                        ? 'No upload slots for this variant configuration.'
+                        : 'Select a variant / size to load its upload and preview fields.'}
                   </p>
-                ) : null}
+                ) : (
+                  <p className="sm:col-span-2 col-span-full text-[11px] text-gray-500">
+                    Select a variant / size to load its upload and preview fields.
+                  </p>
+                )}
               </div>
               );
             })}
@@ -586,7 +619,7 @@ export function ComboProductSection({
       const product = products.find((p) => String(p._id) === String(next.productId))
         || (String(next.productId) === String(comboProduct?._id) ? comboProduct : null)
         || comboProduct;
-      const options = listWebsiteVariantOptions(product);
+      const options = listAdditionalVariantChoices(product).choices;
       if (Object.prototype.hasOwnProperty.call(patch, 'productId')) {
         next.variantValue = '';
         next.variantId = '';
@@ -597,19 +630,22 @@ export function ComboProductSection({
       if (Object.prototype.hasOwnProperty.call(patch, 'variantValue')
         || Object.prototype.hasOwnProperty.call(patch, 'size')
         || Object.prototype.hasOwnProperty.call(patch, 'quantity')
-        || Object.prototype.hasOwnProperty.call(patch, 'productId')) {
+        || Object.prototype.hasOwnProperty.call(patch, 'productId')
+        || Object.prototype.hasOwnProperty.call(patch, 'photoSlots')) {
         const variantValue = next.variantValue || (next.size ? `Size: ${next.size}` : '');
         if (patch.variantValue) {
           const opt = options.find((o) => o.value === patch.variantValue);
           next.size = opt?.optionLabel || opt?.label || next.size;
           next.variantId = opt?.optionId || '';
         }
-        if (!next.isCustom && product) {
-          const nextSlots = buildAdditionalVariantSlots(product, variantValue, next.quantity);
-          next.photoSlots = mergeSlotsPreserveUploads(nextSlots, row.photoSlots || []);
-        } else if (next.isCustom && next.size) {
-          const nextSlots = buildOrderLocalCustomVariantSlots(product, next.size, next.quantity);
-          next.photoSlots = mergeSlotsPreserveUploads(nextSlots, row.photoSlots || []);
+        if (!Object.prototype.hasOwnProperty.call(patch, 'photoSlots')) {
+          if (!next.isCustom && product) {
+            const nextSlots = buildAdditionalVariantSlots(product, variantValue, next.quantity);
+            next.photoSlots = mergeSlotsPreserveUploads(nextSlots, row.photoSlots || []);
+          } else if (next.isCustom && next.size) {
+            const nextSlots = buildOrderLocalCustomVariantSlots(product, next.size, next.quantity);
+            next.photoSlots = mergeSlotsPreserveUploads(nextSlots, row.photoSlots || []);
+          }
         }
       }
       return next;
@@ -717,7 +753,7 @@ export function ComboProductSection({
         const rowProduct = products.find((p) => String(p._id) === String(row.productId))
           || (String(row.productId) === String(comboProduct?._id) ? comboProduct : null)
           || comboProduct;
-        const options = row.isCustom ? [] : listWebsiteVariantOptions(rowProduct);
+        const options = row.isCustom ? [] : listAdditionalVariantChoices(rowProduct).choices;
         return (
           <div key={row.rowId} className="grid gap-2 rounded-xl border bg-white p-3 sm:grid-cols-2">
             <div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-2">
@@ -753,7 +789,7 @@ export function ComboProductSection({
                   ))}
               </select>
             </label>
-            <label className={labelClass}>
+            <label className={`${labelClass} col-span-full sm:col-span-1`}>
               Variant / size
               {row.isCustom ? (
                 <input

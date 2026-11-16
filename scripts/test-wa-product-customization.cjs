@@ -31,11 +31,16 @@ assert.ok(sectionSrc.includes('Additional Variants'));
 assert.ok(sectionSrc.includes('Custom Variant — This Order Only'));
 assert.ok(sectionSrc.includes('+ Add Text Field'));
 assert.ok(sectionSrc.includes('ORDER_LOCAL_CUSTOM_VARIANT'));
+assert.ok(sectionSrc.includes('listAdditionalVariantChoices'));
+assert.ok(sectionSrc.includes('Select variant / size'));
 assert.ok(!sectionSrc.includes('This product has no configured variants to add'));
 assert.ok(!sectionSrc.includes('Done — Generate'));
 assert.ok(!sectionSrc.includes('Done-Generate'));
 assert.ok(configSrc.includes('buildOrderLocalCustomVariantSlots'));
 assert.ok(configSrc.includes('ORDER_LOCAL_CUSTOM_VARIANT'));
+assert.ok(configSrc.includes('listAdditionalVariantChoices'));
+assert.ok(configSrc.includes('listAreaDerivedSizeOptions'));
+assert.ok(configSrc.includes('AreaSize:'));
 
 // Combo must not mutate 13×20 into products
 assert.ok(comboSrc.includes('return false'));
@@ -147,5 +152,67 @@ function expandQty(baseCount, qty) {
 }
 assert.strictEqual(expandQty(1, 3), 3);
 assert.strictEqual(expandQty(2, 2), 4);
+
+// Additional Variants choice resolution (mirrors listAdditionalVariantChoices)
+function listChoices(product) {
+  const fromVariants = (product.variants || []).flatMap((v) => (v.options || []).map((o) => {
+    const optionLabel = String(o?.label || o?.name || '').trim();
+    if (!optionLabel) return null;
+    const variantName = String(v?.name || v?.type || 'Variant').trim() || 'Variant';
+    return { value: `${variantName}: ${optionLabel}`, source: 'variants' };
+  })).filter(Boolean);
+  if (fromVariants.length) return { choices: fromVariants, source: 'variants' };
+  const preview = product.customizationPreview || {};
+  if (preview.enabled === false) return { choices: [], source: 'none' };
+  const seen = new Set();
+  const fromAreas = [];
+  (preview.areas || []).forEach((area) => {
+    const width = Number(area?.width) || 0;
+    const height = Number(area?.height) || 0;
+    const rawLabel = String(area?.label || '').trim();
+    const hasRealDimensions = width > 1 && height > 1;
+    const labelLooksLikeSize = /\d+\s*[x×*]\s*\d+/i.test(rawLabel);
+    if (!hasRealDimensions && !labelLooksLikeSize) return;
+    const sizeLabel = hasRealDimensions ? `${width}×${height}` : rawLabel;
+    const key = sizeLabel.toLowerCase().replace(/\s+/g, '');
+    if (seen.has(key)) return;
+    seen.add(key);
+    fromAreas.push({ value: `AreaSize: ${sizeLabel}`, source: 'area_size' });
+  });
+  if (fromAreas.length) return { choices: fromAreas, source: 'area_sizes' };
+  return { choices: [], source: 'none' };
+}
+
+const withVariants = listChoices(multiPhoto);
+assert.strictEqual(withVariants.source, 'variants');
+assert.strictEqual(withVariants.choices.length, 2);
+
+const areaOnly = listChoices({
+  variants: [],
+  customizationPreview: {
+    enabled: true,
+    areas: [
+      { label: 'Front Photo', width: 8, height: 10 },
+      { label: '12x18 custom', width: 0, height: 0 },
+      { label: 'Back Photo', width: 1, height: 1 },
+    ],
+  },
+});
+assert.strictEqual(areaOnly.source, 'area_sizes');
+assert.ok(areaOnly.choices.some((c) => c.value.includes('8×10') || c.value.includes('8x10')));
+assert.ok(areaOnly.choices.some((c) => c.value.includes('12x18')));
+assert.ok(!areaOnly.choices.some((c) => /Back Photo/i.test(c.value)));
+
+const none = listChoices({
+  variants: [],
+  customizationPreview: { enabled: true, areas: [{ label: 'Front Photo', width: 1, height: 1 }] },
+});
+assert.strictEqual(none.source, 'none');
+assert.strictEqual(none.choices.length, 0);
+
+// UI must always render Variant / size select for additional rows (not custom-only by default)
+assert.ok(sectionSrc.includes('hasVariantChoices'));
+assert.ok(sectionSrc.includes('newVariantRow(product, seed)'));
+assert.ok(!/newVariantRow\(hasWebsiteVariants/.test(sectionSrc));
 
 console.log('OK: WA product customization resolution checks passed');

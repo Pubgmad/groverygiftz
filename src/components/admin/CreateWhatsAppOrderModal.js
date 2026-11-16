@@ -362,6 +362,7 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
     }
     catalogAdditionalVariants.forEach((row) => {
       const isCustom = row.isCustom || row.variant === ORDER_LOCAL_CUSTOM_VARIANT;
+      const isAreaDerived = String(row.variant || '').startsWith('AreaSize:');
       const customLabel = String(row.customLabel || '').trim();
       if (!(Number(row.quantity) > 0)) return;
       if (isCustom) {
@@ -370,16 +371,22 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
         return;
       }
       const activeSlots = (row.photoSlots || []).filter((slot) => !(row.excludedSlotKeys || []).includes(slot.slotKey));
+      const areaSizeLabel = isAreaDerived
+        ? String(row.variant).replace(/^AreaSize:\s*/i, '').trim()
+        : '';
       items.push({
         productId: catalogProductId,
-        variant: isCustom ? `Custom: ${customLabel}` : row.variant,
-        variantId: isCustom ? '' : (row.variantId || ''),
+        variant: isCustom
+          ? `Custom: ${customLabel}`
+          : (isAreaDerived ? `Size: ${areaSizeLabel}` : row.variant),
+        variantId: (isCustom || isAreaDerived) ? '' : (row.variantId || ''),
         quantity: Number(row.quantity) || 1,
         instructions: '',
         photoSlots: activeSlots,
         excludedCustomizationSlots: row.excludedSlotKeys || [],
         isOrderLocalCustomVariant: isCustom || undefined,
         customVariantLabel: isCustom ? customLabel : undefined,
+        isAreaDerivedSize: isAreaDerived || undefined,
       });
     });
     return items;
