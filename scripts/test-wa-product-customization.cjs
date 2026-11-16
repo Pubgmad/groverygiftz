@@ -28,8 +28,14 @@ assert.ok(sectionSrc.includes('Original Product Details'));
 assert.ok(sectionSrc.includes('Exclude for this order only'));
 assert.ok(sectionSrc.includes('Product / component'));
 assert.ok(sectionSrc.includes('Additional Variants'));
+assert.ok(sectionSrc.includes('Custom Variant — This Order Only'));
+assert.ok(sectionSrc.includes('+ Add Text Field'));
+assert.ok(sectionSrc.includes('ORDER_LOCAL_CUSTOM_VARIANT'));
+assert.ok(!sectionSrc.includes('This product has no configured variants to add'));
 assert.ok(!sectionSrc.includes('Done — Generate'));
 assert.ok(!sectionSrc.includes('Done-Generate'));
+assert.ok(configSrc.includes('buildOrderLocalCustomVariantSlots'));
+assert.ok(configSrc.includes('ORDER_LOCAL_CUSTOM_VARIANT'));
 
 // Combo must not mutate 13×20 into products
 assert.ok(comboSrc.includes('return false'));

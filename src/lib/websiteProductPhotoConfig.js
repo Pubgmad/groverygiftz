@@ -445,8 +445,43 @@ export function resolveProductCustomizationPlan(product, opts = {}) {
   };
 }
 
+export const ORDER_LOCAL_CUSTOM_VARIANT = '__custom_order_only__';
+
+/**
+ * Order-local custom variant slots.
+ * Reuse product-level upload requirements × qty when present.
+ * Do NOT invent a website preview model or crop ratio for the custom size.
+ */
+export function buildOrderLocalCustomVariantSlots(product, customLabel, quantity) {
+  const label = String(customLabel || '').trim() || 'Custom';
+  const qty = Math.max(1, Number(quantity) || 1);
+  const productLevel = buildProductLevelPhotoSlots(product);
+  if (productLevel.length > 0) {
+    const base = buildWebsitePhotoSlotsForQuantity(product, qty, '', {
+      includeProductLevel: true,
+      includeVariantUpload: false,
+    });
+    return base.map((slot) => ({
+      ...slot,
+      // Keep product-level area/preview rules; only tag the order-local label
+      variantLabel: label,
+      sizeLabel: slot.sizeLabel || label,
+      label: qty > 1
+        ? `${label} — Unit ${slot.unitIndex || 1}${productLevel.length > 1 ? ` · ${slot.area?.label || slot.label}` : ''}`
+        : (productLevel.length > 1 ? `${label} — ${slot.label}` : label),
+      slotKey: `order-local-${label}-${slot.slotKey}`,
+      isOrderLocalCustom: true,
+    }));
+  }
+  // No product-level uploads configured — do not invent mandatory photo slots
+  return [];
+}
+
 /** Slots for an Additional Variant / Combo size row. */
 export function buildAdditionalVariantSlots(product, variantValue, quantity) {
+  if (!variantValue || variantValue === ORDER_LOCAL_CUSTOM_VARIANT) {
+    return [];
+  }
   const selected = findVariantOption(product, variantValue);
   const hasVariantUpload = Boolean(selected?.requiresImageUpload);
   const productLevel = buildProductLevelPhotoSlots(product);
@@ -462,7 +497,7 @@ export function buildAdditionalVariantSlots(product, variantValue, quantity) {
       includeVariantUpload: false,
     });
   }
-  // Fallback: one photo per unit when product has no explicit upload config but a variant was chosen
+  // Fallback: one photo per unit when product has no explicit upload config but a catalog variant was chosen
   if (variantValue) {
     const qty = Math.max(1, Number(quantity) || 1);
     const label = selected?.label || variantValue;
@@ -485,7 +520,7 @@ export function buildAdditionalVariantSlots(product, variantValue, quantity) {
       frameImage: area.frameImage || '',
       instructions: area.instructions || '',
       required: true,
-      allowPreview: isProductPreviewEnabled(product),
+      allowPreview: isProductPreviewEnabled(product) && Boolean(variantAreaFromOption(selected)),
       area,
       variantLabel: label,
       unitIndex: index + 1,

@@ -134,6 +134,12 @@ const OrderSchema = new mongoose.Schema({
     customizationInstructions: String,
     isCustomizedCombo: Boolean,
     comboSize: String,
+    isOrderLocalCustomVariant: Boolean,
+    customVariantLabel: String,
+    orderLocalTextFields: [{
+      label: String,
+      value: String,
+    }],
     excludedCustomizationSlots: [String],
     makingCost: Number,
     makingCostStatus: { type: String, enum: ['known', 'unknown'] },

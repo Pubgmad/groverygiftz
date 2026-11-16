@@ -7,11 +7,13 @@ import PhotoUploadCard from '@/components/product/PhotoUploadCard';
 import { sanitizeIntegerInput } from '@/lib/sanitizeNumericInput';
 import {
   buildAdditionalVariantSlots,
+  buildOrderLocalCustomVariantSlots,
   listWebsiteVariantOptions,
   mergeSlotsPreserveUploads,
   resolveProductCustomizationPlan,
   getTextCustomFields,
   getCollageTemplates,
+  ORDER_LOCAL_CUSTOM_VARIANT,
 } from '@/lib/websiteProductPhotoConfig';
 
 const fieldClass = 'mt-1 w-full min-h-[44px] rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-base sm:text-sm';
@@ -22,10 +24,19 @@ function newVariantRow(seed = {}) {
     rowId: `row-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     variant: seed.variant || '',
     variantId: seed.variantId || '',
+    customLabel: seed.customLabel || '',
+    isCustom: seed.isCustom === true,
     quantity: seed.quantity || '1',
     photoSlots: seed.photoSlots || [],
     excludedSlotKeys: [],
   };
+}
+
+function rebuildAdditionalSlots(product, row) {
+  if (row.isCustom || row.variant === ORDER_LOCAL_CUSTOM_VARIANT) {
+    return buildOrderLocalCustomVariantSlots(product, row.customLabel, row.quantity);
+  }
+  return buildAdditionalVariantSlots(product, row.variant, row.quantity);
 }
 
 function filesToLocalPhotos(fileList) {
@@ -291,12 +302,24 @@ export function CatalogProductSection({
     onAdditionalVariantsChange((prev) => prev.map((row) => {
       if (row.rowId !== rowId) return row;
       const next = { ...row, ...patch };
+      if (Object.prototype.hasOwnProperty.call(patch, 'variant')) {
+        if (patch.variant === ORDER_LOCAL_CUSTOM_VARIANT) {
+          next.isCustom = true;
+          next.variantId = '';
+          next.variant = ORDER_LOCAL_CUSTOM_VARIANT;
+        } else {
+          next.isCustom = false;
+          next.customLabel = '';
+          const match = plan.variantOptions.find((v) => v.value === patch.variant);
+          next.variantId = match?.optionId || '';
+        }
+      }
       if (Object.prototype.hasOwnProperty.call(patch, 'variant')
-        || Object.prototype.hasOwnProperty.call(patch, 'quantity')) {
-        const nextSlots = buildAdditionalVariantSlots(product, next.variant, next.quantity);
+        || Object.prototype.hasOwnProperty.call(patch, 'quantity')
+        || Object.prototype.hasOwnProperty.call(patch, 'customLabel')
+        || Object.prototype.hasOwnProperty.call(patch, 'isCustom')) {
+        const nextSlots = rebuildAdditionalSlots(product, next);
         next.photoSlots = mergeSlotsPreserveUploads(nextSlots, row.photoSlots || []);
-        const match = plan.variantOptions.find((v) => v.value === next.variant);
-        next.variantId = match?.optionId || '';
         next.excludedSlotKeys = (next.excludedSlotKeys || []).filter((key) => next.photoSlots.some((s) => s.slotKey === key));
       }
       return next;
@@ -402,27 +425,36 @@ export function CatalogProductSection({
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h4 className="text-sm font-bold text-gray-900">Additional Variants</h4>
-                <p className="text-[11px] text-gray-500">Optional extra sizes/options for this order. Dropdowns use actual website variants.</p>
+                <p className="text-[11px] text-gray-500">
+                  Optional extras for this WhatsApp order. Use website variants when available, or an order-only custom variant.
+                </p>
               </div>
               <button
                 type="button"
                 className="min-h-[44px] w-full sm:w-auto rounded-xl border border-emerald-300 bg-white px-4 py-2 text-sm font-bold text-emerald-800"
                 onClick={() => {
-                  if (!plan.variantOptions.length) {
-                    toast.error('This product has no configured variants to add');
-                    return;
-                  }
-                  onAdditionalVariantsChange([...additionalVariants, newVariantRow()]);
+                  const hasWebsiteVariants = plan.variantOptions.length > 0;
+                  onAdditionalVariantsChange([
+                    ...additionalVariants,
+                    newVariantRow(hasWebsiteVariants
+                      ? {}
+                      : { isCustom: true, variant: ORDER_LOCAL_CUSTOM_VARIANT }),
+                  ]);
                 }}
               >
                 + Add Variant
               </button>
             </div>
 
-            {additionalVariants.map((row) => (
+            {additionalVariants.map((row) => {
+              const isCustom = row.isCustom || row.variant === ORDER_LOCAL_CUSTOM_VARIANT;
+              const hasSelection = isCustom ? Boolean(String(row.customLabel || '').trim()) : Boolean(row.variant);
+              return (
               <div key={row.rowId} className="grid gap-2 rounded-xl border bg-white p-3 sm:grid-cols-2">
                 <div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Variant</p>
+                  <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
+                    {isCustom ? 'Custom variant — this order only' : 'Website variant'}
+                  </p>
                   <button
                     type="button"
                     className="min-h-[40px] text-sm font-semibold text-red-700"
@@ -435,19 +467,40 @@ export function CatalogProductSection({
                     Remove Variant
                   </button>
                 </div>
-                <label className={labelClass}>
-                  Variant / size
-                  <select
-                    value={row.variant}
-                    onChange={(e) => updateAdditionalRow(row.rowId, { variant: e.target.value })}
-                    className={fieldClass}
-                  >
-                    <option value="">Select variant</option>
-                    {plan.variantOptions.map((v) => (
-                      <option key={v.value} value={v.value}>{v.label}</option>
-                    ))}
-                  </select>
-                </label>
+                {plan.variantOptions.length ? (
+                  <label className={`${labelClass} ${isCustom ? 'sm:col-span-2' : ''}`}>
+                    Variant / size
+                    <select
+                      value={isCustom ? ORDER_LOCAL_CUSTOM_VARIANT : (row.variant || '')}
+                      onChange={(e) => updateAdditionalRow(row.rowId, { variant: e.target.value })}
+                      className={fieldClass}
+                    >
+                      <option value="">Select variant</option>
+                      {plan.variantOptions.map((v) => (
+                        <option key={v.value} value={v.value}>{v.label}</option>
+                      ))}
+                      <option value={ORDER_LOCAL_CUSTOM_VARIANT}>Custom Variant — This Order Only</option>
+                    </select>
+                  </label>
+                ) : null}
+                {isCustom ? (
+                  <label className={`${labelClass} ${plan.variantOptions.length ? 'sm:col-span-2' : 'sm:col-span-2'}`}>
+                    Custom label / size
+                    <input
+                      value={row.customLabel || ''}
+                      onChange={(e) => updateAdditionalRow(row.rowId, {
+                        customLabel: e.target.value,
+                        isCustom: true,
+                        variant: ORDER_LOCAL_CUSTOM_VARIANT,
+                      })}
+                      placeholder="e.g. 10×12 — customer request"
+                      className={fieldClass}
+                    />
+                    <span className="mt-1 block text-[10px] font-normal text-amber-800">
+                      Order-only — does not change the website product. No unrelated website preview is applied.
+                    </span>
+                  </label>
+                ) : null}
                 <label className={labelClass}>
                   Qty
                   <input
@@ -481,11 +534,16 @@ export function CatalogProductSection({
                       }}
                     />
                   </div>
-                ) : row.variant ? (
-                  <p className="sm:col-span-2 text-[11px] text-gray-500">No upload slots for this variant configuration.</p>
+                ) : hasSelection ? (
+                  <p className="sm:col-span-2 text-[11px] text-gray-500">
+                    {isCustom
+                      ? 'No product-level upload sections to copy for this custom variant. Add photos later in Order Details if needed.'
+                      : 'No upload slots for this variant configuration.'}
+                  </p>
                 ) : null}
               </div>
-            ))}
+              );
+            })}
           </div>
         </>
       ) : null}
@@ -505,6 +563,8 @@ export function ComboProductSection({
   onSelectionsChange,
   comboCustomFields,
   onComboCustomFieldsChange,
+  comboExtraTextFields = [],
+  onComboExtraTextFieldsChange,
   comboCollageUploads,
   onComboCollageUploadsChange,
   excludedComboCollageKeys,
@@ -548,21 +608,7 @@ export function ComboProductSection({
           const nextSlots = buildAdditionalVariantSlots(product, variantValue, next.quantity);
           next.photoSlots = mergeSlotsPreserveUploads(nextSlots, row.photoSlots || []);
         } else if (next.isCustom && next.size) {
-          const qty = Math.max(1, Number(next.quantity) || 1);
-          const nextSlots = Array.from({ length: qty }, (_, index) => ({
-            slotKey: `bespoke-${next.size}-u${index + 1}`,
-            section: 'variant',
-            storageKind: 'variant',
-            storageLabel: 'Variant Label Uploads',
-            variantStorageKey: next.size,
-            label: qty > 1 ? `${next.size} — Unit ${index + 1}` : next.size,
-            sizeLabel: next.size,
-            required: true,
-            allowPreview: false,
-            area: { label: next.size, width: 1, height: 1, unit: 'inch' },
-            photo: null,
-            reference: null,
-          }));
+          const nextSlots = buildOrderLocalCustomVariantSlots(product, next.size, next.quantity);
           next.photoSlots = mergeSlotsPreserveUploads(nextSlots, row.photoSlots || []);
         }
       }
@@ -595,6 +641,67 @@ export function ComboProductSection({
             values={comboCustomFields}
             onChange={onComboCustomFieldsChange}
           />
+          <div className="space-y-2 rounded-xl border border-violet-100 bg-violet-50/40 p-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-bold text-gray-900">Additional text fields (this order only)</p>
+                <p className="text-[11px] text-gray-500">Does not change the website product configuration.</p>
+              </div>
+              <button
+                type="button"
+                className="min-h-[44px] w-full sm:w-auto rounded-xl border border-violet-300 bg-white px-4 py-2 text-sm font-bold text-violet-900"
+                onClick={() => onComboExtraTextFieldsChange?.([
+                  ...(comboExtraTextFields || []),
+                  {
+                    id: `txt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                    label: '',
+                    value: '',
+                  },
+                ])}
+              >
+                + Add Text Field
+              </button>
+            </div>
+            {(comboExtraTextFields || []).map((field) => (
+              <div key={field.id} className="grid gap-2 rounded-xl border bg-white p-3 sm:grid-cols-2">
+                <label className={labelClass}>
+                  Text label
+                  <input
+                    value={field.label || ''}
+                    onChange={(e) => onComboExtraTextFieldsChange?.(
+                      (comboExtraTextFields || []).map((f) => (
+                        f.id === field.id ? { ...f, label: e.target.value } : f
+                      )),
+                    )}
+                    placeholder="e.g. Name on frame"
+                    className={fieldClass}
+                  />
+                </label>
+                <label className={labelClass}>
+                  Customer text
+                  <input
+                    value={field.value || ''}
+                    onChange={(e) => onComboExtraTextFieldsChange?.(
+                      (comboExtraTextFields || []).map((f) => (
+                        f.id === field.id ? { ...f, value: e.target.value } : f
+                      )),
+                    )}
+                    placeholder="Customer-requested text"
+                    className={fieldClass}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="sm:col-span-2 min-h-[40px] text-left text-sm font-semibold text-red-700"
+                  onClick={() => onComboExtraTextFieldsChange?.(
+                    (comboExtraTextFields || []).filter((f) => f.id !== field.id),
+                  )}
+                >
+                  Remove text field
+                </button>
+              </div>
+            ))}
+          </div>
           <CollageUploadSection
             templates={getCollageTemplates(comboProduct)}
             uploads={comboCollageUploads || {}}

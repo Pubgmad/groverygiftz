@@ -55,6 +55,16 @@ function normalizeItem(bodyItem = {}, product, { useCatalogPrice = true } = {}) 
     customizationInstructions: String(bodyItem.customizationInstructions || bodyItem.instructions || '').trim(),
     isCustomizedCombo: bodyItem.isCustomizedCombo === true ? true : undefined,
     comboSize: String(bodyItem.comboSize || '').trim() || undefined,
+    isOrderLocalCustomVariant: bodyItem.isOrderLocalCustomVariant === true ? true : undefined,
+    customVariantLabel: String(bodyItem.customVariantLabel || '').trim() || undefined,
+    orderLocalTextFields: Array.isArray(bodyItem.orderLocalTextFields)
+      ? bodyItem.orderLocalTextFields
+        .map((f) => ({
+          label: String(f?.label || '').trim(),
+          value: String(f?.value || ''),
+        }))
+        .filter((f) => f.label)
+      : undefined,
     excludedCustomizationSlots: excluded?.length ? excluded : undefined,
   };
 }

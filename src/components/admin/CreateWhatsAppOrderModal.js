@@ -10,6 +10,7 @@ import { sanitizeDecimalInput } from '@/lib/sanitizeNumericInput';
 import {
   buildCollageUploadsPayload,
   resolveProductCustomizationPlan,
+  ORDER_LOCAL_CUSTOM_VARIANT,
 } from '@/lib/websiteProductPhotoConfig';
 import {
   CatalogProductSection,
@@ -60,6 +61,7 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
   const [catalogExcludedCollageKeys, setCatalogExcludedCollageKeys] = useState([]);
   const [catalogAdditionalVariants, setCatalogAdditionalVariants] = useState([]);
   const [comboCustomFields, setComboCustomFields] = useState({});
+  const [comboExtraTextFields, setComboExtraTextFields] = useState([]);
   const [comboCollageUploads, setComboCollageUploads] = useState({});
   const [excludedComboCollageKeys, setExcludedComboCollageKeys] = useState([]);
   const [paymentScreenshot, setPaymentScreenshot] = useState(null);
@@ -359,16 +361,25 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
       });
     }
     catalogAdditionalVariants.forEach((row) => {
-      if (!row.variant || !(Number(row.quantity) > 0)) return;
+      const isCustom = row.isCustom || row.variant === ORDER_LOCAL_CUSTOM_VARIANT;
+      const customLabel = String(row.customLabel || '').trim();
+      if (!(Number(row.quantity) > 0)) return;
+      if (isCustom) {
+        if (!customLabel) return;
+      } else if (!row.variant || row.variant === ORDER_LOCAL_CUSTOM_VARIANT) {
+        return;
+      }
       const activeSlots = (row.photoSlots || []).filter((slot) => !(row.excludedSlotKeys || []).includes(slot.slotKey));
       items.push({
         productId: catalogProductId,
-        variant: row.variant,
-        variantId: row.variantId || '',
+        variant: isCustom ? `Custom: ${customLabel}` : row.variant,
+        variantId: isCustom ? '' : (row.variantId || ''),
         quantity: Number(row.quantity) || 1,
         instructions: '',
         photoSlots: activeSlots,
         excludedCustomizationSlots: row.excludedSlotKeys || [],
+        isOrderLocalCustomVariant: isCustom || undefined,
+        customVariantLabel: isCustom ? customLabel : undefined,
       });
     });
     return items;
@@ -394,12 +405,21 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
       comboCollageUploads,
       excludedComboCollageKeys,
     );
+    const extraText = {};
+    (comboExtraTextFields || []).forEach((field) => {
+      const label = String(field?.label || '').trim();
+      if (!label) return;
+      extraText[label] = String(field?.value || '');
+    });
     rows[0] = {
       ...rows[0],
-      customFieldValues: comboCustomFields,
+      customFieldValues: { ...(comboCustomFields || {}), ...extraText },
       collageUploads: collagePayload.map(({ label, images }) => ({ label, images })),
       collageLocalUploads: comboCollageUploads,
       excludedCustomizationSlots: excludedComboCollageKeys,
+      orderLocalTextFields: (comboExtraTextFields || [])
+        .filter((f) => String(f?.label || '').trim())
+        .map((f) => ({ label: String(f.label).trim(), value: String(f.value || '') })),
     };
     return rows;
   };
@@ -486,8 +506,13 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
         toast.error('Add default customizations or at least one additional variant');
         return;
       }
-      if (catalogAdditionalVariants.some((row) => row.variant === '' && Number(row.quantity) > 0)) {
-        toast.error('Choose a variant for each additional variant row');
+      if (catalogAdditionalVariants.some((row) => {
+        if (!(Number(row.quantity) > 0)) return false;
+        const isCustom = row.isCustom || row.variant === ORDER_LOCAL_CUSTOM_VARIANT;
+        if (isCustom) return !String(row.customLabel || '').trim();
+        return !row.variant;
+      })) {
+        toast.error('Choose a website variant or enter a custom label for each additional variant row');
         return;
       }
     }
@@ -555,6 +580,9 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
           collageUploads: item.collageUploads || undefined,
           isCustomizedCombo: productMode === 'customized_combo' || item.isCustomizedCombo || undefined,
           comboSize: item.comboSize || undefined,
+          isOrderLocalCustomVariant: item.isOrderLocalCustomVariant || undefined,
+          customVariantLabel: item.customVariantLabel || undefined,
+          orderLocalTextFields: item.orderLocalTextFields || undefined,
           excludedCustomizationSlots: item.excludedCustomizationSlots || undefined,
         })),
       };
@@ -626,6 +654,7 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
       setCatalogExcludedCollageKeys([]);
       setCatalogAdditionalVariants([]);
       setComboCustomFields({});
+      setComboExtraTextFields([]);
       setComboCollageUploads({});
       setExcludedComboCollageKeys([]);
     } catch (err) {
@@ -912,6 +941,8 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
                 onSelectionsChange={setComboSelections}
                 comboCustomFields={comboCustomFields}
                 onComboCustomFieldsChange={setComboCustomFields}
+                comboExtraTextFields={comboExtraTextFields}
+                onComboExtraTextFieldsChange={setComboExtraTextFields}
                 comboCollageUploads={comboCollageUploads}
                 onComboCollageUploadsChange={setComboCollageUploads}
                 excludedComboCollageKeys={excludedComboCollageKeys}
