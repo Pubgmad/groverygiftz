@@ -11,6 +11,9 @@ import { appendTimeline, refreshPaymentTotals } from '@/lib/opsOrderHelpers';
 import { snapshotOrderItemCost } from '@/lib/makingCost';
 import MakingCost from '@/models/MakingCost';
 import { assertStockAvailable, getGroupedStockRequests, loadProductsByOrderItems, deductOrderInventory } from '@/lib/inventory';
+import Settings from '@/models/Settings';
+import { expectedDeliveryFromDispatchYmd } from '@/lib/whatsappOrderDates';
+import { isEligibleActiveEditor } from '@/lib/editorAssignment';
 
 function digitsPhone(value = '') {
   return String(value || '').replace(/\D/g, '');
@@ -70,9 +73,10 @@ export async function POST(req) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
+  // Create WhatsApp Order workflow is WhatsApp-only. Historical Instagram orders remain readable.
   const source = String(body.orderSource || 'whatsapp').toLowerCase();
-  if (!['whatsapp', 'instagram'].includes(source)) {
-    return NextResponse.json({ error: 'orderSource must be whatsapp or instagram' }, { status: 400 });
+  if (source !== 'whatsapp') {
+    return NextResponse.json({ error: 'New manual orders must use WhatsApp source' }, { status: 400 });
   }
 
   const fullName = String(body.customerName || body.shippingAddress?.fullName || '').trim();
@@ -193,23 +197,51 @@ export async function POST(req) {
   let assignedToName = '';
   if (body.assignedTo) {
     if (!mongoose.Types.ObjectId.isValid(String(body.assignedTo))) {
-      return NextResponse.json({ error: 'Invalid assigned staff' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid assigned editor' }, { status: 400 });
+    }
+    const eligible = await isEligibleActiveEditor(body.assignedTo);
+    if (!eligible) {
+      return NextResponse.json({
+        error: 'Override Editor must be an active Editor account (Admin cannot be assigned)',
+      }, { status: 400 });
     }
     const admin = await Admin.findById(body.assignedTo).select('name email isActive').lean();
     if (!admin || admin.isActive === false) {
-      return NextResponse.json({ error: 'Assigned staff not found or inactive' }, { status: 400 });
+      return NextResponse.json({ error: 'Assigned editor not found or inactive' }, { status: 400 });
     }
     assignedTo = admin._id;
     assignedToName = admin.name || admin.email || '';
   }
 
   const orderNumber = await getNextWhatsAppOrderNumber();
+  const settings = await Settings.findOne().select('deliveryHolidays').lean();
+  const holidays = settings?.deliveryHolidays || [];
+
   let expectedDispatchDate = null;
+  let expectedDeliveryDate = null;
+  let confirmationSchedule;
   if (body.expectedDispatchDate) {
     const rawExpected = String(body.expectedDispatchDate).trim();
-    expectedDispatchDate = /^\d{4}-\d{2}-\d{2}$/.test(rawExpected)
-      ? new Date(`${rawExpected}T00:00:00.000+05:30`)
-      : new Date(rawExpected);
+    const dispatchYmd = /^\d{4}-\d{2}-\d{2}$/.test(rawExpected) ? rawExpected : '';
+    if (!dispatchYmd) {
+      return NextResponse.json({ error: 'Expected dispatch date must be YYYY-MM-DD' }, { status: 400 });
+    }
+    const deliveryCalc = expectedDeliveryFromDispatchYmd(dispatchYmd, holidays);
+    if (!deliveryCalc.ok) {
+      const message = deliveryCalc.reason === 'dispatch_on_non_working_day'
+        ? 'Expected dispatch date must be a working day (not Sunday or an Admin holiday)'
+        : 'Unable to calculate expected delivery from the selected dispatch date';
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+    expectedDispatchDate = new Date(`${deliveryCalc.dispatchYmd}T00:00:00.000+05:30`);
+    expectedDeliveryDate = new Date(`${deliveryCalc.deliveryYmd}T00:00:00.000+05:30`);
+    confirmationSchedule = {
+      orderDateIst: deliveryCalc.dispatchYmd,
+      expectedReadyDateIst: deliveryCalc.dispatchYmd,
+      estimatedDeliveryDateIst: deliveryCalc.deliveryYmd,
+      calendarVersion: 'whatsapp-manual-dispatch-v1',
+      computedAt: new Date(),
+    };
   }
 
   const order = new Order({
@@ -242,6 +274,8 @@ export async function POST(req) {
     orderPriority: String(body.orderPriority || '').toLowerCase() === 'urgent' ? 'urgent' : 'normal',
     previewRequired,
     expectedDispatchDate: expectedDispatchDate && !Number.isNaN(expectedDispatchDate.getTime()) ? expectedDispatchDate : undefined,
+    expectedDeliveryDate: expectedDeliveryDate && !Number.isNaN(expectedDeliveryDate.getTime()) ? expectedDeliveryDate : undefined,
+    confirmationSchedule: confirmationSchedule || undefined,
     internalNotes: String(body.internalNotes || '').trim(),
     notes: String(body.notes || '').trim(),
     createdByAdmin: access.adminId,
@@ -278,6 +312,7 @@ export async function POST(req) {
       kind: 'advance',
       amount: advancePaid,
       method: String(body.paymentMethod || 'WhatsApp').trim(),
+      // Payment reference is optional for new WhatsApp creates (field removed from form).
       reference: String(body.paymentReference || '').trim(),
       screenshotPath: savedShot.relativePath,
       screenshotUrl: savedShot.url,

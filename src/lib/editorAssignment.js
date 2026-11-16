@@ -1,13 +1,15 @@
 /**
  * Automatic Editor assignment for Website + WhatsApp orders.
- * Picks the active Editor (role slug `editor`) with the lowest pending editing workload.
- * Idempotent: never overwrites an existing assignedTo.
+ * New auto-assignments use durable round-robin across active Editors (role slug `editor`).
+ * Manual overrides never advance the round-robin cursor.
+ * Idempotent: never overwrites an existing assignedTo unless force=true.
  */
 
 import mongoose from 'mongoose';
 import Admin from '@/models/Admin';
 import Role from '@/models/Role';
 import Order from '@/models/Order';
+import Settings from '@/models/Settings';
 import { appendTimeline, notifyAdmins } from '@/lib/opsOrderHelpers';
 
 /** Ops statuses that count as pending editing workload. */
@@ -54,22 +56,83 @@ export async function getEditorWorkloads(editorIds = []) {
   return map;
 }
 
+function sortEditorsStable(editors = []) {
+  return [...editors].sort((a, b) => {
+    const na = String(a.name || a.email || '');
+    const nb = String(b.name || b.email || '');
+    if (na !== nb) return na.localeCompare(nb);
+    return String(a._id).localeCompare(String(b._id));
+  });
+}
+
 /**
- * Pick active Editor with lowest pending editing count.
- * Tie-break: stable by name then _id.
+ * Preview next automatic Editor without advancing the durable cursor.
+ * Opening the Create Order form must never consume a rotation slot.
  */
-export async function pickLowestWorkloadEditor() {
+export async function peekNextRoundRobinEditor() {
+  const editors = sortEditorsStable(await listActiveEditors());
+  if (!editors.length) return null;
+  const settings = await Settings.findOne().select('editorRoundRobinCursor').lean();
+  const cursor = Math.max(0, Number(settings?.editorRoundRobinCursor || 0));
+  const index = cursor % editors.length;
+  const winner = editors[index];
+  return {
+    editor: winner,
+    rotationIndex: index,
+    rotationCursor: cursor,
+    editors: editors.map((e) => ({
+      id: e._id,
+      name: e.name || e.email || '',
+    })),
+  };
+}
+
+/**
+ * Atomic round-robin among active Editors.
+ * Consumes one slot from Settings.editorRoundRobinCursor.
+ */
+export async function pickNextRoundRobinEditor() {
+  const editors = sortEditorsStable(await listActiveEditors());
+  if (!editors.length) return null;
+  const updated = await Settings.findOneAndUpdate(
+    {},
+    { $inc: { editorRoundRobinCursor: 1 } },
+    { upsert: true, new: true, setDefaultsOnInsert: true },
+  ).lean();
+  const consumed = Math.max(0, Number(updated?.editorRoundRobinCursor || 1) - 1);
+  const index = consumed % editors.length;
+  const winner = editors[index];
+  const workloads = await getEditorWorkloads(editors.map((e) => e._id));
+  return {
+    editor: winner,
+    workload: workloads[String(winner._id)] || 0,
+    rotationIndex: index,
+    rotationCursor: consumed,
+    workloads: editors.map((e) => ({
+      id: e._id,
+      name: e.name || e.email || '',
+      pending: workloads[String(e._id)] || 0,
+    })),
+  };
+}
+
+/** True when the admin account is an active eligible Editor (never primary Admin/other roles). */
+export async function isEligibleActiveEditor(adminId) {
+  if (!mongoose.Types.ObjectId.isValid(String(adminId))) return false;
   const editors = await listActiveEditors();
+  return editors.some((e) => String(e._id) === String(adminId));
+}
+
+/** @deprecated Prefer pickNextRoundRobinEditor for new auto-assignments. Kept for workload reports. */
+export async function pickLowestWorkloadEditor() {
+  const editors = sortEditorsStable(await listActiveEditors());
   if (!editors.length) return null;
   const workloads = await getEditorWorkloads(editors.map((e) => e._id));
   const ranked = [...editors].sort((a, b) => {
     const wa = workloads[String(a._id)] || 0;
     const wb = workloads[String(b._id)] || 0;
     if (wa !== wb) return wa - wb;
-    const na = String(a.name || a.email || '');
-    const nb = String(b.name || b.email || '');
-    if (na !== nb) return na.localeCompare(nb);
-    return String(a._id).localeCompare(String(b._id));
+    return 0;
   });
   const winner = ranked[0];
   return {
@@ -106,7 +169,7 @@ export async function autoAssignEditorIfNeeded(order, {
     return { assigned: false, alreadyAssigned: true };
   }
 
-  const pick = await pickLowestWorkloadEditor();
+  const pick = await pickNextRoundRobinEditor();
   if (!pick?.editor) {
     pushAssignmentHistory(order, {
       action: 'unassigned_warning',
@@ -148,7 +211,7 @@ export async function autoAssignEditorIfNeeded(order, {
     changedBy: actorId || undefined,
     changedByName: actorName,
     source,
-    note: `Auto-assigned to Editor with lowest pending editing workload (${pick.workload} open)`,
+    note: `Auto-assigned via Editor round-robin (slot ${pick.rotationIndex + 1}/${pick.workloads?.length || 1})`,
   });
 
   appendTimeline(order, {

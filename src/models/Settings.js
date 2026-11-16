@@ -145,6 +145,8 @@ const SettingsSchema = new mongoose.Schema({
   giftFinderQuickPicks: [GiftFinderQuickPickSchema],
 
   courierTrackingUrlTemplate: { type: String, default: '' },
+  /** Atomic counter for Editor round-robin assignment (auto-assign only; manual overrides do not increment). */
+  editorRoundRobinCursor: { type: Number, default: 0 },
 }, { timestamps: true });
 
 export default mongoose.models.Settings || mongoose.model('Settings', SettingsSchema);

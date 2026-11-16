@@ -194,11 +194,36 @@ export async function PATCH(req, { params }) {
     const raw = body.expectedDispatchDate;
     if (!raw) {
       order.expectedDispatchDate = undefined;
+      if (['whatsapp', 'instagram'].includes(String(order.orderSource || '').toLowerCase())) {
+        order.expectedDeliveryDate = undefined;
+      }
     } else {
       const text = String(raw).trim();
       // YYYY-MM-DD → start of that IST calendar day (avoid UTC midnight shift)
       if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
         order.expectedDispatchDate = new Date(`${text}T00:00:00.000+05:30`);
+        if (['whatsapp', 'instagram'].includes(String(order.orderSource || '').toLowerCase())) {
+          const Settings = (await import('@/models/Settings')).default;
+          const { expectedDeliveryFromDispatchYmd } = await import('@/lib/whatsappOrderDates');
+          const settings = await Settings.findOne().select('deliveryHolidays').lean();
+          const deliveryCalc = expectedDeliveryFromDispatchYmd(text, settings?.deliveryHolidays || []);
+          if (!deliveryCalc.ok) {
+            return NextResponse.json({
+              error: deliveryCalc.reason === 'dispatch_on_non_working_day'
+                ? 'Expected dispatch date must be a working day (not Sunday or an Admin holiday)'
+                : 'Unable to calculate expected delivery from the selected dispatch date',
+            }, { status: 400 });
+          }
+          order.expectedDeliveryDate = new Date(`${deliveryCalc.deliveryYmd}T00:00:00.000+05:30`);
+          order.confirmationSchedule = {
+            ...(order.confirmationSchedule?.toObject?.() || order.confirmationSchedule || {}),
+            orderDateIst: deliveryCalc.dispatchYmd,
+            expectedReadyDateIst: deliveryCalc.dispatchYmd,
+            estimatedDeliveryDateIst: deliveryCalc.deliveryYmd,
+            calendarVersion: 'whatsapp-manual-dispatch-v1',
+            computedAt: new Date(),
+          };
+        }
       } else {
         order.expectedDispatchDate = new Date(text);
       }

@@ -895,8 +895,10 @@ export default function AdminOrdersPage() {
                 {selected.confirmationSchedule?.expectedReadyDateIst ? (
                   <div className="break-words"><span className="text-gray-500">Expected Ready Date:</span> <span className="font-medium">{formatLongIstDate(selected.confirmationSchedule.expectedReadyDateIst)}</span></div>
                 ) : null}
-                {selected.confirmationSchedule?.estimatedDeliveryDateIst ? (
-                  <div className="break-words"><span className="text-gray-500">Estimated Delivery Date:</span> <span className="font-medium">{formatLongIstDate(selected.confirmationSchedule.estimatedDeliveryDateIst)}</span></div>
+                {selected.confirmationSchedule?.estimatedDeliveryDateIst || selected.expectedDeliveryDate ? (
+                  <div className="break-words"><span className="text-gray-500">Expected Delivery Date:</span> <span className="font-medium">{selected.confirmationSchedule?.estimatedDeliveryDateIst
+                    ? formatLongIstDate(selected.confirmationSchedule.estimatedDeliveryDateIst)
+                    : formatDate(selected.expectedDeliveryDate)}</span></div>
                 ) : (
                   <div className="break-words"><span className="text-gray-500">Estimated delivery:</span> <span className="font-medium">{getOrderDeliveryEstimate(selected, deliveryHolidays) || '-'}</span></div>
                 )}

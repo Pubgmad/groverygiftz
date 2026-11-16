@@ -248,6 +248,8 @@ const OrderSchema = new mongoose.Schema({
     note: { type: String, default: '' },
   }],
   expectedDispatchDate: { type: Date, index: true },
+  /** Manual WhatsApp: dispatch + 2 eligible working days (IST). Independent of website continuous-queue scheduling. */
+  expectedDeliveryDate: { type: Date },
   /** WhatsApp-only business priority. Website orders stay `normal`. */
   orderPriority: {
     type: String,

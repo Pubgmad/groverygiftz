@@ -412,6 +412,15 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
             className="mt-1 w-full rounded-lg border px-3 py-2 text-sm disabled:bg-gray-100"
           />
         </label>
+        {(order?.expectedDeliveryDate || order?.confirmationSchedule?.estimatedDeliveryDateIst) ? (
+          <div className="rounded-lg border bg-gray-50 px-3 py-2 text-xs text-gray-700">
+            <span className="font-semibold text-gray-600">Expected delivery: </span>
+            <span className="font-medium text-gray-900">
+              {order?.confirmationSchedule?.estimatedDeliveryDateIst
+                || toYmdIst(order?.expectedDeliveryDate)}
+            </span>
+          </div>
+        ) : null}
         {writable ? (
           <div className="flex flex-col gap-2">
             <button
