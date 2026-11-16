@@ -1,7 +1,7 @@
 import {
   addWorkingDaysFromOrderDate,
+  continuousDeliveryYmd,
   formatLongIstDate,
-  isNonWorkingYmd,
   istYmd,
   parseMaxWorkingDays,
   parseYmd,
@@ -92,8 +92,7 @@ export function buildDeliveryEstimateText(baseEstimate, options = {}) {
   const start = options.startDate || Date.now();
   const orderDateIst = istYmd(start);
   if (!orderDateIst) return label;
-  const workingDays = maxDays + (isNonWorkingYmd(orderDateIst, holidays) ? 1 : 0);
-  const ymd = addWorkingDaysFromOrderDate(orderDateIst, workingDays, holidays);
+  const ymd = continuousDeliveryYmd(orderDateIst, maxDays, holidays);
   const expected = formatLongIstDate(ymd);
   if (!expected) return label;
   return `${label} - expected by ${expected} (Sundays and government/public holidays skipped)`;

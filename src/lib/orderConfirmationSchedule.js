@@ -37,9 +37,11 @@ export async function persistOrderConfirmationSchedule(orderDoc, settings = {}) 
     holidayAdjustmentApplied: schedule.holidayAdjustmentApplied,
     tamilNaduEstimateLabel: schedule.tamilNaduEstimateLabel,
     tamilNaduWorkingDays: schedule.tamilNaduWorkingDays,
+    tamilNaduDeliveryDateIst: schedule.tamilNaduDeliveryDateIst,
     expectedReadyDateIst: schedule.expectedReadyDateIst,
     estimatedDeliveryDateIst: schedule.estimatedDeliveryDateIst,
     calendarVersion: schedule.calendarVersion,
+    queueEpochIst: schedule.queueEpochIst,
     computedAt: schedule.computedAt,
   };
   if (!orderDoc.expectedDispatchDate) {

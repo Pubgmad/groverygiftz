@@ -1,6 +1,9 @@
 const TIME_ZONE = 'Asia/Kolkata';
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-export const CONFIRMATION_CALENDAR_VERSION = 'working-day-v1';
+
+/** Continuous-queue calendar. Epoch is the recurrence boundary (s(epoch)=base(epoch)), not a backlog reset. */
+export const CONFIRMATION_CALENDAR_VERSION = 'continuous-queue-v1';
+export const CONTINUOUS_QUEUE_EPOCH_IST = '2026-11-15';
 
 const pad2 = (value) => String(value).padStart(2, '0');
 
@@ -90,6 +93,19 @@ export function addWorkingDaysFromOrderDate(orderDateYmd, workingDays, holidays 
   return current;
 }
 
+export function subtractWorkingDaysFromDate(ymd, workingDays, holidays = []) {
+  const total = Number(workingDays);
+  if (!parseYmd(ymd) || !Number.isInteger(total) || total < 1) return '';
+  let current = ymd;
+  let removed = 0;
+  while (removed < total) {
+    current = addCalendarDaysYmd(current, -1);
+    if (!current) return '';
+    if (!isNonWorkingYmd(current, holidays)) removed += 1;
+  }
+  return current;
+}
+
 export function parseMaxWorkingDays(estimateText) {
   const text = String(estimateText || '').trim().replace(/[\u2013\u2014]/g, '-').replace(/\s+/g, ' ');
   const match = /^(within )?([1-9]\d{0,2})(?:\s*-\s*([1-9]\d{0,2}))? (working )?days?$/i.exec(text);
@@ -119,12 +135,53 @@ export function formatShortIstDate(ymd) {
   }).format(date);
 }
 
+export function baseDeliveryYmd(orderDateYmd, estimateWorkingDays, holidays = []) {
+  const days = Number(estimateWorkingDays);
+  if (!parseYmd(orderDateYmd) || !Number.isInteger(days) || days < 1) return '';
+  const adjusted = days + (isNonWorkingYmd(orderDateYmd, holidays) ? 1 : 0);
+  return addWorkingDaysFromOrderDate(orderDateYmd, adjusted, holidays);
+}
+
+/**
+ * Continuous queue: every calendar order-date (including empty days) takes the next
+ * eligible working delivery slot from CONTINUOUS_QUEUE_EPOCH_IST forward.
+ * Dates before the epoch use base delivery only.
+ */
+export function continuousDeliveryYmd(orderDateYmd, estimateWorkingDays, holidays = [], epochYmd = CONTINUOUS_QUEUE_EPOCH_IST) {
+  if (!parseYmd(orderDateYmd) || !parseYmd(epochYmd)) return '';
+  if (orderDateYmd < epochYmd) {
+    return baseDeliveryYmd(orderDateYmd, estimateWorkingDays, holidays);
+  }
+
+  let delivery = baseDeliveryYmd(epochYmd, estimateWorkingDays, holidays);
+  if (!delivery) return '';
+  if (orderDateYmd === epochYmd) return delivery;
+
+  for (let current = addCalendarDaysYmd(epochYmd, 1); current && current <= orderDateYmd; current = addCalendarDaysYmd(current, 1)) {
+    const base = baseDeliveryYmd(current, estimateWorkingDays, holidays);
+    const nextSlot = addWorkingDaysFromOrderDate(delivery, 1, holidays);
+    if (!base || !nextSlot) return '';
+    delivery = base > nextSlot ? base : nextSlot;
+  }
+  return delivery;
+}
+
+function countWorkingDaysAfter(orderDateYmd, throughYmd, holidays = []) {
+  if (!parseYmd(orderDateYmd) || !parseYmd(throughYmd) || throughYmd <= orderDateYmd) return 0;
+  let count = 0;
+  for (let current = addCalendarDaysYmd(orderDateYmd, 1); current && current <= throughYmd; current = addCalendarDaysYmd(current, 1)) {
+    if (!isNonWorkingYmd(current, holidays)) count += 1;
+  }
+  return count;
+}
+
 export function computeConfirmationSchedule({
   placedAt,
   destinationState,
   tamilNaduEstimate,
   destinationEstimate,
   holidays = [],
+  queueEpochIst = CONTINUOUS_QUEUE_EPOCH_IST,
 } = {}) {
   const placedDate = placedAt instanceof Date ? placedAt : new Date(placedAt);
   const orderDateIst = istYmd(placedDate);
@@ -139,19 +196,49 @@ export function computeConfirmationSchedule({
   const holidayAdjustmentApplied = isNonWorkingYmd(orderDateIst, holidays);
   const tamilNaduWorkingDays = tnDays + (holidayAdjustmentApplied ? 1 : 0);
   const deliveryWorkingDays = destDays + (holidayAdjustmentApplied ? 1 : 0);
-  const dispatchOffset = tamilNaduWorkingDays - 2;
-  if (dispatchOffset < 1) return { ok: false, reason: 'tn_dispatch_offset_invalid' };
 
-  const expectedReadyDateIst = addWorkingDaysFromOrderDate(orderDateIst, dispatchOffset, holidays);
-  const estimatedDeliveryDateIst = addWorkingDaysFromOrderDate(orderDateIst, deliveryWorkingDays, holidays);
-  if (!expectedReadyDateIst || !estimatedDeliveryDateIst) return { ok: false, reason: 'date_calculation_failed' };
+  // Raw Admin TN span must leave room for dispatch = delivery − 2 working days.
+  if (tnDays < 3) return { ok: false, reason: 'tn_dispatch_offset_invalid' };
+
+  const tamilNaduDeliveryDateIst = continuousDeliveryYmd(orderDateIst, tnDays, holidays, queueEpochIst);
+  const estimatedDeliveryDateIst = continuousDeliveryYmd(orderDateIst, destDays, holidays, queueEpochIst);
+  if (!tamilNaduDeliveryDateIst || !estimatedDeliveryDateIst) {
+    return { ok: false, reason: 'date_calculation_failed' };
+  }
+
+  const expectedReadyDateIst = subtractWorkingDaysFromDate(tamilNaduDeliveryDateIst, 2, holidays);
+  if (!expectedReadyDateIst) return { ok: false, reason: 'date_calculation_failed' };
+
   if (isNonWorkingYmd(expectedReadyDateIst, holidays) || isNonWorkingYmd(estimatedDeliveryDateIst, holidays)) {
     return { ok: false, reason: 'landed_on_non_working_day' };
+  }
+  if (isNonWorkingYmd(tamilNaduDeliveryDateIst, holidays)) {
+    return { ok: false, reason: 'landed_on_non_working_day' };
+  }
+
+  // Dispatch must fall strictly after the order date on a real production working day.
+  if (expectedReadyDateIst <= orderDateIst) {
+    return { ok: false, reason: 'dispatch_before_production' };
+  }
+  if (countWorkingDaysAfter(orderDateIst, expectedReadyDateIst, holidays) < 1) {
+    return { ok: false, reason: 'dispatch_before_production' };
+  }
+
+  // Destination promise cannot precede shared dispatch.
+  if (estimatedDeliveryDateIst < expectedReadyDateIst) {
+    return { ok: false, reason: 'delivery_before_dispatch' };
+  }
+
+  // TN delivery must remain exactly two working days after shared dispatch.
+  const tnFromReady = addWorkingDaysFromOrderDate(expectedReadyDateIst, 2, holidays);
+  if (tnFromReady !== tamilNaduDeliveryDateIst) {
+    return { ok: false, reason: 'dispatch_tn_inconsistent' };
   }
 
   return {
     ok: true,
     calendarVersion: CONFIRMATION_CALENDAR_VERSION,
+    queueEpochIst,
     placedAt: placedDate,
     orderDateIst,
     destinationState: String(destinationState || '').trim(),
@@ -160,6 +247,7 @@ export function computeConfirmationSchedule({
     holidayAdjustmentApplied,
     tamilNaduEstimateLabel: tnLabel,
     tamilNaduWorkingDays,
+    tamilNaduDeliveryDateIst,
     expectedReadyDateIst,
     estimatedDeliveryDateIst,
     computedAt: new Date(),

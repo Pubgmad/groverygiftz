@@ -163,9 +163,11 @@ const OrderSchema = new mongoose.Schema({
     holidayAdjustmentApplied: Boolean,
     tamilNaduEstimateLabel: String,
     tamilNaduWorkingDays: Number,
+    tamilNaduDeliveryDateIst: String,
     expectedReadyDateIst: String,
     estimatedDeliveryDateIst: String,
     calendarVersion: String,
+    queueEpochIst: String,
     computedAt: Date,
   },
   status: {

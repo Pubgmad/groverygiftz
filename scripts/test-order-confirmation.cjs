@@ -11,7 +11,7 @@ const strip = (file) => fs.readFileSync(path.join(__dirname, '..', file), 'utf8'
 function loadCalendar() {
   const context = { console, Intl };
   vm.createContext(context);
-  vm.runInContext(`${strip('src/lib/businessCalendar.js')}\nthis.api = { istYmd, parseMaxWorkingDays, isSundayYmd, isNonWorkingYmd, addWorkingDaysFromOrderDate, computeConfirmationSchedule, formatLongIstDate, weekdayUtcYmd, addCalendarDaysYmd };`, context);
+  vm.runInContext(`${strip('src/lib/businessCalendar.js')}\nthis.api = { istYmd, parseMaxWorkingDays, isSundayYmd, isNonWorkingYmd, addWorkingDaysFromOrderDate, subtractWorkingDaysFromDate, continuousDeliveryYmd, computeConfirmationSchedule, formatLongIstDate, weekdayUtcYmd, addCalendarDaysYmd, CONTINUOUS_QUEUE_EPOCH_IST, CONFIRMATION_CALENDAR_VERSION };`, context);
   return context.api;
 }
 
@@ -42,7 +42,7 @@ test('max of Admin range is used and invalid estimates are rejected', () => {
   assert.equal(c.parseMaxWorkingDays(''), null);
 });
 
-test('Monday working-day Tamil Nadu 6-day schedule is Day 4 ready and Day 6 delivery', () => {
+test('Monday working-day Tamil Nadu 6-day schedule advances the continuous queue from Sunday', () => {
   const c = loadCalendar();
   const placedAt = new Date('2026-11-16T11:00:00+05:30');
   assert.equal(c.istYmd(placedAt), '2026-11-16');
@@ -56,8 +56,9 @@ test('Monday working-day Tamil Nadu 6-day schedule is Day 4 ready and Day 6 deli
   });
   assert.equal(schedule.ok, true);
   assert.equal(schedule.holidayAdjustmentApplied, false);
-  assert.equal(schedule.expectedReadyDateIst, '2026-11-20');
-  assert.equal(schedule.estimatedDeliveryDateIst, '2026-11-23');
+  assert.equal(schedule.calendarVersion, 'continuous-queue-v1');
+  assert.equal(schedule.expectedReadyDateIst, '2026-11-21');
+  assert.equal(schedule.estimatedDeliveryDateIst, '2026-11-24');
   assert.equal(c.isNonWorkingYmd(schedule.expectedReadyDateIst, []), false);
   assert.equal(c.isNonWorkingYmd(schedule.estimatedDeliveryDateIst, []), false);
 });
@@ -132,9 +133,10 @@ test('Tamil Nadu 6-8 and other-state 12-15 share dispatch and use max days, incl
     holidays,
   });
   assert.equal(tn.expectedReadyDateIst, mh.expectedReadyDateIst);
-  assert.equal(tn.estimatedDeliveryDateIst, c.addWorkingDaysFromOrderDate('2026-11-16', 8, holidays));
-  assert.equal(mh.estimatedDeliveryDateIst, c.addWorkingDaysFromOrderDate('2026-11-16', 15, holidays));
-  assert.equal(tn.expectedReadyDateIst, c.addWorkingDaysFromOrderDate('2026-11-16', 6, holidays));
+  assert.equal(tn.estimatedDeliveryDateIst, '2026-11-26');
+  assert.equal(mh.estimatedDeliveryDateIst, '2026-12-04');
+  assert.equal(tn.expectedReadyDateIst, '2026-11-24');
+  assert.equal(tn.expectedReadyDateIst, c.subtractWorkingDaysFromDate(tn.tamilNaduDeliveryDateIst, 2, holidays));
 
   const holidayTn = c.computeConfirmationSchedule({
     placedAt: new Date('2026-11-15T12:00:00+05:30'),
@@ -307,7 +309,7 @@ test('same Indian order date shares dispatch across states', () => {
     holidays: [],
   }).expectedReadyDateIst);
   assert.deepEqual(new Set(ready).size, 1);
-  assert.equal(ready[0], '2026-11-20');
+  assert.equal(ready[0], '2026-11-21');
 });
 
 test('email layout stays table-based, escaped, and 600px wide for long names and many products', () => {
@@ -385,8 +387,89 @@ test('live website delivery dates match the confirmation email calendar engine',
     holidays: [],
   });
   assert.equal(tn.expectedReadyDateIst, other.expectedReadyDateIst);
-  assert.match(api.buildDeliveryEstimateText('6 working days', { startDate: monday, holidays: [] }), /November 23, 2026/);
-  assert.match(api.buildDeliveryEstimateText('12-15 working days', { startDate: monday, holidays: [] }), /December 3, 2026/);
+  assert.match(api.buildDeliveryEstimateText('6 working days', { startDate: monday, holidays: [] }), /November 24, 2026/);
+  assert.match(api.buildDeliveryEstimateText('12-15 working days', { startDate: monday, holidays: [] }), /December 4, 2026/);
+});
+
+test('approved continuous Tamil Nadu queue matches Nov 15–27 fixture with feasible shared dispatch', () => {
+  const c = loadCalendar();
+  assert.equal(c.CONTINUOUS_QUEUE_EPOCH_IST, '2026-11-15');
+  const holidays = ['2026-11-25', '2026-11-26'];
+  const expected = {
+    '2026-11-15': '2026-11-24',
+    '2026-11-16': '2026-11-27',
+    '2026-11-17': '2026-11-28',
+    '2026-11-18': '2026-11-30',
+    '2026-11-19': '2026-12-01',
+    '2026-11-20': '2026-12-02',
+    '2026-11-21': '2026-12-03',
+    '2026-11-22': '2026-12-04',
+    '2026-11-23': '2026-12-05',
+    '2026-11-24': '2026-12-07',
+    '2026-11-25': '2026-12-08',
+    '2026-11-26': '2026-12-09',
+    '2026-11-27': '2026-12-10',
+  };
+  let previous = '';
+  for (const [orderDate, delivery] of Object.entries(expected)) {
+    const schedule = c.computeConfirmationSchedule({
+      placedAt: new Date(`${orderDate}T12:00:00+05:30`),
+      destinationState: 'Tamil Nadu',
+      tamilNaduEstimate: '7 working days',
+      destinationEstimate: '7 working days',
+      holidays,
+    });
+    assert.equal(schedule.ok, true, orderDate);
+    assert.equal(schedule.estimatedDeliveryDateIst, delivery, orderDate);
+    assert.equal(schedule.tamilNaduDeliveryDateIst, delivery, orderDate);
+    assert.equal(
+      schedule.expectedReadyDateIst,
+      c.subtractWorkingDaysFromDate(delivery, 2, holidays),
+      `${orderDate} dispatch`,
+    );
+    assert.ok(schedule.expectedReadyDateIst > orderDate, `${orderDate} dispatch after order`);
+    assert.equal(c.isNonWorkingYmd(schedule.expectedReadyDateIst, holidays), false);
+    assert.equal(c.isNonWorkingYmd(schedule.estimatedDeliveryDateIst, holidays), false);
+    if (previous) {
+      assert.equal(
+        schedule.estimatedDeliveryDateIst,
+        c.addWorkingDaysFromOrderDate(previous, 1, holidays),
+        `${orderDate} continuous next slot`,
+      );
+    }
+    previous = schedule.estimatedDeliveryDateIst;
+
+    const kerala = c.computeConfirmationSchedule({
+      placedAt: new Date(`${orderDate}T12:00:00+05:30`),
+      destinationState: 'Kerala',
+      tamilNaduEstimate: '7 working days',
+      destinationEstimate: '12-15 working days',
+      holidays,
+    });
+    assert.equal(kerala.ok, true, `${orderDate} Kerala`);
+    assert.equal(kerala.expectedReadyDateIst, schedule.expectedReadyDateIst, `${orderDate} shared dispatch`);
+    assert.ok(kerala.estimatedDeliveryDateIst >= kerala.expectedReadyDateIst, `${orderDate} Kerala after dispatch`);
+  }
+
+  // Empty intervening dates still consume queue slots.
+  assert.equal(c.continuousDeliveryYmd('2026-11-18', 7, holidays), '2026-11-30');
+  assert.equal(c.continuousDeliveryYmd('2026-11-18', 7, holidays), expected['2026-11-18']);
+});
+
+test('ten same-day orders share one continuous delivery and dispatch date', () => {
+  const c = loadCalendar();
+  const placedAts = Array.from({ length: 10 }, (_, index) => new Date(`2026-11-18T0${index}:15:00+05:30`));
+  const schedules = placedAts.map((placedAt) => c.computeConfirmationSchedule({
+    placedAt,
+    destinationState: 'Tamil Nadu',
+    tamilNaduEstimate: '7 working days',
+    destinationEstimate: '7 working days',
+    holidays: ['2026-11-25', '2026-11-26'],
+  }));
+  assert.ok(schedules.every((schedule) => schedule.ok));
+  assert.equal(new Set(schedules.map((schedule) => schedule.estimatedDeliveryDateIst)).size, 1);
+  assert.equal(new Set(schedules.map((schedule) => schedule.expectedReadyDateIst)).size, 1);
+  assert.equal(schedules[0].estimatedDeliveryDateIst, '2026-11-30');
 });
 
 test('checkout and browser bundles do not contain SMTP secrets', () => {
