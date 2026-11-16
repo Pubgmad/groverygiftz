@@ -229,11 +229,69 @@ function replaceCustomerPhoto(item, { slotKey, fieldPath, saved, file }) {
   return null;
 }
 
-function appendCustomerPhoto(item, { saved, file, slotLabel = 'Customer Photos' }) {
+function appendCustomerPhoto(item, {
+  saved,
+  file,
+  slotLabel = 'Customer Photos',
+  variantKey = '',
+  collageGroup = '',
+}) {
+  const label = String(slotLabel || 'Customer Photos').trim() || 'Customer Photos';
+  const collageLabel = String(collageGroup || '').trim() || label;
+
+  // Prefer collageUploads when collageGroup is set or a matching group was seeded at create
+  if (collageGroup || (Array.isArray(item.collageUploads) && item.collageUploads.length)) {
+    if (!Array.isArray(item.collageUploads)) item.collageUploads = [];
+    let groupIndex = item.collageUploads.findIndex(
+      (g) => String(g?.label || '').trim().toLowerCase() === collageLabel.toLowerCase(),
+    );
+    if (groupIndex < 0 && (collageGroup || (label !== 'Customer Photos' && label !== 'Variant Label Uploads'))) {
+      item.collageUploads.push({ label: collageLabel, images: [] });
+      groupIndex = item.collageUploads.length - 1;
+    }
+    if (groupIndex >= 0) {
+      const group = item.collageUploads[groupIndex] || { label: collageLabel, images: [] };
+      const images = Array.isArray(group.images) ? [...group.images] : [];
+      images.push(buildReplacementAsset(null, saved, file));
+      group.images = images;
+      group.label = group.label || collageLabel;
+      item.collageUploads[groupIndex] = group;
+      return {
+        previousPath: '',
+        target: `collageUploads.${groupIndex}.images.${images.length - 1}`,
+        photoIndex: images.length - 1,
+      };
+    }
+  }
+
   if (!item.customFields || typeof item.customFields !== 'object') {
     item.customFields = {};
   }
-  const label = String(slotLabel || 'Customer Photos').trim() || 'Customer Photos';
+
+  // ProductDetail-shaped variant uploads
+  if (label === 'Variant Label Uploads') {
+    const key = String(variantKey || 'Photo').trim() || 'Photo';
+    const bucket = (item.customFields['Variant Label Uploads']
+      && typeof item.customFields['Variant Label Uploads'] === 'object'
+      && !Array.isArray(item.customFields['Variant Label Uploads']))
+      ? { ...item.customFields['Variant Label Uploads'] }
+      : {};
+    const existing = bucket[key];
+    if (Array.isArray(existing)) {
+      bucket[key] = [...existing, buildReplacementAsset(null, saved, file)];
+    } else if (existing && isImageLike(existing)) {
+      bucket[key] = [existing, buildReplacementAsset(null, saved, file)];
+    } else {
+      bucket[key] = buildReplacementAsset(null, saved, file);
+    }
+    item.customFields['Variant Label Uploads'] = bucket;
+    return {
+      previousPath: '',
+      target: `customFields.Variant Label Uploads.${key}`,
+      photoIndex: 0,
+    };
+  }
+
   const existing = item.customFields[label];
   const arr = Array.isArray(existing) ? [...existing] : (existing && isImageLike(existing) ? [existing] : []);
   arr.push(buildReplacementAsset(null, saved, file));
@@ -272,6 +330,8 @@ export async function POST(req, { params }) {
   const newSize = String(form.get('newSize') || '').trim();
   const mode = String(form.get('mode') || 'auto').toLowerCase();
   const slotLabel = String(form.get('slotLabel') || 'Customer Photos').trim() || 'Customer Photos';
+  const variantKey = String(form.get('variantKey') || '').trim();
+  const collageGroup = String(form.get('collageGroup') || '').trim();
   if (!file || typeof file === 'string') {
     return NextResponse.json({ error: 'Photo file is required' }, { status: 400 });
   }
@@ -288,7 +348,7 @@ export async function POST(req, { params }) {
     if (!can(access, 'orders', 'upload_customer_photos')) {
       return NextResponse.json({ error: 'You do not have permission to perform this action' }, { status: 403 });
     }
-    result = appendCustomerPhoto(item, { saved, file, slotLabel });
+    result = appendCustomerPhoto(item, { saved, file, slotLabel, variantKey, collageGroup });
     actionType = 'photo_added';
   } else {
     if (!can(access, 'orders', 'replace_customer_photos') && !can(access, 'orders', 'edit_customer_photos')) {
@@ -299,7 +359,7 @@ export async function POST(req, { params }) {
       if (!can(access, 'orders', 'upload_customer_photos')) {
         return NextResponse.json({ error: 'You do not have permission to perform this action' }, { status: 403 });
       }
-      result = appendCustomerPhoto(item, { saved, file, slotLabel });
+      result = appendCustomerPhoto(item, { saved, file, slotLabel, variantKey, collageGroup });
       actionType = 'photo_added';
     }
   }

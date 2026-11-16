@@ -38,6 +38,9 @@ function normalizeItem(bodyItem = {}, product, { useCatalogPrice = true } = {}) 
       : Number(product?.salePrice > 0 ? product.salePrice : product?.regularPrice) || 0;
   }
   // Manual WhatsApp combo: never store catalog/body unit prices on line items
+  const excluded = Array.isArray(bodyItem.excludedCustomizationSlots)
+    ? bodyItem.excludedCustomizationSlots.map((v) => String(v || '').trim()).filter(Boolean)
+    : undefined;
   return {
     product: product?._id,
     title: product?.title || bodyItem.title || 'Product',
@@ -45,10 +48,14 @@ function normalizeItem(bodyItem = {}, product, { useCatalogPrice = true } = {}) 
     price: unit,
     quantity,
     variant: String(bodyItem.variant || '').trim(),
+    variantId: String(bodyItem.variantId || '').trim() || undefined,
     customFields: bodyItem.customFields || undefined,
     collageUploads: bodyItem.collageUploads || undefined,
     customizationPreview: bodyItem.customizationPreview || undefined,
     customizationInstructions: String(bodyItem.customizationInstructions || bodyItem.instructions || '').trim(),
+    isCustomizedCombo: bodyItem.isCustomizedCombo === true ? true : undefined,
+    comboSize: String(bodyItem.comboSize || '').trim() || undefined,
+    excludedCustomizationSlots: excluded?.length ? excluded : undefined,
   };
 }
 

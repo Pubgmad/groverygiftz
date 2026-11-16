@@ -96,109 +96,121 @@ function legacyPreviewArea(preview = {}) {
   };
 }
 
-/** Product-level photo slots (areas / counts / file fields) — independent of variant selection. */
+function buildFileFieldSlots(product) {
+  const preview = product?.customizationPreview || {};
+  const allowPreview = isProductPreviewEnabled(product);
+  const fileFields = (product?.customFields || []).filter((f) => String(f?.type || '') === 'file');
+  return fileFields.map((field, index) => {
+    const area = {
+      label: field.label || `Photo ${index + 1}`,
+      width: 1,
+      height: 1,
+      unit: 'inch',
+      frameImage: preview.frameImage || '',
+      instructions: preview.shortGuidance || preview.instructions || '',
+    };
+    return {
+      slotKey: `product-field-${index}`,
+      section: 'default',
+      storageKind: 'file_field',
+      storageLabel: field.label || `Photo ${index + 1}`,
+      label: field.label || `Photo ${index + 1}`,
+      sizeLabel: '',
+      frameImage: area.frameImage,
+      instructions: area.instructions,
+      required: field.required === true,
+      allowPreview,
+      area,
+      customFieldLabel: field.label,
+      photo: null,
+      reference: null,
+    };
+  });
+}
+
+/**
+ * Product-level photo slots (preview areas when enabled + file customFields + count fallback).
+ * Matches ProductDetail: areas only when customizationPreview.enabled; file fields always.
+ */
 export function buildProductLevelPhotoSlots(product) {
   if (!product) return [];
   const preview = product.customizationPreview || {};
   const allowPreview = isProductPreviewEnabled(product);
-  const rawAreas = Array.isArray(preview.areas) ? preview.areas : [];
-  let previewAreas = rawAreas
-    .map((area, index) => areaFromPreviewConfig(area, preview, index))
-    .filter((area) => area.requiresImageUpload !== false);
+  const slots = [];
 
-  // Storefront uses areas only when customizationPreview.enabled; keep WA aligned when enabled.
-  // When enabled with empty areas, use legacy single area like ProductDetail.
-  if (preview.enabled && previewAreas.length === 0) {
-    const legacy = legacyPreviewArea(preview);
-    if (legacy) previewAreas = [legacy];
+  // Storefront: areas only when preview.enabled
+  if (preview.enabled) {
+    let previewAreas = (Array.isArray(preview.areas) ? preview.areas : [])
+      .map((area, index) => areaFromPreviewConfig(area, preview, index))
+      .filter((area) => area.requiresImageUpload !== false);
+
+    if (previewAreas.length === 0) {
+      const legacy = legacyPreviewArea(preview);
+      if (legacy) previewAreas = [legacy];
+    }
+
+    const requiredPhotoCount = Math.max(
+      0,
+      previewAreas.filter((a) => a.required !== false).length || Number(preview.requiredImageCount || 0),
+    );
+    const maxPhotoCount = Math.max(
+      requiredPhotoCount,
+      previewAreas.length || Number(preview.maxImageCount || requiredPhotoCount || 0),
+    );
+    const photoSlotCount = previewAreas.length > 0 ? previewAreas.length : maxPhotoCount;
+
+    if (previewAreas.length > 0) {
+      for (let index = 0; index < Math.max(photoSlotCount, previewAreas.length); index += 1) {
+        const area = previewAreas[index] || previewAreas[previewAreas.length - 1];
+        slots.push({
+          slotKey: `product-area-${index}`,
+          section: 'default',
+          storageKind: 'customer',
+          storageLabel: 'Customer Photos',
+          label: area.label || `Photo ${index + 1}`,
+          sizeLabel: formatFrameSizeLabel(area) || '',
+          frameImage: area.frameImage || '',
+          instructions: area.instructions || '',
+          required: area.required !== false,
+          allowPreview: allowPreview && preview.enabled !== false,
+          area,
+          photo: null,
+          reference: null,
+        });
+      }
+    } else if (photoSlotCount > 0 && isProductUploadEnabled(product)) {
+      for (let index = 0; index < photoSlotCount; index += 1) {
+        const area = {
+          label: `Photo ${index + 1}`,
+          width: Number(preview.width) || 1,
+          height: Number(preview.height) || 1,
+          unit: preview.unit || 'inch',
+          frameImage: preview.frameImage || '',
+          instructions: preview.instructions || preview.shortGuidance || '',
+        };
+        slots.push({
+          slotKey: `product-count-${index}`,
+          section: 'default',
+          storageKind: 'customer',
+          storageLabel: 'Customer Photos',
+          label: area.label,
+          sizeLabel: formatFrameSizeLabel(area) || '',
+          frameImage: area.frameImage,
+          instructions: area.instructions,
+          required: index < requiredPhotoCount,
+          allowPreview,
+          area,
+          photo: null,
+          reference: null,
+        });
+      }
+    }
   }
 
-  // If preview.enabled is false, still allow file customFields and requiredImageCount
-  // for admin-configured uploads that do not use the live preview editor.
-  const requiredPhotoCount = Math.max(
-    0,
-    previewAreas.filter((a) => a.required !== false).length || Number(preview.requiredImageCount || 0),
-  );
-  const maxPhotoCount = Math.max(
-    requiredPhotoCount,
-    previewAreas.length || Number(preview.maxImageCount || requiredPhotoCount || 0),
-  );
-  const photoSlotCount = previewAreas.length > 0 ? previewAreas.length : maxPhotoCount;
+  // File custom fields always (alongside areas), matching ProductDetail
+  slots.push(...buildFileFieldSlots(product));
 
-  if (previewAreas.length > 0 && (preview.enabled !== false || photoSlotCount > 0)) {
-    return Array.from({ length: Math.max(photoSlotCount, previewAreas.length) }, (_, index) => {
-      const area = previewAreas[index] || previewAreas[previewAreas.length - 1];
-      return {
-        slotKey: `product-area-${index}`,
-        section: 'default',
-        label: area.label || `Photo ${index + 1}`,
-        sizeLabel: formatFrameSizeLabel(area) || '',
-        frameImage: area.frameImage || '',
-        instructions: area.instructions || '',
-        required: area.required !== false,
-        allowPreview: allowPreview && preview.enabled !== false,
-        area,
-        photo: null,
-        reference: null,
-      };
-    });
-  }
-
-  const fileFields = (product.customFields || []).filter((f) => String(f?.type || '') === 'file');
-  if (fileFields.length > 0) {
-    return fileFields.map((field, index) => {
-      const area = {
-        label: field.label || `Photo ${index + 1}`,
-        width: 1,
-        height: 1,
-        unit: 'inch',
-        frameImage: preview.frameImage || '',
-        instructions: preview.shortGuidance || preview.instructions || '',
-      };
-      return {
-        slotKey: `product-field-${index}`,
-        section: 'default',
-        label: field.label || `Photo ${index + 1}`,
-        sizeLabel: '',
-        frameImage: area.frameImage,
-        instructions: area.instructions,
-        required: field.required === true,
-        allowPreview,
-        area,
-        customFieldLabel: field.label,
-        photo: null,
-        reference: null,
-      };
-    });
-  }
-
-  if (photoSlotCount > 0 && isProductUploadEnabled(product)) {
-    return Array.from({ length: photoSlotCount }, (_, index) => {
-      const area = {
-        label: `Photo ${index + 1}`,
-        width: Number(preview.width) || 1,
-        height: Number(preview.height) || 1,
-        unit: preview.unit || 'inch',
-        frameImage: preview.frameImage || '',
-        instructions: preview.instructions || preview.shortGuidance || '',
-      };
-      return {
-        slotKey: `product-count-${index}`,
-        section: 'default',
-        label: area.label,
-        sizeLabel: formatFrameSizeLabel(area) || '',
-        frameImage: area.frameImage,
-        instructions: area.instructions,
-        required: index < requiredPhotoCount,
-        allowPreview,
-        area,
-        photo: null,
-        reference: null,
-      };
-    });
-  }
-
-  return [];
+  return slots;
 }
 
 /** Variant option upload slot (requiresImageUpload on the selected option). */
@@ -220,6 +232,9 @@ export function buildVariantUploadSlots(product, variantValue = '') {
   return [{
     slotKey: `variant-${selected.label}`,
     section: 'variant',
+    storageKind: 'variant',
+    storageLabel: 'Variant Label Uploads',
+    variantStorageKey: selected.label || '',
     label: selected.label || 'Photo',
     sizeLabel: formatFrameSizeLabel(area) || selected.label || '',
     frameImage: area.frameImage || '',
@@ -238,7 +253,6 @@ export function buildVariantUploadSlots(product, variantValue = '') {
  * Base slots for a product line.
  * - includeProductLevel: areas / file fields / counts
  * - includeVariantUpload: selected option requiresImageUpload slot
- * Unlike the old path, product-level slots are NOT dropped when a variant upload exists.
  */
 export function buildWebsiteBasePhotoSlots(product, {
   variantValue = '',
@@ -252,7 +266,6 @@ export function buildWebsiteBasePhotoSlots(product, {
   }
   if (includeProductLevel) {
     const productSlots = buildProductLevelPhotoSlots(product);
-    // Overlay selected variant dimensions onto product areas when variant has preview size
     const selected = findVariantOption(product, variantValue);
     const variantArea = variantAreaFromOption(selected);
     if (variantArea) {
@@ -362,55 +375,72 @@ export function getCollageTemplates(product) {
       minImages: Math.max(0, Number(template.minImages || 0)),
       maxImages: Math.max(0, Number(template.maxImages || template.minImages || 0)),
       instructions: template.instructions || '',
+      groupKey: `collage:${template.label}`,
     }));
 }
 
 /**
- * Full plan for Select Product: defaults load immediately; optional auto-variant for variant-only products.
+ * Full plan for Select Product / Combo.
+ * @param {object} product
+ * @param {{ selectedVariantValue?: string }} [opts]
  */
-export function resolveProductCustomizationPlan(product) {
+export function resolveProductCustomizationPlan(product, opts = {}) {
   if (!product) {
     return {
       variantOptions: [],
       defaultVariantValue: '',
+      selectedVariantValue: '',
       textCustomFields: [],
       collageTemplates: [],
       defaultPhotoSlots: [],
       hasProductLevelUploads: false,
       hasVariantOnlyUploads: false,
+      hasCollage: false,
       previewEnabled: false,
     };
   }
   const variantOptions = listWebsiteVariantOptions(product);
   const productLevel = buildProductLevelPhotoSlots(product);
   const hasProductLevelUploads = productLevel.length > 0;
-  const hasVariantOnlyUploads = !hasProductLevelUploads
-    && variantOptions.some((option) => option.requiresImageUpload);
-  const defaultVariantValue = hasVariantOnlyUploads
-    ? (variantOptions.find((option) => option.requiresImageUpload)?.value || variantOptions[0]?.value || '')
-    : '';
+  const hasVariantUploads = variantOptions.some((option) => option.requiresImageUpload);
+  const hasVariantOnlyUploads = !hasProductLevelUploads && hasVariantUploads;
+
+  const requested = String(opts.selectedVariantValue || '').trim();
+  let selectedVariantValue = requested;
+  if (!selectedVariantValue) {
+    if (hasVariantOnlyUploads) {
+      selectedVariantValue = variantOptions.find((option) => option.requiresImageUpload)?.value
+        || variantOptions[0]?.value
+        || '';
+    } else if (variantOptions.length) {
+      // Match ProductDetail: auto-select first variant so size-specific rules can apply
+      selectedVariantValue = variantOptions[0].value;
+    }
+  }
+
+  const selected = findVariantOption(product, selectedVariantValue);
+  const includeVariantUpload = Boolean(selected?.requiresImageUpload);
 
   let defaultPhotoSlots = [];
-  if (hasProductLevelUploads) {
-    defaultPhotoSlots = buildWebsitePhotoSlotsForQuantity(product, 1, '', {
-      includeProductLevel: true,
-      includeVariantUpload: false,
-    });
-  } else if (hasVariantOnlyUploads && defaultVariantValue) {
-    defaultPhotoSlots = buildWebsitePhotoSlotsForQuantity(product, 1, defaultVariantValue, {
-      includeProductLevel: false,
-      includeVariantUpload: true,
+  if (hasProductLevelUploads || includeVariantUpload) {
+    defaultPhotoSlots = buildWebsitePhotoSlotsForQuantity(product, 1, selectedVariantValue, {
+      includeProductLevel: hasProductLevelUploads,
+      includeVariantUpload,
     });
   }
 
+  const collageTemplates = getCollageTemplates(product);
+
   return {
     variantOptions,
-    defaultVariantValue,
+    defaultVariantValue: selectedVariantValue,
+    selectedVariantValue,
     textCustomFields: getTextCustomFields(product),
-    collageTemplates: getCollageTemplates(product),
+    collageTemplates,
     defaultPhotoSlots,
     hasProductLevelUploads,
     hasVariantOnlyUploads,
+    hasCollage: collageTemplates.length > 0,
     previewEnabled: isProductPreviewEnabled(product),
   };
 }
@@ -420,7 +450,6 @@ export function buildAdditionalVariantSlots(product, variantValue, quantity) {
   const selected = findVariantOption(product, variantValue);
   const hasVariantUpload = Boolean(selected?.requiresImageUpload);
   const productLevel = buildProductLevelPhotoSlots(product);
-  // Prefer variant upload when configured; otherwise multiply product-level areas by qty with variant dims.
   if (hasVariantUpload) {
     return buildWebsitePhotoSlotsForQuantity(product, quantity, variantValue, {
       includeProductLevel: productLevel.length > 0,
@@ -448,6 +477,9 @@ export function buildAdditionalVariantSlots(product, variantValue, quantity) {
     return Array.from({ length: qty }, (_, index) => ({
       slotKey: `fallback-${label}-u${index + 1}`,
       section: 'variant',
+      storageKind: 'variant',
+      storageLabel: 'Variant Label Uploads',
+      variantStorageKey: label,
       label: qty > 1 ? `${label} — Unit ${index + 1}` : label,
       sizeLabel: formatFrameSizeLabel(area) || label,
       frameImage: area.frameImage || '',
@@ -462,4 +494,18 @@ export function buildAdditionalVariantSlots(product, variantValue, quantity) {
     }));
   }
   return [];
+}
+
+/** Build ProductDetail-shaped collageUploads placeholders for order create. */
+export function buildCollageUploadsPayload(collageTemplates = [], collageUploadsState = {}, excludedKeys = []) {
+  return (collageTemplates || [])
+    .filter((template) => !excludedKeys.includes(template.groupKey || `collage:${template.label}`))
+    .map((template) => ({
+      label: template.label,
+      images: [],
+      // Local files are uploaded after create; keep count for validation only
+      _pendingCount: Array.isArray(collageUploadsState?.[template.label])
+        ? collageUploadsState[template.label].length
+        : 0,
+    }));
 }

@@ -7,7 +7,10 @@ import { parseWhatsAppCustomerDetails, validateParsedCustomer } from '@/lib/what
 import { fromDatetimeLocalIst, toDatetimeLocalIst } from '@/lib/istTime';
 import { expectedDeliveryFromDispatchYmd } from '@/lib/whatsappOrderDates';
 import { sanitizeDecimalInput } from '@/lib/sanitizeNumericInput';
-import { resolveProductCustomizationPlan } from '@/lib/websiteProductPhotoConfig';
+import {
+  buildCollageUploadsPayload,
+  resolveProductCustomizationPlan,
+} from '@/lib/websiteProductPhotoConfig';
 import {
   CatalogProductSection,
   ComboProductSection,
@@ -49,10 +52,16 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
   const [comboError, setComboError] = useState('');
   const [comboSelections, setComboSelections] = useState([]);
   const [catalogProductId, setCatalogProductId] = useState('');
+  const [catalogSelectedVariant, setCatalogSelectedVariant] = useState('');
   const [catalogCustomFields, setCatalogCustomFields] = useState({});
   const [catalogDefaultSlots, setCatalogDefaultSlots] = useState([]);
   const [catalogExcludedDefaults, setCatalogExcludedDefaults] = useState([]);
+  const [catalogCollageUploads, setCatalogCollageUploads] = useState({});
+  const [catalogExcludedCollageKeys, setCatalogExcludedCollageKeys] = useState([]);
   const [catalogAdditionalVariants, setCatalogAdditionalVariants] = useState([]);
+  const [comboCustomFields, setComboCustomFields] = useState({});
+  const [comboCollageUploads, setComboCollageUploads] = useState({});
+  const [excludedComboCollageKeys, setExcludedComboCollageKeys] = useState([]);
   const [paymentScreenshot, setPaymentScreenshot] = useState(null);
   const [form, setForm] = useState({
     orderSource: 'whatsapp',
@@ -247,52 +256,65 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
 
   const uploadItemPhotos = async (orderId, items) => {
     for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
-      const slots = Array.isArray(items[itemIndex].photoSlots) ? items[itemIndex].photoSlots : [];
-      if (slots.length) {
-        for (let p = 0; p < slots.length; p += 1) {
-          const slot = slots[p];
-          const printFile = slot.photo?.file;
-          if (printFile) {
-            const body = new FormData();
-            body.append('file', printFile);
-            body.append('itemIndex', String(itemIndex));
-            body.append('mode', 'append');
-            body.append('slotLabel', slot.label || `Photo ${p + 1}`);
-            body.append('slotKey', slot.slotKey || `catalog-${itemIndex}-${p}`);
-            body.append('reason', 'Uploaded at WhatsApp order creation');
-            const res = await fetch(`/api/admin/orders/${orderId}/photos`, { method: 'POST', body });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(data.error || `Photo upload failed for item ${itemIndex + 1}`);
+      const item = items[itemIndex];
+      const slots = Array.isArray(item.photoSlots) ? item.photoSlots : [];
+      for (let p = 0; p < slots.length; p += 1) {
+        const slot = slots[p];
+        const printFile = slot.photo?.file;
+        if (printFile) {
+          const body = new FormData();
+          body.append('file', printFile);
+          body.append('itemIndex', String(itemIndex));
+          body.append('mode', 'append');
+          const storageLabel = slot.storageKind === 'variant'
+            ? 'Variant Label Uploads'
+            : (slot.storageLabel || slot.customFieldLabel || 'Customer Photos');
+          body.append('slotLabel', storageLabel);
+          if (slot.storageKind === 'variant' && (slot.variantStorageKey || slot.variantLabel)) {
+            body.append('variantKey', slot.variantStorageKey || slot.variantLabel);
           }
-          const refFile = slot.reference?.file;
-          if (refFile) {
-            const refBody = new FormData();
-            refBody.append('file', refFile);
-            refBody.append('itemIndex', String(itemIndex));
-            refBody.append('mode', 'append');
-            refBody.append('slotLabel', `Reference — ${slot.label || `Photo ${p + 1}`}`);
-            refBody.append('slotKey', `${slot.slotKey || `catalog-${itemIndex}-${p}`}-reference`);
-            refBody.append('reason', 'Reference image at WhatsApp order creation');
-            const refRes = await fetch(`/api/admin/orders/${orderId}/photos`, { method: 'POST', body: refBody });
-            const refData = await refRes.json().catch(() => ({}));
-            if (!refRes.ok) throw new Error(refData.error || `Reference upload failed for item ${itemIndex + 1}`);
-          }
+          body.append('slotKey', slot.slotKey || `catalog-${itemIndex}-${p}`);
+          body.append('reason', 'Uploaded at WhatsApp order creation');
+          const res = await fetch(`/api/admin/orders/${orderId}/photos`, { method: 'POST', body });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || `Photo upload failed for item ${itemIndex + 1}`);
         }
-        continue;
+        const refFile = slot.reference?.file;
+        if (refFile) {
+          const refBody = new FormData();
+          refBody.append('file', refFile);
+          refBody.append('itemIndex', String(itemIndex));
+          refBody.append('mode', 'append');
+          refBody.append('slotLabel', `Reference — ${slot.label || `Photo ${p + 1}`}`);
+          refBody.append('slotKey', `${slot.slotKey || `catalog-${itemIndex}-${p}`}-reference`);
+          refBody.append('reason', 'Reference image at WhatsApp order creation');
+          const refRes = await fetch(`/api/admin/orders/${orderId}/photos`, { method: 'POST', body: refBody });
+          const refData = await refRes.json().catch(() => ({}));
+          if (!refRes.ok) throw new Error(refData.error || `Reference upload failed for item ${itemIndex + 1}`);
+        }
       }
-      const photos = items[itemIndex].photos || [];
-      for (let p = 0; p < photos.length; p += 1) {
-        const file = photos[p];
-        const body = new FormData();
-        body.append('file', file);
-        body.append('itemIndex', String(itemIndex));
-        body.append('mode', 'append');
-        body.append('slotLabel', 'Customer Photos');
-        body.append('slotKey', `item-${itemIndex}-${p}`);
-        body.append('reason', 'Uploaded at WhatsApp order creation');
-        const res = await fetch(`/api/admin/orders/${orderId}/photos`, { method: 'POST', body });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || `Photo upload failed for item ${itemIndex + 1}`);
+
+      const collageLocal = item.collageLocalUploads || {};
+      const collageGroups = Array.isArray(item.collageUploads) ? item.collageUploads : [];
+      for (let g = 0; g < collageGroups.length; g += 1) {
+        const group = collageGroups[g];
+        const label = group.label;
+        const locals = Array.isArray(collageLocal[label]) ? collageLocal[label] : [];
+        for (let i = 0; i < locals.length; i += 1) {
+          const file = locals[i]?.file;
+          if (!file) continue;
+          const body = new FormData();
+          body.append('file', file);
+          body.append('itemIndex', String(itemIndex));
+          body.append('mode', 'append');
+          body.append('slotLabel', label);
+          body.append('collageGroup', label);
+          body.append('slotKey', `collage:${label}:${i}`);
+          body.append('reason', 'Collage upload at WhatsApp order creation');
+          const res = await fetch(`/api/admin/orders/${orderId}/photos`, { method: 'POST', body });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || `Collage upload failed for ${label}`);
+        }
       }
     }
   };
@@ -300,18 +322,40 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
   const buildCatalogLineItems = () => {
     if (!catalogProductId) return [];
     const product = products.find((p) => String(p._id) === String(catalogProductId));
-    const plan = resolveProductCustomizationPlan(product);
+    const plan = resolveProductCustomizationPlan(product, { selectedVariantValue: catalogSelectedVariant });
     const items = [];
     const activeDefaults = catalogDefaultSlots.filter((slot) => !catalogExcludedDefaults.includes(slot.slotKey));
-    if (activeDefaults.length || Object.keys(catalogCustomFields || {}).length) {
+    const collagePayload = buildCollageUploadsPayload(
+      plan.collageTemplates,
+      catalogCollageUploads,
+      catalogExcludedCollageKeys,
+    );
+    const hasCollageFiles = Object.entries(catalogCollageUploads || {}).some(([label, list]) => {
+      const key = `collage:${label}`;
+      if (catalogExcludedCollageKeys.includes(key)) return false;
+      return Array.isArray(list) && list.some((p) => p?.file);
+    });
+    const match = plan.variantOptions.find((v) => v.value === (catalogSelectedVariant || plan.selectedVariantValue));
+    if (
+      activeDefaults.length
+      || Object.keys(catalogCustomFields || {}).length
+      || collagePayload.length
+      || hasCollageFiles
+    ) {
       items.push({
         productId: catalogProductId,
-        variant: plan.defaultVariantValue || '',
+        variant: catalogSelectedVariant || plan.selectedVariantValue || '',
+        variantId: match?.optionId || '',
         quantity: 1,
         instructions: '',
         customFieldValues: catalogCustomFields,
         photoSlots: activeDefaults,
-        excludedCustomizationSlots: catalogExcludedDefaults,
+        collageUploads: collagePayload.map(({ label, images }) => ({ label, images })),
+        collageLocalUploads: catalogCollageUploads,
+        excludedCustomizationSlots: [
+          ...catalogExcludedDefaults,
+          ...catalogExcludedCollageKeys,
+        ],
       });
     }
     catalogAdditionalVariants.forEach((row) => {
@@ -330,18 +374,35 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
     return items;
   };
 
-  const buildComboLineItemsForSubmit = () => comboSelections
-    .filter((row) => (row.size || row.variantValue) && Number(row.quantity) > 0)
-    .map((row) => ({
-      productId: comboProduct._id,
-      variant: row.variantValue || `Size: ${row.size}`,
-      variantId: row.variantId || '',
-      quantity: Number(row.quantity) || 1,
-      instructions: '',
-      photoSlots: row.photoSlots || [],
-      isCustomizedCombo: true,
-      comboSize: row.size || '',
-    }));
+  const buildComboLineItemsForSubmit = () => {
+    const rows = comboSelections
+      .filter((row) => (row.size || row.variantValue) && Number(row.quantity) > 0)
+      .map((row) => ({
+        productId: row.productId || comboProduct?._id,
+        variant: row.variantValue || `Size: ${row.size}`,
+        variantId: row.variantId || '',
+        quantity: Number(row.quantity) || 1,
+        instructions: '',
+        photoSlots: row.photoSlots || [],
+        isCustomizedCombo: true,
+        comboSize: row.size || '',
+      }));
+    if (!rows.length) return rows;
+    // Attach source text/collage customizations to the first combo line
+    const collagePayload = buildCollageUploadsPayload(
+      resolveProductCustomizationPlan(comboProduct).collageTemplates,
+      comboCollageUploads,
+      excludedComboCollageKeys,
+    );
+    rows[0] = {
+      ...rows[0],
+      customFieldValues: comboCustomFields,
+      collageUploads: collagePayload.map(({ label, images }) => ({ label, images })),
+      collageLocalUploads: comboCollageUploads,
+      excludedCustomizationSlots: excludedComboCollageKeys,
+    };
+    return rows;
+  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -487,10 +548,13 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
         items: lineItems.map((item) => ({
           productId: item.productId,
           variant: item.variant,
+          variantId: item.variantId || undefined,
           quantity: Number(item.quantity) || 1,
           customizationInstructions: item.instructions,
           customFields: item.customFieldValues || undefined,
-          isCustomizedCombo: productMode === 'customized_combo' || item.isCustomizedCombo,
+          collageUploads: item.collageUploads || undefined,
+          isCustomizedCombo: productMode === 'customized_combo' || item.isCustomizedCombo || undefined,
+          comboSize: item.comboSize || undefined,
           excludedCustomizationSlots: item.excludedCustomizationSlots || undefined,
         })),
       };
@@ -511,6 +575,7 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
         try {
           if (lineItems.some((item) => (
             (item.photoSlots || []).some((s) => s?.photo?.file || s?.reference?.file)
+            || Object.values(item.collageLocalUploads || {}).some((list) => Array.isArray(list) && list.some((p) => p?.file))
           ))) {
             await uploadItemPhotos(data.order._id, lineItems);
           }
@@ -553,10 +618,16 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
       setPaymentScreenshot(null);
       setComboSelections([]);
       setCatalogProductId('');
+      setCatalogSelectedVariant('');
       setCatalogCustomFields({});
       setCatalogDefaultSlots([]);
       setCatalogExcludedDefaults([]);
+      setCatalogCollageUploads({});
+      setCatalogExcludedCollageKeys([]);
       setCatalogAdditionalVariants([]);
+      setComboCustomFields({});
+      setComboCollageUploads({});
+      setExcludedComboCollageKeys([]);
     } catch (err) {
       toast.error(err.message || 'Create failed');
     } finally {
@@ -817,22 +888,34 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
                 products={products}
                 productId={catalogProductId}
                 onProductIdChange={setCatalogProductId}
+                selectedVariant={catalogSelectedVariant}
+                onSelectedVariantChange={setCatalogSelectedVariant}
                 customFieldValues={catalogCustomFields}
                 onCustomFieldChange={setCatalogCustomFields}
                 defaultSlots={catalogDefaultSlots}
                 onDefaultSlotsChange={setCatalogDefaultSlots}
                 excludedDefaultKeys={catalogExcludedDefaults}
                 onExcludedDefaultKeysChange={setCatalogExcludedDefaults}
+                collageUploads={catalogCollageUploads}
+                onCollageUploadsChange={setCatalogCollageUploads}
+                excludedCollageKeys={catalogExcludedCollageKeys}
+                onExcludedCollageKeysChange={setCatalogExcludedCollageKeys}
                 additionalVariants={catalogAdditionalVariants}
                 onAdditionalVariantsChange={setCatalogAdditionalVariants}
               />
             ) : (
               <ComboProductSection
+                products={products}
                 comboProduct={comboProduct}
-                comboOptions={comboOptions}
                 comboError={comboError}
                 selections={comboSelections}
                 onSelectionsChange={setComboSelections}
+                comboCustomFields={comboCustomFields}
+                onComboCustomFieldsChange={setComboCustomFields}
+                comboCollageUploads={comboCollageUploads}
+                onComboCollageUploadsChange={setComboCollageUploads}
+                excludedComboCollageKeys={excludedComboCollageKeys}
+                onExcludedComboCollageKeysChange={setExcludedComboCollageKeys}
               />
             )}
           </div>
