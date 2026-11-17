@@ -6,6 +6,8 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 
+const COMBO_SOURCE_PRODUCT_TITLE_RX = /personal+i[sz]ed\s+single\s+photo\s+frame.*matte\s+finish/i;
+
 const configSrc = fs.readFileSync(path.join(__dirname, '../src/lib/websiteProductPhotoConfig.js'), 'utf8');
 const sectionSrc = fs.readFileSync(path.join(__dirname, '../src/components/admin/WhatsAppOrderProductSection.js'), 'utf8');
 const estimateSrc = fs.readFileSync(path.join(__dirname, '../src/lib/orderDeliveryEstimate.js'), 'utf8');
@@ -20,14 +22,17 @@ assert.ok(configSrc.includes('canonicalWebsiteSizeLabel'));
 assert.ok(configSrc.includes('Boolean(variantArea) || allowPreview'));
 assert.ok(sectionSrc.includes('UniqueSizeSelect'));
 assert.ok(sectionSrc.includes('listUniqueWebsiteSizes'));
-assert.ok(sectionSrc.includes('listUniqueWebsiteSizes(product ? [product] : [])'));
-assert.ok(sectionSrc.includes('on this product'));
-assert.ok(sectionSrc.includes('Only sizes configured on this selected product'));
+assert.ok(sectionSrc.includes('resolveSizeCatalogProduct'));
+assert.ok(sectionSrc.includes('COMBO_SOURCE_PRODUCT_TITLE_RX'));
+assert.ok(sectionSrc.includes('Personalized Single Photo Frame'));
+assert.ok(sectionSrc.includes('sizeCatalogProduct'));
+assert.ok(modalSrc.includes('sizeCatalogProduct={comboProduct}'));
 assert.ok(!/99 website size configurations/.test(sectionSrc));
 assert.ok(!sectionSrc.includes('${sizeLabel} — ${productTitle}'));
 assert.ok(estimateSrc.includes('resolveAdminDispatchDisplay'));
 assert.ok(ordersPageSrc.includes('resolveAdminDispatchDisplay'));
 assert.ok(comboSrc.includes('return false'));
+assert.ok(comboSrc.includes('[x×*]'));
 assert.ok(!apiSrc.includes('ensureThirteenByTwenty(product)'));
 assert.ok(modalSrc.includes('needsProductDisambiguation'));
 
@@ -168,7 +173,7 @@ const twelveByEight = unique.sizes.find((s) => s.sizeKey === '12x8inch');
 assert.ok(twelveByEight);
 assert.ok(twelveByEight.configs.length >= 2);
 
-// Select Product mode: only sizes on the chosen product (no foreign catalog sizes).
+// Variant dropdowns always use Personalized Single Photo Frame sizes — not Select Product.
 const singleFrame = {
   _id: 'frame1',
   title: 'Personalized Single Photo Frame – Premium Frame with Matte Finish',
@@ -183,11 +188,19 @@ const singleFrame = {
     ],
   }],
 };
-const productOnly = listUniqueWebsiteSizes([singleFrame]);
-assert.strictEqual(productOnly.uniqueCount, 3);
-assert.ok(productOnly.sizes.every((s) => s.configs.every((c) => c.productId === 'frame1')));
-assert.ok(!productOnly.sizes.some((s) => s.sizeKey === '12x8inch'), 'catalog size from other products must not appear');
-assert.ok(productOnly.sizes.some((s) => s.sizeKey === '12x18inch'));
+const otherProduct = {
+  _id: 'other1',
+  title: 'Some Other Gift',
+  isActive: true,
+  variants: [{ name: 'Size', options: [{ label: '6*6', previewWidth: 6, previewHeight: 6 }] }],
+};
+const frameSizes = listUniqueWebsiteSizes([singleFrame]);
+assert.strictEqual(frameSizes.uniqueCount, 3);
+assert.ok(frameSizes.sizes.every((s) => s.configs.every((c) => c.productId === 'frame1')));
+assert.ok(!frameSizes.sizes.some((s) => s.sizeKey === '6x6inch'), 'Select Product sizes must not appear in frame size list');
+assert.ok(frameSizes.sizes.some((s) => s.sizeKey === '12x18inch'));
+assert.ok(COMBO_SOURCE_PRODUCT_TITLE_RX.test(singleFrame.title));
+assert.ok(!COMBO_SOURCE_PRODUCT_TITLE_RX.test(otherProduct.title));
 
 const scopedResolve = resolveWebsiteSizeConfig('12*18', {
   products: [singleFrame],
@@ -264,5 +277,5 @@ assert.strictEqual(
 );
 assert.ok(resolveAdminDispatchDisplay({}).empty);
 
-console.log('OK: product-scoped sizes + 12x18 frame + dispatch regression checks passed');
-console.log(`Catalog unique sizes: ${unique.uniqueCount}; Single frame sizes: ${productOnly.uniqueCount}`);
+console.log('OK: Personalized Single Photo Frame size catalog + 12x18 frame + dispatch checks passed');
+console.log(`Catalog unique sizes: ${unique.uniqueCount}; Frame sizes: ${frameSizes.uniqueCount}`);

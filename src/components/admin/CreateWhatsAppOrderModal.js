@@ -953,6 +953,7 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
                 onExcludedCollageKeysChange={setCatalogExcludedCollageKeys}
                 additionalVariants={catalogAdditionalVariants}
                 onAdditionalVariantsChange={setCatalogAdditionalVariants}
+                sizeCatalogProduct={comboProduct}
               />
             ) : (
               <ComboProductSection

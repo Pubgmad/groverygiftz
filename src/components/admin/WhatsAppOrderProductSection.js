@@ -13,9 +13,17 @@ import {
   getTextCustomFields,
   getCollageTemplates,
 } from '@/lib/websiteProductPhotoConfig';
+import { COMBO_SOURCE_PRODUCT_TITLE_RX } from '@/lib/customizedCombo';
 
 const fieldClass = 'mt-1 w-full min-h-[44px] rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-base sm:text-sm';
 const labelClass = 'block text-sm font-semibold text-gray-900';
+
+/** Master size catalog: Personalized Single Photo Frame (not the Select Product choice). */
+function resolveSizeCatalogProduct(sizeCatalogProduct, products = []) {
+  if (sizeCatalogProduct?._id) return sizeCatalogProduct;
+  const match = (products || []).find((p) => COMBO_SOURCE_PRODUCT_TITLE_RX.test(String(p?.title || '')));
+  return match || null;
+}
 
 function resolveRowSourceProduct(products, fallbackProduct, row) {
   if (row?.sourceProductId) {
@@ -304,6 +312,8 @@ function TextCustomFieldsBlock({ fields, values, onChange }) {
 
 /**
  * Catalog Select Product: original website customizations + Additional Variants.
+ * Variant/size dropdowns always use Personalized Single Photo Frame sizes
+ * (sizeCatalogProduct), not the product chosen in Select Product.
  */
 export function CatalogProductSection({
   products,
@@ -323,19 +333,25 @@ export function CatalogProductSection({
   onExcludedCollageKeysChange,
   additionalVariants,
   onAdditionalVariantsChange,
+  sizeCatalogProduct = null,
 }) {
   const product = useMemo(
     () => products.find((p) => String(p._id) === String(productId)) || null,
     [products, productId],
   );
+  const sizeSourceProduct = useMemo(
+    () => resolveSizeCatalogProduct(sizeCatalogProduct, products),
+    [sizeCatalogProduct, products],
+  );
+  const sizeSourceProductId = sizeSourceProduct?._id ? String(sizeSourceProduct._id) : '';
   const plan = useMemo(
     () => resolveProductCustomizationPlan(product, { selectedVariantValue: selectedVariant }),
     [product, selectedVariant],
   );
-  // Only sizes configured on the selected website product (not the whole catalog).
+  // Always sizes from Personalized Single Photo Frame — never from Select Product.
   const uniqueSizesPlan = useMemo(
-    () => listUniqueWebsiteSizes(product ? [product] : []),
-    [product],
+    () => listUniqueWebsiteSizes(sizeSourceProduct ? [sizeSourceProduct] : []),
+    [sizeSourceProduct],
   );
   const uniqueSizes = uniqueSizesPlan.sizes;
   const hasCatalogSizes = uniqueSizes.length > 0;
@@ -373,17 +389,18 @@ export function CatalogProductSection({
             : patch.variant);
         if (selectedValue) {
           const resolved = resolveWebsiteSizeConfig(selectedValue, {
-            products: product ? [product] : [],
-            preferredProductIds: [productId],
-            explicitProductId: productId || '',
+            products: sizeSourceProduct ? [sizeSourceProduct] : [],
+            preferredProductIds: [sizeSourceProductId],
+            explicitProductId: sizeSourceProductId || '',
           });
           applyResolvedSizeConfig(next, resolved);
-          // Always bind Additional Variants to the selected product.
-          next.sourceProductId = productId || next.sourceProductId || '';
+          // Bind uploads/preview to Personalized Single Photo Frame size config.
+          next.sourceProductId = sizeSourceProductId || next.sourceProductId || '';
           next.needsProductDisambiguation = false;
         }
       }
-      const sourceProduct = product || resolveRowSourceProduct(products, product, next);
+      const sourceProduct = sizeSourceProduct
+        || resolveRowSourceProduct(products, sizeSourceProduct, next);
       if (Object.prototype.hasOwnProperty.call(patch, 'sizeKey')
         || Object.prototype.hasOwnProperty.call(patch, 'sourceProductId')
         || Object.prototype.hasOwnProperty.call(patch, 'catalogChoiceValue')
@@ -500,7 +517,8 @@ export function CatalogProductSection({
               <div>
                 <h4 className="text-sm font-bold text-gray-900">Additional Variants</h4>
                 <p className="text-[11px] text-gray-500">
-                  Only sizes configured on this selected product. New Admin sizes appear here automatically. Preview uses that size&apos;s frame dimensions (e.g. 12×18).
+                  Sizes always come from Personalized Single Photo Frame (not the Select Product above).
+                  New Admin sizes on that frame product appear here automatically. Preview uses that size&apos;s frame (e.g. 12×18).
                 </p>
               </div>
               <button
@@ -509,7 +527,9 @@ export function CatalogProductSection({
                 onClick={() => {
                   onAdditionalVariantsChange([
                     ...additionalVariants,
-                    newVariantRow(product, {}),
+                    newVariantRow(sizeSourceProduct || product, {
+                      sourceProductId: sizeSourceProductId,
+                    }),
                   ]);
                 }}
               >
@@ -517,22 +537,24 @@ export function CatalogProductSection({
               </button>
             </div>
 
+            {!sizeSourceProduct ? (
+              <p className="text-xs font-semibold text-amber-800">
+                Personalized Single Photo Frame size catalog is not loaded yet. Variant sizes cannot be listed.
+              </p>
+            ) : null}
+
             {additionalVariants.map((row) => {
-              const sourceProduct = resolveRowSourceProduct(products, product, row);
-              const sourceTextFields = row.needsProductDisambiguation
-                ? []
-                : getTextCustomFields(sourceProduct);
+              const sourceProduct = sizeSourceProduct
+                || resolveRowSourceProduct(products, sizeSourceProduct, row);
+              const sourceTextFields = getTextCustomFields(sourceProduct);
               const hasSelection = Boolean(row.sizeKey || row.catalogChoiceValue || row.variant);
               const selectValue = row.sizeKey || '';
-              const candidateConfigs = (uniqueSizes.find((s) => s.sizeKey === row.sizeKey)?.configs || [])
-                .filter((c) => (row.candidateProductIds || []).includes(String(c.productId))
-                  || !(row.candidateProductIds || []).length);
               return (
               <div key={row.rowId} className="grid gap-2 rounded-xl border bg-white p-3 sm:grid-cols-2">
                 <div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-2">
                   <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
                     {row.sizeLabel
-                      ? `Size ${row.sizeLabel}${sourceProduct?.title ? ` · ${sourceProduct.title}` : ''}`
+                      ? `Size ${row.sizeLabel}`
                       : 'Website size'}
                   </p>
                   <button
@@ -552,38 +574,15 @@ export function CatalogProductSection({
                   <UniqueSizeSelect
                     value={selectValue}
                     sizes={uniqueSizes}
-                    emptyLabel="Select website size"
+                    emptyLabel="Select size"
                     onChange={(e) => updateAdditionalRow(row.rowId, { sizeKey: e.target.value })}
                   />
                   <span className="mt-1 block text-[10px] font-normal text-gray-500">
                     {hasCatalogSizes
-                      ? `${uniqueSizesPlan.uniqueCount} size${uniqueSizesPlan.uniqueCount === 1 ? '' : 's'} on this product`
-                      : 'No sizes configured on this product yet.'}
+                      ? `${uniqueSizesPlan.uniqueCount} size${uniqueSizesPlan.uniqueCount === 1 ? '' : 's'} from Personalized Single Photo Frame`
+                      : 'No sizes configured on Personalized Single Photo Frame yet.'}
                   </span>
                 </label>
-                {row.needsProductDisambiguation ? (
-                  <label className={`${labelClass} col-span-full`}>
-                    Source product for this size
-                    <select
-                      value={row.sourceProductId || ''}
-                      onChange={(e) => updateAdditionalRow(row.rowId, { sourceProductId: e.target.value })}
-                      className={fieldClass}
-                    >
-                      <option value="">Select product configuration</option>
-                      {(candidateConfigs.length
-                        ? candidateConfigs
-                        : (uniqueSizes.find((s) => s.sizeKey === row.sizeKey)?.configs || [])
-                      ).map((config) => (
-                        <option key={config.value} value={config.productId}>
-                          {config.productTitle}
-                        </option>
-                      ))}
-                    </select>
-                    <span className="mt-1 block text-[10px] font-normal text-amber-800">
-                      This size exists on multiple products. Choose which configuration to use for uploads and preview.
-                    </span>
-                  </label>
-                ) : null}
                 <label className={`${labelClass} col-span-full sm:col-span-1`}>
                   Qty
                   <input
@@ -628,15 +627,11 @@ export function CatalogProductSection({
                   </div>
                 ) : hasSelection ? (
                   <p className="sm:col-span-2 col-span-full text-[11px] text-gray-500">
-                    {row.needsProductDisambiguation
-                      ? 'Choose the source product above to load uploads and preview for this size.'
-                      : (row.sizeKey || row.catalogChoiceValue || row.variant)
-                        ? 'No upload slots for this size configuration.'
-                        : 'Select a website size to load its upload and preview fields.'}
+                    No upload slots for this size configuration.
                   </p>
                 ) : (
                   <p className="sm:col-span-2 col-span-full text-[11px] text-gray-500">
-                    Select a website size to load its upload and preview fields.
+                    Select a size to load its upload and preview fields.
                   </p>
                 )}
               </div>

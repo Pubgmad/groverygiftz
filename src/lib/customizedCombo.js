@@ -18,7 +18,9 @@ export function normalizeSizeLabel(label = '') {
 export function extractSizeOptionsFromProduct(product) {
   const variants = Array.isArray(product?.variants) ? product.variants : [];
   const sizeVariant = variants.find((v) => /^size$/i.test(String(v?.name || '').trim()))
-    || variants.find((v) => (v.options || []).some((o) => /\d+\s*[x×]\s*\d+/i.test(String(o?.label || o?.name || ''))));
+    || variants.find((v) => /size/i.test(String(v?.name || '').trim())
+      && (v.options || []).some((o) => /\d+\s*[x×*]\s*\d+/i.test(String(o?.label || o?.name || ''))))
+    || variants.find((v) => (v.options || []).some((o) => /\d+\s*[x×*]\s*\d+/i.test(String(o?.label || o?.name || ''))));
   if (!sizeVariant) {
     // Fall back to all variant options if no Size group exists
     const options = variants.flatMap((v) => (v.options || []).map((o) => ({
