@@ -10,7 +10,6 @@ import { sanitizeDecimalInput } from '@/lib/sanitizeNumericInput';
 import {
   buildCollageUploadsPayload,
   resolveProductCustomizationPlan,
-  ORDER_LOCAL_CUSTOM_VARIANT,
 } from '@/lib/websiteProductPhotoConfig';
 import {
   CatalogProductSection,
@@ -361,19 +360,10 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
       });
     }
     catalogAdditionalVariants.forEach((row) => {
-      const isCustom = row.isCustom
-        || row.variant === ORDER_LOCAL_CUSTOM_VARIANT
-        || row.catalogChoiceValue === ORDER_LOCAL_CUSTOM_VARIANT;
       const isAreaDerived = String(row.variant || '').startsWith('AreaSize:');
-      const customLabel = String(row.customLabel || '').trim();
       if (!(Number(row.quantity) > 0)) return;
-      if (isCustom) {
-        if (!customLabel) return;
-      } else if (row.needsProductDisambiguation && !row.sourceProductId) {
-        return;
-      } else if (!row.sizeKey && !row.catalogChoiceValue && (!row.variant || row.variant === ORDER_LOCAL_CUSTOM_VARIANT)) {
-        return;
-      }
+      if (row.needsProductDisambiguation && !row.sourceProductId) return;
+      if (!row.sizeKey && !row.catalogChoiceValue && !row.variant) return;
       const activeSlots = (row.photoSlots || []).filter((slot) => !(row.excludedSlotKeys || []).includes(slot.slotKey));
       const areaSizeLabel = isAreaDerived
         ? String(row.variant).replace(/^AreaSize:\s*/i, '').trim()
@@ -381,19 +371,15 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
       const sourceProductId = String(row.sourceProductId || catalogProductId || '').trim();
       items.push({
         productId: sourceProductId || catalogProductId,
-        variant: isCustom
-          ? `Custom: ${customLabel}`
-          : (isAreaDerived ? `Size: ${areaSizeLabel}` : row.variant),
-        variantId: (isCustom || isAreaDerived) ? '' : (row.variantId || ''),
+        variant: isAreaDerived ? `Size: ${areaSizeLabel}` : row.variant,
+        variantId: isAreaDerived ? '' : (row.variantId || ''),
         quantity: Number(row.quantity) || 1,
         instructions: '',
         photoSlots: activeSlots,
         customFieldValues: row.customFieldValues || {},
         excludedCustomizationSlots: row.excludedSlotKeys || [],
-        isOrderLocalCustomVariant: isCustom || undefined,
-        customVariantLabel: isCustom ? customLabel : undefined,
         isAreaDerivedSize: isAreaDerived || undefined,
-        catalogSizeChoice: !isCustom ? (row.catalogChoiceValue || undefined) : undefined,
+        catalogSizeChoice: row.catalogChoiceValue || undefined,
         additionalVariantOfProductId: catalogProductId || undefined,
       });
     });
@@ -545,14 +531,10 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
       }
       if (catalogAdditionalVariants.some((row) => {
         if (!(Number(row.quantity) > 0)) return false;
-        const isCustom = row.isCustom
-          || row.variant === ORDER_LOCAL_CUSTOM_VARIANT
-          || row.catalogChoiceValue === ORDER_LOCAL_CUSTOM_VARIANT;
-        if (isCustom) return !String(row.customLabel || '').trim();
         if (row.needsProductDisambiguation && !row.sourceProductId) return true;
         return !(row.sizeKey || row.catalogChoiceValue || row.variant);
       })) {
-        toast.error('Choose a website size (and source product when required) or enter a custom label for each additional variant row');
+        toast.error('Choose a website size (and source product when required) for each additional variant row');
         return;
       }
     }
