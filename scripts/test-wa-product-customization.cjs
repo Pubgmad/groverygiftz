@@ -35,7 +35,10 @@ assert.ok(!modalSrc.includes('catalogAdditionalVariants'));
 assert.ok(!modalSrc.includes('onAdditionalVariantsChange'));
 assert.ok(modalSrc.includes('catalogProductRows'));
 assert.ok(modalSrc.includes('sizeCatalogProduct={comboProduct}'));
-assert.ok(modalSrc.includes('Select a size for every product'));
+assert.ok(modalSrc.includes('Select a size for every product that has variants'));
+assert.ok(configSrc.includes('requiresSize'));
+assert.ok(sectionSrc.includes('showSizeDropdown'));
+assert.ok(sectionSrc.includes('No variants — website customization'));
 assert.ok(!/99 website size configurations/.test(sectionSrc));
 // Customized Combo section must remain intact.
 assert.ok(sectionSrc.includes('export function ComboProductSection'));

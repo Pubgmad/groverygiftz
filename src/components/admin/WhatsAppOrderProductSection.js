@@ -271,6 +271,7 @@ export function newCatalogProductRow(seed = {}) {
     sizeLabel: seed.sizeLabel || '',
     catalogSizeChoice: seed.catalogSizeChoice || '',
     nonSizeOptionCount: seed.nonSizeOptionCount || 0,
+    requiresSize: seed.requiresSize === true,
     collageTemplates: seed.collageTemplates || [],
   };
 }
@@ -316,6 +317,7 @@ function CatalogProductRow({
       sizeLabel: plan.sizeLabel || '',
       catalogSizeChoice: plan.resolvedSize?.config?.value || '',
       nonSizeOptionCount: plan.nonSizeOptions.length,
+      requiresSize: plan.requiresSize === true,
       collageTemplates: plan.collageTemplates,
       photoSlots: nextSlots,
       excludedDefaultKeys: nextExcludedDefaults,
@@ -326,6 +328,7 @@ function CatalogProductRow({
       || row.sizeLabel !== patch.sizeLabel
       || row.catalogSizeChoice !== patch.catalogSizeChoice
       || Number(row.nonSizeOptionCount || 0) !== Number(patch.nonSizeOptionCount || 0)
+      || Boolean(row.requiresSize) !== Boolean(patch.requiresSize)
       || templateSig(row.collageTemplates) !== templateSig(patch.collageTemplates)
       || slotSig(row.photoSlots) !== slotSig(patch.photoSlots)
       || listSig(row.excludedDefaultKeys) !== listSig(patch.excludedDefaultKeys)
@@ -339,10 +342,13 @@ function CatalogProductRow({
     plan.orderVariantValue,
     plan.orderVariantId,
     plan.sizeLabel,
+    plan.requiresSize,
     plan.nonSizeOptions.length,
     plan.defaultPhotoSlots.map((s) => s.slotKey).join('|'),
     plan.collageTemplates.map((t) => t.label).join('|'),
   ]);
+
+  const showSizeDropdown = Boolean(product && plan.requiresSize);
 
   return (
     <div className="space-y-3 rounded-xl border border-emerald-100 bg-white p-3">
@@ -357,7 +363,11 @@ function CatalogProductRow({
             ) : null}
           </h4>
           <p className="text-[11px] text-gray-500 break-words">
-            Rules from this product. Sizes from Personalized Single Photo Frame.
+            {!product
+              ? 'Select a website product first.'
+              : plan.requiresSize
+                ? 'This product has variants — choose a size. Uploads/collage follow this product.'
+                : 'No variants — website customization for this product loads by default.'}
           </p>
         </div>
         {canRemove ? (
@@ -385,6 +395,7 @@ function CatalogProductRow({
               excludedDefaultKeys: [],
               collageUploads: {},
               excludedCollageKeys: [],
+              requiresSize: false,
             })}
             className={fieldClass}
           >
@@ -395,34 +406,38 @@ function CatalogProductRow({
           </select>
         </label>
 
-        <label className={`${labelClass} sm:col-span-2`}>
-          Size
-          <UniqueSizeSelect
-            value={row.selectedSizeKey || ''}
-            sizes={uniqueSizes}
-            emptyLabel="Select size"
-            onChange={(e) => onChange({ selectedSizeKey: e.target.value })}
-          />
-          <span className="mt-1 block text-[10px] font-normal text-gray-500 break-words">
-            {!sizeSourceProduct
-              ? 'Personalized Single Photo Frame size catalog is not loaded yet.'
-              : uniqueSizesPlan.uniqueCount
-                ? `${uniqueSizesPlan.uniqueCount} size${uniqueSizesPlan.uniqueCount === 1 ? '' : 's'} from Personalized Single Photo Frame`
-                : 'No sizes configured on Personalized Single Photo Frame yet.'}
-          </span>
-        </label>
+        {showSizeDropdown ? (
+          <label className={`${labelClass} sm:col-span-2`}>
+            Size
+            <UniqueSizeSelect
+              value={row.selectedSizeKey || ''}
+              sizes={uniqueSizes}
+              emptyLabel="Select size"
+              onChange={(e) => onChange({ selectedSizeKey: e.target.value })}
+            />
+            <span className="mt-1 block text-[10px] font-normal text-gray-500 break-words">
+              {!sizeSourceProduct
+                ? 'Personalized Single Photo Frame size catalog is not loaded yet.'
+                : uniqueSizesPlan.uniqueCount
+                  ? `${uniqueSizesPlan.uniqueCount} size${uniqueSizesPlan.uniqueCount === 1 ? '' : 's'} from Personalized Single Photo Frame`
+                  : 'No sizes configured on Personalized Single Photo Frame yet.'}
+            </span>
+          </label>
+        ) : null}
 
-        <label className={labelClass}>
-          Qty
-          <input
-            inputMode="numeric"
-            value={row.quantity}
-            onChange={(e) => onChange({ quantity: sanitizeIntegerInput(e.target.value) })}
-            className={fieldClass}
-          />
-        </label>
+        {product ? (
+          <label className={labelClass}>
+            Qty
+            <input
+              inputMode="numeric"
+              value={row.quantity}
+              onChange={(e) => onChange({ quantity: sanitizeIntegerInput(e.target.value) })}
+              className={fieldClass}
+            />
+          </label>
+        ) : null}
 
-        {plan.nonSizeOptions.length ? (
+        {product && plan.nonSizeOptions.length ? (
           <label className={labelClass}>
             Product option
             <select
@@ -436,9 +451,7 @@ function CatalogProductRow({
               ))}
             </select>
           </label>
-        ) : (
-          <div className="hidden sm:block" aria-hidden="true" />
-        )}
+        ) : null}
       </div>
 
       {product ? (
@@ -487,13 +500,11 @@ function CatalogProductRow({
             />
           ) : (
             <p className="text-[11px] text-gray-500 break-words">
-              {!row.productId
-                ? 'Select a product to load customization.'
+              {plan.requiresSize && !row.selectedSizeKey
+                ? 'Choose a size to load frame preview and any size-based photo fields.'
                 : plan.hasCollage
-                  ? 'Collage uploads are shown above. Choose a size for frame dimensions.'
-                  : row.selectedSizeKey
-                    ? 'No extra photo upload slots for this product at the selected size.'
-                    : 'Choose a size to load frame preview and any photo upload fields.'}
+                  ? 'Collage uploads are shown above.'
+                  : 'No extra photo upload slots configured on this website product.'}
             </p>
           )}
         </>
@@ -535,7 +546,7 @@ export function CatalogProductSection({
       <div>
         <h3 className="text-sm font-bold text-gray-900">Products</h3>
         <p className="text-[11px] text-gray-500 break-words">
-          Add one or more website products. Each keeps its own uploads and collage rules; sizes always come from Personalized Single Photo Frame.
+          Add one or more website products. No variants → website defaults. Has variants → size list from Personalized Single Photo Frame.
         </p>
       </div>
 

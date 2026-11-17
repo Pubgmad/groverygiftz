@@ -801,8 +801,9 @@ export function getCollageTemplates(product) {
  * @param {{ selectedVariantValue?: string }} [opts]
  */
 /**
- * Select Product plan: product collage/text/upload rules + master size list dims.
- * sizeKey comes from Personalized Single Photo Frame (or sizeCatalogProduct).
+ * Select Product plan:
+ * - No variants → website defaults only (no size picker)
+ * - Has variants → size comes from Personalized Single Photo Frame; product rules still apply
  */
 export function buildCatalogSelectCustomizationPlan(product, sizeCatalogProduct, sizeKey = '', opts = {}) {
   const productOptionValue = String(opts.productOptionValue || '').trim();
@@ -815,6 +816,8 @@ export function buildCatalogSelectCustomizationPlan(product, sizeCatalogProduct,
     hasCollage: false,
     previewEnabled: false,
     nonSizeOptions: [],
+    hasVariants: false,
+    requiresSize: false,
     sizeKey: '',
     sizeLabel: '',
     orderVariantValue: '',
@@ -828,6 +831,8 @@ export function buildCatalogSelectCustomizationPlan(product, sizeCatalogProduct,
   const collageTemplates = getCollageTemplates(product);
   const productLevel = buildProductLevelPhotoSlots(product);
   const variantOptions = listWebsiteVariantOptions(product);
+  const hasVariants = variantOptions.length > 0;
+  const requiresSize = hasVariants;
   const nonSizeOptions = variantOptions.filter(
     (opt) => !isWebsiteSizeLikeLabel(opt.optionLabel) && !isWebsiteSizeLikeLabel(opt.label),
   );
@@ -851,14 +856,22 @@ export function buildCatalogSelectCustomizationPlan(product, sizeCatalogProduct,
     ? variantOptions.find((opt) => normalizeWebsiteSizeKey(opt.optionLabel || opt.label) === normalizeWebsiteSizeKey(sizeKey))
     : null;
 
-  // Prefer product's own matching size option; else first upload-requiring option as rule template.
   const templateProductOpt = matchingProductOpt
     || (hasVariantUploads
       ? variantOptions.find((option) => option.requiresImageUpload)
       : null);
 
   let defaultPhotoSlots = [];
-  if (sizeKey) {
+
+  if (!requiresSize) {
+    // No variants: load website-configured uploads/collage as-is.
+    if (hasProductLevelUploads) {
+      defaultPhotoSlots = buildWebsitePhotoSlotsForQuantity(product, 1, '', {
+        includeProductLevel: true,
+        includeVariantUpload: false,
+      });
+    }
+  } else if (sizeKey) {
     if (matchingProductOpt?.requiresImageUpload || (hasProductLevelUploads && sizeKey)) {
       defaultPhotoSlots = buildWebsitePhotoSlotsForQuantity(
         product,
@@ -870,7 +883,6 @@ export function buildCatalogSelectCustomizationPlan(product, sizeCatalogProduct,
         },
       );
     } else if (hasVariantOnlyUploads && templateProductOpt) {
-      // Same upload rules as the product's default size option, applied to the chosen master size.
       defaultPhotoSlots = buildWebsitePhotoSlotsForQuantity(product, 1, templateProductOpt.value, {
         includeProductLevel: false,
         includeVariantUpload: true,
@@ -919,6 +931,8 @@ export function buildCatalogSelectCustomizationPlan(product, sizeCatalogProduct,
     hasCollage: collageTemplates.length > 0,
     previewEnabled: isProductPreviewEnabled(product) || Boolean(masterArea),
     nonSizeOptions,
+    hasVariants,
+    requiresSize,
     sizeKey: resolved.sizeKey || normalizeWebsiteSizeKey(sizeKey) || '',
     sizeLabel,
     orderVariantValue,

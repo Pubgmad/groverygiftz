@@ -315,7 +315,11 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
   };
 
   const buildCatalogLineItems = () => (catalogProductRows || [])
-    .filter((row) => row.productId && row.selectedSizeKey && Number(row.quantity) > 0)
+    .filter((row) => {
+      if (!row.productId || !(Number(row.quantity) > 0)) return false;
+      if (row.requiresSize && !row.selectedSizeKey) return false;
+      return true;
+    })
     .map((row) => {
       const activeDefaults = (row.photoSlots || [])
         .filter((slot) => !(row.excludedDefaultKeys || []).includes(slot.slotKey));
@@ -482,8 +486,8 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
         toast.error('Add at least one product');
         return;
       }
-      if (rows.some((row) => row.productId && !row.selectedSizeKey)) {
-        toast.error('Select a size for every product');
+      if (rows.some((row) => row.productId && row.requiresSize && !row.selectedSizeKey)) {
+        toast.error('Select a size for every product that has variants');
         return;
       }
       if (rows.some((row) => row.productId && Number(row.nonSizeOptionCount) > 0 && !row.productOptionValue)) {
