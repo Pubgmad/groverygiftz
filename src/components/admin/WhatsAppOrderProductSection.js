@@ -254,37 +254,264 @@ function TextCustomFieldsBlock({ fields, values, onChange }) {
   );
 }
 
+export function newCatalogProductRow(seed = {}) {
+  return {
+    rowId: seed.rowId || `prod-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    productId: seed.productId || '',
+    selectedSizeKey: seed.selectedSizeKey || '',
+    productOptionValue: seed.productOptionValue || '',
+    quantity: seed.quantity || '1',
+    customFieldValues: seed.customFieldValues || {},
+    photoSlots: seed.photoSlots || [],
+    excludedDefaultKeys: seed.excludedDefaultKeys || [],
+    collageUploads: seed.collageUploads || {},
+    excludedCollageKeys: seed.excludedCollageKeys || [],
+    orderVariantValue: seed.orderVariantValue || '',
+    orderVariantId: seed.orderVariantId || '',
+    sizeLabel: seed.sizeLabel || '',
+    catalogSizeChoice: seed.catalogSizeChoice || '',
+    nonSizeOptionCount: seed.nonSizeOptionCount || 0,
+    collageTemplates: seed.collageTemplates || [],
+  };
+}
+
+function CatalogProductRow({
+  row,
+  index,
+  products,
+  sizeSourceProduct,
+  uniqueSizes,
+  uniqueSizesPlan,
+  onChange,
+  onRemove,
+  canRemove,
+}) {
+  const product = useMemo(
+    () => products.find((p) => String(p._id) === String(row.productId)) || null,
+    [products, row.productId],
+  );
+  const plan = useMemo(
+    () => buildCatalogSelectCustomizationPlan(product, sizeSourceProduct, row.selectedSizeKey, {
+      productOptionValue: row.productOptionValue,
+    }),
+    [product, sizeSourceProduct, row.selectedSizeKey, row.productOptionValue],
+  );
+
+  useEffect(() => {
+    const nextSlots = product
+      ? mergeSlotsPreserveUploads(plan.defaultPhotoSlots, row.photoSlots || [])
+      : [];
+    const nextExcludedDefaults = (row.excludedDefaultKeys || [])
+      .filter((key) => nextSlots.some((s) => s.slotKey === key));
+    const nextExcludedCollage = (row.excludedCollageKeys || [])
+      .filter((key) => plan.collageTemplates.some((t) => (t.groupKey || `collage:${t.label}`) === key));
+    const slotSig = (slots = []) => (slots || [])
+      .map((s) => `${s.slotKey}|${s.sizeLabel || ''}|${s.area?.width || ''}x${s.area?.height || ''}|${s.photo ? '1' : '0'}|${s.reference ? '1' : '0'}`)
+      .join('||');
+    const listSig = (list = []) => (list || []).join('|');
+    const templateSig = (list = []) => (list || []).map((t) => t.label || t.groupKey || '').join('|');
+    const patch = {
+      orderVariantValue: plan.orderVariantValue || '',
+      orderVariantId: plan.orderVariantId || '',
+      sizeLabel: plan.sizeLabel || '',
+      catalogSizeChoice: plan.resolvedSize?.config?.value || '',
+      nonSizeOptionCount: plan.nonSizeOptions.length,
+      collageTemplates: plan.collageTemplates,
+      photoSlots: nextSlots,
+      excludedDefaultKeys: nextExcludedDefaults,
+      excludedCollageKeys: nextExcludedCollage,
+    };
+    const changed = row.orderVariantValue !== patch.orderVariantValue
+      || row.orderVariantId !== patch.orderVariantId
+      || row.sizeLabel !== patch.sizeLabel
+      || row.catalogSizeChoice !== patch.catalogSizeChoice
+      || Number(row.nonSizeOptionCount || 0) !== Number(patch.nonSizeOptionCount || 0)
+      || templateSig(row.collageTemplates) !== templateSig(patch.collageTemplates)
+      || slotSig(row.photoSlots) !== slotSig(patch.photoSlots)
+      || listSig(row.excludedDefaultKeys) !== listSig(patch.excludedDefaultKeys)
+      || listSig(row.excludedCollageKeys) !== listSig(patch.excludedCollageKeys);
+    if (changed) onChange(patch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    row.productId,
+    row.selectedSizeKey,
+    row.productOptionValue,
+    plan.orderVariantValue,
+    plan.orderVariantId,
+    plan.sizeLabel,
+    plan.nonSizeOptions.length,
+    plan.defaultPhotoSlots.map((s) => s.slotKey).join('|'),
+    plan.collageTemplates.map((t) => t.label).join('|'),
+  ]);
+
+  return (
+    <div className="space-y-3 rounded-xl border border-emerald-100 bg-white p-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h4 className="text-sm font-bold text-gray-900">
+            Product {index + 1}
+            {product?.title ? (
+              <span className="mt-0.5 block text-[11px] font-semibold text-gray-500 break-words sm:mt-0 sm:ml-2 sm:inline">
+                {product.title}
+              </span>
+            ) : null}
+          </h4>
+          <p className="text-[11px] text-gray-500 break-words">
+            Rules from this product. Sizes from Personalized Single Photo Frame.
+          </p>
+        </div>
+        {canRemove ? (
+          <button
+            type="button"
+            className="min-h-[44px] w-full shrink-0 rounded-xl border border-red-200 bg-red-50 px-3 text-sm font-semibold text-red-700 sm:w-auto"
+            onClick={onRemove}
+          >
+            Remove product
+          </button>
+        ) : null}
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className={`${labelClass} sm:col-span-2`}>
+          Select product
+          <select
+            value={row.productId || ''}
+            onChange={(e) => onChange({
+              productId: e.target.value,
+              selectedSizeKey: '',
+              productOptionValue: '',
+              customFieldValues: {},
+              photoSlots: [],
+              excludedDefaultKeys: [],
+              collageUploads: {},
+              excludedCollageKeys: [],
+            })}
+            className={fieldClass}
+          >
+            <option value="">Select product</option>
+            {products.map((p) => (
+              <option key={p._id} value={p._id}>{p.title}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className={`${labelClass} sm:col-span-2`}>
+          Size
+          <UniqueSizeSelect
+            value={row.selectedSizeKey || ''}
+            sizes={uniqueSizes}
+            emptyLabel="Select size"
+            onChange={(e) => onChange({ selectedSizeKey: e.target.value })}
+          />
+          <span className="mt-1 block text-[10px] font-normal text-gray-500 break-words">
+            {!sizeSourceProduct
+              ? 'Personalized Single Photo Frame size catalog is not loaded yet.'
+              : uniqueSizesPlan.uniqueCount
+                ? `${uniqueSizesPlan.uniqueCount} size${uniqueSizesPlan.uniqueCount === 1 ? '' : 's'} from Personalized Single Photo Frame`
+                : 'No sizes configured on Personalized Single Photo Frame yet.'}
+          </span>
+        </label>
+
+        <label className={labelClass}>
+          Qty
+          <input
+            inputMode="numeric"
+            value={row.quantity}
+            onChange={(e) => onChange({ quantity: sanitizeIntegerInput(e.target.value) })}
+            className={fieldClass}
+          />
+        </label>
+
+        {plan.nonSizeOptions.length ? (
+          <label className={labelClass}>
+            Product option
+            <select
+              value={row.productOptionValue || ''}
+              onChange={(e) => onChange({ productOptionValue: e.target.value })}
+              className={fieldClass}
+            >
+              <option value="">Select option</option>
+              {plan.nonSizeOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <div className="hidden sm:block" aria-hidden="true" />
+        )}
+      </div>
+
+      {product ? (
+        <>
+          <TextCustomFieldsBlock
+            fields={plan.textCustomFields}
+            values={row.customFieldValues || {}}
+            onChange={(nextValues) => onChange({ customFieldValues: nextValues })}
+          />
+
+          <CollageUploadSection
+            templates={plan.collageTemplates}
+            uploads={row.collageUploads || {}}
+            onUploadsChange={(nextUploads) => onChange({ collageUploads: nextUploads })}
+            excludedKeys={row.excludedCollageKeys || []}
+            onExclude={(key) => onChange({
+              excludedCollageKeys: [...(row.excludedCollageKeys || []), key],
+            })}
+            onRestore={(key) => onChange({
+              excludedCollageKeys: (row.excludedCollageKeys || []).filter((k) => k !== key),
+            })}
+            allowExclude
+          />
+
+          {(row.photoSlots || []).length ? (
+            <SlotGrid
+              slots={row.photoSlots}
+              excludedKeys={row.excludedDefaultKeys || []}
+              allowExclude
+              onExclude={(key) => onChange({
+                excludedDefaultKeys: [...(row.excludedDefaultKeys || []), key],
+              })}
+              onRestore={(key) => onChange({
+                excludedDefaultKeys: (row.excludedDefaultKeys || []).filter((k) => k !== key),
+              })}
+              onChangeSlot={(slotIndex, photo) => {
+                const nextSlots = [...(row.photoSlots || [])];
+                nextSlots[slotIndex] = { ...nextSlots[slotIndex], photo };
+                onChange({ photoSlots: nextSlots });
+              }}
+              onReference={(slotIndex, reference) => {
+                const nextSlots = [...(row.photoSlots || [])];
+                nextSlots[slotIndex] = { ...nextSlots[slotIndex], reference };
+                onChange({ photoSlots: nextSlots });
+              }}
+            />
+          ) : (
+            <p className="text-[11px] text-gray-500 break-words">
+              {!row.productId
+                ? 'Select a product to load customization.'
+                : plan.hasCollage
+                  ? 'Collage uploads are shown above. Choose a size for frame dimensions.'
+                  : row.selectedSizeKey
+                    ? 'No extra photo upload slots for this product at the selected size.'
+                    : 'Choose a size to load frame preview and any photo upload fields.'}
+            </p>
+          )}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 /**
- * Catalog Select Product:
- * - Size dropdown = full Personalized Single Photo Frame size list
- * - Collage / text / upload rules = selected website product
- * - Size is chosen only in the main Size dropdown (no extra variant rows)
+ * Catalog Select Product — multiple product rows in one WhatsApp order.
+ * Each row: website product + full Personalized Single Photo Frame sizes + that product's rules.
  */
 export function CatalogProductSection({
   products,
-  productId,
-  onProductIdChange,
-  selectedSizeKey,
-  onSelectedSizeKeyChange,
-  productOptionValue = '',
-  onProductOptionValueChange,
-  customFieldValues,
-  onCustomFieldChange,
-  defaultSlots,
-  onDefaultSlotsChange,
-  excludedDefaultKeys,
-  onExcludedDefaultKeysChange,
-  collageUploads,
-  onCollageUploadsChange,
-  excludedCollageKeys,
-  onExcludedCollageKeysChange,
+  rows,
+  onRowsChange,
   sizeCatalogProduct = null,
-  onPlanChange,
 }) {
-  const product = useMemo(
-    () => products.find((p) => String(p._id) === String(productId)) || null,
-    [products, productId],
-  );
   const sizeSourceProduct = useMemo(
     () => resolveSizeCatalogProduct(sizeCatalogProduct, products),
     [sizeCatalogProduct, products],
@@ -294,143 +521,58 @@ export function CatalogProductSection({
     [sizeSourceProduct],
   );
   const uniqueSizes = uniqueSizesPlan.sizes;
-  const plan = useMemo(
-    () => buildCatalogSelectCustomizationPlan(product, sizeSourceProduct, selectedSizeKey, {
-      productOptionValue,
-    }),
-    [product, sizeSourceProduct, selectedSizeKey, productOptionValue],
-  );
+  const list = Array.isArray(rows) && rows.length ? rows : [newCatalogProductRow()];
 
-  useEffect(() => {
-    onPlanChange?.(plan);
-  }, [plan, onPlanChange]);
-
-  useEffect(() => {
-    if (!product) {
-      onDefaultSlotsChange([]);
-      onExcludedDefaultKeysChange([]);
-      onExcludedCollageKeysChange?.([]);
-      onCollageUploadsChange?.({});
-      return;
-    }
-    onDefaultSlotsChange((prev) => mergeSlotsPreserveUploads(plan.defaultPhotoSlots, prev));
-    onExcludedDefaultKeysChange((prev) => prev.filter((key) => plan.defaultPhotoSlots.some((s) => s.slotKey === key)));
-    onExcludedCollageKeysChange?.((prev) => prev.filter((key) => plan.collageTemplates.some((t) => (t.groupKey || `collage:${t.label}`) === key)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [productId, selectedSizeKey, productOptionValue, plan.defaultPhotoSlots.map((s) => s.slotKey).join('|'), plan.collageTemplates.map((t) => t.label).join('|')]);
+  const updateRow = (rowId, patch) => {
+    onRowsChange((prev) => {
+      const base = Array.isArray(prev) && prev.length ? prev : [newCatalogProductRow()];
+      return base.map((row) => (row.rowId === rowId ? { ...row, ...patch } : row));
+    });
+  };
 
   return (
     <div className="space-y-4">
-      <label className={labelClass}>
-        Select Product
-        <select
-          value={productId}
-          onChange={(e) => {
-            onProductIdChange(e.target.value);
-            onExcludedDefaultKeysChange([]);
-            onExcludedCollageKeysChange?.([]);
-            onCustomFieldChange({});
-            onCollageUploadsChange?.({});
-            onSelectedSizeKeyChange?.('');
-            onProductOptionValueChange?.('');
+      <div>
+        <h3 className="text-sm font-bold text-gray-900">Products</h3>
+        <p className="text-[11px] text-gray-500 break-words">
+          Add one or more website products. Each keeps its own uploads and collage rules; sizes always come from Personalized Single Photo Frame.
+        </p>
+      </div>
+
+      {list.map((row, index) => (
+        <CatalogProductRow
+          key={row.rowId}
+          row={row}
+          index={index}
+          products={products}
+          sizeSourceProduct={sizeSourceProduct}
+          uniqueSizes={uniqueSizes}
+          uniqueSizesPlan={uniqueSizesPlan}
+          canRemove={list.length > 1}
+          onChange={(patch) => updateRow(row.rowId, patch)}
+          onRemove={() => {
+            const hasUploads = (row.photoSlots || []).some((s) => s.photo?.file || s.reference?.file)
+              || Object.values(row.collageUploads || {}).some((arr) => Array.isArray(arr) && arr.some((p) => p?.file));
+            if (hasUploads && !window.confirm('Remove this product and discard its uploads for this order?')) return;
+            onRowsChange((prev) => {
+              const base = Array.isArray(prev) ? prev : [];
+              const next = base.filter((r) => r.rowId !== row.rowId);
+              return next.length ? next : [newCatalogProductRow()];
+            });
           }}
-          className={fieldClass}
-        >
-          <option value="">Select product</option>
-          {products.map((p) => (
-            <option key={p._id} value={p._id}>{p.title}</option>
-          ))}
-        </select>
-      </label>
+        />
+      ))}
 
-      {product ? (
-        <div className="space-y-3 rounded-xl border border-emerald-100 bg-white p-3">
-          <div>
-            <h4 className="text-sm font-bold text-gray-900">Product Details &amp; Customization</h4>
-            <p className="text-[11px] text-gray-500">
-              Upload and collage rules come from this product. Size list comes from Personalized Single Photo Frame.
-              Exclusions apply to this WhatsApp order only.
-            </p>
-          </div>
-
-          <label className={labelClass}>
-            Size
-            <UniqueSizeSelect
-              value={selectedSizeKey || ''}
-              sizes={uniqueSizes}
-              emptyLabel="Select size"
-              onChange={(e) => onSelectedSizeKeyChange?.(e.target.value)}
-            />
-            <span className="mt-1 block text-[10px] font-normal text-gray-500">
-              {!sizeSourceProduct
-                ? 'Personalized Single Photo Frame size catalog is not loaded yet.'
-                : uniqueSizesPlan.uniqueCount
-                  ? `${uniqueSizesPlan.uniqueCount} size${uniqueSizesPlan.uniqueCount === 1 ? '' : 's'} from Personalized Single Photo Frame`
-                  : 'No sizes configured on Personalized Single Photo Frame yet.'}
-            </span>
-          </label>
-
-          {plan.nonSizeOptions.length ? (
-            <label className={labelClass}>
-              Product option
-              <select
-                value={productOptionValue || ''}
-                onChange={(e) => onProductOptionValueChange?.(e.target.value)}
-                className={fieldClass}
-              >
-                <option value="">Select option</option>
-                {plan.nonSizeOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-
-          <TextCustomFieldsBlock
-            fields={plan.textCustomFields}
-            values={customFieldValues}
-            onChange={onCustomFieldChange}
-          />
-
-          <CollageUploadSection
-            templates={plan.collageTemplates}
-            uploads={collageUploads || {}}
-            onUploadsChange={onCollageUploadsChange}
-            excludedKeys={excludedCollageKeys || []}
-            onExclude={(key) => onExcludedCollageKeysChange?.([...(excludedCollageKeys || []), key])}
-            onRestore={(key) => onExcludedCollageKeysChange?.((excludedCollageKeys || []).filter((k) => k !== key))}
-            allowExclude
-          />
-
-          {defaultSlots.length ? (
-            <SlotGrid
-              slots={defaultSlots}
-              excludedKeys={excludedDefaultKeys}
-              allowExclude
-              onExclude={(key) => onExcludedDefaultKeysChange([...excludedDefaultKeys, key])}
-              onRestore={(key) => onExcludedDefaultKeysChange(excludedDefaultKeys.filter((k) => k !== key))}
-              onChangeSlot={(index, photo) => {
-                const next = [...defaultSlots];
-                next[index] = { ...next[index], photo };
-                onDefaultSlotsChange(next);
-              }}
-              onReference={(index, reference) => {
-                const next = [...defaultSlots];
-                next[index] = { ...next[index], reference };
-                onDefaultSlotsChange(next);
-              }}
-            />
-          ) : (
-            <p className="text-[11px] text-gray-500">
-              {plan.hasCollage
-                ? 'Collage uploads are shown above. Choose a size to set the frame dimensions for this order.'
-                : selectedSizeKey
-                  ? 'No extra photo upload slots for this product at the selected size.'
-                  : 'Choose a size to load frame preview and any photo upload fields.'}
-            </p>
-          )}
-        </div>
-      ) : null}
+      <button
+        type="button"
+        className="min-h-[44px] w-full rounded-xl border border-emerald-300 bg-white px-4 py-2.5 text-sm font-bold text-emerald-800 sm:w-auto"
+        onClick={() => onRowsChange((prev) => [
+          ...(Array.isArray(prev) && prev.length ? prev : [newCatalogProductRow()]),
+          newCatalogProductRow(),
+        ])}
+      >
+        + Add product
+      </button>
     </div>
   );
 }

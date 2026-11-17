@@ -14,6 +14,7 @@ import {
 import {
   CatalogProductSection,
   ComboProductSection,
+  newCatalogProductRow,
 } from '@/components/admin/WhatsAppOrderProductSection';
 
 const emptyCustomer = {
@@ -51,15 +52,7 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
   const [comboOptions, setComboOptions] = useState([]);
   const [comboError, setComboError] = useState('');
   const [comboSelections, setComboSelections] = useState([]);
-  const [catalogProductId, setCatalogProductId] = useState('');
-  const [catalogSelectedSizeKey, setCatalogSelectedSizeKey] = useState('');
-  const [catalogProductOptionValue, setCatalogProductOptionValue] = useState('');
-  const [catalogPlan, setCatalogPlan] = useState(null);
-  const [catalogCustomFields, setCatalogCustomFields] = useState({});
-  const [catalogDefaultSlots, setCatalogDefaultSlots] = useState([]);
-  const [catalogExcludedDefaults, setCatalogExcludedDefaults] = useState([]);
-  const [catalogCollageUploads, setCatalogCollageUploads] = useState({});
-  const [catalogExcludedCollageKeys, setCatalogExcludedCollageKeys] = useState([]);
+  const [catalogProductRows, setCatalogProductRows] = useState(() => [newCatalogProductRow()]);
   const [comboCustomFields, setComboCustomFields] = useState({});
   const [comboExtraTextFields, setComboExtraTextFields] = useState([]);
   const [comboCollageUploads, setComboCollageUploads] = useState({});
@@ -321,33 +314,34 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
     }
   };
 
-  const buildCatalogLineItems = () => {
-    if (!catalogProductId || !catalogSelectedSizeKey) return [];
-    const plan = catalogPlan || {};
-    const activeDefaults = catalogDefaultSlots.filter((slot) => !catalogExcludedDefaults.includes(slot.slotKey));
-    const collagePayload = buildCollageUploadsPayload(
-      plan.collageTemplates || [],
-      catalogCollageUploads,
-      catalogExcludedCollageKeys,
-    );
-    return [{
-      productId: catalogProductId,
-      variant: plan.orderVariantValue || (plan.sizeLabel ? `Size: ${plan.sizeLabel}` : ''),
-      variantId: plan.orderVariantId || '',
-      quantity: 1,
-      instructions: '',
-      customFieldValues: catalogCustomFields,
-      photoSlots: activeDefaults,
-      collageUploads: collagePayload.map(({ label, images }) => ({ label, images })),
-      collageLocalUploads: catalogCollageUploads,
-      excludedCustomizationSlots: [
-        ...catalogExcludedDefaults,
-        ...catalogExcludedCollageKeys,
-      ],
-      catalogSizeChoice: plan.resolvedSize?.config?.value || undefined,
-      comboSize: plan.sizeLabel || undefined,
-    }];
-  };
+  const buildCatalogLineItems = () => (catalogProductRows || [])
+    .filter((row) => row.productId && row.selectedSizeKey && Number(row.quantity) > 0)
+    .map((row) => {
+      const activeDefaults = (row.photoSlots || [])
+        .filter((slot) => !(row.excludedDefaultKeys || []).includes(slot.slotKey));
+      const collagePayload = buildCollageUploadsPayload(
+        row.collageTemplates || [],
+        row.collageUploads || {},
+        row.excludedCollageKeys || [],
+      );
+      return {
+        productId: row.productId,
+        variant: row.orderVariantValue || (row.sizeLabel ? `Size: ${row.sizeLabel}` : ''),
+        variantId: row.orderVariantId || '',
+        quantity: Math.max(1, Number(row.quantity) || 1),
+        instructions: '',
+        customFieldValues: row.customFieldValues || {},
+        photoSlots: activeDefaults,
+        collageUploads: collagePayload.map(({ label, images }) => ({ label, images })),
+        collageLocalUploads: row.collageUploads || {},
+        excludedCustomizationSlots: [
+          ...(row.excludedDefaultKeys || []),
+          ...(row.excludedCollageKeys || []),
+        ],
+        catalogSizeChoice: row.catalogSizeChoice || undefined,
+        comboSize: row.sizeLabel || undefined,
+      };
+    });
 
   const buildComboLineItemsForSubmit = () => {
     const rows = comboSelections
@@ -483,21 +477,26 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
       }
       lineItems = buildComboLineItemsForSubmit();
     } else {
-      if (!catalogProductId) {
-        toast.error('Select a product');
+      const rows = catalogProductRows || [];
+      if (!rows.some((row) => row.productId)) {
+        toast.error('Add at least one product');
         return;
       }
-      if (!catalogSelectedSizeKey) {
-        toast.error('Select a size');
+      if (rows.some((row) => row.productId && !row.selectedSizeKey)) {
+        toast.error('Select a size for every product');
         return;
       }
-      if ((catalogPlan?.nonSizeOptions || []).length && !catalogProductOptionValue) {
-        toast.error('Select the product option');
+      if (rows.some((row) => row.productId && Number(row.nonSizeOptionCount) > 0 && !row.productOptionValue)) {
+        toast.error('Select the product option for every product that requires one');
+        return;
+      }
+      if (rows.some((row) => row.productId && !(Number(row.quantity) > 0))) {
+        toast.error('Enter a quantity of at least 1 for every product');
         return;
       }
       lineItems = buildCatalogLineItems();
       if (!lineItems.length) {
-        toast.error('Unable to build the product line — choose product and size again');
+        toast.error('Unable to build product lines — check products and sizes');
         return;
       }
     }
@@ -630,15 +629,7 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
       }));
       setPaymentScreenshot(null);
       setComboSelections([]);
-      setCatalogProductId('');
-      setCatalogSelectedSizeKey('');
-      setCatalogProductOptionValue('');
-      setCatalogPlan(null);
-      setCatalogCustomFields({});
-      setCatalogDefaultSlots([]);
-      setCatalogExcludedDefaults([]);
-      setCatalogCollageUploads({});
-      setCatalogExcludedCollageKeys([]);
+      setCatalogProductRows([newCatalogProductRow()]);
       setComboCustomFields({});
       setComboExtraTextFields([]);
       setComboCollageUploads({});
@@ -901,24 +892,9 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
             {productMode === 'catalog' ? (
               <CatalogProductSection
                 products={products}
-                productId={catalogProductId}
-                onProductIdChange={setCatalogProductId}
-                selectedSizeKey={catalogSelectedSizeKey}
-                onSelectedSizeKeyChange={setCatalogSelectedSizeKey}
-                productOptionValue={catalogProductOptionValue}
-                onProductOptionValueChange={setCatalogProductOptionValue}
-                customFieldValues={catalogCustomFields}
-                onCustomFieldChange={setCatalogCustomFields}
-                defaultSlots={catalogDefaultSlots}
-                onDefaultSlotsChange={setCatalogDefaultSlots}
-                excludedDefaultKeys={catalogExcludedDefaults}
-                onExcludedDefaultKeysChange={setCatalogExcludedDefaults}
-                collageUploads={catalogCollageUploads}
-                onCollageUploadsChange={setCatalogCollageUploads}
-                excludedCollageKeys={catalogExcludedCollageKeys}
-                onExcludedCollageKeysChange={setCatalogExcludedCollageKeys}
+                rows={catalogProductRows}
+                onRowsChange={setCatalogProductRows}
                 sizeCatalogProduct={comboProduct}
-                onPlanChange={setCatalogPlan}
               />
             ) : (
               <ComboProductSection
