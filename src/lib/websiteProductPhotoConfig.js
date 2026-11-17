@@ -387,6 +387,38 @@ export function isWebsiteSizeLikeLabel(label) {
   return false;
 }
 
+/** Orphan / invalid size that must never appear in WA size dropdowns. */
+export function isExcludedWebsiteSizeLabel(label) {
+  const key = normalizeWebsiteSizeKey(label);
+  return key === '13x20inch' || key === '13x20';
+}
+
+/**
+ * Primary size options for catalog dropdowns.
+ * Prefers "Size Varient(s)" groups over a leftover bare "Size" group (e.g. orphan 13×20).
+ */
+export function listPrimaryWebsiteSizeOptions(product) {
+  const options = listWebsiteVariantOptions(product)
+    .filter((opt) => isWebsiteSizeLikeLabel(opt.optionLabel || opt.label))
+    .filter((opt) => !isExcludedWebsiteSizeLabel(opt.optionLabel || opt.label));
+  if (!options.length) return [];
+  const byName = new Map();
+  options.forEach((opt) => {
+    const name = String(opt.variantName || 'Size').trim() || 'Size';
+    if (!byName.has(name)) byName.set(name, []);
+    byName.get(name).push(opt);
+  });
+  if (byName.size === 1) return options;
+  const preferred = [...byName.entries()]
+    .filter(([name]) => /varient|variant/i.test(name));
+  if (preferred.length) return preferred.flatMap(([, opts]) => opts);
+  let best = [];
+  byName.forEach((opts) => {
+    if (opts.length > best.length) best = opts;
+  });
+  return best;
+}
+
 /**
  * Normalize equivalent size formatting to one key.
  * e.g. "12x18", "12 × 18", "12*18 inch" → "12x18inch"
@@ -511,9 +543,9 @@ export function listWebsiteCatalogSizeChoices(products = []) {
     const productTitle = String(product.title || 'Product').trim() || 'Product';
     const sizeKeysOnProduct = new Set();
 
-    listWebsiteVariantOptions(product).forEach((opt) => {
+    listPrimaryWebsiteSizeOptions(product).forEach((opt) => {
       const sizeLabel = String(opt.optionLabel || opt.label || '').trim();
-      if (!isWebsiteSizeLikeLabel(sizeLabel)) return;
+      if (!isWebsiteSizeLikeLabel(sizeLabel) || isExcludedWebsiteSizeLabel(sizeLabel)) return;
       const sizeKey = normalizeWebsiteSizeKey(sizeLabel);
       sizeKeysOnProduct.add(sizeKey);
       const value = `catalog:${productId}|variant|${opt.value}`;
@@ -545,6 +577,7 @@ export function listWebsiteCatalogSizeChoices(products = []) {
 
     listAreaDerivedSizeOptions(product).forEach((opt) => {
       const sizeLabel = String(opt.optionLabel || opt.label || '').trim();
+      if (isExcludedWebsiteSizeLabel(sizeLabel)) return;
       const sizeKey = normalizeWebsiteSizeKey(sizeLabel);
       // Prefer the real website variant when the same size already exists on this product.
       if (sizeKeysOnProduct.has(sizeKey)) return;

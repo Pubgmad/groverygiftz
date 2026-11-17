@@ -19,7 +19,10 @@ const modalSrc = fs.readFileSync(path.join(__dirname, '../src/components/admin/C
 assert.ok(configSrc.includes('listUniqueWebsiteSizes'));
 assert.ok(configSrc.includes('resolveWebsiteSizeConfig'));
 assert.ok(configSrc.includes('buildCatalogSelectCustomizationPlan'));
+assert.ok(configSrc.includes('isExcludedWebsiteSizeLabel'));
+assert.ok(configSrc.includes('listPrimaryWebsiteSizeOptions'));
 assert.ok(configSrc.includes('Boolean(variantArea) || allowPreview'));
+assert.ok(comboSrc.includes('isExcludedComboSizeLabel') || comboSrc.includes('13x20'));
 assert.ok(sectionSrc.includes('UniqueSizeSelect'));
 assert.ok(sectionSrc.includes('buildCatalogSelectCustomizationPlan'));
 assert.ok(sectionSrc.includes('Personalized Single Photo Frame'));
@@ -112,16 +115,43 @@ const singleFrame = {
   _id: 'frame1',
   title: 'Personalized Single Photo Frame – Premium Frame with Matte Finish',
   isActive: true,
-  variants: [{
-    name: 'Size Varients',
-    options: [
-      { label: '4*4', previewWidth: 4, previewHeight: 4, requiresImageUpload: true },
-      { label: '8*6 inch', previewWidth: 8, previewHeight: 6, requiresImageUpload: true },
-      { label: '12*18', previewWidth: 12, previewHeight: 18, requiresImageUpload: true },
-      { label: '30*20', previewWidth: 30, previewHeight: 20, requiresImageUpload: true },
-    ],
-  }],
+  variants: [
+    {
+      name: 'Size Varients',
+      options: [
+        { label: '4*4', previewWidth: 4, previewHeight: 4, requiresImageUpload: true },
+        { label: '8*6 inch', previewWidth: 8, previewHeight: 6, requiresImageUpload: true },
+        { label: '12*18', previewWidth: 12, previewHeight: 18, requiresImageUpload: true },
+        { label: '30*20', previewWidth: 30, previewHeight: 20, requiresImageUpload: true },
+      ],
+    },
+    {
+      name: 'Size',
+      options: [{ label: '13×20' }],
+    },
+  ],
 };
+
+function listPrimaryWebsiteSizeOptions(product) {
+  const options = [];
+  (product.variants || []).forEach((v) => {
+    (v.options || []).forEach((o) => {
+      const label = String(o.label || '').trim();
+      if (!isWebsiteSizeLikeLabel(label)) return;
+      if (normalizeWebsiteSizeKey(label) === '13x20inch') return;
+      options.push({ variantName: v.name || 'Size', optionLabel: label, label });
+    });
+  });
+  const byName = new Map();
+  options.forEach((opt) => {
+    const name = opt.variantName;
+    if (!byName.has(name)) byName.set(name, []);
+    byName.get(name).push(opt);
+  });
+  const preferred = [...byName.entries()].filter(([name]) => /varient|variant/i.test(name));
+  if (preferred.length) return preferred.flatMap(([, opts]) => opts);
+  return options;
+}
 const wishEye = {
   _id: 'wish1',
   title: '11:11 Wish Eye Frame',
@@ -136,11 +166,20 @@ const wishEye = {
   }],
 };
 
-const frameSizes = listUniqueWebsiteSizes([singleFrame]);
+const primaryFrameOpts = listPrimaryWebsiteSizeOptions(singleFrame);
+assert.ok(primaryFrameOpts.every((o) => normalizeWebsiteSizeKey(o.optionLabel) !== '13x20inch'), '13×20 excluded');
+assert.ok(primaryFrameOpts.some((o) => normalizeWebsiteSizeKey(o.optionLabel) === '12x18inch'));
+assert.strictEqual(primaryFrameOpts.length, 4);
+
+const frameSizes = listUniqueWebsiteSizes([{
+  ...singleFrame,
+  variants: [{ name: 'Size Varients', options: primaryFrameOpts.map((o) => ({ label: o.optionLabel })) }],
+}]);
 const wishOnlySizes = listUniqueWebsiteSizes([wishEye]);
 assert.ok(frameSizes.uniqueCount >= 4);
 assert.strictEqual(wishOnlySizes.uniqueCount, 3);
 assert.ok(frameSizes.sizes.some((s) => s.sizeKey === '12x18inch'), 'master list includes 12*18');
+assert.ok(!frameSizes.sizes.some((s) => s.sizeKey === '13x20inch'), 'master list excludes 13×20');
 assert.ok(!wishOnlySizes.sizes.some((s) => s.sizeKey === '12x18inch'), 'product-only list excludes master-only sizes');
 assert.ok(COMBO_SOURCE_PRODUCT_TITLE_RX.test(singleFrame.title));
 assert.ok(!COMBO_SOURCE_PRODUCT_TITLE_RX.test(wishEye.title));

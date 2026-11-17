@@ -15,14 +15,44 @@ export function normalizeSizeLabel(label = '') {
     .replace(/×/g, 'x');
 }
 
+function isExcludedComboSizeLabel(label) {
+  const key = normalizeSizeLabel(label).replace(/inch(?:es)?$/i, '');
+  return key === '13x20' || key === '13*20';
+}
+
 export function extractSizeOptionsFromProduct(product) {
   const variants = Array.isArray(product?.variants) ? product.variants : [];
-  const sizeVariant = variants.find((v) => /^size$/i.test(String(v?.name || '').trim()))
-    || variants.find((v) => /size/i.test(String(v?.name || '').trim())
-      && (v.options || []).some((o) => /\d+\s*[x×*]\s*\d+/i.test(String(o?.label || o?.name || ''))))
-    || variants.find((v) => (v.options || []).some((o) => /\d+\s*[x×*]\s*\d+/i.test(String(o?.label || o?.name || ''))));
-  if (!sizeVariant) {
-    // Fall back to all variant options if no Size group exists
+  const sizeLikeGroups = variants
+    .map((v) => {
+      const options = (v.options || [])
+        .map((o) => ({
+          label: String(o.label || o.name || '').trim(),
+          sku: o.sku || '',
+          stock: o.stock,
+          price: o.price,
+          salePrice: o.salePrice,
+          optionId: o._id || o.sku || '',
+          requiresImageUpload: Boolean(o.requiresImageUpload),
+          previewWidth: o.previewWidth,
+          previewHeight: o.previewHeight,
+          previewUnit: o.previewUnit || 'inch',
+          previewFrameImage: o.previewFrameImage || '',
+          previewInstructions: o.previewInstructions || '',
+          variantName: v.name || 'Size',
+        }))
+        .filter((o) => o.label)
+        .filter((o) => /\d+\s*[x×*]\s*\d+/i.test(o.label))
+        .filter((o) => !isExcludedComboSizeLabel(o.label));
+      return { variant: v, options };
+    })
+    .filter((g) => g.options.length > 0);
+
+  // Prefer Size Varient(s) over a leftover bare "Size" group (orphan 13×20).
+  const preferred = sizeLikeGroups.find((g) => /varient|variant/i.test(String(g.variant?.name || '')))
+    || sizeLikeGroups.slice().sort((a, b) => b.options.length - a.options.length)[0]
+    || null;
+
+  if (!preferred) {
     const options = variants.flatMap((v) => (v.options || []).map((o) => ({
       label: String(o.label || o.name || '').trim(),
       sku: o.sku || '',
@@ -37,27 +67,14 @@ export function extractSizeOptionsFromProduct(product) {
       previewFrameImage: o.previewFrameImage || '',
       previewInstructions: o.previewInstructions || '',
       variantName: v.name || 'Variant',
-    }))).filter((o) => o.label);
+    }))).filter((o) => o.label).filter((o) => !isExcludedComboSizeLabel(o.label));
     return { variantName: 'Variant', options };
   }
-  const options = (sizeVariant.options || [])
-    .map((o) => ({
-      label: String(o.label || o.name || '').trim(),
-      sku: o.sku || '',
-      stock: o.stock,
-      price: o.price,
-      salePrice: o.salePrice,
-      optionId: o._id || o.sku || '',
-      requiresImageUpload: Boolean(o.requiresImageUpload),
-      previewWidth: o.previewWidth,
-      previewHeight: o.previewHeight,
-      previewUnit: o.previewUnit || 'inch',
-      previewFrameImage: o.previewFrameImage || '',
-      previewInstructions: o.previewInstructions || '',
-      variantName: sizeVariant.name || 'Size',
-    }))
-    .filter((o) => o.label);
-  return { variantName: sizeVariant.name || 'Size', options };
+
+  return {
+    variantName: preferred.variant?.name || 'Size',
+    options: preferred.options,
+  };
 }
 
 export function hasSizeOption(options, wanted) {
