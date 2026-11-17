@@ -52,13 +52,14 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
   const [comboError, setComboError] = useState('');
   const [comboSelections, setComboSelections] = useState([]);
   const [catalogProductId, setCatalogProductId] = useState('');
-  const [catalogSelectedVariant, setCatalogSelectedVariant] = useState('');
+  const [catalogSelectedSizeKey, setCatalogSelectedSizeKey] = useState('');
+  const [catalogProductOptionValue, setCatalogProductOptionValue] = useState('');
+  const [catalogPlan, setCatalogPlan] = useState(null);
   const [catalogCustomFields, setCatalogCustomFields] = useState({});
   const [catalogDefaultSlots, setCatalogDefaultSlots] = useState([]);
   const [catalogExcludedDefaults, setCatalogExcludedDefaults] = useState([]);
   const [catalogCollageUploads, setCatalogCollageUploads] = useState({});
   const [catalogExcludedCollageKeys, setCatalogExcludedCollageKeys] = useState([]);
-  const [catalogAdditionalVariants, setCatalogAdditionalVariants] = useState([]);
   const [comboCustomFields, setComboCustomFields] = useState({});
   const [comboExtraTextFields, setComboExtraTextFields] = useState([]);
   const [comboCollageUploads, setComboCollageUploads] = useState({});
@@ -321,69 +322,31 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
   };
 
   const buildCatalogLineItems = () => {
-    if (!catalogProductId) return [];
-    const product = products.find((p) => String(p._id) === String(catalogProductId));
-    const plan = resolveProductCustomizationPlan(product, { selectedVariantValue: catalogSelectedVariant });
-    const items = [];
+    if (!catalogProductId || !catalogSelectedSizeKey) return [];
+    const plan = catalogPlan || {};
     const activeDefaults = catalogDefaultSlots.filter((slot) => !catalogExcludedDefaults.includes(slot.slotKey));
     const collagePayload = buildCollageUploadsPayload(
-      plan.collageTemplates,
+      plan.collageTemplates || [],
       catalogCollageUploads,
       catalogExcludedCollageKeys,
     );
-    const hasCollageFiles = Object.entries(catalogCollageUploads || {}).some(([label, list]) => {
-      const key = `collage:${label}`;
-      if (catalogExcludedCollageKeys.includes(key)) return false;
-      return Array.isArray(list) && list.some((p) => p?.file);
-    });
-    const match = plan.variantOptions.find((v) => v.value === (catalogSelectedVariant || plan.selectedVariantValue));
-    if (
-      activeDefaults.length
-      || Object.keys(catalogCustomFields || {}).length
-      || collagePayload.length
-      || hasCollageFiles
-    ) {
-      items.push({
-        productId: catalogProductId,
-        variant: catalogSelectedVariant || plan.selectedVariantValue || '',
-        variantId: match?.optionId || '',
-        quantity: 1,
-        instructions: '',
-        customFieldValues: catalogCustomFields,
-        photoSlots: activeDefaults,
-        collageUploads: collagePayload.map(({ label, images }) => ({ label, images })),
-        collageLocalUploads: catalogCollageUploads,
-        excludedCustomizationSlots: [
-          ...catalogExcludedDefaults,
-          ...catalogExcludedCollageKeys,
-        ],
-      });
-    }
-    catalogAdditionalVariants.forEach((row) => {
-      const isAreaDerived = String(row.variant || '').startsWith('AreaSize:');
-      if (!(Number(row.quantity) > 0)) return;
-      if (row.needsProductDisambiguation && !row.sourceProductId) return;
-      if (!row.sizeKey && !row.catalogChoiceValue && !row.variant) return;
-      const activeSlots = (row.photoSlots || []).filter((slot) => !(row.excludedSlotKeys || []).includes(slot.slotKey));
-      const areaSizeLabel = isAreaDerived
-        ? String(row.variant).replace(/^AreaSize:\s*/i, '').trim()
-        : '';
-      const sourceProductId = String(row.sourceProductId || catalogProductId || '').trim();
-      items.push({
-        productId: sourceProductId || catalogProductId,
-        variant: isAreaDerived ? `Size: ${areaSizeLabel}` : row.variant,
-        variantId: isAreaDerived ? '' : (row.variantId || ''),
-        quantity: Number(row.quantity) || 1,
-        instructions: '',
-        photoSlots: activeSlots,
-        customFieldValues: row.customFieldValues || {},
-        excludedCustomizationSlots: row.excludedSlotKeys || [],
-        isAreaDerivedSize: isAreaDerived || undefined,
-        catalogSizeChoice: row.catalogChoiceValue || undefined,
-        additionalVariantOfProductId: catalogProductId || undefined,
-      });
-    });
-    return items;
+    return [{
+      productId: catalogProductId,
+      variant: plan.orderVariantValue || (plan.sizeLabel ? `Size: ${plan.sizeLabel}` : ''),
+      variantId: plan.orderVariantId || '',
+      quantity: 1,
+      instructions: '',
+      customFieldValues: catalogCustomFields,
+      photoSlots: activeDefaults,
+      collageUploads: collagePayload.map(({ label, images }) => ({ label, images })),
+      collageLocalUploads: catalogCollageUploads,
+      excludedCustomizationSlots: [
+        ...catalogExcludedDefaults,
+        ...catalogExcludedCollageKeys,
+      ],
+      catalogSizeChoice: plan.resolvedSize?.config?.value || undefined,
+      comboSize: plan.sizeLabel || undefined,
+    }];
   };
 
   const buildComboLineItemsForSubmit = () => {
@@ -524,17 +487,17 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
         toast.error('Select a product');
         return;
       }
-      lineItems = buildCatalogLineItems();
-      if (!lineItems.length) {
-        toast.error('Add default customizations or at least one additional variant');
+      if (!catalogSelectedSizeKey) {
+        toast.error('Select a size');
         return;
       }
-      if (catalogAdditionalVariants.some((row) => {
-        if (!(Number(row.quantity) > 0)) return false;
-        if (row.needsProductDisambiguation && !row.sourceProductId) return true;
-        return !(row.sizeKey || row.catalogChoiceValue || row.variant);
-      })) {
-        toast.error('Choose a website size (and source product when required) for each additional variant row');
+      if ((catalogPlan?.nonSizeOptions || []).length && !catalogProductOptionValue) {
+        toast.error('Select the product option');
+        return;
+      }
+      lineItems = buildCatalogLineItems();
+      if (!lineItems.length) {
+        toast.error('Unable to build the product line — choose product and size again');
         return;
       }
     }
@@ -668,13 +631,14 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
       setPaymentScreenshot(null);
       setComboSelections([]);
       setCatalogProductId('');
-      setCatalogSelectedVariant('');
+      setCatalogSelectedSizeKey('');
+      setCatalogProductOptionValue('');
+      setCatalogPlan(null);
       setCatalogCustomFields({});
       setCatalogDefaultSlots([]);
       setCatalogExcludedDefaults([]);
       setCatalogCollageUploads({});
       setCatalogExcludedCollageKeys([]);
-      setCatalogAdditionalVariants([]);
       setComboCustomFields({});
       setComboExtraTextFields([]);
       setComboCollageUploads({});
@@ -939,8 +903,10 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
                 products={products}
                 productId={catalogProductId}
                 onProductIdChange={setCatalogProductId}
-                selectedVariant={catalogSelectedVariant}
-                onSelectedVariantChange={setCatalogSelectedVariant}
+                selectedSizeKey={catalogSelectedSizeKey}
+                onSelectedSizeKeyChange={setCatalogSelectedSizeKey}
+                productOptionValue={catalogProductOptionValue}
+                onProductOptionValueChange={setCatalogProductOptionValue}
                 customFieldValues={catalogCustomFields}
                 onCustomFieldChange={setCatalogCustomFields}
                 defaultSlots={catalogDefaultSlots}
@@ -951,9 +917,8 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
                 onCollageUploadsChange={setCatalogCollageUploads}
                 excludedCollageKeys={catalogExcludedCollageKeys}
                 onExcludedCollageKeysChange={setCatalogExcludedCollageKeys}
-                additionalVariants={catalogAdditionalVariants}
-                onAdditionalVariantsChange={setCatalogAdditionalVariants}
                 sizeCatalogProduct={comboProduct}
+                onPlanChange={setCatalogPlan}
               />
             ) : (
               <ComboProductSection

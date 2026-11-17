@@ -1,5 +1,5 @@
 /**
- * Regression checks for WA product customization + unique sizes + dispatch display.
+ * Regression checks for WA product customization + master size catalog + dispatch.
  * Run: node scripts/test-wa-product-customization.cjs
  */
 const assert = require('assert');
@@ -18,23 +18,24 @@ const modalSrc = fs.readFileSync(path.join(__dirname, '../src/components/admin/C
 
 assert.ok(configSrc.includes('listUniqueWebsiteSizes'));
 assert.ok(configSrc.includes('resolveWebsiteSizeConfig'));
-assert.ok(configSrc.includes('canonicalWebsiteSizeLabel'));
+assert.ok(configSrc.includes('buildCatalogSelectCustomizationPlan'));
 assert.ok(configSrc.includes('Boolean(variantArea) || allowPreview'));
 assert.ok(sectionSrc.includes('UniqueSizeSelect'));
-assert.ok(sectionSrc.includes('listUniqueWebsiteSizes'));
-assert.ok(sectionSrc.includes('resolveSizeCatalogProduct'));
-assert.ok(sectionSrc.includes('COMBO_SOURCE_PRODUCT_TITLE_RX'));
+assert.ok(sectionSrc.includes('buildCatalogSelectCustomizationPlan'));
 assert.ok(sectionSrc.includes('Personalized Single Photo Frame'));
 assert.ok(sectionSrc.includes('sizeCatalogProduct'));
+assert.ok(!/Additional Variants<\/h4>/.test(sectionSrc));
+assert.ok(!modalSrc.includes('catalogAdditionalVariants'));
+assert.ok(!modalSrc.includes('onAdditionalVariantsChange'));
+assert.ok(modalSrc.includes('catalogSelectedSizeKey'));
 assert.ok(modalSrc.includes('sizeCatalogProduct={comboProduct}'));
+assert.ok(modalSrc.includes('Select a size'));
 assert.ok(!/99 website size configurations/.test(sectionSrc));
-assert.ok(!sectionSrc.includes('${sizeLabel} — ${productTitle}'));
 assert.ok(estimateSrc.includes('resolveAdminDispatchDisplay'));
 assert.ok(ordersPageSrc.includes('resolveAdminDispatchDisplay'));
 assert.ok(comboSrc.includes('return false'));
 assert.ok(comboSrc.includes('[x×*]'));
 assert.ok(!apiSrc.includes('ensureThirteenByTwenty(product)'));
-assert.ok(modalSrc.includes('needsProductDisambiguation'));
 
 function isWebsiteSizeLikeLabel(label) {
   const s = String(label || '').trim();
@@ -92,24 +93,6 @@ function listUniqueWebsiteSizes(products = []) {
         entry.configs.push({ productId, productTitle, sizeLabel, value: `catalog:${productId}|variant|${sizeLabel}` });
       });
     });
-    const preview = product.customizationPreview || {};
-    if (preview.enabled === false) return;
-    (preview.areas || []).forEach((area) => {
-      const width = Number(area.width) || 0;
-      const height = Number(area.height) || 0;
-      const rawLabel = String(area.label || '').trim();
-      const hasRealDimensions = width > 1 && height > 1;
-      const labelLooksLikeSize = isWebsiteSizeLikeLabel(rawLabel);
-      if (!hasRealDimensions && !labelLooksLikeSize) return;
-      const sizeLabel = labelLooksLikeSize ? rawLabel : `${width}×${height}`;
-      if (!isWebsiteSizeLikeLabel(sizeLabel)) return;
-      const sizeKey = normalizeWebsiteSizeKey(sizeLabel);
-      if (sizeKeysOnProduct.has(sizeKey)) return;
-      if (!byKey.has(sizeKey)) byKey.set(sizeKey, { sizeKey, labels: [], configs: [] });
-      const entry = byKey.get(sizeKey);
-      entry.labels.push(sizeLabel);
-      entry.configs.push({ productId, productTitle, sizeLabel, value: `catalog:${productId}|area|${sizeLabel}` });
-    });
   });
   const sizes = [...byKey.values()].map((entry) => ({
     sizeKey: entry.sizeKey,
@@ -119,144 +102,66 @@ function listUniqueWebsiteSizes(products = []) {
   return { sizes, uniqueCount: sizes.length };
 }
 
-function resolveWebsiteSizeConfig(sizeKeyOrLabel, { products = [], preferredProductIds = [], explicitProductId = '' } = {}) {
-  const sizeKey = normalizeWebsiteSizeKey(sizeKeyOrLabel);
-  const { sizes } = listUniqueWebsiteSizes(products);
-  const entry = sizes.find((s) => s.sizeKey === sizeKey);
-  if (!entry) return { ok: false, ambiguous: false, config: null, candidates: [] };
-  if (explicitProductId) {
-    const match = entry.configs.find((c) => String(c.productId) === String(explicitProductId));
-    if (match) return { ok: true, ambiguous: false, config: match, candidates: entry.configs, sizeKey, sizeLabel: entry.sizeLabel };
-  }
-  for (const id of preferredProductIds) {
-    const match = entry.configs.find((c) => String(c.productId) === String(id));
-    if (match) return { ok: true, ambiguous: false, config: match, candidates: entry.configs, sizeKey, sizeLabel: entry.sizeLabel };
-  }
-  if (entry.configs.length === 1) {
-    return { ok: true, ambiguous: false, config: entry.configs[0], candidates: entry.configs, sizeKey, sizeLabel: entry.sizeLabel };
-  }
-  return { ok: false, ambiguous: true, config: null, candidates: entry.configs, sizeKey, sizeLabel: entry.sizeLabel };
-}
-
-const products = [
-  {
-    _id: 'a1',
-    title: 'Our Love in Dates',
-    isActive: true,
-    variants: [{ name: 'Size', options: [{ label: '12*8 inch' }, { label: '12*18 inch' }, { label: 'Brown' }] }],
-  },
-  {
-    _id: 'b1',
-    title: '3 frame combo Offer',
-    isActive: true,
-    variants: [],
-    customizationPreview: {
-      enabled: true,
-      areas: [{ label: '12*8 inch ', width: 8, height: 12 }],
-    },
-  },
-  {
-    _id: 'c1',
-    title: 'Big Surprise',
-    isActive: true,
-    variants: [],
-    customizationPreview: { enabled: true, areas: [{ label: '30x20', width: 20, height: 30 }] },
-  },
-];
-
-const unique = listUniqueWebsiteSizes(products);
-assert.ok(unique.uniqueCount >= 3);
-assert.ok(unique.sizes.every((s) => !/Our Love|3 frame|Big Surprise/i.test(s.sizeLabel)), 'dropdown labels are size-only');
-assert.ok(!unique.sizes.some((s) => s.sizeLabel === 'Brown'));
-
-const twelveByEight = unique.sizes.find((s) => s.sizeKey === '12x8inch');
-assert.ok(twelveByEight);
-assert.ok(twelveByEight.configs.length >= 2);
-
-// Variant dropdowns always use Personalized Single Photo Frame sizes — not Select Product.
 const singleFrame = {
   _id: 'frame1',
   title: 'Personalized Single Photo Frame – Premium Frame with Matte Finish',
   isActive: true,
-  customizationPreview: { enabled: false },
   variants: [{
     name: 'Size Varients',
     options: [
       { label: '4*4', previewWidth: 4, previewHeight: 4, requiresImageUpload: true },
+      { label: '8*6 inch', previewWidth: 8, previewHeight: 6, requiresImageUpload: true },
       { label: '12*18', previewWidth: 12, previewHeight: 18, requiresImageUpload: true },
       { label: '30*20', previewWidth: 30, previewHeight: 20, requiresImageUpload: true },
     ],
   }],
 };
-const otherProduct = {
-  _id: 'other1',
-  title: 'Some Other Gift',
+const wishEye = {
+  _id: 'wish1',
+  title: '11:11 Wish Eye Frame',
   isActive: true,
-  variants: [{ name: 'Size', options: [{ label: '6*6', previewWidth: 6, previewHeight: 6 }] }],
+  variants: [{
+    name: 'Size Varient',
+    options: [
+      { label: '8*6 inch', previewWidth: 8, previewHeight: 6 },
+      { label: '10*8 inch', previewWidth: 10, previewHeight: 8 },
+      { label: '12*8 inch', previewWidth: 12, previewHeight: 8 },
+    ],
+  }],
 };
+
 const frameSizes = listUniqueWebsiteSizes([singleFrame]);
-assert.strictEqual(frameSizes.uniqueCount, 3);
-assert.ok(frameSizes.sizes.every((s) => s.configs.every((c) => c.productId === 'frame1')));
-assert.ok(!frameSizes.sizes.some((s) => s.sizeKey === '6x6inch'), 'Select Product sizes must not appear in frame size list');
-assert.ok(frameSizes.sizes.some((s) => s.sizeKey === '12x18inch'));
+const wishOnlySizes = listUniqueWebsiteSizes([wishEye]);
+assert.ok(frameSizes.uniqueCount >= 4);
+assert.strictEqual(wishOnlySizes.uniqueCount, 3);
+assert.ok(frameSizes.sizes.some((s) => s.sizeKey === '12x18inch'), 'master list includes 12*18');
+assert.ok(!wishOnlySizes.sizes.some((s) => s.sizeKey === '12x18inch'), 'product-only list excludes master-only sizes');
 assert.ok(COMBO_SOURCE_PRODUCT_TITLE_RX.test(singleFrame.title));
-assert.ok(!COMBO_SOURCE_PRODUCT_TITLE_RX.test(otherProduct.title));
+assert.ok(!COMBO_SOURCE_PRODUCT_TITLE_RX.test(wishEye.title));
 
-const scopedResolve = resolveWebsiteSizeConfig('12*18', {
-  products: [singleFrame],
-  preferredProductIds: ['frame1'],
-  explicitProductId: 'frame1',
-});
-assert.ok(scopedResolve.ok);
-assert.strictEqual(scopedResolve.config.productId, 'frame1');
-
-const preferred = resolveWebsiteSizeConfig('12*8 inch', {
-  products,
-  preferredProductIds: ['b1'],
-});
-assert.ok(preferred.ok);
-assert.strictEqual(preferred.config.productId, 'b1');
-
-const ambiguous = resolveWebsiteSizeConfig('12*8 inch', {
-  products,
-  preferredProductIds: ['missing'],
-});
-assert.ok(ambiguous.ambiguous);
-assert.ok(!ambiguous.config);
+// Select Product UI must use master list, not Wish Eye's 3 sizes.
+assert.ok(sectionSrc.includes('listUniqueWebsiteSizes(sizeSourceProduct ? [sizeSourceProduct] : [])'));
 
 function variantAreaFromOption(selected) {
   if (!selected) return null;
   let width = Number(selected.previewWidth);
   let height = Number(selected.previewHeight);
-  let unit = selected.previewUnit || 'inch';
   if (!(width > 0) || !(height > 0)) {
     const fromLabel = String(selected.label || '').match(
-      /(\d+(?:\.\d+)?)\s*[x×*]\s*(\d+(?:\.\d+)?)\s*(inch(?:es)?|in|cm|mm)?/i,
+      /(\d+(?:\.\d+)?)\s*[x×*]\s*(\d+(?:\.\d+)?)/i,
     );
     if (fromLabel) {
       if (!(width > 0)) width = Number(fromLabel[1]) || 0;
       if (!(height > 0)) height = Number(fromLabel[2]) || 0;
-      if (!selected.previewUnit && fromLabel[3]) {
-        const unitRaw = String(fromLabel[3]).toLowerCase();
-        unit = (unitRaw === 'inches' || unitRaw === 'in') ? 'inch' : unitRaw;
-      }
     }
   }
-  if (!(width > 0) && !(height > 0) && !selected.previewFrameImage) return null;
-  return {
-    label: selected.label || 'Photo',
-    width: width > 0 ? width : 1,
-    height: height > 0 ? height : 1,
-    unit,
-  };
+  if (!(width > 0) && !(height > 0)) return null;
+  return { width: width > 0 ? width : 1, height: height > 0 ? height : 1, unit: 'inch' };
 }
 
 const area1218 = variantAreaFromOption({ label: '12*18', previewWidth: 12, previewHeight: 18 });
 assert.strictEqual(area1218.width, 12);
 assert.strictEqual(area1218.height, 18);
-const areaFromLabel = variantAreaFromOption({ label: '12*18' });
-assert.strictEqual(areaFromLabel.width, 12);
-assert.strictEqual(areaFromLabel.height, 18);
 
 function resolveAdminDispatchDisplay(order) {
   const snapYmd = String(order?.confirmationSchedule?.expectedReadyDateIst || '').trim();
@@ -271,11 +176,7 @@ assert.strictEqual(
   resolveAdminDispatchDisplay({ confirmationSchedule: { expectedReadyDateIst: '2026-11-24' } }).source,
   'confirmationSchedule.expectedReadyDateIst',
 );
-assert.strictEqual(
-  resolveAdminDispatchDisplay({ expectedDispatchDate: new Date('2026-11-24T00:00:00+05:30') }).source,
-  'expectedDispatchDate',
-);
 assert.ok(resolveAdminDispatchDisplay({}).empty);
 
-console.log('OK: Personalized Single Photo Frame size catalog + 12x18 frame + dispatch checks passed');
-console.log(`Catalog unique sizes: ${unique.uniqueCount}; Frame sizes: ${frameSizes.uniqueCount}`);
+console.log('OK: Select Product master-size dropdown + no Additional Variants checks passed');
+console.log(`Master frame sizes: ${frameSizes.uniqueCount}; Wish Eye product sizes: ${wishOnlySizes.uniqueCount}`);

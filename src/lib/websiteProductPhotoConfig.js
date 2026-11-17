@@ -767,6 +767,134 @@ export function getCollageTemplates(product) {
  * @param {object} product
  * @param {{ selectedVariantValue?: string }} [opts]
  */
+/**
+ * Select Product plan: product collage/text/upload rules + master size list dims.
+ * sizeKey comes from Personalized Single Photo Frame (or sizeCatalogProduct).
+ */
+export function buildCatalogSelectCustomizationPlan(product, sizeCatalogProduct, sizeKey = '', opts = {}) {
+  const productOptionValue = String(opts.productOptionValue || '').trim();
+  const empty = {
+    textCustomFields: [],
+    collageTemplates: [],
+    defaultPhotoSlots: [],
+    hasProductLevelUploads: false,
+    hasVariantOnlyUploads: false,
+    hasCollage: false,
+    previewEnabled: false,
+    nonSizeOptions: [],
+    sizeKey: '',
+    sizeLabel: '',
+    orderVariantValue: '',
+    orderVariantId: '',
+    masterVariantValue: '',
+    resolvedSize: null,
+  };
+  if (!product) return empty;
+
+  const textCustomFields = getTextCustomFields(product);
+  const collageTemplates = getCollageTemplates(product);
+  const productLevel = buildProductLevelPhotoSlots(product);
+  const variantOptions = listWebsiteVariantOptions(product);
+  const nonSizeOptions = variantOptions.filter(
+    (opt) => !isWebsiteSizeLikeLabel(opt.optionLabel) && !isWebsiteSizeLikeLabel(opt.label),
+  );
+  const hasProductLevelUploads = productLevel.length > 0;
+  const hasVariantUploads = variantOptions.some((option) => option.requiresImageUpload);
+  const hasVariantOnlyUploads = !hasProductLevelUploads && hasVariantUploads;
+
+  const resolved = resolveWebsiteSizeConfig(sizeKey, {
+    products: sizeCatalogProduct ? [sizeCatalogProduct] : [],
+    preferredProductIds: sizeCatalogProduct?._id ? [String(sizeCatalogProduct._id)] : [],
+    explicitProductId: sizeCatalogProduct?._id ? String(sizeCatalogProduct._id) : '',
+  });
+  const sizeLabel = resolved.sizeLabel || resolved.config?.sizeLabel || '';
+  const masterVariantValue = resolved.config?.variantValue || '';
+  const masterSelected = masterVariantValue
+    ? findVariantOption(sizeCatalogProduct, masterVariantValue)
+    : null;
+  const masterArea = variantAreaFromOption(masterSelected);
+
+  const matchingProductOpt = sizeKey
+    ? variantOptions.find((opt) => normalizeWebsiteSizeKey(opt.optionLabel || opt.label) === normalizeWebsiteSizeKey(sizeKey))
+    : null;
+
+  // Prefer product's own matching size option; else first upload-requiring option as rule template.
+  const templateProductOpt = matchingProductOpt
+    || (hasVariantUploads
+      ? variantOptions.find((option) => option.requiresImageUpload)
+      : null);
+
+  let defaultPhotoSlots = [];
+  if (sizeKey) {
+    if (matchingProductOpt?.requiresImageUpload || (hasProductLevelUploads && sizeKey)) {
+      defaultPhotoSlots = buildWebsitePhotoSlotsForQuantity(
+        product,
+        1,
+        matchingProductOpt?.value || '',
+        {
+          includeProductLevel: hasProductLevelUploads,
+          includeVariantUpload: Boolean(matchingProductOpt?.requiresImageUpload),
+        },
+      );
+    } else if (hasVariantOnlyUploads && templateProductOpt) {
+      // Same upload rules as the product's default size option, applied to the chosen master size.
+      defaultPhotoSlots = buildWebsitePhotoSlotsForQuantity(product, 1, templateProductOpt.value, {
+        includeProductLevel: false,
+        includeVariantUpload: true,
+      });
+    } else if (resolved.config?.requiresImageUpload && sizeCatalogProduct && masterVariantValue) {
+      defaultPhotoSlots = buildWebsitePhotoSlotsForQuantity(sizeCatalogProduct, 1, masterVariantValue, {
+        includeProductLevel: false,
+        includeVariantUpload: true,
+      });
+    }
+
+    if (masterArea && defaultPhotoSlots.length) {
+      const frameLabel = formatFrameSizeLabel(masterArea) || sizeLabel;
+      defaultPhotoSlots = defaultPhotoSlots.map((slot) => ({
+        ...slot,
+        sizeLabel: frameLabel || slot.sizeLabel,
+        frameImage: masterArea.frameImage || slot.frameImage || '',
+        allowPreview: true,
+        variantLabel: sizeLabel || slot.variantLabel || '',
+        area: {
+          ...(slot.area || {}),
+          width: masterArea.width,
+          height: masterArea.height,
+          unit: masterArea.unit || slot.area?.unit || 'inch',
+          frameImage: masterArea.frameImage || slot.area?.frameImage || '',
+          label: frameLabel || slot.area?.label || slot.label,
+        },
+      }));
+    }
+  }
+
+  const orderVariantValue = productOptionValue
+    ? (sizeLabel ? `${productOptionValue} · Size: ${sizeLabel}` : productOptionValue)
+    : (matchingProductOpt?.value || (sizeLabel ? `Size: ${sizeLabel}` : ''));
+  const orderVariantId = matchingProductOpt?.optionId
+    || resolved.config?.variantId
+    || resolved.config?.optionId
+    || '';
+
+  return {
+    textCustomFields,
+    collageTemplates,
+    defaultPhotoSlots,
+    hasProductLevelUploads,
+    hasVariantOnlyUploads,
+    hasCollage: collageTemplates.length > 0,
+    previewEnabled: isProductPreviewEnabled(product) || Boolean(masterArea),
+    nonSizeOptions,
+    sizeKey: resolved.sizeKey || normalizeWebsiteSizeKey(sizeKey) || '',
+    sizeLabel,
+    orderVariantValue,
+    orderVariantId,
+    masterVariantValue,
+    resolvedSize: resolved.ok ? resolved : null,
+  };
+}
+
 export function resolveProductCustomizationPlan(product, opts = {}) {
   if (!product) {
     return {
