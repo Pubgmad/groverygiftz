@@ -49,7 +49,10 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
   const [showParsedEditor, setShowParsedEditor] = useState(false);
   const [customerDetailsReviewed, setCustomerDetailsReviewed] = useState(false);
   const [customerSource, setCustomerSource] = useState('');
-  const [productMode, setProductMode] = useState('catalog');
+  // Multi-enable sections (any 1 / 2 / 3). Section UIs keep their own logic unchanged.
+  const [includeCatalog, setIncludeCatalog] = useState(true);
+  const [includeCombo, setIncludeCombo] = useState(false);
+  const [includeCollagePhotos, setIncludeCollagePhotos] = useState(false);
   const [comboProduct, setComboProduct] = useState(null);
   const [comboOptions, setComboOptions] = useState([]);
   const [comboError, setComboError] = useState('');
@@ -160,11 +163,25 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
     return expectedDeliveryFromDispatchYmd(form.expectedDispatchDate, holidays);
   }, [form.expectedDispatchDate, holidays]);
 
-  const priceLabel = productMode === 'customized_combo'
-    ? 'Overall Customized Combo Price (Manual) *'
-    : productMode === 'collage_photos'
-      ? 'Overall Collage Product Price *'
-      : 'Overall Product Price *';
+  const priceLabel = 'Overall Order Price *';
+
+  const toggleOrderSection = (section) => {
+    const next = {
+      catalog: includeCatalog,
+      combo: includeCombo,
+      collagePhotos: includeCollagePhotos,
+    };
+    if (section === 'catalog') next.catalog = !includeCatalog;
+    if (section === 'combo') next.combo = !includeCombo;
+    if (section === 'collagePhotos') next.collagePhotos = !includeCollagePhotos;
+    if (!next.catalog && !next.combo && !next.collagePhotos) {
+      toast.error('Keep at least one section enabled');
+      return;
+    }
+    setIncludeCatalog(next.catalog);
+    setIncludeCombo(next.combo);
+    setIncludeCollagePhotos(next.collagePhotos);
+  };
 
   if (!open) return null;
 
@@ -482,11 +499,7 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
     const comboRaw = String(form.manualComboPrice ?? '').trim();
     const combo = Number(comboRaw);
     if (!comboRaw || !Number.isFinite(combo) || combo < 0) {
-      toast.error(productMode === 'customized_combo'
-        ? 'Enter the overall customized combo price'
-        : productMode === 'collage_photos'
-          ? 'Enter the overall collage product price'
-          : 'Enter the overall product price');
+      toast.error('Enter the overall order price');
       return;
     }
     const shipRaw = String(form.shippingCost ?? '').trim();
@@ -510,16 +523,41 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
         return;
       }
     }
-    let lineItems = [];
-    if (productMode === 'customized_combo') {
+
+    if (!includeCatalog && !includeCombo && !includeCollagePhotos) {
+      toast.error('Enable at least one of Select Product, Customized Combo, or Collage Photos');
+      return;
+    }
+
+    let catalogItems = [];
+    let comboItems = [];
+    let collageItems = [];
+
+    if (includeCatalog) {
+      const rows = catalogProductRows || [];
+      if (rows.some((row) => row.productId && row.requiresSize && !row.selectedSizeKey)) {
+        toast.error('Select a size for every product that has variants');
+        return;
+      }
+      if (rows.some((row) => row.productId && Number(row.nonSizeOptionCount) > 0 && !row.productOptionValue)) {
+        toast.error('Select the product option for every product that requires one');
+        return;
+      }
+      catalogItems = buildCatalogLineItems();
+      if (rows.some((row) => row.productId) && !catalogItems.length) {
+        toast.error('Unable to build product lines — check products and sizes');
+        return;
+      }
+    }
+
+    if (includeCombo) {
       if (!comboProduct?._id) {
         toast.error('Customized Combo source product is not available');
         return;
       }
-      if (!comboSelections.some((row) => (row.size || row.sizeKey || row.variantValue || row.catalogChoiceValue) && Number(row.quantity) > 0)) {
-        toast.error('Add at least one Customized Combo variant and quantity');
-        return;
-      }
+      const hasComboSelection = comboSelections.some((row) => (
+        (row.size || row.sizeKey || row.variantValue || row.catalogChoiceValue) && Number(row.quantity) > 0
+      ));
       if (comboSelections.some((row) => {
         if (!(Number(row.quantity) > 0)) return false;
         if (!(row.size || row.sizeKey || row.variantValue || row.catalogChoiceValue)) return false;
@@ -528,20 +566,25 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
         toast.error('Choose the source product for each ambiguous combo size');
         return;
       }
-      lineItems = buildComboLineItemsForSubmit();
-    } else if (productMode === 'collage_photos') {
+      if (hasComboSelection) {
+        comboItems = buildComboLineItemsForSubmit();
+        if (!comboItems.length) {
+          toast.error('Unable to build Customized Combo lines — check sizes and quantities');
+          return;
+        }
+      }
+    }
+
+    if (includeCollagePhotos) {
       if (!comboProduct?._id) {
         toast.error('Personalized Single Photo Frame size catalog is not available');
         return;
       }
       const rows = collagePhotosRows || [];
-      if (!rows.some((row) => (
+      const hasCollageSelection = rows.some((row) => (
         collageRoleConfigured(row.mainSizeKey, row.mainCount)
         || collageRoleConfigured(row.backgroundSizeKey, row.backgroundCount)
-      ))) {
-        toast.error('Add at least one collage with main or background size + count');
-        return;
-      }
+      ));
       if (rows.some((row) => {
         const mainOk = collageRoleConfigured(row.mainSizeKey, row.mainCount);
         const bgOk = collageRoleConfigured(row.backgroundSizeKey, row.backgroundCount);
@@ -560,30 +603,27 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
         toast.error('For each collage section you use, set both size and count (main and background are optional)');
         return;
       }
-      lineItems = buildCollagePhotosLineItems();
-      if (!lineItems.length) {
-        toast.error('Unable to build collage lines — check sizes and counts');
-        return;
+      if (hasCollageSelection) {
+        collageItems = buildCollagePhotosLineItems();
+        if (!collageItems.length) {
+          toast.error('Unable to build collage lines — check sizes and counts');
+          return;
+        }
       }
-    } else {
-      const rows = catalogProductRows || [];
-      if (!rows.some((row) => row.productId)) {
+    }
+
+    const lineItems = [...catalogItems, ...comboItems, ...collageItems];
+    if (!lineItems.length) {
+      if (includeCatalog && !includeCombo && !includeCollagePhotos) {
         toast.error('Add at least one product');
-        return;
+      } else if (includeCombo && !includeCatalog && !includeCollagePhotos) {
+        toast.error('Add at least one Customized Combo variant and quantity');
+      } else if (includeCollagePhotos && !includeCatalog && !includeCombo) {
+        toast.error('Add at least one collage with main or background size + count');
+      } else {
+        toast.error('Add at least one item in an enabled section (Select Product, Customized Combo, or Collage Photos)');
       }
-      if (rows.some((row) => row.productId && row.requiresSize && !row.selectedSizeKey)) {
-        toast.error('Select a size for every product that has variants');
-        return;
-      }
-      if (rows.some((row) => row.productId && Number(row.nonSizeOptionCount) > 0 && !row.productOptionValue)) {
-        toast.error('Select the product option for every product that requires one');
-        return;
-      }
-      lineItems = buildCatalogLineItems();
-      if (!lineItems.length) {
-        toast.error('Unable to build product lines — check products and sizes');
-        return;
-      }
+      return;
     }
 
     let paymentDateIso;
@@ -647,7 +687,7 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
           customizationInstructions: item.instructions,
           customFields: item.customFieldValues || undefined,
           collageUploads: item.collageUploads || undefined,
-          isCustomizedCombo: productMode === 'customized_combo' || item.isCustomizedCombo || undefined,
+          isCustomizedCombo: item.isCustomizedCombo || undefined,
           comboSize: item.comboSize || undefined,
           isOrderLocalCustomVariant: item.isOrderLocalCustomVariant || undefined,
           customVariantLabel: item.customVariantLabel || undefined,
@@ -713,6 +753,9 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
         internalNotes: '',
       }));
       setPaymentScreenshot(null);
+      setIncludeCatalog(true);
+      setIncludeCombo(false);
+      setIncludeCollagePhotos(false);
       setComboSelections([]);
       setCatalogProductRows([newCatalogProductRow()]);
       setCollagePhotosRows([newCollagePhotosRow()]);
@@ -954,68 +997,89 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
             </label>
           </div>
 
-                    <div className="space-y-3 rounded-xl border bg-gray-50 p-3">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <h3 className="font-bold text-gray-900">Products / Customized Combo</h3>
+          <div className="space-y-3 rounded-xl border bg-gray-50 p-3">
+            <div className="flex flex-col gap-2">
+              <div>
+                <h3 className="font-bold text-gray-900">Order items</h3>
+                <p className="text-[11px] text-gray-500 break-words">
+                  Enable any combination — Select Product, Customized Combo, Collage Photos — alone or together.
+                  New website products appear automatically in Select Product. One overall price covers the whole order.
+                </p>
+              </div>
               <div className="flex flex-wrap gap-2 text-xs font-semibold">
                 <button
                   type="button"
-                  className={`min-h-[40px] rounded-lg px-3 py-1.5 ${productMode === 'catalog' ? 'bg-emerald-700 text-white' : 'border bg-white'}`}
-                  onClick={() => setProductMode('catalog')}
+                  className={`min-h-[40px] rounded-lg px-3 py-1.5 ${includeCatalog ? 'bg-emerald-700 text-white' : 'border bg-white'}`}
+                  onClick={() => toggleOrderSection('catalog')}
+                  aria-pressed={includeCatalog}
                 >
                   Select Product
                 </button>
                 <button
                   type="button"
-                  className={`min-h-[40px] rounded-lg px-3 py-1.5 ${productMode === 'customized_combo' ? 'bg-emerald-700 text-white' : 'border bg-white'}`}
-                  onClick={() => setProductMode('customized_combo')}
+                  className={`min-h-[40px] rounded-lg px-3 py-1.5 ${includeCombo ? 'bg-emerald-700 text-white' : 'border bg-white'}`}
+                  onClick={() => toggleOrderSection('combo')}
+                  aria-pressed={includeCombo}
                 >
                   Customized Combo
                 </button>
                 <button
                   type="button"
-                  className={`min-h-[40px] rounded-lg px-3 py-1.5 ${productMode === 'collage_photos' ? 'bg-emerald-700 text-white' : 'border bg-white'}`}
-                  onClick={() => setProductMode('collage_photos')}
+                  className={`min-h-[40px] rounded-lg px-3 py-1.5 ${includeCollagePhotos ? 'bg-emerald-700 text-white' : 'border bg-white'}`}
+                  onClick={() => toggleOrderSection('collagePhotos')}
+                  aria-pressed={includeCollagePhotos}
                 >
                   Collage Photos
                 </button>
               </div>
             </div>
 
-            {productMode === 'catalog' ? (
-              <CatalogProductSection
-                products={products}
-                rows={catalogProductRows}
-                onRowsChange={setCatalogProductRows}
-                sizeCatalogProduct={comboProduct}
-              />
-            ) : productMode === 'collage_photos' ? (
-              <CollagePhotosSection
-                products={products}
-                rows={collagePhotosRows}
-                onRowsChange={setCollagePhotosRows}
-                sizeCatalogProduct={comboProduct}
-              />
-            ) : (
-              <ComboProductSection
-                products={products}
-                comboProduct={comboProduct}
-                comboError={comboError}
-                selections={comboSelections}
-                onSelectionsChange={setComboSelections}
-                comboCustomFields={comboCustomFields}
-                onComboCustomFieldsChange={setComboCustomFields}
-                comboExtraTextFields={comboExtraTextFields}
-                onComboExtraTextFieldsChange={setComboExtraTextFields}
-                comboCollageUploads={comboCollageUploads}
-                onComboCollageUploadsChange={setComboCollageUploads}
-                excludedComboCollageKeys={excludedComboCollageKeys}
-                onExcludedComboCollageKeysChange={setExcludedComboCollageKeys}
-              />
-            )}
+            <div className="space-y-4">
+              {includeCatalog ? (
+                <div className="rounded-xl border border-emerald-100 bg-white p-3">
+                  <CatalogProductSection
+                    products={products}
+                    rows={catalogProductRows}
+                    onRowsChange={setCatalogProductRows}
+                    sizeCatalogProduct={comboProduct}
+                  />
+                </div>
+              ) : null}
+
+              {includeCombo ? (
+                <div className="rounded-xl border border-emerald-100 bg-white p-3">
+                  <ComboProductSection
+                    products={products}
+                    comboProduct={comboProduct}
+                    comboError={comboError}
+                    selections={comboSelections}
+                    onSelectionsChange={setComboSelections}
+                    comboCustomFields={comboCustomFields}
+                    onComboCustomFieldsChange={setComboCustomFields}
+                    comboExtraTextFields={comboExtraTextFields}
+                    onComboExtraTextFieldsChange={setComboExtraTextFields}
+                    comboCollageUploads={comboCollageUploads}
+                    onComboCollageUploadsChange={setComboCollageUploads}
+                    excludedComboCollageKeys={excludedComboCollageKeys}
+                    onExcludedComboCollageKeysChange={setExcludedComboCollageKeys}
+                  />
+                </div>
+              ) : null}
+
+              {includeCollagePhotos ? (
+                <div className="rounded-xl border border-sky-100 bg-white p-3">
+                  <CollagePhotosSection
+                    products={products}
+                    rows={collagePhotosRows}
+                    onRowsChange={setCollagePhotosRows}
+                    sizeCatalogProduct={comboProduct}
+                  />
+                </div>
+              ) : null}
+            </div>
           </div>
 
-<div className="grid gap-3 rounded-xl border border-amber-100 bg-amber-50/40 p-3 sm:grid-cols-2">
+          <div className="grid gap-3 rounded-xl border border-amber-100 bg-amber-50/40 p-3 sm:grid-cols-2">
             <label className={`${labelClass} sm:col-span-2`}>
               {priceLabel}
               <input
@@ -1027,7 +1091,7 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
                 className="mt-1 w-full min-h-[44px] rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-base font-semibold sm:text-sm"
               />
               <span className="mt-1 block text-[11px] font-normal text-gray-600">
-                Manual amount — not calculated from website catalog unit prices.
+                Manual total for everything in this order (products, combo, collage). Not calculated from catalog unit prices.
               </span>
             </label>
             <label className={labelClass}>Shipping cost
