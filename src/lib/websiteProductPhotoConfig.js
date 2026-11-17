@@ -55,14 +55,29 @@ export function findVariantOption(product, variantValue = '') {
 
 export function variantAreaFromOption(selected) {
   if (!selected) return null;
-  const width = Number(selected.previewWidth);
-  const height = Number(selected.previewHeight);
+  let width = Number(selected.previewWidth);
+  let height = Number(selected.previewHeight);
+  let unit = selected.previewUnit || 'inch';
+  // When Admin left preview dims empty, derive frame from the size label (e.g. 12*18).
+  if (!(width > 0) || !(height > 0)) {
+    const fromLabel = String(selected.label || selected.optionLabel || '').match(
+      /(\d+(?:\.\d+)?)\s*[x×*]\s*(\d+(?:\.\d+)?)\s*(inch(?:es)?|in|cm|mm)?/i,
+    );
+    if (fromLabel) {
+      if (!(width > 0)) width = Number(fromLabel[1]) || 0;
+      if (!(height > 0)) height = Number(fromLabel[2]) || 0;
+      if (!selected.previewUnit && fromLabel[3]) {
+        const unitRaw = String(fromLabel[3]).toLowerCase();
+        unit = (unitRaw === 'inches' || unitRaw === 'in') ? 'inch' : unitRaw;
+      }
+    }
+  }
   if (!(width > 0) && !(height > 0) && !selected.previewFrameImage) return null;
   return {
     label: selected.label || 'Photo',
     width: width > 0 ? width : 1,
     height: height > 0 ? height : 1,
-    unit: selected.previewUnit || 'inch',
+    unit,
     frameImage: selected.previewFrameImage || '',
     instructions: selected.previewInstructions || '',
   };
@@ -221,6 +236,8 @@ export function buildVariantUploadSlots(product, variantValue = '') {
   const selected = findVariantOption(product, variantValue);
   if (!selected?.requiresImageUpload) return [];
   const variantArea = variantAreaFromOption(selected);
+  // Match ProductDetail: variant size preview opens from option dims even when
+  // product-level customizationPreview.enabled is false.
   const area = variantArea || {
     label: selected.label || 'Photo',
     width: 1,
@@ -240,7 +257,7 @@ export function buildVariantUploadSlots(product, variantValue = '') {
     frameImage: area.frameImage || '',
     instructions: area.instructions || '',
     required: true,
-    allowPreview,
+    allowPreview: Boolean(variantArea) || allowPreview,
     area,
     variantLabel: selected.label || '',
     variantId: selected.option?._id || selected.option?.sku || '',
@@ -937,7 +954,8 @@ export function buildAdditionalVariantSlots(product, variantValue, quantity) {
       frameImage: area.frameImage || '',
       instructions: area.instructions || '',
       required: true,
-      allowPreview: isProductPreviewEnabled(product) && Boolean(variantAreaFromOption(selected)),
+      // Variant option dims drive the editor even when product-level preview is off.
+      allowPreview: Boolean(variantAreaFromOption(selected)) || isProductPreviewEnabled(product),
       area,
       variantLabel: label,
       unitIndex: index + 1,

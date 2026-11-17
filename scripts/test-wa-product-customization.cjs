@@ -17,12 +17,13 @@ const modalSrc = fs.readFileSync(path.join(__dirname, '../src/components/admin/C
 assert.ok(configSrc.includes('listUniqueWebsiteSizes'));
 assert.ok(configSrc.includes('resolveWebsiteSizeConfig'));
 assert.ok(configSrc.includes('canonicalWebsiteSizeLabel'));
+assert.ok(configSrc.includes('Boolean(variantArea) || allowPreview'));
 assert.ok(sectionSrc.includes('UniqueSizeSelect'));
 assert.ok(sectionSrc.includes('listUniqueWebsiteSizes'));
-assert.ok(sectionSrc.includes('needsProductDisambiguation'));
-assert.ok(sectionSrc.includes('unique website sizes'));
+assert.ok(sectionSrc.includes('listUniqueWebsiteSizes(product ? [product] : [])'));
+assert.ok(sectionSrc.includes('on this product'));
+assert.ok(sectionSrc.includes('Only sizes configured on this selected product'));
 assert.ok(!/99 website size configurations/.test(sectionSrc));
-assert.ok(!/Sizes derived from this product/.test(sectionSrc));
 assert.ok(!sectionSrc.includes('${sizeLabel} — ${productTitle}'));
 assert.ok(estimateSrc.includes('resolveAdminDispatchDisplay'));
 assert.ok(ordersPageSrc.includes('resolveAdminDispatchDisplay'));
@@ -167,6 +168,35 @@ const twelveByEight = unique.sizes.find((s) => s.sizeKey === '12x8inch');
 assert.ok(twelveByEight);
 assert.ok(twelveByEight.configs.length >= 2);
 
+// Select Product mode: only sizes on the chosen product (no foreign catalog sizes).
+const singleFrame = {
+  _id: 'frame1',
+  title: 'Personalized Single Photo Frame – Premium Frame with Matte Finish',
+  isActive: true,
+  customizationPreview: { enabled: false },
+  variants: [{
+    name: 'Size Varients',
+    options: [
+      { label: '4*4', previewWidth: 4, previewHeight: 4, requiresImageUpload: true },
+      { label: '12*18', previewWidth: 12, previewHeight: 18, requiresImageUpload: true },
+      { label: '30*20', previewWidth: 30, previewHeight: 20, requiresImageUpload: true },
+    ],
+  }],
+};
+const productOnly = listUniqueWebsiteSizes([singleFrame]);
+assert.strictEqual(productOnly.uniqueCount, 3);
+assert.ok(productOnly.sizes.every((s) => s.configs.every((c) => c.productId === 'frame1')));
+assert.ok(!productOnly.sizes.some((s) => s.sizeKey === '12x8inch'), 'catalog size from other products must not appear');
+assert.ok(productOnly.sizes.some((s) => s.sizeKey === '12x18inch'));
+
+const scopedResolve = resolveWebsiteSizeConfig('12*18', {
+  products: [singleFrame],
+  preferredProductIds: ['frame1'],
+  explicitProductId: 'frame1',
+});
+assert.ok(scopedResolve.ok);
+assert.strictEqual(scopedResolve.config.productId, 'frame1');
+
 const preferred = resolveWebsiteSizeConfig('12*8 inch', {
   products,
   preferredProductIds: ['b1'],
@@ -180,6 +210,40 @@ const ambiguous = resolveWebsiteSizeConfig('12*8 inch', {
 });
 assert.ok(ambiguous.ambiguous);
 assert.ok(!ambiguous.config);
+
+function variantAreaFromOption(selected) {
+  if (!selected) return null;
+  let width = Number(selected.previewWidth);
+  let height = Number(selected.previewHeight);
+  let unit = selected.previewUnit || 'inch';
+  if (!(width > 0) || !(height > 0)) {
+    const fromLabel = String(selected.label || '').match(
+      /(\d+(?:\.\d+)?)\s*[x×*]\s*(\d+(?:\.\d+)?)\s*(inch(?:es)?|in|cm|mm)?/i,
+    );
+    if (fromLabel) {
+      if (!(width > 0)) width = Number(fromLabel[1]) || 0;
+      if (!(height > 0)) height = Number(fromLabel[2]) || 0;
+      if (!selected.previewUnit && fromLabel[3]) {
+        const unitRaw = String(fromLabel[3]).toLowerCase();
+        unit = (unitRaw === 'inches' || unitRaw === 'in') ? 'inch' : unitRaw;
+      }
+    }
+  }
+  if (!(width > 0) && !(height > 0) && !selected.previewFrameImage) return null;
+  return {
+    label: selected.label || 'Photo',
+    width: width > 0 ? width : 1,
+    height: height > 0 ? height : 1,
+    unit,
+  };
+}
+
+const area1218 = variantAreaFromOption({ label: '12*18', previewWidth: 12, previewHeight: 18 });
+assert.strictEqual(area1218.width, 12);
+assert.strictEqual(area1218.height, 18);
+const areaFromLabel = variantAreaFromOption({ label: '12*18' });
+assert.strictEqual(areaFromLabel.width, 12);
+assert.strictEqual(areaFromLabel.height, 18);
 
 function resolveAdminDispatchDisplay(order) {
   const snapYmd = String(order?.confirmationSchedule?.expectedReadyDateIst || '').trim();
@@ -200,5 +264,5 @@ assert.strictEqual(
 );
 assert.ok(resolveAdminDispatchDisplay({}).empty);
 
-console.log('OK: unique size + dispatch display regression checks passed');
-console.log(`Unique sizes in fixture: ${unique.uniqueCount}`);
+console.log('OK: product-scoped sizes + 12x18 frame + dispatch regression checks passed');
+console.log(`Catalog unique sizes: ${unique.uniqueCount}; Single frame sizes: ${productOnly.uniqueCount}`);
