@@ -8,9 +8,8 @@ import { sanitizeIntegerInput } from '@/lib/sanitizeNumericInput';
 import {
   buildAdditionalVariantSlots,
   buildOrderLocalCustomVariantSlots,
-  listWebsiteCatalogSizeChoices,
-  findCatalogSizeChoice,
-  groupCatalogSizeChoices,
+  listUniqueWebsiteSizes,
+  resolveWebsiteSizeConfig,
   mergeSlotsPreserveUploads,
   resolveProductCustomizationPlan,
   getTextCustomFields,
@@ -29,9 +28,35 @@ function resolveRowSourceProduct(products, fallbackProduct, row) {
   return fallbackProduct || null;
 }
 
+function applyResolvedSizeConfig(next, resolved) {
+  const config = resolved?.config || null;
+  next.sizeKey = resolved?.sizeKey || next.sizeKey || '';
+  next.sizeLabel = resolved?.sizeLabel || config?.sizeLabel || next.sizeLabel || '';
+  next.isCustom = false;
+  next.customLabel = '';
+  next.needsProductDisambiguation = Boolean(resolved?.ambiguous);
+  next.candidateProductIds = (resolved?.candidates || []).map((c) => String(c.productId));
+  if (config) {
+    next.catalogChoiceValue = config.value || '';
+    next.sourceProductId = config.productId || '';
+    next.variant = config.variantValue || '';
+    next.variantId = config.variantId || config.optionId || '';
+    next.customFieldValues = {};
+  } else {
+    next.catalogChoiceValue = '';
+    next.sourceProductId = '';
+    next.variant = '';
+    next.variantId = '';
+    next.customFieldValues = {};
+  }
+  return next;
+}
+
 function newVariantRow(fallbackProduct, seed = {}) {
   const row = {
     rowId: `row-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    sizeKey: seed.sizeKey || '',
+    sizeLabel: seed.sizeLabel || '',
     catalogChoiceValue: seed.catalogChoiceValue || '',
     sourceProductId: seed.sourceProductId || '',
     variant: seed.variant || '',
@@ -42,6 +67,8 @@ function newVariantRow(fallbackProduct, seed = {}) {
     photoSlots: seed.photoSlots || [],
     excludedSlotKeys: [],
     customFieldValues: seed.customFieldValues || {},
+    needsProductDisambiguation: seed.needsProductDisambiguation === true,
+    candidateProductIds: seed.candidateProductIds || [],
   };
   if (!row.photoSlots.length && fallbackProduct) {
     row.photoSlots = rebuildAdditionalSlots(fallbackProduct, row);
@@ -56,10 +83,10 @@ function rebuildAdditionalSlots(product, row) {
   return buildAdditionalVariantSlots(product, row.variant, row.quantity);
 }
 
-function CatalogSizeSelect({
+function UniqueSizeSelect({
   value,
   onChange,
-  groups,
+  sizes,
   includeCustom = true,
   emptyLabel = 'Select website size',
   className = fieldClass,
@@ -67,16 +94,10 @@ function CatalogSizeSelect({
   return (
     <select value={value} onChange={onChange} className={className}>
       <option value="">{emptyLabel}</option>
-      {groups.map((group) => (
-        <optgroup key={group.sizeKey} label={group.sizeLabel}>
-          {group.choices.map((choice) => (
-            <option key={choice.value} value={choice.value}>
-              {group.choices.length > 1
-                ? `${choice.productTitle}${choice.source === 'area_size' ? ' (preview size)' : ''}`
-                : choice.label}
-            </option>
-          ))}
-        </optgroup>
+      {(sizes || []).map((size) => (
+        <option key={size.sizeKey} value={size.sizeKey}>
+          {size.sizeLabel}
+        </option>
       ))}
       {includeCustom ? (
         <option value={ORDER_LOCAL_CUSTOM_VARIANT}>Custom Variant — This Order Only</option>
@@ -325,16 +346,12 @@ export function CatalogProductSection({
     () => resolveProductCustomizationPlan(product, { selectedVariantValue: selectedVariant }),
     [product, selectedVariant],
   );
-  const catalogSizePlan = useMemo(
-    () => listWebsiteCatalogSizeChoices(products),
+  const uniqueSizesPlan = useMemo(
+    () => listUniqueWebsiteSizes(products),
     [products],
   );
-  const catalogSizeChoices = catalogSizePlan.choices;
-  const catalogSizeGroups = useMemo(
-    () => groupCatalogSizeChoices(catalogSizeChoices),
-    [catalogSizeChoices],
-  );
-  const hasCatalogSizes = catalogSizeChoices.length > 0;
+  const uniqueSizes = uniqueSizesPlan.sizes;
+  const hasCatalogSizes = uniqueSizes.length > 0;
 
   useEffect(() => {
     if (!product) {
@@ -358,40 +375,60 @@ export function CatalogProductSection({
     onAdditionalVariantsChange((prev) => prev.map((row) => {
       if (row.rowId !== rowId) return row;
       const next = { ...row, ...patch };
-      if (Object.prototype.hasOwnProperty.call(patch, 'catalogChoiceValue')
+      if (Object.prototype.hasOwnProperty.call(patch, 'sizeKey')
+        || Object.prototype.hasOwnProperty.call(patch, 'sourceProductId')
+        || Object.prototype.hasOwnProperty.call(patch, 'catalogChoiceValue')
         || Object.prototype.hasOwnProperty.call(patch, 'variant')) {
-        const selectedValue = Object.prototype.hasOwnProperty.call(patch, 'catalogChoiceValue')
-          ? patch.catalogChoiceValue
-          : patch.variant;
+        const selectedValue = Object.prototype.hasOwnProperty.call(patch, 'sizeKey')
+          ? patch.sizeKey
+          : (Object.prototype.hasOwnProperty.call(patch, 'catalogChoiceValue')
+            ? patch.catalogChoiceValue
+            : patch.variant);
         if (selectedValue === ORDER_LOCAL_CUSTOM_VARIANT) {
           next.isCustom = true;
+          next.sizeKey = '';
+          next.sizeLabel = '';
           next.catalogChoiceValue = ORDER_LOCAL_CUSTOM_VARIANT;
           next.sourceProductId = productId || '';
           next.variantId = '';
           next.variant = ORDER_LOCAL_CUSTOM_VARIANT;
           next.customFieldValues = {};
+          next.needsProductDisambiguation = false;
+          next.candidateProductIds = [];
+        } else if (Object.prototype.hasOwnProperty.call(patch, 'sourceProductId') && next.sizeKey) {
+          const resolved = resolveWebsiteSizeConfig(next.sizeKey, {
+            products,
+            preferredProductIds: [productId],
+            explicitProductId: patch.sourceProductId,
+          });
+          applyResolvedSizeConfig(next, resolved);
         } else {
-          const match = findCatalogSizeChoice(catalogSizeChoices, selectedValue);
-          next.isCustom = false;
-          next.customLabel = '';
-          next.catalogChoiceValue = match?.value || selectedValue || '';
-          next.sourceProductId = match?.productId || '';
-          next.variant = match?.variantValue || '';
-          next.variantId = match?.variantId || match?.optionId || '';
-          next.customFieldValues = {};
+          const resolved = resolveWebsiteSizeConfig(selectedValue, {
+            products,
+            preferredProductIds: [productId],
+            explicitProductId: next.sourceProductId || '',
+          });
+          applyResolvedSizeConfig(next, resolved);
         }
       }
       const sourceProduct = resolveRowSourceProduct(products, product, next);
-      if (Object.prototype.hasOwnProperty.call(patch, 'catalogChoiceValue')
+      if (Object.prototype.hasOwnProperty.call(patch, 'sizeKey')
+        || Object.prototype.hasOwnProperty.call(patch, 'sourceProductId')
+        || Object.prototype.hasOwnProperty.call(patch, 'catalogChoiceValue')
         || Object.prototype.hasOwnProperty.call(patch, 'variant')
         || Object.prototype.hasOwnProperty.call(patch, 'quantity')
         || Object.prototype.hasOwnProperty.call(patch, 'customLabel')
         || Object.prototype.hasOwnProperty.call(patch, 'isCustom')
         || Object.prototype.hasOwnProperty.call(patch, 'photoSlots')) {
         if (!Object.prototype.hasOwnProperty.call(patch, 'photoSlots')) {
-          const nextSlots = rebuildAdditionalSlots(sourceProduct, next);
-          next.photoSlots = mergeSlotsPreserveUploads(nextSlots, row.photoSlots || []);
-          next.excludedSlotKeys = (next.excludedSlotKeys || []).filter((key) => next.photoSlots.some((s) => s.slotKey === key));
+          if (next.needsProductDisambiguation && !next.sourceProductId) {
+            next.photoSlots = [];
+            next.excludedSlotKeys = [];
+          } else {
+            const nextSlots = rebuildAdditionalSlots(sourceProduct, next);
+            next.photoSlots = mergeSlotsPreserveUploads(nextSlots, row.photoSlots || []);
+            next.excludedSlotKeys = (next.excludedSlotKeys || []).filter((key) => next.photoSlots.some((s) => s.slotKey === key));
+          }
         }
       }
       return next;
@@ -498,7 +535,7 @@ export function CatalogProductSection({
               <div>
                 <h4 className="text-sm font-bold text-gray-900">Additional Variants</h4>
                 <p className="text-[11px] text-gray-500">
-                  All website-supported sizes from the catalog. Same size from different products stays distinct with that product&apos;s upload and preview rules.
+                  Unique website sizes only. Uploads and preview follow the selected product when it offers that size; otherwise choose the source product.
                 </p>
               </div>
               <button
@@ -526,22 +563,26 @@ export function CatalogProductSection({
             {additionalVariants.map((row) => {
               const isCustom = row.isCustom || row.variant === ORDER_LOCAL_CUSTOM_VARIANT
                 || row.catalogChoiceValue === ORDER_LOCAL_CUSTOM_VARIANT;
-              const selectedChoice = findCatalogSizeChoice(catalogSizeChoices, row.catalogChoiceValue);
               const sourceProduct = resolveRowSourceProduct(products, product, row);
-              const sourceTextFields = isCustom ? [] : getTextCustomFields(sourceProduct);
-              const hasSelection = isCustom ? true : Boolean(row.catalogChoiceValue || row.variant);
+              const sourceTextFields = isCustom || row.needsProductDisambiguation
+                ? []
+                : getTextCustomFields(sourceProduct);
+              const hasSelection = isCustom ? true : Boolean(row.sizeKey || row.catalogChoiceValue || row.variant);
               const selectValue = isCustom
                 ? ORDER_LOCAL_CUSTOM_VARIANT
-                : (row.catalogChoiceValue || '');
+                : (row.sizeKey || '');
+              const candidateConfigs = (uniqueSizes.find((s) => s.sizeKey === row.sizeKey)?.configs || [])
+                .filter((c) => (row.candidateProductIds || []).includes(String(c.productId))
+                  || !(row.candidateProductIds || []).length);
               return (
               <div key={row.rowId} className="grid gap-2 rounded-xl border bg-white p-3 sm:grid-cols-2">
                 <div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-2">
                   <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
                     {isCustom
                       ? 'Custom variant — this order only'
-                      : (selectedChoice
-                        ? `${selectedChoice.sizeLabel} · ${selectedChoice.productTitle}`
-                        : 'Website catalog size')}
+                      : (row.sizeLabel
+                        ? `Size ${row.sizeLabel}${sourceProduct?.title ? ` · ${sourceProduct.title}` : ''}`
+                        : 'Website size')}
                   </p>
                   <button
                     type="button"
@@ -557,19 +598,42 @@ export function CatalogProductSection({
                 </div>
                 <label className={`${labelClass} col-span-full`}>
                   Variant / size
-                  <CatalogSizeSelect
+                  <UniqueSizeSelect
                     value={selectValue}
-                    groups={catalogSizeGroups}
+                    sizes={uniqueSizes}
                     includeCustom
                     emptyLabel="Select website size"
-                    onChange={(e) => updateAdditionalRow(row.rowId, { catalogChoiceValue: e.target.value })}
+                    onChange={(e) => updateAdditionalRow(row.rowId, { sizeKey: e.target.value })}
                   />
                   <span className="mt-1 block text-[10px] font-normal text-gray-500">
                     {hasCatalogSizes
-                      ? `${catalogSizeChoices.length} website size configurations · ${catalogSizeGroups.length} unique sizes`
+                      ? `${uniqueSizesPlan.uniqueCount} unique website sizes`
                       : 'No website size options found in the loaded catalog. Use a custom order-only label.'}
                   </span>
                 </label>
+                {!isCustom && row.needsProductDisambiguation ? (
+                  <label className={`${labelClass} col-span-full`}>
+                    Source product for this size
+                    <select
+                      value={row.sourceProductId || ''}
+                      onChange={(e) => updateAdditionalRow(row.rowId, { sourceProductId: e.target.value })}
+                      className={fieldClass}
+                    >
+                      <option value="">Select product configuration</option>
+                      {(candidateConfigs.length
+                        ? candidateConfigs
+                        : (uniqueSizes.find((s) => s.sizeKey === row.sizeKey)?.configs || [])
+                      ).map((config) => (
+                        <option key={config.value} value={config.productId}>
+                          {config.productTitle}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="mt-1 block text-[10px] font-normal text-amber-800">
+                      This size exists on multiple products. Choose which configuration to use for uploads and preview.
+                    </span>
+                  </label>
+                ) : null}
                 {isCustom ? (
                   <label className={`${labelClass} sm:col-span-2`}>
                     Custom label / size
@@ -636,9 +700,11 @@ export function CatalogProductSection({
                   <p className="sm:col-span-2 col-span-full text-[11px] text-gray-500">
                     {isCustom
                       ? 'No product-level upload sections to copy for this custom variant. Add photos later in Order Details if needed.'
-                      : (row.catalogChoiceValue || row.variant)
-                        ? 'No upload slots for this size configuration.'
-                        : 'Select a website size to load its upload and preview fields.'}
+                      : row.needsProductDisambiguation
+                        ? 'Choose the source product above to load uploads and preview for this size.'
+                        : (row.sizeKey || row.catalogChoiceValue || row.variant)
+                          ? 'No upload slots for this size configuration.'
+                          : 'Select a website size to load its upload and preview fields.'}
                   </p>
                 ) : (
                   <p className="sm:col-span-2 col-span-full text-[11px] text-gray-500">
@@ -685,35 +751,57 @@ export function ComboProductSection({
     }
     return list;
   }, [products, comboProduct]);
-  const catalogSizePlan = useMemo(
-    () => listWebsiteCatalogSizeChoices(catalogProducts),
+  const uniqueSizesPlan = useMemo(
+    () => listUniqueWebsiteSizes(catalogProducts),
     [catalogProducts],
   );
-  const catalogSizeChoices = catalogSizePlan.choices;
-  const catalogSizeGroups = useMemo(
-    () => groupCatalogSizeChoices(catalogSizeChoices),
-    [catalogSizeChoices],
-  );
+  const uniqueSizes = uniqueSizesPlan.sizes;
 
   const updateRow = (rowId, patch) => {
     onSelectionsChange((prev) => prev.map((row) => {
       if (row.rowId !== rowId) return row;
       const next = { ...row, ...patch };
-      if (Object.prototype.hasOwnProperty.call(patch, 'catalogChoiceValue')) {
-        const choice = findCatalogSizeChoice(catalogSizeChoices, patch.catalogChoiceValue);
-        if (choice) {
+      if (Object.prototype.hasOwnProperty.call(patch, 'sizeKey')
+        || Object.prototype.hasOwnProperty.call(patch, 'productId')
+        || Object.prototype.hasOwnProperty.call(patch, 'catalogChoiceValue')) {
+        if (Object.prototype.hasOwnProperty.call(patch, 'sizeKey')
+          || Object.prototype.hasOwnProperty.call(patch, 'catalogChoiceValue')
+          || (Object.prototype.hasOwnProperty.call(patch, 'productId') && next.sizeKey)) {
+          const sizeKey = Object.prototype.hasOwnProperty.call(patch, 'sizeKey')
+            ? patch.sizeKey
+            : (next.sizeKey || patch.catalogChoiceValue || '');
+          const resolved = resolveWebsiteSizeConfig(sizeKey, {
+            products: catalogProducts,
+            preferredProductIds: [defaultProductId, next.productId],
+            explicitProductId: Object.prototype.hasOwnProperty.call(patch, 'productId')
+              ? patch.productId
+              : '',
+          });
           next.isCustom = false;
-          next.catalogChoiceValue = choice.value;
-          next.productId = choice.productId;
-          next.variantValue = choice.variantValue;
-          next.variantId = choice.variantId || choice.optionId || '';
-          next.size = choice.sizeLabel || choice.optionLabel || '';
+          next.sizeKey = resolved.sizeKey || sizeKey || '';
+          next.size = resolved.sizeLabel || next.size || '';
+          next.needsProductDisambiguation = Boolean(resolved.ambiguous);
+          next.candidateProductIds = (resolved.candidates || []).map((c) => String(c.productId));
+          if (resolved.config) {
+            next.catalogChoiceValue = resolved.config.value || '';
+            next.productId = resolved.config.productId || '';
+            next.variantValue = resolved.config.variantValue || '';
+            next.variantId = resolved.config.variantId || resolved.config.optionId || '';
+          } else if (resolved.ambiguous) {
+            next.catalogChoiceValue = '';
+            next.variantValue = '';
+            next.variantId = '';
+            if (!Object.prototype.hasOwnProperty.call(patch, 'productId')) {
+              next.productId = '';
+            }
+          }
         }
       }
       const product = catalogProducts.find((p) => String(p._id) === String(next.productId))
         || (String(next.productId) === String(comboProduct?._id) ? comboProduct : null)
         || comboProduct;
-      if (Object.prototype.hasOwnProperty.call(patch, 'catalogChoiceValue')
+      if (Object.prototype.hasOwnProperty.call(patch, 'sizeKey')
+        || Object.prototype.hasOwnProperty.call(patch, 'catalogChoiceValue')
         || Object.prototype.hasOwnProperty.call(patch, 'variantValue')
         || Object.prototype.hasOwnProperty.call(patch, 'size')
         || Object.prototype.hasOwnProperty.call(patch, 'quantity')
@@ -721,7 +809,9 @@ export function ComboProductSection({
         || Object.prototype.hasOwnProperty.call(patch, 'photoSlots')) {
         const variantValue = next.variantValue || (next.size ? `Size: ${next.size}` : '');
         if (!Object.prototype.hasOwnProperty.call(patch, 'photoSlots')) {
-          if (!next.isCustom && product) {
+          if (next.needsProductDisambiguation && !next.productId) {
+            next.photoSlots = [];
+          } else if (!next.isCustom && product) {
             const nextSlots = buildAdditionalVariantSlots(product, variantValue, next.quantity);
             next.photoSlots = mergeSlotsPreserveUploads(nextSlots, row.photoSlots || []);
           } else if (next.isCustom && next.size) {
@@ -737,14 +827,13 @@ export function ComboProductSection({
   return (
     <div className="space-y-3">
       <p className="text-[11px] text-gray-600 break-words">
-        Each combo line picks a website-supported size from the full catalog.
-        Selecting a size maps to that size&apos;s source product, uploads, and preview rules.
+        Each combo line picks a unique website size. Uploads follow the combo source product when it offers that size; otherwise choose the source product.
         Default combo source:{' '}
         <strong>{comboProduct?.title || (comboError ? 'Unavailable' : 'Loading…')}</strong>.
       </p>
       {comboError ? <p className="text-xs font-semibold text-red-700">{comboError}</p> : null}
       <p className="text-[11px] text-gray-500">
-        {catalogSizeChoices.length} website size configurations · {catalogSizeGroups.length} unique sizes
+        {uniqueSizesPlan.uniqueCount} unique website sizes
       </p>
 
       {comboProduct ? (
@@ -828,18 +917,18 @@ export function ComboProductSection({
       ) : null}
 
       {selections.map((row) => {
-        const selectedChoice = findCatalogSizeChoice(catalogSizeChoices, row.catalogChoiceValue);
         const rowProduct = catalogProducts.find((p) => String(p._id) === String(row.productId))
           || (String(row.productId) === String(comboProduct?._id) ? comboProduct : null)
           || comboProduct;
+        const candidateConfigs = uniqueSizes.find((s) => s.sizeKey === row.sizeKey)?.configs || [];
         return (
           <div key={row.rowId} className="grid gap-2 rounded-xl border bg-white p-3 sm:grid-cols-2">
             <div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
                 {row.isCustom
                   ? 'Custom combo size — this order only'
-                  : (selectedChoice
-                    ? `${selectedChoice.sizeLabel} · ${selectedChoice.productTitle}`
+                  : (row.size
+                    ? `Size ${row.size}${rowProduct?.title ? ` · ${rowProduct.title}` : ''}`
                     : 'Combo website size')}
               </p>
               <button
@@ -854,11 +943,6 @@ export function ComboProductSection({
                 Remove Variant
               </button>
             </div>
-            {!row.isCustom ? (
-              <p className="sm:col-span-2 text-[11px] text-gray-500">
-                Source product: <strong>{rowProduct?.title || 'Select a size'}</strong>
-              </p>
-            ) : null}
             <label className={`${labelClass} col-span-full`}>
               Variant / size
               {row.isCustom ? (
@@ -873,12 +957,12 @@ export function ComboProductSection({
                   className={fieldClass}
                 />
               ) : (
-                <CatalogSizeSelect
-                  value={row.catalogChoiceValue || ''}
-                  groups={catalogSizeGroups}
+                <UniqueSizeSelect
+                  value={row.sizeKey || ''}
+                  sizes={uniqueSizes}
                   includeCustom={false}
                   emptyLabel="Select website size"
-                  onChange={(e) => updateRow(row.rowId, { catalogChoiceValue: e.target.value })}
+                  onChange={(e) => updateRow(row.rowId, { sizeKey: e.target.value })}
                 />
               )}
               {row.isCustom ? (
@@ -887,10 +971,31 @@ export function ComboProductSection({
                 </span>
               ) : (
                 <span className="mt-1 block text-[10px] font-normal text-gray-500">
-                  All website sizes · same size from different products stays distinct
+                  Unique website sizes only
                 </span>
               )}
             </label>
+            {!row.isCustom && row.needsProductDisambiguation ? (
+              <label className={`${labelClass} col-span-full`}>
+                Source product for this size
+                <select
+                  value={row.productId || ''}
+                  onChange={(e) => updateRow(row.rowId, { productId: e.target.value })}
+                  className={fieldClass}
+                >
+                  <option value="">Select product configuration</option>
+                  {candidateConfigs.map((config) => (
+                    <option key={config.value} value={config.productId}>
+                      {config.productTitle}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (!row.isCustom && rowProduct?.title ? (
+              <p className="sm:col-span-2 col-span-full text-[11px] text-gray-500">
+                Source product: <strong>{rowProduct.title}</strong>
+              </p>
+            ) : null)}
             <label className={`${labelClass} col-span-full sm:col-span-1`}>
               Qty
               <input
@@ -919,7 +1024,11 @@ export function ComboProductSection({
                 />
               </div>
             ) : (row.variantValue || row.size) ? (
-              <p className="sm:col-span-2 col-span-full text-[11px] text-gray-500">No upload slots for this size configuration.</p>
+              <p className="sm:col-span-2 col-span-full text-[11px] text-gray-500">
+                {row.needsProductDisambiguation
+                  ? 'Choose the source product above to load uploads for this size.'
+                  : 'No upload slots for this size configuration.'}
+              </p>
             ) : null}
           </div>
         );
@@ -935,12 +1044,15 @@ export function ComboProductSection({
               rowId: `combo-${Date.now()}`,
               productId: defaultProductId,
               catalogChoiceValue: '',
+              sizeKey: '',
               size: '',
               variantValue: '',
               variantId: '',
               quantity: '1',
               isCustom: false,
               photoSlots: [],
+              needsProductDisambiguation: false,
+              candidateProductIds: [],
             },
           ])}
         >

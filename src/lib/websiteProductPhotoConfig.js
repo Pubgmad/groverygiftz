@@ -370,12 +370,39 @@ export function isWebsiteSizeLikeLabel(label) {
   return false;
 }
 
+/**
+ * Normalize equivalent size formatting to one key.
+ * e.g. "12x18", "12 × 18", "12*18 inch" → "12x18inch"
+ * Does NOT swap orientation (30x20 ≠ 20x30).
+ */
 export function normalizeWebsiteSizeKey(label) {
-  return String(label || '')
-    .toLowerCase()
+  const raw = String(label || '').trim().toLowerCase();
+  if (!raw) return '';
+  const match = raw.match(/(\d+(?:\.\d+)?)\s*[x×*]\s*(\d+(?:\.\d+)?)\s*(inch(?:es)?|in|cm|mm)?/i);
+  if (match) {
+    const unitRaw = String(match[3] || 'inch').toLowerCase();
+    const unit = (unitRaw === 'inches' || unitRaw === 'in') ? 'inch' : unitRaw;
+    return `${match[1]}x${match[2]}${unit}`;
+  }
+  return raw
     .replace(/[×*]/g, 'x')
     .replace(/\s+/g, '')
     .replace(/inches\b/g, 'inch');
+}
+
+/** Prefer a stable human size label (keep unit when present). */
+export function canonicalWebsiteSizeLabel(labels = []) {
+  const list = (Array.isArray(labels) ? labels : [])
+    .map((label) => String(label || '').trim())
+    .filter(Boolean);
+  if (!list.length) return '';
+  const withUnit = list.find((label) => /\b(inch|inches|in|cm|mm)\b/i.test(label));
+  const pick = withUnit || list[0];
+  const match = String(pick).match(/(\d+(?:\.\d+)?)\s*[x×*]\s*(\d+(?:\.\d+)?)\s*(inch(?:es)?|in|cm|mm)?/i);
+  if (!match) return pick;
+  const unitRaw = String(match[3] || 'inch').toLowerCase();
+  const unit = (unitRaw === 'inches' || unitRaw === 'in') ? 'inch' : unitRaw;
+  return `${match[1]}×${match[2]} ${unit}`;
 }
 
 /**
@@ -569,6 +596,130 @@ export function groupCatalogSizeChoices(choices = []) {
   });
   return groups;
 }
+
+/**
+ * Unique size-only dropdown options for Create WhatsApp Order.
+ * Labels are size names only (no product titles / IDs).
+ * Underlying configs stay available for context-aware resolution.
+ */
+export function listUniqueWebsiteSizes(products = []) {
+  const { choices } = listWebsiteCatalogSizeChoices(products);
+  const byKey = new Map();
+  choices.forEach((choice) => {
+    const sizeKey = choice.sizeKey || normalizeWebsiteSizeKey(choice.sizeLabel);
+    if (!sizeKey) return;
+    if (!byKey.has(sizeKey)) {
+      byKey.set(sizeKey, {
+        sizeKey,
+        sizeLabel: '',
+        labels: [],
+        configs: [],
+      });
+    }
+    const entry = byKey.get(sizeKey);
+    entry.configs.push(choice);
+    if (choice.sizeLabel) entry.labels.push(choice.sizeLabel);
+    if (choice.shortLabel) entry.labels.push(choice.shortLabel);
+  });
+
+  const sizes = [...byKey.values()].map((entry) => ({
+    sizeKey: entry.sizeKey,
+    sizeLabel: canonicalWebsiteSizeLabel(entry.labels) || entry.labels[0] || entry.sizeKey,
+    configs: entry.configs,
+    configCount: entry.configs.length,
+  }));
+
+  sizes.sort((a, b) => String(a.sizeLabel).localeCompare(String(b.sizeLabel), undefined, {
+    numeric: true,
+    sensitivity: 'base',
+  }));
+
+  return {
+    sizes,
+    uniqueCount: sizes.length,
+    configCount: choices.length,
+    source: 'catalog_unique',
+  };
+}
+
+/**
+ * Resolve a unique size to one product/variant configuration.
+ * Prefer preferredProductIds (selected product / combo source) — never silent unrelated picks
+ * when multiple products define the size with no preferred match.
+ */
+export function resolveWebsiteSizeConfig(sizeKeyOrLabel, {
+  products = [],
+  preferredProductIds = [],
+  explicitProductId = '',
+} = {}) {
+  const sizeKey = normalizeWebsiteSizeKey(sizeKeyOrLabel);
+  if (!sizeKey) {
+    return { ok: false, reason: 'missing_size', ambiguous: false, config: null, candidates: [] };
+  }
+  const { sizes } = listUniqueWebsiteSizes(products);
+  const entry = sizes.find((size) => size.sizeKey === sizeKey);
+  if (!entry?.configs?.length) {
+    return { ok: false, reason: 'unknown_size', ambiguous: false, config: null, candidates: [] };
+  }
+
+  const preferred = (Array.isArray(preferredProductIds) ? preferredProductIds : [])
+    .map((id) => String(id || '').trim())
+    .filter(Boolean);
+  const explicit = String(explicitProductId || '').trim();
+
+  if (explicit) {
+    const match = entry.configs.find((config) => String(config.productId) === explicit);
+    if (match) {
+      return {
+        ok: true,
+        reason: 'explicit_product',
+        ambiguous: false,
+        config: match,
+        candidates: entry.configs,
+        sizeLabel: entry.sizeLabel,
+        sizeKey: entry.sizeKey,
+      };
+    }
+  }
+
+  for (const productId of preferred) {
+    const match = entry.configs.find((config) => String(config.productId) === productId);
+    if (match) {
+      return {
+        ok: true,
+        reason: 'preferred_product',
+        ambiguous: false,
+        config: match,
+        candidates: entry.configs,
+        sizeLabel: entry.sizeLabel,
+        sizeKey: entry.sizeKey,
+      };
+    }
+  }
+
+  if (entry.configs.length === 1) {
+    return {
+      ok: true,
+      reason: 'single_config',
+      ambiguous: false,
+      config: entry.configs[0],
+      candidates: entry.configs,
+      sizeLabel: entry.sizeLabel,
+      sizeKey: entry.sizeKey,
+    };
+  }
+
+  return {
+    ok: false,
+    reason: 'ambiguous_size',
+    ambiguous: true,
+    config: null,
+    candidates: entry.configs,
+    sizeLabel: entry.sizeLabel,
+    sizeKey: entry.sizeKey,
+  };
+}
+
 
 export function getTextCustomFields(product) {
   return (Array.isArray(product?.customFields) ? product.customFields : [])

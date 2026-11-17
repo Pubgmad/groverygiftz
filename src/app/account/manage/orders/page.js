@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { formatPrice } from '@/lib/utils';
 import { getOrderDeliveryEstimate, isOrderOutOfTamilNadu } from '@/lib/orderDeliveryEstimate';
 import { formatLongIstDate } from '@/lib/businessCalendar';
+import { resolveAdminDispatchDisplay } from '@/lib/orderDeliveryEstimate';
 import toast from 'react-hot-toast';
 import useAdminAccess from '@/hooks/useAdminAccess';
 import useDebouncedValue from '@/hooks/useDebouncedValue';
@@ -823,10 +824,8 @@ export default function AdminOrdersPage() {
                           {order.opsStatus ? <p className="mt-1 text-[11px] text-gray-500">{OPS_STATUS_LABELS[order.opsStatus] || order.opsStatus}</p> : null}
                         </td>
                         <td className="p-4 text-xs cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>{order.assignedToName || '—'}</td>
-                        <td className="p-4 text-xs cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>
-                          {order.confirmationSchedule?.expectedReadyDateIst
-                            ? formatLongIstDate(order.confirmationSchedule.expectedReadyDateIst)
-                            : (order.expectedDispatchDate ? formatDate(order.expectedDispatchDate) : '—')}
+                        <td className="p-4 text-xs cursor-pointer whitespace-nowrap" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>
+                          {resolveAdminDispatchDisplay(order).label || '—'}
                           {isDelayedOrder(order) ? <span className="mt-1 block font-semibold text-red-600">Delayed</span> : null}
                         </td>
                         <td className="p-4 cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}><span className={`px-2 py-1 rounded-full text-xs font-semibold ${paymentStatusColors[order.paymentStatus] || paymentStatusColors.pending}`}>{order.paymentMethod || 'Cashfree'} {order.paymentStatus}</span></td>
@@ -892,9 +891,12 @@ export default function AdminOrdersPage() {
                   </div>
                 ) : null}
                 <div><span className="text-gray-500">Order date:</span> {formatDate(selected.paidAt || selected.createdAt)}</div>
-                {selected.confirmationSchedule?.expectedReadyDateIst ? (
-                  <div className="break-words"><span className="text-gray-500">Expected Ready Date:</span> <span className="font-medium">{formatLongIstDate(selected.confirmationSchedule.expectedReadyDateIst)}</span></div>
-                ) : null}
+                {(() => {
+                  const dispatchDisplay = resolveAdminDispatchDisplay(selected);
+                  return dispatchDisplay.label ? (
+                    <div className="break-words"><span className="text-gray-500">Expected Ready / Dispatch Date:</span> <span className="font-medium">{dispatchDisplay.label}</span></div>
+                  ) : null;
+                })()}
                 {selected.confirmationSchedule?.estimatedDeliveryDateIst || selected.expectedDeliveryDate ? (
                   <div className="break-words"><span className="text-gray-500">Expected Delivery Date:</span> <span className="font-medium">{selected.confirmationSchedule?.estimatedDeliveryDateIst
                     ? formatLongIstDate(selected.confirmationSchedule.estimatedDeliveryDateIst)
