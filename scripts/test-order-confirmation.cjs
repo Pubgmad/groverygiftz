@@ -257,7 +257,8 @@ test('holiday +1 is applied once even when consecutive holidays follow the order
 test('confirmed snapshots stay frozen after Admin estimate and holiday changes', async () => {
   const api = loadSchedule();
   const order = {
-    paidAt: new Date('2026-11-16T11:00:00+05:30'),
+    // Keep within the live 24h window so persist is allowed without allowHistorical.
+    paidAt: new Date(Date.now() - 60 * 60 * 1000),
     shippingAddress: { state: 'Maharashtra', email: 'buyer@example.com' },
   };
   const firstSettings = {
@@ -295,6 +296,23 @@ test('historical paid orders without a snapshot are not backfilled with guessed 
   assert.equal(result.ok, false);
   assert.equal(result.reason, 'historical_order_without_snapshot');
   assert.equal(order.confirmationSchedule, undefined);
+});
+
+test('allowHistorical opt-in backfills missed confirmation snapshots for repair scripts', async () => {
+  const api = loadSchedule();
+  const order = {
+    paidAt: new Date('2026-01-10T11:00:00+05:30'),
+    shippingAddress: { state: 'Tamil Nadu', email: 'old@example.com' },
+  };
+  const result = await api.persistOrderConfirmationSchedule(order, {
+    tamilNaduDeliveryEstimate: '6 working days',
+    otherStateDeliveryEstimate: '12-15 working days',
+    deliveryHolidays: [],
+  }, { allowHistorical: true });
+  assert.equal(result.ok, true);
+  assert.equal(result.persisted, true);
+  assert.equal(Boolean(order.confirmationSchedule?.expectedReadyDateIst), true);
+  assert.equal(Boolean(order.expectedDispatchDate), true);
 });
 
 test('same Indian order date shares dispatch across states', () => {
@@ -499,8 +517,12 @@ test('checkout and browser bundles do not contain SMTP secrets', () => {
   assert.match(outbox, /attempts: MAX_ATTEMPTS/);
   const finalize = fs.readFileSync(path.join(__dirname, '../src/lib/cashfreeOrderFinalization.js'), 'utf8');
   assert.match(finalize, /attachOrderConfirmation/);
+  assert.match(finalize, /ensureOrderConfirmationScheduleById/);
   assert.match(finalize, /enqueueOrderConfirmationEmail/);
   assert.match(finalize, /paymentStatus !== 'paid'/);
+  // Concurrent finalize paths must not full-document save over confirmationSchedule.
+  assert.match(finalize, /Selective \$set only/);
+  assert.match(finalize, /Avoid full-document save of a stale in-memory order/);
   const confirmationApi = fs.readFileSync(path.join(__dirname, '../src/app/api/orders/confirmation-email/route.js'), 'utf8');
   assert.match(confirmationApi, /session\?\.user\?\.type !== 'customer'/);
   assert.match(confirmationApi, /customer: session\.user\.id/);

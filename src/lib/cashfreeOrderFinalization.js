@@ -10,7 +10,7 @@ import { buildMetaPurchase } from '@/lib/metaPurchase';
 import { buildGA4Purchase } from '@/lib/ga4Data';
 import { getConfirmedScheduleDates, getOrderDeliveryEstimate } from '@/lib/orderDeliveryEstimate';
 import { cartLineKey, reconcileCartAgainstPurchasedItems } from '@/lib/cartReconcile';
-import { confirmationRecipientEmail, persistOrderConfirmationSchedule } from '@/lib/orderConfirmationSchedule';
+import { confirmationRecipientEmail, ensureOrderConfirmationScheduleById } from '@/lib/orderConfirmationSchedule';
 import { confirmationEmailStateForOrder, enqueueOrderConfirmationEmail, processOrderConfirmationJobs } from '@/lib/orderConfirmationOutbox';
 
 export const CASHFREE_VERSION = '2025-01-01';
@@ -64,16 +64,51 @@ const getDisplayDeliveryEstimate = (order, settings = {}) => getOrderDeliveryEst
 
 async function attachOrderConfirmation(order, settings = {}) {
   if (!order || order.paymentStatus !== 'paid') return;
+
+  const applyScheduleResult = (result) => {
+    if (!result?.ok) return;
+    if (result.schedule) order.confirmationSchedule = result.schedule;
+    if (result.order?.expectedDispatchDate) order.expectedDispatchDate = result.order.expectedDispatchDate;
+    else if (result.schedule?.expectedReadyDateIst && !order.expectedDispatchDate) {
+      const [year, month, day] = String(result.schedule.expectedReadyDateIst).split('-').map(Number);
+      if (year && month && day) {
+        order.expectedDispatchDate = new Date(Date.UTC(year, month - 1, day, 0, 0, 0) - (5.5 * 60 * 60 * 1000));
+      }
+    }
+    const displayDeliveryEstimate = getDisplayDeliveryEstimate(order, settings);
+    if (displayDeliveryEstimate) order.deliveryEstimate = displayDeliveryEstimate;
+  };
+
   try {
-    const persisted = await persistOrderConfirmationSchedule(order, settings);
-    if (persisted.persisted) {
-      const displayDeliveryEstimate = getDisplayDeliveryEstimate(order, settings);
-      if (displayDeliveryEstimate) order.deliveryEstimate = displayDeliveryEstimate;
-      await order.save();
+    // Atomic $set avoids concurrent webhook/verify full-document saves wiping the schedule.
+    let result = await ensureOrderConfirmationScheduleById(Order, order._id, settings);
+    if (!result.ok) {
+      console.error('Order confirmation schedule not attached', order.orderNumber || order._id, result.reason);
+      // One retry after a short delay for transient races / settings load issues.
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      result = await ensureOrderConfirmationScheduleById(Order, order._id, settings);
+    }
+    if (!result.ok) {
+      console.error('Order confirmation schedule retry failed', order.orderNumber || order._id, result.reason);
+    } else {
+      applyScheduleResult(result);
+      if (result.persisted && order.deliveryEstimate) {
+        await Order.updateOne(
+          { _id: order._id },
+          { $set: { deliveryEstimate: order.deliveryEstimate } },
+        );
+      }
     }
   } catch (error) {
-    console.error('Order confirmation schedule failed');
+    console.error('Order confirmation schedule failed', order.orderNumber || order._id, error);
+    try {
+      const retry = await ensureOrderConfirmationScheduleById(Order, order._id, settings);
+      applyScheduleResult(retry);
+    } catch (retryError) {
+      console.error('Order confirmation schedule recovery failed', order.orderNumber || order._id, retryError);
+    }
   }
+
   try {
     const job = await enqueueOrderConfirmationEmail(order);
     if (job && (job.status === 'pending' || job.status === 'failed')) {
@@ -197,7 +232,18 @@ export async function finalizeCashfreeOrder(orderId, { retryTracking = false } =
         const beforeLen = Array.isArray(currentOrder.paymentRecords) ? currentOrder.paymentRecords.length : 0;
         ensureWebsitePaymentRecord(currentOrder);
         if ((currentOrder.paymentRecords || []).length > beforeLen) {
-          await currentOrder.save();
+          await Order.updateOne(
+            { _id: currentOrder._id },
+            {
+              $set: {
+                paymentRecords: currentOrder.paymentRecords,
+                advancePaid: currentOrder.advancePaid,
+                remainingBalance: currentOrder.remainingBalance,
+                balancePaid: currentOrder.balancePaid,
+                balanceStatus: currentOrder.balanceStatus,
+              },
+            },
+          );
         }
         order.paymentRecords = currentOrder.paymentRecords;
         order.advancePaid = currentOrder.advancePaid;
@@ -244,6 +290,8 @@ export async function finalizeCashfreeOrder(orderId, { retryTracking = false } =
       }
     }
   } else {
+    // Inventory already claimed by a concurrent finalize — update only payment fields.
+    // Avoid full-document save of a stale in-memory order (it can wipe confirmationSchedule).
     order.paymentStatus = 'paid';
     if (!order.status || order.status === 'pending') order.status = 'ordered';
     if (!order.orderSource) order.orderSource = 'website';
@@ -254,13 +302,32 @@ export async function finalizeCashfreeOrder(orderId, { retryTracking = false } =
     if (!isFinalOrderNumber(order.orderNumber)) {
       order.orderNumber = await getNextPaidOrderNumber();
     }
-    await order.save();
+    const paymentSet = {
+      paymentStatus: order.paymentStatus,
+      status: order.status,
+      orderSource: order.orderSource,
+      opsStatus: order.opsStatus,
+      balanceStatus: order.balanceStatus,
+      paidAt: order.paidAt,
+      orderNumber: order.orderNumber,
+      advancePaid: order.advancePaid,
+      remainingBalance: order.remainingBalance,
+      balancePaid: order.balancePaid,
+    };
+    if (Array.isArray(order.paymentRecords) && order.paymentRecords.length) {
+      paymentSet.paymentRecords = order.paymentRecords;
+    }
+    await Order.updateOne({ _id: order._id }, { $set: paymentSet });
   }
 
   const displayDeliveryEstimate = getDisplayDeliveryEstimate(order, settings);
   if (displayDeliveryEstimate && order.deliveryEstimate !== displayDeliveryEstimate) {
     order.deliveryEstimate = displayDeliveryEstimate;
-    await order.save();
+    // Selective $set only — full save of a stale doc can wipe confirmationSchedule.
+    await Order.updateOne(
+      { _id: order._id },
+      { $set: { deliveryEstimate: displayDeliveryEstimate } },
+    );
   }
 
   await attachOrderConfirmation(order, settings);
@@ -293,12 +360,24 @@ export async function finalizeCashfreeOrder(orderId, { retryTracking = false } =
           source: 'website_cashfree',
           actorName: 'Website checkout',
         });
-        await fresh.save();
-        await notifyAssignedEditor(fresh);
-        order.assignedTo = fresh.assignedTo;
-        order.assignedToName = fresh.assignedToName;
-        order.assignmentHistory = fresh.assignmentHistory;
-        order.opsStatus = fresh.opsStatus;
+        if (fresh.assignedTo) {
+          await Order.updateOne(
+            { _id: fresh._id },
+            {
+              $set: {
+                assignedTo: fresh.assignedTo,
+                assignedToName: fresh.assignedToName,
+                assignmentHistory: fresh.assignmentHistory,
+                opsStatus: fresh.opsStatus,
+              },
+            },
+          );
+          await notifyAssignedEditor(fresh);
+          order.assignedTo = fresh.assignedTo;
+          order.assignedToName = fresh.assignedToName;
+          order.assignmentHistory = fresh.assignmentHistory;
+          order.opsStatus = fresh.opsStatus;
+        }
       }
     } catch (assignErr) {
       console.error('Editor auto-assignment after Cashfree finalize failed:', assignErr);
