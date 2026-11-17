@@ -73,7 +73,7 @@ test('main count 1 yields one main slot with frame dims', () => {
   assert.equal(slots[0].collageRole, 'main');
   assert.equal(slots[0].area.width, 8);
   assert.equal(slots[0].area.height, 10);
-  assert.equal(slots[0].required, true);
+  assert.equal(slots[0].required, false);
 });
 
 test('background count 2 yields two background slots', () => {

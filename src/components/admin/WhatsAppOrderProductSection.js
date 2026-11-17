@@ -882,11 +882,11 @@ export function newCollagePhotosRow(seed = {}) {
     rowId: seed.rowId || `collage-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     mainSizeKey: seed.mainSizeKey || '',
     mainSizeLabel: seed.mainSizeLabel || '',
-    mainCount: seed.mainCount || '1',
+    mainCount: seed.mainCount ?? '',
     mainSlots: seed.mainSlots || [],
     backgroundSizeKey: seed.backgroundSizeKey || '',
     backgroundSizeLabel: seed.backgroundSizeLabel || '',
-    backgroundCount: seed.backgroundCount || '1',
+    backgroundCount: seed.backgroundCount ?? '',
     backgroundSlots: seed.backgroundSlots || [],
     notes: seed.notes || '',
   };
@@ -995,8 +995,9 @@ export function CollagePhotosSection({
       <div>
         <h3 className="text-sm font-bold text-gray-900">Collage Photos</h3>
         <p className="text-[11px] text-gray-500 break-words">
-          For each collage set a Main size + count and a Background size + count.
-          Upload areas follow the count; reference images are optional. Sizes come from Personalized Single Photo Frame.
+          Main and Background are both optional — fill only what the customer requested.
+          For a section you use, pick size + count; upload areas follow the count (reference optional).
+          Sizes come from Personalized Single Photo Frame.
         </p>
         <p className="mt-1 text-[11px] text-gray-500">
           {!sizeSourceProduct
@@ -1013,7 +1014,7 @@ export function CollagePhotosSection({
             <div className="min-w-0">
               <h4 className="text-sm font-bold text-gray-900">Collage {index + 1}</h4>
               <p className="text-[11px] text-gray-500">
-                Main and background photos for this collage request.
+                Add main photos, background photos, or both — whichever applies.
               </p>
             </div>
             {list.length > 1 ? (
@@ -1037,7 +1038,7 @@ export function CollagePhotosSection({
           </div>
 
           <div className="space-y-3 rounded-xl border border-emerald-100 bg-emerald-50/30 p-3">
-            <p className="text-xs font-bold text-emerald-950">Main photos</p>
+            <p className="text-xs font-bold text-emerald-950">Main photos <span className="font-semibold text-gray-500">(optional)</span></p>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className={`${labelClass} sm:col-span-2`}>
                 Main photo size
@@ -1087,7 +1088,7 @@ export function CollagePhotosSection({
           </div>
 
           <div className="space-y-3 rounded-xl border border-violet-100 bg-violet-50/30 p-3">
-            <p className="text-xs font-bold text-violet-950">Background photos</p>
+            <p className="text-xs font-bold text-violet-950">Background photos <span className="font-semibold text-gray-500">(optional)</span></p>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className={`${labelClass} sm:col-span-2`}>
                 Background photo size

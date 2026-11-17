@@ -352,22 +352,33 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
       };
     });
 
+  const collageRoleConfigured = (sizeKey, countRaw) => Boolean(sizeKey) && (Number(countRaw) || 0) > 0;
+  const collageRolePartial = (sizeKey, countRaw) => {
+    const hasSize = Boolean(sizeKey);
+    const hasCount = (Number(countRaw) || 0) > 0;
+    return hasSize !== hasCount;
+  };
+
   const buildCollagePhotosLineItems = () => (collagePhotosRows || [])
-    .filter((row) => {
-      const mainCount = Number(row.mainCount) || 0;
-      const bgCount = Number(row.backgroundCount) || 0;
-      return Boolean(row.mainSizeKey) && mainCount > 0 && Boolean(row.backgroundSizeKey) && bgCount > 0;
-    })
+    .filter((row) => (
+      collageRoleConfigured(row.mainSizeKey, row.mainCount)
+      || collageRoleConfigured(row.backgroundSizeKey, row.backgroundCount)
+    ))
     .map((row) => {
+      const mainConfigured = collageRoleConfigured(row.mainSizeKey, row.mainCount);
+      const bgConfigured = collageRoleConfigured(row.backgroundSizeKey, row.backgroundCount);
       const mainLabel = row.mainSizeLabel || row.mainSizeKey;
       const bgLabel = row.backgroundSizeLabel || row.backgroundSizeKey;
       const mainCount = Number(row.mainCount) || 0;
       const bgCount = Number(row.backgroundCount) || 0;
       const photoSlots = [
-        ...(row.mainSlots || []),
-        ...(row.backgroundSlots || []),
+        ...(mainConfigured ? (row.mainSlots || []) : []),
+        ...(bgConfigured ? (row.backgroundSlots || []) : []),
       ];
-      const summary = `Collage Photos — Main: ${mainLabel} (×${mainCount}); Background: ${bgLabel} (×${bgCount})`;
+      const parts = [];
+      if (mainConfigured) parts.push(`Main: ${mainLabel} (×${mainCount})`);
+      if (bgConfigured) parts.push(`Background: ${bgLabel} (×${bgCount})`);
+      const summary = `Collage Photos — ${parts.join('; ')}`;
       return {
         productId: comboProduct?._id,
         variant: summary,
@@ -378,7 +389,7 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
         photoSlots,
         collageUploads: undefined,
         collageLocalUploads: {},
-        comboSize: mainLabel || undefined,
+        comboSize: (mainConfigured ? mainLabel : bgLabel) || undefined,
         isCollagePhotos: true,
       };
     });
@@ -524,22 +535,29 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
         return;
       }
       const rows = collagePhotosRows || [];
-      if (!rows.some((row) => {
-        const mainCount = Number(row.mainCount) || 0;
-        const bgCount = Number(row.backgroundCount) || 0;
-        return row.mainSizeKey && mainCount > 0 && row.backgroundSizeKey && bgCount > 0;
-      })) {
-        toast.error('Add at least one collage with main and background size + count');
+      if (!rows.some((row) => (
+        collageRoleConfigured(row.mainSizeKey, row.mainCount)
+        || collageRoleConfigured(row.backgroundSizeKey, row.backgroundCount)
+      ))) {
+        toast.error('Add at least one collage with main or background size + count');
         return;
       }
       if (rows.some((row) => {
-        const mainCount = Number(row.mainCount) || 0;
-        const bgCount = Number(row.backgroundCount) || 0;
-        const started = Boolean(row.mainSizeKey || row.backgroundSizeKey || mainCount || bgCount || row.notes);
+        const mainOk = collageRoleConfigured(row.mainSizeKey, row.mainCount);
+        const bgOk = collageRoleConfigured(row.backgroundSizeKey, row.backgroundCount);
+        const started = Boolean(
+          row.mainSizeKey
+          || row.backgroundSizeKey
+          || (Number(row.mainCount) || 0)
+          || (Number(row.backgroundCount) || 0)
+          || row.notes,
+        );
         if (!started) return false;
-        return !(row.mainSizeKey && mainCount > 0 && row.backgroundSizeKey && bgCount > 0);
+        if (collageRolePartial(row.mainSizeKey, row.mainCount)) return true;
+        if (collageRolePartial(row.backgroundSizeKey, row.backgroundCount)) return true;
+        return !(mainOk || bgOk);
       })) {
-        toast.error('Each collage needs main size + count and background size + count');
+        toast.error('For each collage section you use, set both size and count (main and background are optional)');
         return;
       }
       lineItems = buildCollagePhotosLineItems();

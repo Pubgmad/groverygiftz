@@ -1185,7 +1185,8 @@ export function buildCollageRolePhotoSlots({
     sizeLabel: formatFrameSizeLabel(area) || sizeLabel,
     frameImage: area.frameImage || '',
     instructions: area.instructions || '',
-    required: true,
+    // Main / background sections are optional; uploads are not forced at create.
+    required: false,
     allowPreview: Boolean(variantAreaFromOption(selected)) || isProductPreviewEnabled(sizeCatalogProduct),
     area,
     variantLabel: sizeLabel,
