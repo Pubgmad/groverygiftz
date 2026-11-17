@@ -19,9 +19,9 @@ test('multi-enable flags replace exclusive productMode', () => {
 });
 
 test('submit merges all enabled section builders', () => {
-  assert.match(modal, /const catalogItems = \[\]/);
-  assert.match(modal, /const comboItems = \[\]/);
-  assert.match(modal, /const collageItems = \[\]/);
+  assert.match(modal, /let catalogItems = \[\]/);
+  assert.match(modal, /let comboItems = \[\]/);
+  assert.match(modal, /let collageItems = \[\]/);
   assert.match(modal, /\[\.\.\.catalogItems, \.\.\.comboItems, \.\.\.collageItems\]/);
   assert.match(modal, /buildCatalogLineItems\(\)/);
   assert.match(modal, /buildComboLineItemsForSubmit\(\)/);
