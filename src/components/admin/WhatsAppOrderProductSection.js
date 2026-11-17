@@ -7,6 +7,7 @@ import { sanitizeIntegerInput } from '@/lib/sanitizeNumericInput';
 import {
   buildAdditionalVariantSlots,
   buildCatalogSelectCustomizationPlan,
+  buildCollageRolePhotoSlots,
   listUniqueWebsiteSizes,
   resolveWebsiteSizeConfig,
   mergeSlotsPreserveUploads,
@@ -872,6 +873,292 @@ export function ComboProductSection({
           + Add Variant
         </button>
       </div>
+    </div>
+  );
+}
+
+export function newCollagePhotosRow(seed = {}) {
+  return {
+    rowId: seed.rowId || `collage-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    mainSizeKey: seed.mainSizeKey || '',
+    mainSizeLabel: seed.mainSizeLabel || '',
+    mainCount: seed.mainCount || '1',
+    mainSlots: seed.mainSlots || [],
+    backgroundSizeKey: seed.backgroundSizeKey || '',
+    backgroundSizeLabel: seed.backgroundSizeLabel || '',
+    backgroundCount: seed.backgroundCount || '1',
+    backgroundSlots: seed.backgroundSlots || [],
+    notes: seed.notes || '',
+  };
+}
+
+function rebuildCollageRoleSlots({
+  sizeCatalogProduct,
+  sizeKey,
+  count,
+  role,
+  roleLabel,
+  prevSlots,
+}) {
+  const next = buildCollageRolePhotoSlots({
+    sizeCatalogProduct,
+    sizeKey,
+    count,
+    role,
+    roleLabel,
+  });
+  return mergeSlotsPreserveUploads(next, prevSlots || []);
+}
+
+/**
+ * Collage Photos: main + background size/count uploads from Personalized Single Photo Frame sizes.
+ * Supports multiple collage rows in one WhatsApp order. Does not change Select Product / Combo.
+ */
+export function CollagePhotosSection({
+  products = [],
+  rows,
+  onRowsChange,
+  sizeCatalogProduct = null,
+}) {
+  const sizeSourceProduct = useMemo(
+    () => resolveSizeCatalogProduct(sizeCatalogProduct, products),
+    [sizeCatalogProduct, products],
+  );
+  const uniqueSizesPlan = useMemo(
+    () => listUniqueWebsiteSizes(sizeSourceProduct ? [sizeSourceProduct] : []),
+    [sizeSourceProduct],
+  );
+  const uniqueSizes = uniqueSizesPlan.sizes;
+  const list = Array.isArray(rows) && rows.length ? rows : [newCollagePhotosRow()];
+
+  const updateRow = (rowId, patch) => {
+    onRowsChange((prev) => {
+      const base = Array.isArray(prev) && prev.length ? prev : [newCollagePhotosRow()];
+      return base.map((row) => {
+        if (row.rowId !== rowId) return row;
+        const next = { ...row, ...patch };
+
+        const touchMain = Object.prototype.hasOwnProperty.call(patch, 'mainSizeKey')
+          || Object.prototype.hasOwnProperty.call(patch, 'mainCount');
+        const touchBg = Object.prototype.hasOwnProperty.call(patch, 'backgroundSizeKey')
+          || Object.prototype.hasOwnProperty.call(patch, 'backgroundCount');
+
+        if (touchMain && !Object.prototype.hasOwnProperty.call(patch, 'mainSlots')) {
+          const sizeKey = Object.prototype.hasOwnProperty.call(patch, 'mainSizeKey')
+            ? patch.mainSizeKey
+            : next.mainSizeKey;
+          const resolved = resolveWebsiteSizeConfig(sizeKey, {
+            products: sizeSourceProduct ? [sizeSourceProduct] : [],
+            preferredProductIds: sizeSourceProduct?._id ? [String(sizeSourceProduct._id)] : [],
+            explicitProductId: sizeSourceProduct?._id ? String(sizeSourceProduct._id) : '',
+          });
+          next.mainSizeKey = resolved.sizeKey || sizeKey || '';
+          next.mainSizeLabel = resolved.sizeLabel || '';
+          next.mainSlots = rebuildCollageRoleSlots({
+            sizeCatalogProduct: sizeSourceProduct,
+            sizeKey: next.mainSizeKey,
+            count: next.mainCount,
+            role: 'main',
+            roleLabel: 'Main photo',
+            prevSlots: row.mainSlots,
+          });
+        }
+
+        if (touchBg && !Object.prototype.hasOwnProperty.call(patch, 'backgroundSlots')) {
+          const sizeKey = Object.prototype.hasOwnProperty.call(patch, 'backgroundSizeKey')
+            ? patch.backgroundSizeKey
+            : next.backgroundSizeKey;
+          const resolved = resolveWebsiteSizeConfig(sizeKey, {
+            products: sizeSourceProduct ? [sizeSourceProduct] : [],
+            preferredProductIds: sizeSourceProduct?._id ? [String(sizeSourceProduct._id)] : [],
+            explicitProductId: sizeSourceProduct?._id ? String(sizeSourceProduct._id) : '',
+          });
+          next.backgroundSizeKey = resolved.sizeKey || sizeKey || '';
+          next.backgroundSizeLabel = resolved.sizeLabel || '';
+          next.backgroundSlots = rebuildCollageRoleSlots({
+            sizeCatalogProduct: sizeSourceProduct,
+            sizeKey: next.backgroundSizeKey,
+            count: next.backgroundCount,
+            role: 'background',
+            roleLabel: 'Background photo',
+            prevSlots: row.backgroundSlots,
+          });
+        }
+
+        return next;
+      });
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h3 className="text-sm font-bold text-gray-900">Collage Photos</h3>
+        <p className="text-[11px] text-gray-500 break-words">
+          For each collage set a Main size + count and a Background size + count.
+          Upload areas follow the count; reference images are optional. Sizes come from Personalized Single Photo Frame.
+        </p>
+        <p className="mt-1 text-[11px] text-gray-500">
+          {!sizeSourceProduct
+            ? 'Personalized Single Photo Frame size catalog is not loaded yet.'
+            : uniqueSizesPlan.uniqueCount
+              ? `${uniqueSizesPlan.uniqueCount} size${uniqueSizesPlan.uniqueCount === 1 ? '' : 's'} available`
+              : 'No sizes configured on Personalized Single Photo Frame yet.'}
+        </p>
+      </div>
+
+      {list.map((row, index) => (
+        <div key={row.rowId} className="space-y-4 rounded-xl border border-sky-100 bg-white p-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <h4 className="text-sm font-bold text-gray-900">Collage {index + 1}</h4>
+              <p className="text-[11px] text-gray-500">
+                Main and background photos for this collage request.
+              </p>
+            </div>
+            {list.length > 1 ? (
+              <button
+                type="button"
+                className="min-h-[44px] w-full shrink-0 rounded-xl border border-red-200 bg-red-50 px-3 text-sm font-semibold text-red-700 sm:w-auto"
+                onClick={() => {
+                  const hasUploads = [...(row.mainSlots || []), ...(row.backgroundSlots || [])]
+                    .some((s) => s.photo?.file || s.reference?.file);
+                  if (hasUploads && !window.confirm('Remove this collage and discard its uploads for this order?')) return;
+                  onRowsChange((prev) => {
+                    const base = Array.isArray(prev) ? prev : [];
+                    const next = base.filter((r) => r.rowId !== row.rowId);
+                    return next.length ? next : [newCollagePhotosRow()];
+                  });
+                }}
+              >
+                Remove collage
+              </button>
+            ) : null}
+          </div>
+
+          <div className="space-y-3 rounded-xl border border-emerald-100 bg-emerald-50/30 p-3">
+            <p className="text-xs font-bold text-emerald-950">Main photos</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className={`${labelClass} sm:col-span-2`}>
+                Main photo size
+                <UniqueSizeSelect
+                  value={row.mainSizeKey || ''}
+                  sizes={uniqueSizes}
+                  emptyLabel="Select main size"
+                  onChange={(e) => updateRow(row.rowId, { mainSizeKey: e.target.value })}
+                />
+              </label>
+              <label className={labelClass}>
+                Count
+                <input
+                  inputMode="numeric"
+                  value={row.mainCount}
+                  onChange={(e) => updateRow(row.rowId, { mainCount: sanitizeIntegerInput(e.target.value) })}
+                  className={fieldClass}
+                />
+                <span className="mt-1 block text-[10px] font-normal text-gray-500">
+                  Number of main photo upload areas for the selected size.
+                </span>
+              </label>
+            </div>
+            {(row.mainSlots || []).length ? (
+              <SlotGrid
+                slots={row.mainSlots}
+                excludedKeys={[]}
+                allowExclude={false}
+                onChangeSlot={(slotIndex, photo) => {
+                  const nextSlots = [...(row.mainSlots || [])];
+                  nextSlots[slotIndex] = { ...nextSlots[slotIndex], photo };
+                  updateRow(row.rowId, { mainSlots: nextSlots });
+                }}
+                onReference={(slotIndex, reference) => {
+                  const nextSlots = [...(row.mainSlots || [])];
+                  nextSlots[slotIndex] = { ...nextSlots[slotIndex], reference };
+                  updateRow(row.rowId, { mainSlots: nextSlots });
+                }}
+              />
+            ) : (
+              <p className="text-[11px] text-gray-500">
+                {row.mainSizeKey
+                  ? 'Enter a count of 1 or more to show main photo upload areas.'
+                  : 'Choose a main size, then set count to show upload areas.'}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-3 rounded-xl border border-violet-100 bg-violet-50/30 p-3">
+            <p className="text-xs font-bold text-violet-950">Background photos</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className={`${labelClass} sm:col-span-2`}>
+                Background photo size
+                <UniqueSizeSelect
+                  value={row.backgroundSizeKey || ''}
+                  sizes={uniqueSizes}
+                  emptyLabel="Select background size"
+                  onChange={(e) => updateRow(row.rowId, { backgroundSizeKey: e.target.value })}
+                />
+              </label>
+              <label className={labelClass}>
+                Count
+                <input
+                  inputMode="numeric"
+                  value={row.backgroundCount}
+                  onChange={(e) => updateRow(row.rowId, { backgroundCount: sanitizeIntegerInput(e.target.value) })}
+                  className={fieldClass}
+                />
+                <span className="mt-1 block text-[10px] font-normal text-gray-500">
+                  Number of background photo upload areas for the selected size.
+                </span>
+              </label>
+            </div>
+            {(row.backgroundSlots || []).length ? (
+              <SlotGrid
+                slots={row.backgroundSlots}
+                excludedKeys={[]}
+                allowExclude={false}
+                onChangeSlot={(slotIndex, photo) => {
+                  const nextSlots = [...(row.backgroundSlots || [])];
+                  nextSlots[slotIndex] = { ...nextSlots[slotIndex], photo };
+                  updateRow(row.rowId, { backgroundSlots: nextSlots });
+                }}
+                onReference={(slotIndex, reference) => {
+                  const nextSlots = [...(row.backgroundSlots || [])];
+                  nextSlots[slotIndex] = { ...nextSlots[slotIndex], reference };
+                  updateRow(row.rowId, { backgroundSlots: nextSlots });
+                }}
+              />
+            ) : (
+              <p className="text-[11px] text-gray-500">
+                {row.backgroundSizeKey
+                  ? 'Enter a count of 1 or more to show background photo upload areas.'
+                  : 'Choose a background size, then set count to show upload areas.'}
+              </p>
+            )}
+          </div>
+
+          <label className={labelClass}>
+            Collage notes (optional)
+            <textarea
+              rows={2}
+              value={row.notes || ''}
+              onChange={(e) => updateRow(row.rowId, { notes: e.target.value })}
+              placeholder="Any customer notes for this collage"
+              className={`${fieldClass} font-normal`}
+            />
+          </label>
+        </div>
+      ))}
+
+      <button
+        type="button"
+        className="min-h-[44px] w-full rounded-xl border border-sky-300 bg-white px-4 py-2.5 text-sm font-bold text-sky-900 sm:w-auto"
+        onClick={() => onRowsChange((prev) => [
+          ...(Array.isArray(prev) && prev.length ? prev : [newCollagePhotosRow()]),
+          newCollagePhotosRow(),
+        ])}
+      >
+        + Add collage
+      </button>
     </div>
   );
 }

@@ -1141,6 +1141,61 @@ export function buildAdditionalVariantSlots(product, variantValue, quantity) {
   return [];
 }
 
+/**
+ * Count-driven photo slots for WhatsApp "Collage Photos" (main / background).
+ * Size + dims come from the Personalized Single Photo Frame catalog — same as Select Product.
+ */
+export function buildCollageRolePhotoSlots({
+  sizeCatalogProduct = null,
+  sizeKey = '',
+  count = 0,
+  role = 'main',
+  roleLabel = 'Main photo',
+} = {}) {
+  const qty = Math.max(0, Math.min(50, Number(count) || 0));
+  const key = String(sizeKey || '').trim();
+  if (!qty || !key || !sizeCatalogProduct) return [];
+
+  const resolved = resolveWebsiteSizeConfig(key, {
+    products: [sizeCatalogProduct],
+    preferredProductIds: sizeCatalogProduct?._id ? [String(sizeCatalogProduct._id)] : [],
+    explicitProductId: sizeCatalogProduct?._id ? String(sizeCatalogProduct._id) : '',
+  });
+  const sizeLabel = resolved.sizeLabel || resolved.config?.sizeLabel || key;
+  const variantValue = resolved.config?.variantValue || (sizeLabel ? `Size: ${sizeLabel}` : '');
+  const selected = variantValue ? findVariantOption(sizeCatalogProduct, variantValue) : null;
+  const area = variantAreaFromOption(selected) || {
+    label: sizeLabel,
+    width: 1,
+    height: 1,
+    unit: 'inch',
+    frameImage: sizeCatalogProduct?.customizationPreview?.frameImage || '',
+    instructions: '',
+  };
+  const roleKey = String(role || 'main').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'main';
+  const heading = String(roleLabel || 'Photo').trim() || 'Photo';
+
+  return Array.from({ length: qty }, (_, index) => ({
+    slotKey: `collage-${roleKey}-${key}-u${index + 1}`,
+    section: 'collage_photos',
+    storageKind: 'customer',
+    storageLabel: 'Customer Photos',
+    customFieldLabel: 'Customer Photos',
+    label: qty > 1 ? `${heading} ${index + 1}` : heading,
+    sizeLabel: formatFrameSizeLabel(area) || sizeLabel,
+    frameImage: area.frameImage || '',
+    instructions: area.instructions || '',
+    required: true,
+    allowPreview: Boolean(variantAreaFromOption(selected)) || isProductPreviewEnabled(sizeCatalogProduct),
+    area,
+    variantLabel: sizeLabel,
+    unitIndex: index + 1,
+    collageRole: roleKey,
+    photo: null,
+    reference: null,
+  }));
+}
+
 /** Build ProductDetail-shaped collageUploads placeholders for order create. */
 export function buildCollageUploadsPayload(collageTemplates = [], collageUploadsState = {}, excludedKeys = []) {
   return (collageTemplates || [])

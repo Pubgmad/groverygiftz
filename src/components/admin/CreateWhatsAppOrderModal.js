@@ -13,8 +13,10 @@ import {
 } from '@/lib/websiteProductPhotoConfig';
 import {
   CatalogProductSection,
+  CollagePhotosSection,
   ComboProductSection,
   newCatalogProductRow,
+  newCollagePhotosRow,
 } from '@/components/admin/WhatsAppOrderProductSection';
 
 const emptyCustomer = {
@@ -53,6 +55,7 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
   const [comboError, setComboError] = useState('');
   const [comboSelections, setComboSelections] = useState([]);
   const [catalogProductRows, setCatalogProductRows] = useState(() => [newCatalogProductRow()]);
+  const [collagePhotosRows, setCollagePhotosRows] = useState(() => [newCollagePhotosRow()]);
   const [comboCustomFields, setComboCustomFields] = useState({});
   const [comboExtraTextFields, setComboExtraTextFields] = useState([]);
   const [comboCollageUploads, setComboCollageUploads] = useState({});
@@ -159,7 +162,9 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
 
   const priceLabel = productMode === 'customized_combo'
     ? 'Overall Customized Combo Price (Manual) *'
-    : 'Overall Product Price *';
+    : productMode === 'collage_photos'
+      ? 'Overall Collage Product Price *'
+      : 'Overall Product Price *';
 
   if (!open) return null;
 
@@ -347,6 +352,37 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
       };
     });
 
+  const buildCollagePhotosLineItems = () => (collagePhotosRows || [])
+    .filter((row) => {
+      const mainCount = Number(row.mainCount) || 0;
+      const bgCount = Number(row.backgroundCount) || 0;
+      return Boolean(row.mainSizeKey) && mainCount > 0 && Boolean(row.backgroundSizeKey) && bgCount > 0;
+    })
+    .map((row) => {
+      const mainLabel = row.mainSizeLabel || row.mainSizeKey;
+      const bgLabel = row.backgroundSizeLabel || row.backgroundSizeKey;
+      const mainCount = Number(row.mainCount) || 0;
+      const bgCount = Number(row.backgroundCount) || 0;
+      const photoSlots = [
+        ...(row.mainSlots || []),
+        ...(row.backgroundSlots || []),
+      ];
+      const summary = `Collage Photos — Main: ${mainLabel} (×${mainCount}); Background: ${bgLabel} (×${bgCount})`;
+      return {
+        productId: comboProduct?._id,
+        variant: summary,
+        variantId: '',
+        quantity: 1,
+        instructions: [summary, row.notes].filter(Boolean).join('\n'),
+        customFieldValues: {},
+        photoSlots,
+        collageUploads: undefined,
+        collageLocalUploads: {},
+        comboSize: mainLabel || undefined,
+        isCollagePhotos: true,
+      };
+    });
+
   const buildComboLineItemsForSubmit = () => {
     const rows = comboSelections
       .filter((row) => {
@@ -437,7 +473,9 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
     if (!comboRaw || !Number.isFinite(combo) || combo < 0) {
       toast.error(productMode === 'customized_combo'
         ? 'Enter the overall customized combo price'
-        : 'Enter the overall product price');
+        : productMode === 'collage_photos'
+          ? 'Enter the overall collage product price'
+          : 'Enter the overall product price');
       return;
     }
     const shipRaw = String(form.shippingCost ?? '').trim();
@@ -480,6 +518,35 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
         return;
       }
       lineItems = buildComboLineItemsForSubmit();
+    } else if (productMode === 'collage_photos') {
+      if (!comboProduct?._id) {
+        toast.error('Personalized Single Photo Frame size catalog is not available');
+        return;
+      }
+      const rows = collagePhotosRows || [];
+      if (!rows.some((row) => {
+        const mainCount = Number(row.mainCount) || 0;
+        const bgCount = Number(row.backgroundCount) || 0;
+        return row.mainSizeKey && mainCount > 0 && row.backgroundSizeKey && bgCount > 0;
+      })) {
+        toast.error('Add at least one collage with main and background size + count');
+        return;
+      }
+      if (rows.some((row) => {
+        const mainCount = Number(row.mainCount) || 0;
+        const bgCount = Number(row.backgroundCount) || 0;
+        const started = Boolean(row.mainSizeKey || row.backgroundSizeKey || mainCount || bgCount || row.notes);
+        if (!started) return false;
+        return !(row.mainSizeKey && mainCount > 0 && row.backgroundSizeKey && bgCount > 0);
+      })) {
+        toast.error('Each collage needs main size + count and background size + count');
+        return;
+      }
+      lineItems = buildCollagePhotosLineItems();
+      if (!lineItems.length) {
+        toast.error('Unable to build collage lines — check sizes and counts');
+        return;
+      }
     } else {
       const rows = catalogProductRows || [];
       if (!rows.some((row) => row.productId)) {
@@ -630,6 +697,7 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
       setPaymentScreenshot(null);
       setComboSelections([]);
       setCatalogProductRows([newCatalogProductRow()]);
+      setCollagePhotosRows([newCollagePhotosRow()]);
       setComboCustomFields({});
       setComboExtraTextFields([]);
       setComboCollageUploads({});
@@ -886,6 +954,13 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
                 >
                   Customized Combo
                 </button>
+                <button
+                  type="button"
+                  className={`min-h-[40px] rounded-lg px-3 py-1.5 ${productMode === 'collage_photos' ? 'bg-emerald-700 text-white' : 'border bg-white'}`}
+                  onClick={() => setProductMode('collage_photos')}
+                >
+                  Collage Photos
+                </button>
               </div>
             </div>
 
@@ -894,6 +969,13 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
                 products={products}
                 rows={catalogProductRows}
                 onRowsChange={setCatalogProductRows}
+                sizeCatalogProduct={comboProduct}
+              />
+            ) : productMode === 'collage_photos' ? (
+              <CollagePhotosSection
+                products={products}
+                rows={collagePhotosRows}
+                onRowsChange={setCollagePhotosRows}
                 sizeCatalogProduct={comboProduct}
               />
             ) : (
