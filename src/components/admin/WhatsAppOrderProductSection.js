@@ -425,20 +425,8 @@ function CatalogProductRow({
           </label>
         ) : null}
 
-        {product ? (
-          <label className={labelClass}>
-            Qty
-            <input
-              inputMode="numeric"
-              value={row.quantity}
-              onChange={(e) => onChange({ quantity: sanitizeIntegerInput(e.target.value) })}
-              className={fieldClass}
-            />
-          </label>
-        ) : null}
-
         {product && plan.nonSizeOptions.length ? (
-          <label className={labelClass}>
+          <label className={`${labelClass} sm:col-span-2`}>
             Product option
             <select
               value={row.productOptionValue || ''}

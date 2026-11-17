@@ -332,7 +332,7 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
         productId: row.productId,
         variant: row.orderVariantValue || (row.sizeLabel ? `Size: ${row.sizeLabel}` : ''),
         variantId: row.orderVariantId || '',
-        quantity: Math.max(1, Number(row.quantity) || 1),
+        quantity: 1,
         instructions: '',
         customFieldValues: row.customFieldValues || {},
         photoSlots: activeDefaults,
@@ -492,10 +492,6 @@ export default function CreateWhatsAppOrderModal({ open, onClose, onCreated }) {
       }
       if (rows.some((row) => row.productId && Number(row.nonSizeOptionCount) > 0 && !row.productOptionValue)) {
         toast.error('Select the product option for every product that requires one');
-        return;
-      }
-      if (rows.some((row) => row.productId && !(Number(row.quantity) > 0))) {
-        toast.error('Enter a quantity of at least 1 for every product');
         return;
       }
       lineItems = buildCatalogLineItems();
