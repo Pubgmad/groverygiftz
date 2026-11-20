@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { formatPrice } from '@/lib/utils';
 import { getOrderDeliveryEstimate, isOrderOutOfTamilNadu } from '@/lib/orderDeliveryEstimate';
 import { formatLongIstDate } from '@/lib/businessCalendar';
@@ -19,8 +19,6 @@ import { ORDER_SOURCE_LABELS, OPS_STATUS_LABELS, isDelayedOrder } from '@/lib/op
 import { todayIstYmd, tomorrowIstYmd } from '@/lib/istTime';
 import { FiPlus, FiRefreshCw, FiX } from 'react-icons/fi';
 import { customerImageDisplaySrc } from '@/lib/configuredImages';
-import { pickAdminOrderListPatch } from '@/lib/adminOrderFields';
-import { SHOW_ADMIN_ORDERS_PHASE2_UI } from '@/lib/adminOrdersPhase2';
 
 function AdminDateField({ label, value, onChange, title }) {
   return (
@@ -168,7 +166,7 @@ function CustomerPhotoThumb({ file, index, label }) {
       {displayUrl ? (
         <a href={downloadHref || displayUrl} target="_blank" rel="noopener noreferrer" className="relative block aspect-square overflow-hidden rounded-lg border bg-white">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={displayUrl} alt={file?.name || `${label || 'Photo'} ${index + 1}`} className="h-full w-full object-cover" loading="lazy" decoding="async" />
+          <img src={displayUrl} alt={file?.name || `${label || 'Photo'} ${index + 1}`} className="h-full w-full object-cover" />
         </a>
       ) : null}
       <DownloadButton href={downloadHref} filename={buildDownloadName('original-upload', file?.name || label || 'custom-file', index, file)}>
@@ -230,7 +228,7 @@ function CollageUploadDetails({ groups }) {
               <div key={image.url || index} className="min-w-0 space-y-1">
                 <a href={originalDownloadHref(image) || customerImageDisplaySrc(image) || image.displayUrl || image.url} target="_blank" rel="noopener noreferrer" className="relative block aspect-square overflow-hidden rounded-lg border bg-white">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={customerImageDisplaySrc(image) || image.displayUrl || image.url} alt={`${group.label} ${index + 1}`} className="h-full w-full object-cover" loading="lazy" decoding="async" />
+                  <img src={customerImageDisplaySrc(image) || image.displayUrl || image.url} alt={`${group.label} ${index + 1}`} className="h-full w-full object-cover" />
                   <span className="absolute left-1 top-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[10px] font-bold text-white">{index + 1}</span>
                 </a>
                 <DownloadButton href={originalDownloadHref(image)} filename={buildDownloadName('collage-original', group.label, index, image)}>Original {index + 1}{fileSizeLabel(image)}</DownloadButton>
@@ -262,7 +260,7 @@ function PreviewDetails({ preview }) {
               </div>
               {finalPreviewUrl && (
                 <a href={finalPreviewUrl} target="_blank" rel="noopener noreferrer" className="block max-w-full overflow-hidden rounded-lg border bg-white">
-                  <img src={finalPreviewUrl} alt={`${entry.areaLabel || 'Preview'} final`} className="max-h-72 w-full max-w-full object-contain" loading="lazy" decoding="async" />
+                  <img src={finalPreviewUrl} alt={`${entry.areaLabel || 'Preview'} final`} className="max-h-72 w-full max-w-full object-contain" />
                 </a>
               )}
               <div className="grid min-w-0 max-w-full gap-2 sm:grid-cols-2">
@@ -324,10 +322,6 @@ export default function AdminOrdersPage() {
   const [createWaOpen, setCreateWaOpen] = useState(false);
   const [sourceFilter, setSourceFilter] = useState('');
   const [selectingMatching, setSelectingMatching] = useState(false);
-  const [statusSaving, setStatusSaving] = useState(false);
-  const [trackingSaving, setTrackingSaving] = useState(false);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const detailRequestRef = useRef(0);
   const pageSize = 10;
   const debouncedOrderFilter = useDebouncedValue(orderFilter, 300);
   const debouncedNameFilter = useDebouncedValue(nameFilter, 300);
@@ -381,22 +375,11 @@ export default function AdminOrdersPage() {
     setCurrentPage(1);
   };
 
-  const patchOrderInLists = (id, patch) => {
-    if (!id || !patch) return;
-    const listPatch = pickAdminOrderListPatch(patch);
-    setOrders((prev) => prev.map((order) => (
-      String(order._id) === String(id) ? { ...order, ...listPatch } : order
-    )));
-    setSelected((prev) => (
-      prev && String(prev._id) === String(id) ? { ...prev, ...listPatch } : prev
-    ));
-  };
-
-  const fetchOrders = async (signal) => {
+  const fetchOrders = async () => {
     const query = filterQuery();
     query.set('page', String(currentPage));
     query.set('limit', String(pageSize));
-    const res = await fetch(`/api/orders?${query.toString()}`, { cache: 'no-store', signal });
+    const res = await fetch(`/api/orders?${query.toString()}`);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       setOrders([]);
@@ -411,45 +394,7 @@ export default function AdminOrdersPage() {
     setTotalOrders(Number(data.total || 0));
     setTotalPages(Math.max(1, Number(data.pages || 1)));
     setLoading(false);
-    // Keep the open detail object (full GET) when still on this page — never replace with lean list row.
-    setSelected((current) => {
-      if (!current?._id) return current;
-      return nextOrders.some((order) => String(order._id) === String(current._id)) ? current : null;
-    });
-  };
-
-  const openOrderDetail = async (orderOrId, { toggle = true } = {}) => {
-    const id = typeof orderOrId === 'object' ? orderOrId?._id : orderOrId;
-    if (!id) return;
-    if (toggle && selected?._id && String(selected._id) === String(id)) {
-      detailRequestRef.current += 1;
-      setSelected(null);
-      setDetailLoading(false);
-      return;
-    }
-    const requestId = detailRequestRef.current + 1;
-    detailRequestRef.current = requestId;
-    if (typeof orderOrId === 'object' && orderOrId) {
-      setSelected(orderOrId);
-    }
-    setDetailLoading(true);
-    try {
-      const res = await fetch(`/api/orders/${id}`, { cache: 'no-store' });
-      const data = await res.json().catch(() => ({}));
-      if (requestId !== detailRequestRef.current) return;
-      if (res.ok && data?._id) {
-        setSelected(data);
-        patchOrderInLists(data._id, data);
-      } else if (!selected || String(selected._id) !== String(id)) {
-        toast.error(data.error || 'Unable to open that order');
-      }
-    } catch {
-      if (requestId === detailRequestRef.current) {
-        // Keep list-row summary visible if detail fails.
-      }
-    } finally {
-      if (requestId === detailRequestRef.current) setDetailLoading(false);
-    }
+    if (selected?._id) setSelected(nextOrders.find((order) => order._id === selected._id) || null);
   };
 
   useEffect(() => {
@@ -489,14 +434,7 @@ export default function AdminOrdersPage() {
       setLoading(false);
       return;
     }
-    const ac = new AbortController();
-    setLoading(true);
-    fetchOrders(ac.signal).catch((err) => {
-      if (err?.name === 'AbortError') return;
-      setLoading(false);
-    });
-    return () => ac.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchOrders closes over current filters/page; deps list is the trigger.
+    fetchOrders();
   }, [filtersReady, currentPage, debouncedOrderFilter, debouncedNameFilter, debouncedMobileFilter, statusFilter, sourceFilter, orderDateFrom, orderDateTo, dateFrom, dateTo, orderDateError, dateError, expectedFrom, expectedTo, expectedError, urgencyFilter]);
 
   useEffect(() => {
@@ -514,48 +452,35 @@ export default function AdminOrdersPage() {
 
   useEffect(() => { setCurrentPage(1); }, [debouncedOrderFilter, debouncedNameFilter, debouncedMobileFilter, statusFilter, sourceFilter, orderDateFrom, orderDateTo, dateFrom, dateTo, expectedFrom, expectedTo, urgencyFilter]);
   useEffect(() => { if (currentPage > totalPages) setCurrentPage(totalPages); }, [currentPage, totalPages]);
-
+  useEffect(() => {
+    if (selected?._id && !orders.some((order) => order._id === selected._id)) setSelected(null);
+  }, [orders, selected?._id]);
   const updateStatus = async (id, status) => {
-    if (!writable || statusSaving) return;
-    setStatusSaving(true);
-    try {
-      const res = await fetch(`/api/orders/${id}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error(data.error || 'Failed to update');
-        return;
-      }
+    if (!writable) return;
+    const res = await fetch(`/api/orders/${id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }),
+    });
+    if (res.ok) {
       toast.success('Status updated');
-      // Patch list + open detail in place — no full list refetch / no stale selection overwrite.
-      patchOrderInLists(id, data);
-    } catch {
-      toast.error('Failed to update');
-    } finally {
-      setStatusSaving(false);
-    }
+      const data = await res.json();
+      setSelected(data);
+      await fetchOrders();
+    } else toast.error('Failed to update');
   };
 
   const updateTracking = async (id, trackingNumber) => {
-    if (!writable || trackingSaving) return;
-    setTrackingSaving(true);
-    try {
-      const res = await fetch(`/api/orders/${id}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackingNumber: trackingNumber.trim() }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error(data.error || 'Failed to save tracking ID');
-        return;
-      }
-      toast.success('ST Couriers tracking ID saved. Customer can see it in My Account.');
-      patchOrderInLists(id, data);
-    } catch {
+    if (!writable) return;
+    const res = await fetch(`/api/orders/${id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackingNumber: trackingNumber.trim() }),
+    });
+    if (!res.ok) {
       toast.error('Failed to save tracking ID');
-    } finally {
-      setTrackingSaving(false);
+      return;
     }
+    toast.success('ST Couriers tracking ID saved. Customer can see it in My Account.');
+    const data = await res.json();
+    setSelected(data);
+    await fetchOrders();
   };
 
   const toggleChecked = (id, nextChecked) => {
@@ -878,9 +803,9 @@ export default function AdminOrdersPage() {
                             className="h-4 w-4 rounded border-gray-300"
                           />
                         </td>
-                        <td className="p-4 font-semibold text-gray-500 cursor-pointer" onClick={() => openOrderDetail(order)}>{(currentPage - 1) * pageSize + idx + 1}</td>
-                        <td className="p-4 font-bold text-primary-700 cursor-pointer" onClick={() => openOrderDetail(order)}>{order.orderNumber}</td>
-                        <td className="p-4 cursor-pointer" onClick={() => openOrderDetail(order)}>
+                        <td className="p-4 font-semibold text-gray-500 cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>{(currentPage - 1) * pageSize + idx + 1}</td>
+                        <td className="p-4 font-bold text-primary-700 cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>{order.orderNumber}</td>
+                        <td className="p-4 cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>
                           <div className="flex flex-wrap items-center gap-1">
                             <span className={`px-2 py-1 rounded-full text-xs font-semibold ${order.orderSource === 'whatsapp' ? 'bg-green-50 text-green-800 border border-green-200' : order.orderSource === 'instagram' ? 'bg-pink-50 text-pink-800 border border-pink-200' : 'bg-sky-50 text-sky-800 border border-sky-200'}`}>
                               {ORDER_SOURCE_LABELS[order.orderSource] || 'Website'}
@@ -890,21 +815,21 @@ export default function AdminOrdersPage() {
                             ) : null}
                           </div>
                         </td>
-                        <td className="p-4 text-gray-600 whitespace-nowrap cursor-pointer" onClick={() => openOrderDetail(order)}>{formatDate(order.paidAt || order.createdAt)}</td>
-                        <td className="p-4 cursor-pointer" onClick={() => openOrderDetail(order)}><p className="font-medium text-gray-900">{order.shippingAddress?.fullName || '-'}</p><p className="text-xs text-gray-500">{order.shippingAddress?.email || order.guestEmail || '-'}</p></td>
-                        <td className="p-4 font-medium whitespace-nowrap cursor-pointer" onClick={() => openOrderDetail(order)}><p>{order.shippingAddress?.phone || '-'}</p>{order.shippingAddress?.whatsappNumber && <p className="text-xs text-green-700">WA: {order.shippingAddress.whatsappNumber}</p>}</td>
-                        <td className="p-4 max-w-[160px] cursor-pointer" onClick={() => openOrderDetail(order)}><p className="font-medium text-gray-700 break-words">{order.shippingAddress?.city || '-'}</p>{outOfTn && <span className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">Outside TN</span>}</td>
-                        <td className="p-4 cursor-pointer" onClick={() => openOrderDetail(order)}>
+                        <td className="p-4 text-gray-600 whitespace-nowrap cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>{formatDate(order.paidAt || order.createdAt)}</td>
+                        <td className="p-4 cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}><p className="font-medium text-gray-900">{order.shippingAddress?.fullName || '-'}</p><p className="text-xs text-gray-500">{order.shippingAddress?.email || order.guestEmail || '-'}</p></td>
+                        <td className="p-4 font-medium whitespace-nowrap cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}><p>{order.shippingAddress?.phone || '-'}</p>{order.shippingAddress?.whatsappNumber && <p className="text-xs text-green-700">WA: {order.shippingAddress.whatsappNumber}</p>}</td>
+                        <td className="p-4 max-w-[160px] cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}><p className="font-medium text-gray-700 break-words">{order.shippingAddress?.city || '-'}</p>{outOfTn && <span className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">Outside TN</span>}</td>
+                        <td className="p-4 cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>
                           <span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusColors[normalized] || statusColors.ordered}`}>{statusLabels[normalized] || normalized}</span>
                           {order.opsStatus ? <p className="mt-1 text-[11px] text-gray-500">{OPS_STATUS_LABELS[order.opsStatus] || order.opsStatus}</p> : null}
                         </td>
-                        <td className="p-4 text-xs cursor-pointer" onClick={() => openOrderDetail(order)}>{order.assignedToName || '—'}</td>
-                        <td className="p-4 text-xs cursor-pointer whitespace-nowrap" onClick={() => openOrderDetail(order)}>
+                        <td className="p-4 text-xs cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>{order.assignedToName || '—'}</td>
+                        <td className="p-4 text-xs cursor-pointer whitespace-nowrap" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>
                           {resolveAdminDispatchDisplay(order).label || '—'}
                           {isDelayedOrder(order) ? <span className="mt-1 block font-semibold text-red-600">Delayed</span> : null}
                         </td>
-                        <td className="p-4 cursor-pointer" onClick={() => openOrderDetail(order)}><span className={`px-2 py-1 rounded-full text-xs font-semibold ${paymentStatusColors[order.paymentStatus] || paymentStatusColors.pending}`}>{order.paymentMethod || 'Cashfree'} {order.paymentStatus}</span></td>
-                        <td className="p-4 text-right font-medium cursor-pointer" onClick={() => openOrderDetail(order)}>{formatPrice(order.total)}</td>
+                        <td className="p-4 cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}><span className={`px-2 py-1 rounded-full text-xs font-semibold ${paymentStatusColors[order.paymentStatus] || paymentStatusColors.pending}`}>{order.paymentMethod || 'Cashfree'} {order.paymentStatus}</span></td>
+                        <td className="p-4 text-right font-medium cursor-pointer" onClick={() => setSelected((current) => current?._id === order._id ? null : order)}>{formatPrice(order.total)}</td>
                       </tr>
                     );
                   })}
@@ -929,9 +854,6 @@ export default function AdminOrdersPage() {
         <div className="min-w-0 max-w-full overflow-hidden bg-white rounded-xl border p-5 md:p-6">
             <div className="min-w-0">
               <h2 className="font-bold text-lg mb-4 break-words">Order {selected.orderNumber}</h2>
-              {detailLoading ? (
-                <p className="mb-3 text-xs font-semibold text-gray-500">Loading full order details…</p>
-              ) : null}
               <div className="min-w-0 space-y-3 text-sm break-words">
                 {selected.shippingAddress && (
                   <div className="pt-2">
@@ -985,10 +907,9 @@ export default function AdminOrdersPage() {
                 {selected.notes && <div className="min-w-0 rounded-lg border bg-yellow-50 p-3 break-words"><span className="text-gray-500">Customer note:</span> <p className="font-medium text-gray-900 whitespace-pre-wrap">{selected.notes}</p></div>}
                 <div>
                   <span className="text-gray-500">Status:</span>
-                  <select disabled={!writable || statusSaving} value={normalizeStatus(selected.status)} onChange={e => updateStatus(selected._id, e.target.value)} className="ml-2 border rounded px-2 py-1 text-sm disabled:bg-gray-100">
+                  <select disabled={!writable} value={normalizeStatus(selected.status)} onChange={e => updateStatus(selected._id, e.target.value)} className="ml-2 border rounded px-2 py-1 text-sm disabled:bg-gray-100">
                     {statusOptions.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
                   </select>
-                  {statusSaving ? <span className="ml-2 text-xs text-gray-500">Saving…</span> : null}
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-gray-500">Payment:</span>
@@ -1019,29 +940,23 @@ export default function AdminOrdersPage() {
                   order={selected}
                   writable={writable}
                   onUpdated={async () => {
-                    if (selected?._id) await openOrderDetail(selected._id, { toggle: false });
+                    await fetchOrders();
                   }}
                 />
 
-                {SHOW_ADMIN_ORDERS_PHASE2_UI ? (
-                  <OrderDesignSheetsPanel
-                    order={selected}
-                    writable={writable}
-                    onUpdated={async () => {
-                      if (selected?._id) await openOrderDetail(selected._id, { toggle: false });
-                    }}
-                  />
-                ) : null}
+                <OrderDesignSheetsPanel
+                  order={selected}
+                  writable={writable}
+                  onUpdated={async () => {
+                    await fetchOrders();
+                  }}
+                />
 
                 <div className="min-w-0 border rounded-lg p-3 bg-gray-50 space-y-2 break-words">
                   <p className="text-xs text-gray-600 leading-relaxed"><strong>ST Couriers tracking ID:</strong> after booking the parcel with ST Couriers, paste the tracking ID here. Customers can copy it and open the ST website.</p>
                   <label className="text-xs font-medium text-gray-700">Tracking ID</label>
-                  <input disabled={!writable || trackingSaving} value={trackingDraft} onChange={(e) => setTrackingDraft(e.target.value)} placeholder="Enter ST Couriers tracking ID" className="min-w-0 max-w-full border rounded-lg px-3 py-2 text-sm font-mono w-full disabled:bg-gray-100" />
-                  {writable && (
-                    <button type="button" disabled={trackingSaving} onClick={() => updateTracking(selected._id, trackingDraft)} className="text-sm px-4 py-2 rounded-lg bg-primary-600 text-white font-semibold hover:bg-primary-700 disabled:opacity-60">
-                      {trackingSaving ? 'Saving…' : 'Save tracking ID'}
-                    </button>
-                  )}
+                  <input disabled={!writable} value={trackingDraft} onChange={(e) => setTrackingDraft(e.target.value)} placeholder="Enter ST Couriers tracking ID" className="min-w-0 max-w-full border rounded-lg px-3 py-2 text-sm font-mono w-full disabled:bg-gray-100" />
+                  {writable && <button type="button" onClick={() => updateTracking(selected._id, trackingDraft)} className="text-sm px-4 py-2 rounded-lg bg-primary-600 text-white font-semibold hover:bg-primary-700">Save tracking ID</button>}
                 </div>
 
                 <h3 className="font-semibold mt-4">Items</h3>
@@ -1073,7 +988,19 @@ export default function AdminOrdersPage() {
         onClose={() => setLabelModalOpen(false)}
         onOpenOrder={async (id) => {
           setLabelModalOpen(false);
-          await openOrderDetail(id, { toggle: false });
+          const onPage = orders.find((order) => String(order._id) === String(id));
+          if (onPage) {
+            setSelected(onPage);
+            return;
+          }
+          try {
+            const res = await fetch(`/api/orders/${id}`, { cache: 'no-store' });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data?._id) setSelected(data);
+            else toast.error('Unable to open that order');
+          } catch {
+            toast.error('Unable to open that order');
+          }
         }}
       />
       <CreateWhatsAppOrderModal

@@ -65,7 +65,7 @@ async function loadLabelContext(req) {
   await dbConnect();
   const [orders, settings] = await Promise.all([
     Order.find({ _id: { $in: objectIds } })
-      .select('orderNumber status paymentStatus paidAt createdAt shippingAddress items.title items.quantity items.variant')
+      .select('orderNumber status paymentStatus paidAt createdAt shippingAddress items')
       .lean(),
     Settings.findOne()
       .select('siteName tradeName logo desktopLogo address phone email')
