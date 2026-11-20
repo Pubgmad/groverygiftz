@@ -11,7 +11,7 @@ import { stripMakingCostFromOrder } from '@/lib/makingCost';
 import { buildAdminOrderFilter, parseOrderReportFilters, ORDER_STATUS_ALIASES } from '@/lib/adminOrderQuery';
 import { mergeStaffOrderFilter } from '@/lib/opsStaffAccess';
 import { resignCustomerDisplayUrls } from '@/lib/customerFileAccess';
-import { attachAdminConfirmationEmails } from '@/lib/orderConfirmationOutbox';
+import { ADMIN_ORDER_LIST_SELECT } from '@/lib/adminOrderFields';
 
 export async function GET(req) {
   await dbConnect();
@@ -70,23 +70,42 @@ export async function GET(req) {
     }
   }
 
-  const [orders, total] = await Promise.all([
-    Order.find(filter).sort(sort).skip((page - 1) * limit).limit(limit).lean(),
+  const isAdmin = session.user.type === 'admin';
+  // Admin list: lean projection — no photo blobs / timeline / design versions.
+  // Customer My Orders still needs full docs + resigned display URLs.
+  let listQuery = Order.find(filter).sort(sort).skip((page - 1) * limit).limit(limit);
+  if (isAdmin) listQuery = listQuery.select(ADMIN_ORDER_LIST_SELECT);
+
+  const [orders, total, settings] = await Promise.all([
+    listQuery.lean(),
     Order.countDocuments(filter),
+    isAdmin
+      ? Promise.resolve(null)
+      : Settings.findOne().select('deliveryHolidays').lean(),
   ]);
-  const settings = await Settings.findOne().select('deliveryHolidays').lean();
+
   const deliveryHolidays = settings?.deliveryHolidays || [];
   const displayOrders = orders.map((order) => {
     const dates = getConfirmedScheduleDates(order);
+    if (isAdmin) {
+      return {
+        ...order,
+        deliveryEstimate: getOrderDeliveryEstimate(order, deliveryHolidays) || order.deliveryEstimate,
+        expectedReadyDate: dates?.expectedReadyDate || '',
+        estimatedDeliveryDate: dates?.estimatedDeliveryDate || '',
+      };
+    }
     const next = resignCustomerDisplayUrls({
       ...order,
       deliveryEstimate: getOrderDeliveryEstimate(order, deliveryHolidays) || order.deliveryEstimate,
       expectedReadyDate: dates?.expectedReadyDate || '',
       estimatedDeliveryDate: dates?.estimatedDeliveryDate || '',
     });
-    return session.user.type === 'admin' ? next : stripMakingCostFromOrder(next);
+    return stripMakingCostFromOrder(next);
   });
-  if (session.user.type === 'admin') await attachAdminConfirmationEmails(displayOrders);
+
+  // Admin list skips attachAdminConfirmationEmails / resignCustomerDisplayUrls —
+  // detail GET (/api/orders/[id]) still attaches those for the open order only.
 
   return NextResponse.json({ orders: displayOrders, total, page, limit, pages: Math.ceil(total / limit) });
 }

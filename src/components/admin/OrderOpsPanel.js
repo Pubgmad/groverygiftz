@@ -15,6 +15,7 @@ import {
   requiresPaidRevisionGate,
   PRINTING_STARTED_OPS,
 } from '@/lib/opsConstants';
+import { SHOW_ADMIN_ORDERS_PHASE2_UI } from '@/lib/adminOrdersPhase2';
 
 function customerFileFromOriginal(url = '') {
   const raw = String(url || '');
@@ -773,6 +774,7 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
         ) : null}
       </div>
 
+      {SHOW_ADMIN_ORDERS_PHASE2_UI ? (
       <div className="rounded-xl border bg-white p-3 space-y-2">
         <h3 className="font-semibold text-gray-900">Courier &amp; Dispatch Details</h3>
         <p className="text-[11px] text-gray-500">
@@ -901,6 +903,7 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
           <p className="text-xs text-gray-500">No parcels recorded on this order yet.</p>
         )}
       </div>
+      ) : null}
 
       {/* Production videos are shared via the Production WhatsApp Group — no order-level upload needed.
           Historical videos (if any) remain viewable below for backward compatibility. */}
@@ -920,6 +923,7 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
         </div>
       ) : null}
 
+      {SHOW_ADMIN_ORDERS_PHASE2_UI ? (
       <div className="rounded-xl border bg-white p-3 space-y-2">
         <h3 className="font-semibold text-gray-900">Customer photos by product / size</h3>
         <p className="text-[11px] text-gray-500">
@@ -946,7 +950,7 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
                         title={photo.label}
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={photo.url} alt={photo.label} className="h-full w-full object-cover" />
+                        <img src={photo.url} alt={photo.label} className="h-full w-full object-cover" loading="lazy" decoding="async" />
                       </a>
                       <p className="truncate text-[10px] font-semibold text-gray-700">{photo.label}</p>
                     </li>
@@ -1123,8 +1127,9 @@ export default function OrderOpsPanel({ order, writable, onUpdated }) {
           </div>
         ) : null}
       </div>
+      ) : null}
 
-      {Array.isArray(order.photoHistory) && order.photoHistory.length > 0 ? (
+      {SHOW_ADMIN_ORDERS_PHASE2_UI && Array.isArray(order.photoHistory) && order.photoHistory.length > 0 ? (
         <div className="rounded-xl border bg-white p-3 space-y-2">
           <h3 className="font-semibold text-gray-900">Photo version history</h3>
           <ul className="max-h-40 space-y-1 overflow-y-auto text-xs text-gray-600">
