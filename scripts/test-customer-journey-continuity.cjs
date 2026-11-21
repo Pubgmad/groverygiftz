@@ -79,5 +79,5 @@ test('Cashfree return verifies then restores checkout Step 2 when unpaid, succes
   assert.match(flow, /verifyCheckoutPayment|verifyCashfreeOrder/);
   assert.match(flow, /checkout-incomplete:/);
   assert.match(flow, /startFreshPayment/);
-  assert.match(flow, /retryable && attemptOrderId/);
+  assert.doesNotMatch(flow.slice(flow.indexOf('{step === 2 && ('), flow.indexOf('Order Summary')), /Check payment status/);
 });

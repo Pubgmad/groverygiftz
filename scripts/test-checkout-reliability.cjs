@@ -251,26 +251,31 @@ test('routes share one checkout flow, Cashfree returns verify then restore or co
   assert.match(flow, /removePurchasedCartItems\(verifyData.items\)/);
 });
 
-test('unpaid restore keeps Check status only while retryable; failed clears to Proceed to Pay', async () => {
-  const pending = outcomeFixture('return', { success: false, paymentStatus: 'pending', retryable: true, error: 'Payment confirmation is still pending. Please check again.' });
-  assert.equal(await pending.c.verify('provider-order'), false);
-  assert.equal(pending.calls.returnOrderId, 'provider-order');
-  assert.equal(pending.c.readCheckoutReturn('customer-1', false), 'provider-order');
-  assert.equal(pending.calls.cleared, 0);
-
-  const failed = outcomeFixture('return', { success: false, paymentStatus: 'failed', error: 'Payment was not completed.' });
-  assert.equal(await failed.c.verify('provider-order'), false);
-  assert.equal(failed.calls.returnOrderId, '');
-  assert.equal(failed.c.readCheckoutReturn('customer-1', false), '');
-  assert.equal(failed.calls.step, 2);
-  assert.equal(failed.calls.cleared, 0);
+test('unpaid restore always shows Pay on Step 2 and keeps prior id only for silent verify-before-pay', async () => {
+  for (const result of [
+    { success: false, paymentStatus: 'pending', retryable: true, error: 'Payment confirmation is still pending. Please check again.' },
+    { success: false, paymentStatus: 'failed', error: 'Payment was not completed.' },
+  ]) {
+    const f = outcomeFixture('return', result);
+    assert.equal(await f.c.verify('provider-order'), false);
+    assert.equal(f.calls.returnOrderId, '');
+    assert.equal(f.c.readCheckoutReturn('customer-1', false), 'provider-order');
+    assert.equal(f.calls.step, 2);
+    assert.equal(f.calls.cleared, 0);
+  }
 });
 
-test('Step 2 stale Check-status trap is cleared on address navigation and offers verify-then-pay', () => {
+test('Step 2 payment CTA is always Pay amount with verify-before-pay, never Check payment status', () => {
   const flow = fs.readFileSync('src/components/checkout/CheckoutFlow.js', 'utf8').replace(/\r\n/g, '\n');
   assert.match(flow, /const startFreshPayment = async/);
-  assert.match(flow, /Pay \{formatPrice\(grandTotal\)\} with a new attempt/);
   assert.match(flow, /onClick=\{startFreshPayment\}/);
+  const step2Start = flow.indexOf('{step === 2 && (');
+  const step2 = flow.slice(step2Start, flow.indexOf('Order Summary', step2Start));
+  assert.match(step2, /Pay \{formatPrice\(grandTotal\)\}/);
+  assert.doesNotMatch(step2, /Check payment status/);
+  assert.doesNotMatch(step2, /with a new attempt/);
+  assert.doesNotMatch(step2, /onClick=\{retryPaymentVerification\}/);
+  assert.doesNotMatch(step2, /onClick=\{handleCashfreePayment\}/);
   const addressNext = flow.slice(flow.indexOf('  const handleAddressNext ='), flow.indexOf('  const startFreshPayment ='));
   assert.match(addressNext, /forgetCheckoutReturn/);
   assert.match(addressNext, /setReturnOrderId\(''\)/);
@@ -278,6 +283,7 @@ test('Step 2 stale Check-status trap is cleared on address navigation and offers
   assert.match(popstate, /forgetCheckoutReturn/);
   assert.match(popstate, /setReturnOrderId\(''\)/);
   const freshPay = flow.slice(flow.indexOf('  const startFreshPayment ='), flow.indexOf('  const handleCashfreePayment ='));
+  assert.match(freshPay, /readCheckoutReturn\(session\?\.user\?\.id, false\)/);
   assert.match(freshPay, /verifyCheckoutPayment\(priorOrderId\)/);
   assert.match(freshPay, /paymentStatus === 'paid'/);
   assert.match(freshPay, /showSuccessfulOrder/);
