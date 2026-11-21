@@ -162,12 +162,19 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
     }
     const onPopState = () => {
       checkoutStepHistoryRef.current = false;
+      // Leaving Step 2 must drop incomplete Cashfree UI so Step 1 → 2 shows Pay again.
+      forgetCheckoutReturn(session?.user?.id);
+      setReturnOrderId('');
+      setVerificationMessage('');
+      if (String(returnVerifyRef.current || '').startsWith('checkout-incomplete:')) {
+        returnVerifyRef.current = '';
+      }
       setStep(1);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
-  }, [mode, step]);
+  }, [mode, step, session?.user?.id]);
 
   useEffect(() => {
     const productIds = [...new Set(cart.map((item) => item.productId).filter(Boolean))];
@@ -291,18 +298,27 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
     return () => window.removeEventListener(GOOGLE_CONSENT_SYNC_EVENT, trackCheckout);
   }, [cartReady, cart, status, session?.user?.type, step, mode, orderId]);
 
-  const restoreUnpaidCheckout = (attemptOrderId, message) => {
+  const restoreUnpaidCheckout = (attemptOrderId, message, { retryable = false } = {}) => {
     const notice = unpaidPaymentMessage(message);
-    if (session?.user?.id && attemptOrderId) {
-      rememberCheckoutReturn(session.user.id, attemptOrderId, false);
+    if (session?.user?.id) {
       const draft = readCheckoutDraft(session.user.id);
       writeCheckoutDraft(session.user.id, {
         address: draft?.address && typeof draft.address === 'object' ? { ...emptyAddress(), ...draft.address } : address,
         orderNote: typeof draft?.orderNote === 'string' ? draft.orderNote : orderNote,
         step: 2,
       });
+      // Only keep "Check payment status" for still-ACTIVE / retryable Cashfree attempts.
+      // Failed, expired, cancelled, or non-retryable unpaid must restore Proceed to Pay.
+      if (retryable && attemptOrderId) {
+        rememberCheckoutReturn(session.user.id, attemptOrderId, false);
+      } else {
+        forgetCheckoutReturn(session.user.id);
+        if (String(returnVerifyRef.current || '').startsWith('checkout-incomplete:')) {
+          returnVerifyRef.current = '';
+        }
+      }
     }
-    setReturnOrderId(attemptOrderId || '');
+    setReturnOrderId(retryable && attemptOrderId ? attemptOrderId : '');
     setVerificationMessage('');
     setOrderResult(null);
     setStep(2);
@@ -361,11 +377,12 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
       return true;
     }
     const message = verifyData.error || 'Payment confirmation is still pending. Please check again.';
+    const retryable = verifyData.retryable === true;
     // Abandoned / unpaid / still-pending returns restore checkout Step 2 (cart intact).
     // Standalone pending UI is only a fallback when there is nothing to restore.
     if (mode === 'return' || mode === 'confirmation') {
       if (cartReady && cart.length > 0) {
-        restoreUnpaidCheckout(orderId, message);
+        restoreUnpaidCheckout(orderId, message, { retryable });
         return false;
       }
       // Cart still loading: keep a non-blank status; retry path stays available.
@@ -376,7 +393,7 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
       }
     }
     if (mode === 'checkout' && cart.length > 0) {
-      restoreUnpaidCheckout(orderId, message);
+      restoreUnpaidCheckout(orderId, message, { retryable });
       return false;
     }
     setVerificationMessage(message);
@@ -398,6 +415,9 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
     forgetCheckoutReturn(session?.user?.id);
     setReturnOrderId('');
     setVerificationMessage('');
+    if (String(returnVerifyRef.current || '').startsWith('checkout-incomplete:')) {
+      returnVerifyRef.current = '';
+    }
     if (typeof window !== 'undefined' && window.history.state?.ggCheckoutStep) {
       checkoutStepHistoryRef.current = false;
       window.history.back();
@@ -412,9 +432,52 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
     const err = validateAddress();
     if (err) { toast.error(err); return; }
     trackGA4Ecommerce('add_shipping_info', cart);
+    // Address → Payment must not reopen a stale incomplete Check-status CTA.
+    forgetCheckoutReturn(session?.user?.id);
+    setReturnOrderId('');
+    setVerificationMessage('');
+    if (String(returnVerifyRef.current || '').startsWith('checkout-incomplete:')) {
+      returnVerifyRef.current = '';
+    }
     if (session?.user?.id) writeCheckoutDraft(session.user.id, { address, orderNote, step: 2 });
     setStep(2);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  /** Verify any prior incomplete attempt first — never start a second pay if the first is already paid. */
+  const startFreshPayment = async () => {
+    if (paymentLockRef.current || loading) return;
+    const priorOrderId = returnOrderId;
+    if (priorOrderId) {
+      paymentLockRef.current = true;
+      setLoading(true);
+      let alreadyPaid = false;
+      try {
+        const verifyData = await verifyCheckoutPayment(priorOrderId);
+        if (receiptOwnerRef.current !== session?.user?.id) return;
+        if (verifyData.success && verifyData.paymentStatus === 'paid') {
+          alreadyPaid = true;
+          returnVerifyRef.current = `${mode}:${priorOrderId}`;
+          showSuccessfulOrder(verifyData, priorOrderId);
+          return;
+        }
+      } catch {
+        // Fall through to a new Cashfree session after clearing the stale attempt.
+      } finally {
+        if (!alreadyPaid) {
+          forgetCheckoutReturn(session?.user?.id);
+          setReturnOrderId('');
+          setVerificationMessage('');
+          if (String(returnVerifyRef.current || '').startsWith('checkout-incomplete:')) {
+            returnVerifyRef.current = '';
+          }
+        }
+        paymentLockRef.current = false;
+        setLoading(false);
+      }
+      if (alreadyPaid) return;
+    }
+    await handleCashfreePayment();
   };
 
   const handleCashfreePayment = async () => {
@@ -663,7 +726,20 @@ export default function CheckoutFlow({ mode = 'checkout', orderId = '' }) {
                 <div className="px-6 pb-5 grid sm:grid-cols-3 gap-3">{[{ icon: <FiShield size={16} />, label: '100% Secure' }, { icon: <FiTruck size={16} />, label: 'ST Couriers' }, { icon: <FiCheckCircle size={16} />, label: 'Verified Order' }].map(({ icon, label }) => <div key={label} className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 rounded-xl p-2.5"><span className="text-primary-600">{icon}</span> {label}</div>)}</div>
                 <div className="px-6 pb-6">
                   {verificationMessage && <p role="status" className="mb-3 break-words text-sm text-amber-800">{verificationMessage}</p>}
-                  <button onClick={returnOrderId ? retryPaymentVerification : handleCashfreePayment} disabled={loading || (!returnOrderId && !settings.cashfreeEnabled)} className={`btn-primary w-full py-4 flex items-center justify-center gap-2 text-base font-bold ${(loading || (!returnOrderId && !settings.cashfreeEnabled)) ? 'opacity-70 cursor-not-allowed' : ''}`}>{loading ? <><span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Processing...</> : returnOrderId ? 'Check payment status' : <><FiCreditCard size={18} /> Pay {formatPrice(grandTotal)}</>}</button>
+                  {returnOrderId ? (
+                    <div className="space-y-3">
+                      <button type="button" onClick={retryPaymentVerification} disabled={loading} className={`btn-primary w-full py-4 flex items-center justify-center gap-2 text-base font-bold ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}>
+                        {loading ? <><span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Processing...</> : 'Check payment status'}
+                      </button>
+                      <button type="button" onClick={startFreshPayment} disabled={loading || !settings.cashfreeEnabled} className={`btn-outline w-full py-3.5 flex items-center justify-center gap-2 text-sm font-bold ${(loading || !settings.cashfreeEnabled) ? 'opacity-70 cursor-not-allowed' : ''}`}>
+                        <FiCreditCard size={16} /> Pay {formatPrice(grandTotal)} with a new attempt
+                      </button>
+                    </div>
+                  ) : (
+                    <button type="button" onClick={handleCashfreePayment} disabled={loading || !settings.cashfreeEnabled} className={`btn-primary w-full py-4 flex items-center justify-center gap-2 text-base font-bold ${(loading || !settings.cashfreeEnabled) ? 'opacity-70 cursor-not-allowed' : ''}`}>
+                      {loading ? <><span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Processing...</> : <><FiCreditCard size={18} /> Pay {formatPrice(grandTotal)}</>}
+                    </button>
+                  )}
                   <p className="text-xs text-center text-gray-400 mt-3">By placing your order, you agree to our <Link href="/policies/terms-conditions" className="underline hover:text-primary-600">Terms</Link> and <Link href="/policies/privacy-policy" className="underline hover:text-primary-600">Privacy Policy</Link></p>
                 </div>
               </div>

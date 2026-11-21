@@ -146,10 +146,10 @@ test('checkout outcome URLs stay on-site and preserve legacy Cashfree identifier
 
 function outcomeFixture(mode, result = { success: true, paymentStatus: 'paid', orderNumber: 'GG0064', items: [{ product: 'p', price: 500, quantity: 1 }], subtotal: 500, shippingCost: 100, total: 600, deliveryEstimate: '8 working days' }, extras = {}) {
   const storage = new Map();
-  const calls = { cleared: 0, reconciled: 0, ga: 0, meta: 0, confirmation: 0, routes: [], result: null, step: 1, messages: [], drafts: [] };
+  const calls = { cleared: 0, reconciled: 0, ga: 0, meta: 0, confirmation: 0, routes: [], result: null, step: 1, messages: [], drafts: [], returnOrderId: '' };
   const c = load(['src/lib/checkoutPayment.js'], {
     mode, orderId: 'provider-order',
-    window: { sessionStorage: { getItem: (key) => storage.get(key), setItem: (key, value) => storage.set(key, value) }, scrollTo() {} },
+    window: { sessionStorage: { getItem: (key) => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: (key) => storage.delete(key) }, scrollTo() {} },
     session: { user: { id: 'customer-1' } }, receiptOwnerRef: { current: 'customer-1' }, returnVerifyRef: { current: '' },
     cart: extras.cart === undefined ? [{ product: 'new-cart-product', quantity: 1 }] : extras.cart,
     cartReady: extras.cartReady !== false,
@@ -160,7 +160,7 @@ function outcomeFixture(mode, result = { success: true, paymentStatus: 'paid', o
     clearCart: () => calls.cleared++, removePurchasedCartItems: () => calls.reconciled++, router: { replace: (url) => calls.routes.push(url) },
     trackGA4Purchase: () => calls.ga++, trackVerifiedMetaPurchase: () => calls.meta++, trackGA4OrderConfirmation: () => calls.confirmation++,
     setOrderResult: (value) => { calls.result = value; }, setStep: (value) => { calls.step = value; },
-    setReturnOrderId: () => {}, setVerificationMessage: (value) => calls.messages.push(value), toast: { error: (value) => calls.messages.push(value) },
+    setReturnOrderId: (value) => { calls.returnOrderId = value || ''; }, setVerificationMessage: (value) => calls.messages.push(value), toast: { error: (value) => calls.messages.push(value) },
     clearCheckoutDraft() {}, writeCheckoutDraft(_id, draft) { calls.drafts.push(draft); }, readCheckoutDraft() { return null; },
   });
   c.verifyCheckoutPayment = async () => result;
@@ -249,6 +249,39 @@ test('routes share one checkout flow, Cashfree returns verify then restore or co
   assert.match(pending, /Return to checkout/);
   assert.match(flow, /encodeURIComponent\(authenticationCallback\)/);
   assert.match(flow, /removePurchasedCartItems\(verifyData.items\)/);
+});
+
+test('unpaid restore keeps Check status only while retryable; failed clears to Proceed to Pay', async () => {
+  const pending = outcomeFixture('return', { success: false, paymentStatus: 'pending', retryable: true, error: 'Payment confirmation is still pending. Please check again.' });
+  assert.equal(await pending.c.verify('provider-order'), false);
+  assert.equal(pending.calls.returnOrderId, 'provider-order');
+  assert.equal(pending.c.readCheckoutReturn('customer-1', false), 'provider-order');
+  assert.equal(pending.calls.cleared, 0);
+
+  const failed = outcomeFixture('return', { success: false, paymentStatus: 'failed', error: 'Payment was not completed.' });
+  assert.equal(await failed.c.verify('provider-order'), false);
+  assert.equal(failed.calls.returnOrderId, '');
+  assert.equal(failed.c.readCheckoutReturn('customer-1', false), '');
+  assert.equal(failed.calls.step, 2);
+  assert.equal(failed.calls.cleared, 0);
+});
+
+test('Step 2 stale Check-status trap is cleared on address navigation and offers verify-then-pay', () => {
+  const flow = fs.readFileSync('src/components/checkout/CheckoutFlow.js', 'utf8').replace(/\r\n/g, '\n');
+  assert.match(flow, /const startFreshPayment = async/);
+  assert.match(flow, /Pay \{formatPrice\(grandTotal\)\} with a new attempt/);
+  assert.match(flow, /onClick=\{startFreshPayment\}/);
+  const addressNext = flow.slice(flow.indexOf('  const handleAddressNext ='), flow.indexOf('  const startFreshPayment ='));
+  assert.match(addressNext, /forgetCheckoutReturn/);
+  assert.match(addressNext, /setReturnOrderId\(''\)/);
+  const popstate = flow.slice(flow.indexOf('const onPopState ='), flow.indexOf('window.addEventListener(\'popstate\''));
+  assert.match(popstate, /forgetCheckoutReturn/);
+  assert.match(popstate, /setReturnOrderId\(''\)/);
+  const freshPay = flow.slice(flow.indexOf('  const startFreshPayment ='), flow.indexOf('  const handleCashfreePayment ='));
+  assert.match(freshPay, /verifyCheckoutPayment\(priorOrderId\)/);
+  assert.match(freshPay, /paymentStatus === 'paid'/);
+  assert.match(freshPay, /showSuccessfulOrder/);
+  assert.match(freshPay, /handleCashfreePayment\(\)/);
 });
 
 test('paid order lines are removed from the cart without deleting later or unrelated items', () => {
